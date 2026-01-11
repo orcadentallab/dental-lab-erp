@@ -116,48 +116,48 @@ export default function Settings() {
                 </div>
             )}
 
-            {/* Backup Section */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="p-4 bg-gray-50 border-b border-gray-200">
-                    <h2 className="font-bold text-gray-800">النسخ الاحتياطي</h2>
-                </div>
-                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Export */}
-                    <button
-                        onClick={handleExport}
-                        className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-right"
-                    >
-                        <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-                            <Download size={20} />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-gray-800">حفظ نسخة</h3>
-                            <p className="text-xs text-gray-500">تحميل ملف البيانات</p>
-                        </div>
-                    </button>
-
-                    {/* Import */}
-                    <div className="relative">
-                        <input
-                            type="file"
-                            accept=".json"
-                            onChange={handleImport}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        />
-                        <div className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-amber-300 hover:bg-amber-50 transition-colors text-right cursor-pointer">
-                            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
-                                <Upload size={20} />
+            {/* Backup Section - Admin Only */}
+            {isAdmin && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="p-4 bg-gray-50 border-b border-gray-200">
+                        <h2 className="font-bold text-gray-800">النسخ الاحتياطي</h2>
+                    </div>
+                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Export */}
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-right"
+                        >
+                            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                                <Download size={20} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-800">استرجاع</h3>
-                                <p className="text-xs text-gray-500">رفع ملف نسخة احتياطية</p>
+                                <h3 className="font-bold text-gray-800">حفظ نسخة</h3>
+                                <p className="text-xs text-gray-500">تحميل ملف البيانات</p>
+                            </div>
+                        </button>
+
+                        {/* Import */}
+                        <div className="relative">
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleImport}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                            />
+                            <div className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-amber-300 hover:bg-amber-50 transition-colors text-right cursor-pointer">
+                                <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                                    <Upload size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-800">استرجاع</h3>
+                                    <p className="text-xs text-gray-500">رفع ملف نسخة احتياطية</p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Cloud Backup - Admin Only */}
-                {isAdmin && (
+                    {/* Cloud Backup - Admin Only */}
                     <div className="p-4 border-t border-gray-100 bg-emerald-50">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -177,8 +177,8 @@ export default function Settings() {
                             </button>
                         </div>
                     </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* Password Change Section */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -222,151 +222,153 @@ export default function Settings() {
                 </div>
             </div>
 
-            {/* Excel Import Section */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <div className="p-4 bg-gray-50 border-b border-gray-200">
-                    <h2 className="font-bold text-gray-800 flex items-center gap-2">
-                        <FileSpreadsheet size={18} className="text-green-600" />
-                        استيراد من Excel
-                    </h2>
-                </div>
-                <div className="p-4">
-                    {/* Format Guide - Expandable */}
-                    <details className="mb-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <summary className="p-3 cursor-pointer font-medium text-blue-800 text-sm">📋 ما هي البيانات المطلوبة في كل ملف؟</summary>
-                        <div className="p-3 pt-0 text-xs text-blue-900 space-y-2">
-                            <p><strong className="text-blue-700">الأطباء:</strong> اسم الطبيب، الهاتف، العنوان، كود الطبيب، اسم المندوب</p>
-                            <p><strong className="text-green-700">الخدمات:</strong> اسم الخدمة، سعر البيع، سعر التكلفة</p>
-                            <p><strong className="text-purple-700">الحالات:</strong> اسم الطبيب أو كود الطبيب، اسم المريض، رقم الحالة، الخدمات، السعر، التاريخ</p>
-                            <p><strong className="text-amber-700">الحسابات:</strong> النوع (دخل/مصروف)، المبلغ، الفئة، التاريخ، الوصف</p>
-                        </div>
-                    </details>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {/* Doctors */}
-                        <div className="relative">
-                            <input
-                                type="file"
-                                accept=".xlsx,.xls"
-                                onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    setIsImporting(true);
-                                    setImportStatus({ success: true, message: 'جاري استيراد الأطباء...' });
-                                    try {
-                                        const doctors = await importDoctorsFromExcel(file);
-                                        const count = await db.bulkUpsertDoctors(doctors);
-                                        setImportStatus({ success: true, message: `تم استيراد ${count} طبيب` });
-                                        e.target.value = '';
-                                    } catch (error: any) {
-                                        setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
-                                    } finally {
-                                        setIsImporting(false);
-                                    }
-                                }}
-                                disabled={isImporting}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            />
-                            <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-blue-400 hover:bg-blue-50 cursor-pointer">
-                                <div className="text-blue-600 font-bold text-sm">الأطباء</div>
+            {/* Excel Import Section - Admin Only */}
+            {isAdmin && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="p-4 bg-gray-50 border-b border-gray-200">
+                        <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                            <FileSpreadsheet size={18} className="text-green-600" />
+                            استيراد من Excel
+                        </h2>
+                    </div>
+                    <div className="p-4">
+                        {/* Format Guide - Expandable */}
+                        <details className="mb-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <summary className="p-3 cursor-pointer font-medium text-blue-800 text-sm">📋 ما هي البيانات المطلوبة في كل ملف؟</summary>
+                            <div className="p-3 pt-0 text-xs text-blue-900 space-y-2">
+                                <p><strong className="text-blue-700">الأطباء:</strong> اسم الطبيب، الهاتف، العنوان، كود الطبيب، اسم المندوب</p>
+                                <p><strong className="text-green-700">الخدمات:</strong> اسم الخدمة، سعر البيع، سعر التكلفة</p>
+                                <p><strong className="text-purple-700">الحالات:</strong> اسم الطبيب أو كود الطبيب، اسم المريض، رقم الحالة، الخدمات، السعر، التاريخ</p>
+                                <p><strong className="text-amber-700">الحسابات:</strong> النوع (دخل/مصروف)، المبلغ، الفئة، التاريخ، الوصف</p>
                             </div>
-                        </div>
-
-                        {/* Services */}
-                        <div className="relative">
-                            <input
-                                type="file"
-                                accept=".xlsx,.xls"
-                                onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    setIsImporting(true);
-                                    setImportStatus({ success: true, message: 'جاري استيراد الخدمات...' });
-                                    try {
-                                        const services = await importServicesFromExcel(file);
-                                        const count = await db.bulkUpsertServices(services);
-                                        setImportStatus({ success: true, message: `تم استيراد ${count} خدمة` });
-                                        e.target.value = '';
-                                    } catch (error: any) {
-                                        setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
-                                    } finally {
-                                        setIsImporting(false);
-                                    }
-                                }}
-                                disabled={isImporting}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            />
-                            <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-green-400 hover:bg-green-50 cursor-pointer">
-                                <div className="text-green-600 font-bold text-sm">الخدمات</div>
+                        </details>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {/* Doctors */}
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setIsImporting(true);
+                                        setImportStatus({ success: true, message: 'جاري استيراد الأطباء...' });
+                                        try {
+                                            const doctors = await importDoctorsFromExcel(file);
+                                            const count = await db.bulkUpsertDoctors(doctors);
+                                            setImportStatus({ success: true, message: `تم استيراد ${count} طبيب` });
+                                            e.target.value = '';
+                                        } catch (error: any) {
+                                            setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
+                                        } finally {
+                                            setIsImporting(false);
+                                        }
+                                    }}
+                                    disabled={isImporting}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-blue-400 hover:bg-blue-50 cursor-pointer">
+                                    <div className="text-blue-600 font-bold text-sm">الأطباء</div>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* Orders */}
-                        <div className="relative">
-                            <input
-                                type="file"
-                                accept=".xlsx,.xls"
-                                onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    setIsImporting(true);
-                                    setImportStatus({ success: true, message: 'جاري استيراد الحالات...' });
-                                    try {
-                                        const [doctors, suppliers, services] = await Promise.all([
-                                            db.getDoctors(),
-                                            db.getSuppliers(),
-                                            db.getServices()
-                                        ]);
-                                        const orders = await importOrdersFromExcel(file, doctors, suppliers, services);
-                                        const count = await db.bulkUpsertOrders(orders);
-                                        setImportStatus({ success: true, message: `تم استيراد ${count} حالة` });
-                                        e.target.value = '';
-                                    } catch (error: any) {
-                                        setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
-                                    } finally {
-                                        setIsImporting(false);
-                                    }
-                                }}
-                                disabled={isImporting}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            />
-                            <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-purple-400 hover:bg-purple-50 cursor-pointer">
-                                <div className="text-purple-600 font-bold text-sm">الحالات</div>
+                            {/* Services */}
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setIsImporting(true);
+                                        setImportStatus({ success: true, message: 'جاري استيراد الخدمات...' });
+                                        try {
+                                            const services = await importServicesFromExcel(file);
+                                            const count = await db.bulkUpsertServices(services);
+                                            setImportStatus({ success: true, message: `تم استيراد ${count} خدمة` });
+                                            e.target.value = '';
+                                        } catch (error: any) {
+                                            setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
+                                        } finally {
+                                            setIsImporting(false);
+                                        }
+                                    }}
+                                    disabled={isImporting}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-green-400 hover:bg-green-50 cursor-pointer">
+                                    <div className="text-green-600 font-bold text-sm">الخدمات</div>
+                                </div>
                             </div>
-                        </div>
 
-                        {/* Transactions */}
-                        <div className="relative">
-                            <input
-                                type="file"
-                                accept=".xlsx,.xls"
-                                onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (!file) return;
-                                    setIsImporting(true);
-                                    setImportStatus({ success: true, message: 'جاري استيراد الحسابات...' });
-                                    try {
-                                        const transactions = await importTransactionsFromExcel(file);
-                                        const count = await db.bulkUpsertTransactions(transactions);
-                                        setImportStatus({ success: true, message: `تم استيراد ${count} معاملة` });
-                                        e.target.value = '';
-                                    } catch (error: any) {
-                                        setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
-                                    } finally {
-                                        setIsImporting(false);
-                                    }
-                                }}
-                                disabled={isImporting}
-                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            />
-                            <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-amber-400 hover:bg-amber-50 cursor-pointer">
-                                <div className="text-amber-600 font-bold text-sm">الحسابات</div>
+                            {/* Orders */}
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setIsImporting(true);
+                                        setImportStatus({ success: true, message: 'جاري استيراد الحالات...' });
+                                        try {
+                                            const [doctors, suppliers, services] = await Promise.all([
+                                                db.getDoctors(),
+                                                db.getSuppliers(),
+                                                db.getServices()
+                                            ]);
+                                            const orders = await importOrdersFromExcel(file, doctors, suppliers, services);
+                                            const count = await db.bulkUpsertOrders(orders);
+                                            setImportStatus({ success: true, message: `تم استيراد ${count} حالة` });
+                                            e.target.value = '';
+                                        } catch (error: any) {
+                                            setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
+                                        } finally {
+                                            setIsImporting(false);
+                                        }
+                                    }}
+                                    disabled={isImporting}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-purple-400 hover:bg-purple-50 cursor-pointer">
+                                    <div className="text-purple-600 font-bold text-sm">الحالات</div>
+                                </div>
+                            </div>
+
+                            {/* Transactions */}
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setIsImporting(true);
+                                        setImportStatus({ success: true, message: 'جاري استيراد الحسابات...' });
+                                        try {
+                                            const transactions = await importTransactionsFromExcel(file);
+                                            const count = await db.bulkUpsertTransactions(transactions);
+                                            setImportStatus({ success: true, message: `تم استيراد ${count} معاملة` });
+                                            e.target.value = '';
+                                        } catch (error: any) {
+                                            setImportStatus({ success: false, message: error?.message || 'فشل الاستيراد' });
+                                        } finally {
+                                            setIsImporting(false);
+                                        }
+                                    }}
+                                    disabled={isImporting}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-amber-400 hover:bg-amber-50 cursor-pointer">
+                                    <div className="text-amber-600 font-bold text-sm">الحسابات</div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
             {/* Danger Zone - Restored specific for re-import */}
 
-        </div>
+        </div >
     );
 }

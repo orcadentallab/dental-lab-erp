@@ -48,6 +48,7 @@ function App() {
               <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'representative']} />}>
                 <Route element={<DashboardLayout />}>
                   <Route path="/accounts" element={<Accounts />} />
+                  <Route path="/settings" element={<Settings />} />
                 </Route>
               </Route>
 
@@ -71,7 +72,7 @@ function App() {
                 <Route element={<DashboardLayout />}>
                   <Route path="/analytics" element={<Analytics />} />
                   <Route path="/users" element={<UsersPage />} />
-                  <Route path="/settings" element={<Settings />} />
+
                 </Route>
               </Route>
 
