@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type Transaction } from '../services/db';
-import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, User, CheckSquare, PlusCircle, UserPlus, Banknote, FileText } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, CheckSquare, PlusCircle, UserPlus, Banknote, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -116,80 +116,69 @@ export default function Dashboard() {
     };
 
     const OrderTable = ({ title, icon: Icon, orders: tableOrders, colorClass, emptyMessage }: any) => (
-        <div className={`bg-white dark:bg-gray-800 rounded-2xl shadow-sm border ${colorClass} dark:border-gray-700 overflow-hidden mb-8`}>
+        <div className={`bg-white dark:bg-gray-800 rounded-xl border ${colorClass} dark:border-gray-700 overflow-hidden`}>
             {/* Header */}
-            <div className={`p-6 border-b ${colorClass.replace('border-', 'border-b-')} dark:border-gray-700 bg-opacity-10 flex justify-between items-center bg-gray-50 dark:bg-gray-800`}>
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                    {Icon && <Icon size={20} />}
+            <div className={`p-4 border-b ${colorClass.replace('border-', 'border-b-')} dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800`}>
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2 text-sm">
+                    {Icon && <Icon size={18} />}
                     {title}
                 </h3>
-                <span className="bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-1 rounded-full text-xs font-bold border border-gray-200 dark:border-gray-600">{tableOrders.length} حالات</span>
+                <span className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded text-xs font-bold">{tableOrders.length}</span>
             </div>
 
             {/* Table */}
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-right">
-                    <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 font-medium border-b border-gray-100 dark:border-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs">
                         <tr>
-                            <th className="p-4 w-[120px] font-bold text-xs uppercase tracking-wider">Case ID</th>
-                            <th className="p-4 font-bold text-xs uppercase tracking-wider">الطبيب</th>
-                            <th className="p-4 font-bold text-xs uppercase tracking-wider">المريض</th>
-                            <th className="p-4 font-bold text-xs uppercase tracking-wider">التفاصيل</th>
-                            <th className="p-4 w-[120px] font-bold text-xs uppercase tracking-wider">التسليم</th>
-                            <th className="p-4 w-[120px] font-bold text-xs uppercase tracking-wider">الحالة</th>
+                            <th className="p-3 w-[100px] font-medium">Case#</th>
+                            <th className="p-3 font-medium">الطبيب</th>
+                            <th className="p-3 font-medium">المريض</th>
+                            <th className="p-3 font-medium">الخدمات</th>
+                            <th className="p-3 w-[100px] font-medium">التسليم</th>
+                            <th className="p-3 w-[90px] font-medium">الحالة</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                         {tableOrders.map((order: any) => (
                             <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors" onClick={() => navigate('/orders')}>
-                                {/* Case ID */}
-                                <td className="p-4 font-bold ltr text-left text-blue-600 dark:text-blue-400 font-mono">
+                                <td className="p-3 font-bold ltr text-left text-blue-600 dark:text-blue-400 font-mono text-xs">
                                     #{order.caseId}
                                     {(order.isUrgent || order.priority === 'Urgent') && <span className="ml-1 animate-pulse" title="Urgent">🔥</span>}
                                 </td>
-
-                                {/* Doctor */}
-                                <td className="p-4">
+                                <td className="p-3">
                                     {user?.role !== 'lab' ? (
-                                        <div className="flex items-center gap-1.5">
-                                            <User size={14} className="text-gray-400" />
-                                            <span className="font-semibold text-gray-700 dark:text-gray-300">{doctorsMap[order.doctorId] || '---'}</span>
-                                        </div>
+                                        <span className="text-gray-700 dark:text-gray-300 text-xs">{doctorsMap[order.doctorId] || '---'}</span>
                                     ) : (
                                         <span className="text-gray-400 italic text-xs">مخفي</span>
                                     )}
                                 </td>
-
-                                {/* Patient */}
-                                <td className="p-4 font-medium text-gray-800 dark:text-gray-200">{order.patientName}</td>
-
-                                {/* Details (Items) */}
-                                <td className="p-4">
+                                <td className="p-3 font-medium text-gray-800 dark:text-gray-200 text-xs">{order.patientName}</td>
+                                <td className="p-3">
                                     <div className="flex flex-wrap gap-1">
-                                        {(order.items || []).map((item: any, idx: number) => (
-                                            <span key={idx} className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200 border border-blue-100 dark:border-blue-800 px-1.5 py-0.5 rounded text-[11px]">
-                                                {item.serviceType} {item.teethNumbers ? `(${Array.isArray(item.teethNumbers) ? item.teethNumbers.join(',') : item.teethNumbers})` : ''}
+                                        {(order.items || []).slice(0, 2).map((item: any, idx: number) => (
+                                            <span key={idx} className="bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-200 px-1 py-0.5 rounded text-[10px]">
+                                                {item.serviceType}
                                             </span>
                                         ))}
+                                        {(order.items || []).length > 2 && (
+                                            <span className="text-gray-400 text-[10px]">+{order.items.length - 2}</span>
+                                        )}
                                     </div>
                                 </td>
-
-                                {/* Delivery Date */}
-                                <td className="p-4 text-gray-500 dark:text-gray-400 ltr font-mono text-xs">
+                                <td className="p-3 text-gray-500 dark:text-gray-400 ltr font-mono text-[11px]">
                                     {order.deliveryDate}
-                                    {order.deliveryDate < todayStr && <span className="block text-[10px] text-red-500 font-bold">متأخر</span>}
+                                    {order.deliveryDate < todayStr && <span className="block text-[9px] text-red-500 font-bold">متأخر</span>}
                                 </td>
-
-                                {/* Status */}
-                                <td className="p-4">
-                                    <span className={`px-2 py-1 rounded text-[11px] font-bold inline-block min-w-[60px] text-center ${getStatusBadgeClass(order.status)}`}>
+                                <td className="p-3">
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${getStatusBadgeClass(order.status)}`}>
                                         {getStatusLabel(order.status)}
                                     </span>
                                 </td>
                             </tr>
                         ))}
                         {tableOrders.length === 0 && (
-                            <tr><td colSpan={6} className="p-8 text-center text-gray-400 font-medium">{emptyMessage}</td></tr>
+                            <tr><td colSpan={6} className="p-6 text-center text-gray-400 text-sm">{emptyMessage}</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -528,69 +517,73 @@ export default function Dashboard() {
 
     // --- STANDARD VIEW (Admin/Rep/Accountant) ---
     return (
-        <div className="space-y-8">
-            <div className="flex justify-between items-center">
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-4 border-b border-gray-100 dark:border-gray-800">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">لوحة التحكم</h1>
-                    <p className="text-gray-500 dark:text-gray-400">متابعة الحالات والمعامل المفتوحة</p>
+                    <h1 className="text-xl font-bold text-gray-800 dark:text-white">لوحة التحكم</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">متابعة الحالات والمعامل</p>
                 </div>
             </div>
 
             {/* Quick Actions Bar */}
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-wrap gap-4 items-center">
-                <span className="font-bold text-gray-700 dark:text-gray-300 ml-2">إجراءات سريعة:</span>
-
+            <div className="flex flex-wrap gap-2">
                 {(user?.role === 'admin' || user?.role === 'representative') && (
-                    <button onClick={() => navigate('/orders')} className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-colors font-medium text-sm">
-                        <PlusCircle size={18} />
-                        <span>أوردر جديد</span>
-                    </button>
+                    <>
+                        <button onClick={() => navigate('/orders')} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm">
+                            <PlusCircle size={16} />
+                            <span>أوردرات جديد</span>
+                        </button>
+                        <button onClick={() => navigate('/doctors')} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition shadow-sm">
+                            <UserPlus size={16} />
+                            <span>إضافة طبيب</span>
+                        </button>
+                    </>
                 )}
-
-                {(user?.role === 'admin' || user?.role === 'representative') && (
-                    <button onClick={() => navigate('/doctors')} className="flex items-center gap-2 px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded-xl transition-colors font-medium text-sm">
-                        <UserPlus size={18} />
-                        <span>إضافة طبيب</span>
-                    </button>
-                )}
-
                 {(user?.role === 'admin' || user?.role === 'accountant') && (
                     <>
-                        <button onClick={() => navigate('/finance')} className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/40 rounded-xl transition-colors font-medium text-sm">
-                            <Banknote size={18} />
-                            <span>تسجيل مصروف</span>
+                        <button onClick={() => navigate('/finance')} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition shadow-sm">
+                            <Banknote size={16} />
+                            <span>مصروف</span>
                         </button>
-                        <button onClick={() => navigate('/accounts')} className="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-xl transition-colors font-medium text-sm">
-                            <FileText size={18} />
+                        <button onClick={() => navigate('/accounts')} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition shadow-sm">
+                            <FileText size={16} />
                             <span>كشف حساب</span>
                         </button>
                     </>
                 )}
             </div>
 
-            {/* Quick Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-4">
-                    <div className="p-3 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl"><Package size={24} /></div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">إجمالي الحالات الجارية</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{activeOrders.length}</h3>
+
+            {/* Stats Cards (Active Status) */}
+            <div className="grid grid-cols-3 gap-4">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs text-blue-100 font-medium mb-1">الحالات الجارية</p>
+                            <h3 className="text-2xl font-bold">{activeOrders.length}</h3>
+                        </div>
+                        <div className="p-2 bg-white/20 rounded-lg"><Package size={20} /></div>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-4">
-                    <div className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl"><AlertTriangle size={24} /></div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">حالات متأخرة</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{delayedOrders.length}</h3>
+                <div className="bg-gradient-to-br from-red-500 to-red-600 p-4 rounded-xl text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs text-red-100 font-medium mb-1">متأخرة</p>
+                            <h3 className="text-2xl font-bold">{delayedOrders.length}</h3>
+                        </div>
+                        <div className="p-2 bg-white/20 rounded-lg"><AlertTriangle size={20} /></div>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-4">
-                    <div className="p-3 bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-xl"><HelpCircle size={24} /></div>
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">غير محدد معمل</p>
-                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{unassignedOrders.length}</h3>
+                <div className="bg-gradient-to-br from-amber-500 to-amber-600 p-4 rounded-xl text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs text-amber-100 font-medium mb-1">بدون معمل</p>
+                            <h3 className="text-2xl font-bold">{unassignedOrders.length}</h3>
+                        </div>
+                        <div className="p-2 bg-white/20 rounded-lg"><HelpCircle size={20} /></div>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-import { Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight, User, Calendar, Settings, Building2, StickyNote } from 'lucide-react';
+import { Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight, User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon } from 'lucide-react';
 import type { Order } from '../../services/db';
 import clsx from 'clsx';
 import { getTechStatusBadge, checkIsLate } from '../../utils/orderUtils';
@@ -112,6 +112,19 @@ export default function OrderCard({
                                 >
                                     <LinkIcon size={14} />
                                     <span>STL</span>
+                                </a>
+                            )}
+
+                            {order.imagesUrl && (
+                                <a
+                                    href={order.imagesUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all"
+                                    title="View Images"
+                                >
+                                    <ImageIcon size={14} />
+                                    <span>صور</span>
                                 </a>
                             )}
 

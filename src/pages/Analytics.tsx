@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '../services/db';
-import { TrendingUp, DollarSign, Activity, Wallet } from 'lucide-react';
-
+import { TrendingUp, DollarSign, Activity, Wallet, FileText, Layers } from 'lucide-react';
 
 export default function Analytics() {
     const [stats, setStats] = useState({
@@ -12,17 +11,25 @@ export default function Analytics() {
         totalExpenses: 0,
         pendingRevenue: 0,
         orderCount: 0,
-        activeOrders: 0
+        activeOrders: 0,
+        totalUnits: 0
     });
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
     const [topServices, setTopServices] = useState<{ name: string; count: number }[]>([]);
-    const [dateRange] = useState('all'); // 'all', 'month', 'week'
+
+    // Default to current month
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+    const [startDate, setStartDate] = useState(firstDay);
+    const [endDate, setEndDate] = useState(lastDay);
 
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         calculateStats();
-    }, [dateRange]);
+    }, [startDate, endDate]);
 
     const calculateStats = async () => {
         setIsLoading(true);
@@ -33,65 +40,73 @@ export default function Analytics() {
                 db.getDoctors()
             ]);
 
+            // Filter by Date
+            const isInRange = (dateStr: string) => {
+                if (!dateStr) return false;
+                const d = dateStr.split('T')[0];
+                return d >= startDate && d <= endDate;
+            };
 
+            const filteredOrders = orders.filter(o => {
+                const status = (o.status || '').toLowerCase();
+                const isCompleted = status === 'delivered' || status === 'completed';
+                // For Sales/Performance: Use Delivery Date if delivered, else CreatedAt?
+                const date = isCompleted ? (o.deliveryDate || o.createdAt) : o.createdAt;
+                return isInRange(date);
+            });
 
-            // 1. Filter by Date (Simplification: Current Month vs All Time for now)
-            // For MVP, we'll just do "All Time" but structured to allow expansion
+            // For Cash Flow: Filter transactions by date
+            const filteredTransactions = transactions.filter(t => isInRange(t.date));
 
-            const completedOrders = orders.filter(o =>
-                o.status === 'Delivered' || o.status === 'Completed'
-            );
-
-            const activeOrdersList = orders.filter(o =>
-                o.status !== 'Delivered' && o.status !== 'Completed'
-            );
+            const completedOrders = filteredOrders.filter(o => {
+                const status = (o.status || '').toLowerCase();
+                return status === 'delivered' || status === 'completed';
+            });
 
             // --- KPIs ---
 
-            // 1. Total Sales Value (Accrual Basis) - Value of ALL orders that are valid (not rejected)
-            // We assume all orders except maybe 'Rejected' are billable or will be billable.
-            // If stricter, maybe only use Delivered + In Progress. Let's use all for now as "Booked Sales".
-            const validOrders = orders.filter(o => o.status !== 'Rejected' && o.technicianStatus !== 'Rejected');
-            const totalSalesValue = validOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+            // 1. Total Sales Value (Delivered Work Value in period)
+            const totalSalesValue = completedOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
 
-            // 2. Collected Revenue (Cash Basis) - Actual money received
-            const collectedRevenue = transactions
+            // 2. Total Units/Services Count
+            const totalUnits = completedOrders.reduce((sum, o) => {
+                return sum + (o.items || []).reduce((itemSum, item: any) => {
+                    const count = item.teethNumbers?.length || 1;
+                    return itemSum + count;
+                }, 0);
+            }, 0);
+
+            // 3. Collected Revenue (Cash Basis)
+            const collectedRevenue = filteredTransactions
                 .filter(t => t.type === 'income')
                 .reduce((sum, t) => sum + (t.amount || 0), 0);
 
-            // 3. Pending / Accounts Receivable (Money with Doctors)
-            // Total Value of Orders - Total Money Collected
-            const pendingRevenue = totalSalesValue - collectedRevenue;
+            // 4. Profit Calculation
+            const totalCostOfGoods = completedOrders.reduce((sum, o) => sum + (o.cost || 0), 0);
+            const grossProfit = totalSalesValue - totalCostOfGoods;
 
-
-            // 4. Profit (Accrual Basis) - Based on DELIVERED/COMPLETED jobs
-            // Profit = (Price of Delivered - Cost of Delivered) - Gen. Expenses
-            const totalCostOfGoods = completedOrders.reduce((sum, o) => sum + (o.cost || 0), 0); // Internal Cost for completed
-            const deliveredRevenue = completedOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-
-            const grossProfit = deliveredRevenue - totalCostOfGoods;
-
-            const totalExpenses = transactions
+            const totalExpenses = filteredTransactions
                 .filter(t => t.type === 'expense')
                 .reduce((sum, t) => sum + (t.amount || 0), 0);
 
             const netProfit = grossProfit - totalExpenses;
 
             setStats({
-                totalRevenue: collectedRevenue, // Cash Collected
-                deliveredRevenue, // Value of Delivered Work (for Margins)
+                totalRevenue: collectedRevenue,
+                deliveredRevenue: totalSalesValue,
                 grossProfit,
                 netProfit,
                 totalExpenses,
-                pendingRevenue, // Receivables
+                pendingRevenue: totalSalesValue - collectedRevenue, // Approx
                 orderCount: completedOrders.length,
-                activeOrders: activeOrdersList.length
+                activeOrders: 0,
+                totalUnits
             });
 
-            // --- Top Doctors (Based on ALL Valid Orders, not just completed) ---
+            // --- Top Doctors (Based on filteredOrders) ---
             const doctorStats = new Map<string, { revenue: number; count: number }>();
 
-            validOrders.forEach(o => {
+            completedOrders.forEach(o => {
                 const current = doctorStats.get(o.doctorId) || { revenue: 0, count: 0 };
                 current.revenue += (o.totalPrice || 0);
                 current.count += 1;
@@ -108,9 +123,9 @@ export default function Analytics() {
 
             setTopDoctors(sortedDoctors);
 
-            // --- Top Services (Based on ALL Valid Orders) ---
+            // --- Top Services ---
             const serviceStats = new Map<string, number>();
-            validOrders.forEach(o => {
+            completedOrders.forEach(o => {
                 o.items.forEach(item => {
                     const current = serviceStats.get(item.serviceType) || 0;
                     serviceStats.set(item.serviceType, current + 1);
@@ -123,6 +138,7 @@ export default function Analytics() {
                 .slice(0, 5);
 
             setTopServices(sortedServices);
+
         } catch (error) {
             console.error('Error loading analytics:', error);
         } finally {
@@ -135,7 +151,7 @@ export default function Analytics() {
             <div className="flex justify-between items-start">
                 <div>
                     <p className="text-gray-500 text-sm font-medium mb-1">{title}</p>
-                    <h3 className="text-2xl font-bold text-gray-800">{value.toLocaleString()} <span className="text-sm text-gray-400 font-normal">ج.م</span></h3>
+                    <h3 className="text-2xl font-bold text-gray-800">{value.toLocaleString()} <span className="text-sm text-gray-400 font-normal">{typeof value === 'number' ? 'ج.م' : ''}</span></h3>
                     {subtext && <p className={`text-xs mt-2 ${subColor} font-medium`}>{subtext}</p>}
                 </div>
                 <div className={`p-3 rounded-xl ${color}`}>
@@ -145,20 +161,60 @@ export default function Analytics() {
         </div>
     );
 
+
+
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">تحليلات الأداء</h1>
-                    <p className="text-gray-500">نظرة شاملة على أداء المعمل المالي والتشغيلي</p>
+                    <p className="text-gray-500">تحليل المبيعات، الأرباح، وأداء المعمل</p>
                     {isLoading && (
                         <div className="mt-2 text-sm text-blue-600 animate-pulse">جاري تحديث البيانات...</div>
                     )}
                 </div>
-                <div className="flex gap-2 bg-white p-1 rounded-lg border border-gray-200">
-                    {/* Placeholder for Date Filter */}
-                    <button className="px-4 py-2 bg-blue-50 text-blue-600 rounded-md text-sm font-bold">الكل</button>
-                    {/* <button className="px-4 py-2 text-gray-500 hover:bg-gray-50 rounded-md text-sm">هذا الشهر</button> */}
+                <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
+                    <span className="text-xs font-bold text-gray-500 px-2">الفترة:</span>
+                    <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="bg-gray-50 border-none text-sm font-bold text-gray-700 focus:ring-0 rounded-lg py-1.5"
+                    />
+                    <span className="text-gray-300">|</span>
+                    <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="bg-gray-50 border-none text-sm font-bold text-gray-700 focus:ring-0 rounded-lg py-1.5"
+                    />
+                </div>
+            </div>
+
+            {/* NEW: Operational Stats Grid (Counts) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-indigo-600 text-sm font-bold mb-1">تسليمات (Orders)</p>
+                        <h3 className="text-3xl font-black text-indigo-800">{stats.orderCount}</h3>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl shadow-sm"><FileText className="text-indigo-500" size={24} /></div>
+                </div>
+
+                <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-purple-600 text-sm font-bold mb-1">وحدات (Units)</p>
+                        <h3 className="text-3xl font-black text-purple-800">{stats.totalUnits}</h3>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl shadow-sm"><Layers className="text-purple-500" size={24} /></div>
+                </div>
+
+                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-emerald-600 text-sm font-bold mb-1">إجمالي المبيعات (Sales)</p>
+                        <h3 className="text-3xl font-black text-emerald-800">{stats.deliveredRevenue.toLocaleString()} <span className="text-sm">ج.م</span></h3>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl shadow-sm"><TrendingUp className="text-emerald-500" size={24} /></div>
                 </div>
             </div>
 
@@ -300,12 +356,12 @@ export default function Analytics() {
                 <div className="flex flex-wrap gap-3">
                     {topServices.map((svc, idx) => (
                         <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 min-w-[150px]">
-                            <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold">
-                                {idx + 1}
+                            <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">
+                                {svc.count}
                             </div>
                             <div>
                                 <p className="font-bold text-gray-800">{svc.name}</p>
-                                <p className="text-xs text-gray-500">{svc.count} مرة</p>
+                                <p className="text-xs text-gray-500">طلب</p>
                             </div>
                         </div>
                     ))}

@@ -94,6 +94,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     const [deliveryDate, setDeliveryDate] = useState(initialData?.deliveryDate || getDefaultDate());
     const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
+    const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
     const [discount] = useState(initialData?.discount || 0);
     const [instructions, setInstructions] = useState(initialData?.instructions || '');
     const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || '');
@@ -280,6 +281,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             shade,
             instructions: instructions || undefined,
             stlUrl: stlUrl || undefined,
+            imagesUrl: imagesUrl || undefined,
             status: initialData?.status || 'New Case',
             technicianStatus: initialData?.technicianStatus || 'Pending',
             deliveryDate,
@@ -513,6 +515,18 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     onChange={(e) => setStlUrl(e.target.value)}
                                 />
                             </div>
+                        </div>
+
+                        {/* Images Link */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">رابط صور الحالة (اختياري)</label>
+                            <input
+                                type="url"
+                                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none ltr text-left text-sm text-green-600 underline"
+                                placeholder="https://drive.google.com/... أو أي رابط صور"
+                                value={imagesUrl}
+                                onChange={(e) => setImagesUrl(e.target.value)}
+                            />
                         </div>
 
                         <div>

@@ -45,14 +45,14 @@ export default function Accounts() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    // const [isLoading, setIsLoading] = useState(false); // Unused
 
     // Summary Data
     const [summaryData, setSummaryData] = useState<EntitySummary[]>([]);
 
     useEffect(() => {
         const loadData = async () => {
-            setIsLoading(true);
+
             try {
                 const [docs, sups, ords, txs, users] = await Promise.all([
                     db.getDoctors(),
@@ -69,7 +69,7 @@ export default function Accounts() {
             } catch (error) {
                 console.error('Error loading account data:', error);
             } finally {
-                setIsLoading(false);
+
             }
         };
         loadData();
@@ -278,12 +278,11 @@ export default function Accounts() {
 
         return (
             <div className="space-y-6">
-                <div className="print:hidden flex flex-col gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div className="print:hidden flex flex-col gap-4 bg-white p-4 rounded-xl border border-gray-200">
                     <div className="flex justify-between items-center">
                         <div>
-                            <h1 className="text-2xl font-bold text-gray-800">إجمالي الحسابات</h1>
-                            <p className="text-gray-500">ملخص أرصدة {activeTab === 'doctors' ? 'العملاء' : 'الموردين'}</p>
-                            {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري تحديث البيانات...</span>}
+                            <h1 className="text-xl font-bold text-gray-800">إجمالي الحسابات</h1>
+                            <p className="text-sm text-gray-500">ملخص أرصدة {activeTab === 'doctors' ? 'العملاء' : (activeTab === 'suppliers' ? 'الموردين' : 'المصممين')}</p>
                         </div>
                         <div className="flex gap-2">
                             <button
@@ -300,13 +299,13 @@ export default function Accounts() {
                                         activeTab === 'doctors' ? 'العملاء' : 'الموردين'
                                     );
                                 }}
-                                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                                className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium"
                             >
-                                <FileSpreadsheet size={18} />
+                                <FileSpreadsheet size={16} />
                                 <span>Excel</span>
                             </button>
-                            <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800">
-                                <Printer size={18} /> <span>طباعة الملخص</span>
+                            <button onClick={handlePrint} className="flex items-center gap-1.5 bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-900 text-sm font-medium">
+                                <Printer size={16} /> <span>طباعة</span>
                             </button>
                         </div>
                     </div>

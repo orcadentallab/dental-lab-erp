@@ -88,6 +88,7 @@ export interface Order {
     deliveryDate: string;
     cost: number;
     stlUrl?: string; // stlUrl / scanUrl
+    imagesUrl?: string; // Photos URL
     supplierId?: string; // Optional: Assigned External Lab
     createdAt: string;
 
