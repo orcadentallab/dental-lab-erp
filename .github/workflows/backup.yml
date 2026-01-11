@@ -18,7 +18,7 @@ jobs:
         run: |
           pg_dump -h ${{ secrets.SUPABASE_DB_HOST }} \
                   -p 6543 \
-                  -U postgres \
+                  -U postgres.piuiiwcjnfvjwyewczuz \
                   -d postgres \
                   -F c \
                   -f backup_$(date +%Y%m%d).dump
