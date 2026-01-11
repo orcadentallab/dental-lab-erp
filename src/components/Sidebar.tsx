@@ -21,7 +21,7 @@ export default function Sidebar() {
         { name: 'شؤون الموظفين', href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
         { name: 'المستخدمين', href: '/users', icon: Shield, roles: ['admin'] },
         { name: 'التصميم', href: '/designer', icon: Palette, roles: ['admin', 'designer'] },
-        { name: 'الإعدادات', href: '/settings', icon: Settings, roles: ['admin'] },
+        { name: 'الإعدادات', href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
     ];
 
     const filteredNav = navigation.filter(item => user && item.roles.includes(user.role));
