@@ -366,40 +366,7 @@ export default function Settings() {
                 </div>
             </div>
             {/* Danger Zone - Restored specific for re-import */}
-            {isAdmin && (
-                <div className="bg-red-50 p-6 rounded-2xl border border-red-100 mt-8">
-                    <h3 className="text-lg font-bold text-red-800 mb-2 flex items-center gap-2">
-                        <AlertCircle size={20} />
-                        منطقة الخطر
-                    </h3>
-                    <p className="text-sm text-red-600 mb-4">الإجراءات التالية لا يمكن التراجع عنها. يرجى الحذر.</p>
 
-                    <button
-                        onClick={async () => {
-                            if (window.confirm('هل أنت متأكد تماماً؟ سيتم حذف جميع الحالات (Orders) من قاعدة البيانات نهائياً!')) {
-                                if (window.confirm('تأكيد نهائي: هل تريد حذف كل البيانات؟')) {
-                                    setImportStatus({ success: true, message: 'جاري الحذف...' });
-                                    try {
-                                        // Delete all orders
-                                        const { error } = await supabase
-                                            .from('orders')
-                                            .delete()
-                                            .neq('id', '00000000-0000-0000-0000-000000000000');
-
-                                        if (error) throw error;
-                                        setImportStatus({ success: true, message: 'تم حذف جميع الحالات بنجاح.' });
-                                    } catch (err: any) {
-                                        setImportStatus({ success: false, message: `فشل الحذف: ${err.message}` });
-                                    }
-                                }
-                            }
-                        }}
-                        className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 shadow-sm transition-all"
-                    >
-                        حذف جميع الحالات (Orders Only)
-                    </button>
-                </div>
-            )}
         </div>
     );
 }
