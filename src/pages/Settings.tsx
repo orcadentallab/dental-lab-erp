@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { db } from '../services/db';
-import { Download, Upload, Database, AlertCircle, CheckCircle, Save, Share2, FileSpreadsheet } from 'lucide-react';
+import { Download, Upload, Database, AlertCircle, CheckCircle, Save, Share2, FileSpreadsheet, Cloud } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { importDoctorsFromExcel, importServicesFromExcel, importOrdersFromExcel, importTransactionsFromExcel } from '../lib/excelImporter';
 
 export default function Settings() {
+    const { user } = useAuth();
     const [importStatus, setImportStatus] = useState<{ success?: boolean; message?: string } | null>(null);
     const [isImporting, setIsImporting] = useState(false);
+    const isAdmin = user?.role === 'admin';
 
     const handleExport = () => {
         const data = db.exportData();
@@ -110,6 +113,29 @@ export default function Settings() {
                     </div>
                 </div>
             </div>
+
+            {/* Cloud Backup - Admin Only */}
+            {isAdmin && (
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-white rounded-lg shadow-sm text-emerald-600">
+                                <Cloud size={20} />
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-emerald-900 text-sm">نسخ احتياطي سحابي</h4>
+                                <p className="text-xs text-emerald-700">حفظ نسخة احتياطية من قاعدة البيانات على السيرفر</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => window.open('https://github.com/orcadentallab/dental-lab-erp/actions/workflows/backup.yml', '_blank')}
+                            className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700 transition-colors shadow-sm"
+                        >
+                            تشغيل الآن
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* BULK MERGE (Advanced) */}
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
