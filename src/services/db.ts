@@ -1,0 +1,305 @@
+
+export interface Doctor {
+    id: string;
+    name: string;
+    phone: string;
+    phone2?: string;
+    address: string;
+    doctorCode: string; // e.g., 'DR01'
+    representativeName: string;
+    representativeId?: string; // Link to User.id
+}
+
+export interface Service {
+    id: string;
+    name: string;
+    sellingPrice: number;
+    costPrice: number;
+    millingPrice?: number; // Default milling price (can be overridden per supplier)
+}
+
+export interface Transaction {
+    id: string;
+    type: 'income' | 'expense';
+    amount: number;
+    category: string;
+    date: string;
+    description: string;
+    entityId?: string; // Doctor or Supplier ID
+    entityType?: 'doctor' | 'supplier' | 'general' | 'designer';
+    isRegistered?: boolean; // Flag for Accountant (Bibocad)
+}
+
+export interface Supplier {
+    id: string;
+    name: string;
+    username: string; // for login
+    phone: string;
+    customPrices?: Record<string, number>; // serviceName -> costPrice
+    millingPrices?: Record<string, number>; // serviceName -> millingOnlyPrice
+    redoCostPercentage?: number; // 0 to 100 (Percentage of cost covered by us during redo)
+}
+
+export interface User {
+    id: string;
+    username: string;
+    email?: string;
+    // password removed - using Supabase Auth only
+    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer';
+    name: string;
+    entityId?: string;
+    // Payroll Info (for Representatives)
+    baseSalary?: number;
+    // For Designers
+    unitRate?: number;
+    // Link to Supabase Auth (required)
+    auth_id?: string;
+}
+
+export interface Expense {
+    id: string;
+    userId: string; // Link to Representative
+    amount: number;
+    description: string;
+    date: string;
+    status: 'Pending' | 'Approved' | 'Rejected';
+    notes?: string; // Admin notes
+    category?: string; // New: To match general finance categories
+    isSettled?: boolean; // New: To track if it has been paid out
+}
+
+export interface OrderItem {
+    serviceType: string;
+    teethNumbers: string[];
+    price: number;
+    shade?: string;
+}
+
+export interface Order {
+    id: string; // Internal ID
+    caseId: string; // Generated ID
+    doctorId: string;
+    patientName: string;
+    items: OrderItem[];
+    discount: number;
+    totalPrice: number;
+    shade: string;
+    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected';
+    deliveryDate: string;
+    cost: number;
+    stlUrl?: string; // stlUrl / scanUrl
+    supplierId?: string; // Optional: Assigned External Lab
+    createdAt: string;
+
+    // External Lab Fields
+    external_lab_status?: string;
+    external_lab_notes?: string;
+
+    // New Fields
+    instructions?: string;
+    priority: 'Normal' | 'Urgent';
+    deliveryType?: 'Final' | 'TryIn';
+    needsDesignReview?: boolean;
+    technicianStatus?: 'Pending' | 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First';
+    comments?: {
+        id: string;
+        text: string;
+        userId: string;
+        userName: string;
+        createdAt: string;
+    }[];
+    representativeId?: string; // Linked Representative
+    isRegistered?: boolean; // Flag for Accountant (Bibocad)
+
+    // Split Workflow Fields
+    workflowType?: 'full' | 'split';
+    designerId?: string;
+    designStatus?: 'pending' | 'in_progress' | 'completed';
+    designPrice?: number; // Snapshot of cost
+
+    // QA & Delivery Tracking
+    actualDeliveryDate?: string; // When status becomes Delivered
+    feedback?: {
+        rating: number; // 1-5
+        issues: string[]; // ['Shade', 'Fitting', 'Bite', 'Material', 'Late', 'Other']
+        rootCause?: 'Lab' | 'Doctor' | 'Scan' | 'Communication';
+        notes?: string;
+        createdAt: string;
+    };
+    isUrgent?: boolean;
+    isRedo?: boolean;
+    originalOrderId?: string; // If this is a redo of another order
+
+    // Status History for Time Tracking
+    statusHistory?: {
+        status: string;
+        enteredAt: string; // ISO timestamp
+        exitedAt?: string; // ISO timestamp
+        durationMinutes?: number;
+    }[];
+}
+
+class MockDB {
+    constructor() {
+        console.log('Database service initialized with Supabase backend.');
+    }
+
+    // --- USERS ---
+    async getUsers(): Promise<User[]> {
+        const { getUsers } = await import('./supabase/users');
+        return getUsers();
+    }
+    async addUser(user: User): Promise<void> {
+        const { addUser } = await import('./supabase/users');
+        return addUser(user);
+    }
+    async updateUser(user: User): Promise<void> {
+        const { updateUser } = await import('./supabase/users');
+        return updateUser(user);
+    }
+    async deleteUser(id: string): Promise<void> {
+        const { deleteUser } = await import('./supabase/users');
+        return deleteUser(id);
+    }
+
+    // --- EXPENSES (Mock -> Transactions) ---
+    getExpenses(): Expense[] { return []; }
+    // Expenses are now Transactions with type='expense'. Keeping legacy stub or remove?
+    // Leaving stub to avoid breaking old references if any, but they should be migrated.
+    addExpense(_expense: Omit<Expense, 'id'>): Expense { throw new Error('Use addTransaction'); }
+    updateExpense(_id: string, _updates: Partial<Expense>): Expense | null { throw new Error('Use updateTransaction'); }
+
+    // --- DOCTORS ---
+    async getDoctors(): Promise<Doctor[]> {
+        const { getDoctors } = await import('./supabase/doctors');
+        return getDoctors();
+    }
+
+    async addDoctor(doc: Omit<Doctor, 'id'>): Promise<Doctor> {
+        const { addDoctor } = await import('./supabase/doctors');
+        return addDoctor(doc);
+    }
+
+    async updateDoctor(id: string, updates: Partial<Doctor>): Promise<Doctor | null> {
+        const { updateDoctor } = await import('./supabase/doctors');
+        return updateDoctor(id, updates);
+    }
+
+    // --- ORDERS ---
+    async getOrders(): Promise<Order[]> {
+        const { getOrders } = await import('./supabase/orders');
+        return getOrders();
+    }
+
+    async addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
+        const { addOrder } = await import('./supabase/orders');
+        return addOrder(order);
+    }
+
+    async updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
+        const { updateOrder } = await import('./supabase/orders');
+        return updateOrder(id, updates);
+    }
+
+    async deleteOrder(id: string): Promise<void> {
+        const { deleteOrder } = await import('./supabase/orders');
+        return deleteOrder(id);
+    }
+
+    async bulkUpsertOrders(newOrders: Order[]): Promise<number> {
+        const { bulkUpsertOrders } = await import('./supabase/orders');
+        return bulkUpsertOrders(newOrders);
+    }
+
+    // --- SERVICES ---
+    async getServices(): Promise<Service[]> {
+        const { getServices } = await import('./supabase/services');
+        return getServices();
+    }
+    async addService(service: Omit<Service, 'id'>): Promise<Service> {
+        const { addService } = await import('./supabase/services');
+        return addService(service);
+    }
+    async updateService(id: string, updates: Partial<Omit<Service, 'id'>>): Promise<Service | null> {
+        const { updateService } = await import('./supabase/services');
+        return updateService(id, updates);
+    }
+    async deleteService(id: string): Promise<void> {
+        const { deleteService } = await import('./supabase/services');
+        return deleteService(id);
+    }
+
+    // --- TRANSACTIONS ---
+    async getTransactions(): Promise<Transaction[]> {
+        const { getTransactions } = await import('./supabase/transactions');
+        return getTransactions();
+    }
+
+    async addTransaction(tx: Omit<Transaction, 'id'>): Promise<Transaction> {
+        const { addTransaction } = await import('./supabase/transactions');
+        return addTransaction(tx);
+    }
+
+    async updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | null> {
+        const { updateTransaction } = await import('./supabase/transactions');
+        return updateTransaction(id, updates);
+    }
+
+    async bulkUpsertTransactions(newTxs: Transaction[]): Promise<number> {
+        const { bulkUpsertTransactions } = await import('./supabase/transactions');
+        return bulkUpsertTransactions(newTxs);
+    }
+
+    async bulkUpsertDoctors(doctors: Doctor[]): Promise<number> {
+        const { bulkUpsertDoctors } = await import('./supabase/doctors');
+        return bulkUpsertDoctors(doctors);
+    }
+
+    async bulkUpsertServices(services: Service[]): Promise<number> {
+        const { bulkUpsertServices } = await import('./supabase/services');
+        return bulkUpsertServices(services);
+    }
+
+    // --- SUPPLIERS ---
+    async getSuppliers(): Promise<Supplier[]> {
+        const { getSuppliers } = await import('./supabase/suppliers');
+        return getSuppliers();
+    }
+    async addSupplier(sup: Omit<Supplier, 'id'>): Promise<Supplier> {
+        const { addSupplier } = await import('./supabase/suppliers');
+        return addSupplier(sup);
+    }
+    async updateSupplier(id: string, updates: Partial<Supplier>): Promise<Supplier | null> {
+        const { updateSupplier } = await import('./supabase/suppliers');
+        return updateSupplier(id, updates);
+    }
+
+    // --- BACKUP ---
+    exportData() { return '{}'; }
+    async importData(jsonString: string): Promise<{ success: boolean; error?: string }> {
+        try {
+            const data = JSON.parse(jsonString);
+
+            // Import Orders
+            if (data.orders && Array.isArray(data.orders)) {
+                await this.bulkUpsertOrders(data.orders);
+            }
+
+            // Import Transactions
+            if (data.transactions && Array.isArray(data.transactions)) {
+                await this.bulkUpsertTransactions(data.transactions);
+            }
+
+            // Note: Doctors and Suppliers might be created via specific migration logic if needed,
+            // but usually they are small enough to re-enter or bulk insert manually.
+            // For now, we support the bulk bulkUpsert of main transaction data.
+
+            return { success: true };
+        } catch (e: any) {
+            console.error("Import failed:", e);
+            return { success: false, error: e.message || 'Legacy import failed' };
+        }
+    }
+}
+
+export const db = new MockDB();
