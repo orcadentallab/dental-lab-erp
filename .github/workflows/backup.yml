@@ -29,10 +29,3 @@ jobs:
           filename: "backup_*.dump"
           folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
           overwrite: "false"
-
-      - name: Upload backup artifact (GitHub backup)
-        uses: actions/upload-artifact@v4
-        with:
-          name: backup-${{ github.run_number }}
-          path: "*.dump"
-          retention-days: 30
