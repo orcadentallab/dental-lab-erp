@@ -17,6 +17,7 @@ jobs:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           pg_dump -h ${{ secrets.SUPABASE_DB_HOST }} \
+                  -p 6543 \
                   -U postgres \
                   -d postgres \
                   -F c \
