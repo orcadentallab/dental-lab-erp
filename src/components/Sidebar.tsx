@@ -93,11 +93,17 @@ export default function Sidebar() {
                         </div>
                         <button
                             onClick={() => logout()}
-                            className="flex items-center gap-3 px-4 py-3 w-full text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+                            className={clsx(
+                                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
+                                "text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                            )}
                         >
-                            <LogOut size={20} />
-                            <span>تسجيل خروج</span>
+                            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
+                            <span className="font-medium">تسجيل الخروج</span>
                         </button>
+                        <div className="text-center mt-2 text-[10px] text-gray-300 dark:text-gray-700 font-mono">
+                            v1.1 (Online)
+                        </div>
                     </div>
                 </div>
             </div>
