@@ -12,7 +12,7 @@ export default function Sidebar() {
     const navigation = [
         { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant'] },
         { name: 'الاوردرات', href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant'] },
-        { name: 'الجودة', href: '/quality', icon: Award, roles: ['admin', 'representative', 'lab'] },
+        { name: 'الجودة', href: '/quality', icon: Award, roles: ['admin', 'representative'] },
         { name: 'الحسابات', href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab'] },
         { name: 'المالية', href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
         { name: 'التحليلات', href: '/analytics', icon: BarChart3, roles: ['admin'] },

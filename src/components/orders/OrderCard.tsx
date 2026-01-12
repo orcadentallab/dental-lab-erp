@@ -130,6 +130,14 @@ export default function OrderCard({
                                 </a>
                             )}
 
+                            <button
+                                onClick={handleShowHistory}
+                                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-all"
+                                title="سجل النشاط"
+                            >
+                                <History size={14} />
+                            </button>
+
                             {userRole === 'admin' && onEdit && (
                                 <button
                                     onClick={() => onEdit(order)}
@@ -290,25 +298,37 @@ export default function OrderCard({
                             <div className="flex flex-wrap gap-2 items-center">
                                 <button
                                     onClick={() => onTechAction(order.id, 'Approved')}
-                                    className="px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 text-[11px] font-bold hover:bg-green-100 transition-colors flex items-center gap-1.5 shadow-sm"
+                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'Approved'
+                                        ? 'bg-green-100 text-green-800 border-green-400 ring-2 ring-green-500/20'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200'
+                                        }`}
                                 >
                                     <Check size={12} strokeWidth={3} /> قبول
                                 </button>
                                 <button
                                     onClick={() => onTechAction(order.id, 'NeedDetails')}
-                                    className="px-3 py-1.5 rounded-lg bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800 text-[11px] font-bold hover:bg-orange-100 transition-colors flex items-center gap-1.5 shadow-sm"
+                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'NeedDetails'
+                                        ? 'bg-orange-100 text-orange-800 border-orange-400 ring-2 ring-orange-500/20'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200'
+                                        }`}
                                 >
                                     <MessageCircle size={12} strokeWidth={3} /> تفاصيل
                                 </button>
                                 <button
                                     onClick={() => onTechAction(order.id, 'PMMA_First')}
-                                    className="px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-[11px] font-bold hover:bg-blue-100 transition-colors flex items-center gap-1.5 shadow-sm"
+                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'PMMA_First'
+                                        ? 'bg-blue-100 text-blue-800 border-blue-400 ring-2 ring-blue-500/20'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'
+                                        }`}
                                 >
                                     <Clock size={12} strokeWidth={3} /> PMMA
                                 </button>
                                 <button
                                     onClick={() => onTechAction(order.id, 'Rejected')}
-                                    className="px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 text-[11px] font-bold hover:bg-red-100 transition-colors flex items-center gap-1.5 shadow-sm"
+                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'Rejected'
+                                        ? 'bg-red-100 text-red-800 border-red-400 ring-2 ring-red-500/20'
+                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
+                                        }`}
                                 >
                                     <AlertTriangle size={12} strokeWidth={3} /> رفض
                                 </button>

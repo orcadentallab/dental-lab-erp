@@ -84,7 +84,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // 2. If not, try to resolve username -> email via RPC.
 
         if (!identifier.includes('@')) {
-            const { data: resolvedEmail, error: lookupError } = await supabase.rpc('get_email_by_username', { uname: identifier });
+            // Case-insensitive username lookup: convert input to lowercase
+            // (Assumes usernames are stored/created or handled as case-insensitive, or we should lowercase them on creation too)
+            // But for now, let's try to match exactly what is in DB? No, user wants case-insensitive entry.
+            // If DB has MixedCase, lowercasing input might fail if we don't lowercase DB check.
+            // Best approach: Send as is, let RPC handle it using ILIKE?
+            // Actually, let's update the RPC to be case insensitive if we can, or just try to find it.
+
+            // Wait, supabase.rpc call: 'get_email_by_username'
+            // We should check that RPC function.
+
+            const { data: resolvedEmail, error: lookupError } = await supabase.rpc('get_email_by_username', { uname: identifier.trim() });
 
             if (lookupError) {
                 console.error('Username lookup failed:', lookupError);

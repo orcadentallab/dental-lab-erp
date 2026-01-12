@@ -163,6 +163,12 @@ class MockDB {
         return deleteUser(id);
     }
 
+    // --- HISTORY ---
+    async getOrderHistory(orderId: string): Promise<any[]> {
+        const { getOrderHistory } = await import('./supabase/orders');
+        return getOrderHistory(orderId);
+    }
+
     // --- EXPENSES (Mock -> Transactions) ---
     getExpenses(): Expense[] { return []; }
     // Expenses are now Transactions with type='expense'. Keeping legacy stub or remove?

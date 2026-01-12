@@ -276,3 +276,17 @@ export async function bulkUpsertOrders(orders: Order[]): Promise<number> {
 
     return data?.length || 0;
 }
+
+export async function getOrderHistory(orderId: string): Promise<any[]> {
+    const { data, error } = await supabase
+        .from('order_history')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Error fetching history:', error);
+        return [];
+    }
+    return data || [];
+}
