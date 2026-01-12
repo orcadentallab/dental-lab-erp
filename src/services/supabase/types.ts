@@ -50,6 +50,7 @@ export interface DbOrder {
     delivery_date: string;
     cost: number;
     stl_url?: string | null;
+    images_url?: string | null;
     supplier_id?: string | null;
     instructions?: string | null;
     priority: 'Normal' | 'Urgent';

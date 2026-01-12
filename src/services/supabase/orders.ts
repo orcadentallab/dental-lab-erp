@@ -19,6 +19,7 @@ function dbToOrder(dbOrder: DbOrder): Order {
         deliveryDate: dbOrder.delivery_date,
         cost: dbOrder.cost,
         stlUrl: dbOrder.stl_url || undefined,
+        imagesUrl: dbOrder.images_url || undefined,
         supplierId: dbOrder.supplier_id || undefined,
         createdAt: dbOrder.created_at,
         instructions: dbOrder.instructions || undefined,
@@ -43,6 +44,7 @@ function dbToOrder(dbOrder: DbOrder): Order {
 }
 
 // Transform application format to database format
+// Transform application format to database format
 function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
     return {
         case_id: order.caseId,
@@ -56,6 +58,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         delivery_date: order.deliveryDate,
         cost: order.cost,
         stl_url: order.stlUrl || null,
+        images_url: order.imagesUrl || null,
         supplier_id: order.supplierId || null,
         instructions: order.instructions || null,
         priority: order.priority,
