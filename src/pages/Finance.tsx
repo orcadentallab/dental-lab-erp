@@ -3,10 +3,14 @@ import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone,
 import { db, type Service, type Transaction } from '../services/db';
 import clsx from 'clsx';
 import { exportToExcel, printTable } from '../lib/exportUtils';
+import { useAuth } from '../context/AuthContext';
 
 // Gift and PiggyBank removed - no longer needed
 
 export default function Finance() {
+    const { user } = useAuth();
+    const canExport = ['admin', 'accountant', 'lab'].includes(user?.role || '');
+
     const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'services'>('dashboard');
     const [services, setServices] = useState<Service[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -670,50 +674,54 @@ export default function Finance() {
                                 <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                                     <h3 className="font-bold">قائمة أسعار الخدمات</h3>
                                     <div className="flex gap-2 items-center">
-                                        <button
-                                            onClick={() => {
-                                                exportToExcel(
-                                                    services.map(s => ({
-                                                        'اسم الخدمة': s.name,
-                                                        'سعر البيع': s.sellingPrice,
-                                                        'التكلفة': s.costPrice,
-                                                        'الخراطة': s.millingPrice || 0,
-                                                        'الربح': s.sellingPrice - s.costPrice
-                                                    })),
-                                                    `services_${new Date().toISOString().split('T')[0]}`,
-                                                    'الخدمات'
-                                                );
-                                            }}
-                                            className="p-2 text-green-600 hover:bg-green-50 rounded"
-                                            title="تصدير Excel"
-                                        >
-                                            <FileSpreadsheet size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                printTable(
-                                                    services.map(s => ({
-                                                        name: s.name,
-                                                        sell: s.sellingPrice,
-                                                        cost: s.costPrice,
-                                                        mill: s.millingPrice || 0,
-                                                        profit: s.sellingPrice - s.costPrice
-                                                    })),
-                                                    [
-                                                        { key: 'name', label: 'اسم الخدمة' },
-                                                        { key: 'sell', label: 'سعر البيع' },
-                                                        { key: 'cost', label: 'التكلفة' },
-                                                        { key: 'mill', label: 'الخراطة' },
-                                                        { key: 'profit', label: 'الربح' }
-                                                    ],
-                                                    'قائمة أسعار الخدمات'
-                                                );
-                                            }}
-                                            className="p-2 text-gray-600 hover:bg-gray-50 rounded"
-                                            title="طباعة"
-                                        >
-                                            <Printer size={18} />
-                                        </button>
+                                        {canExport && (
+                                            <>
+                                                <button
+                                                    onClick={() => {
+                                                        exportToExcel(
+                                                            services.map(s => ({
+                                                                'اسم الخدمة': s.name,
+                                                                'سعر البيع': s.sellingPrice,
+                                                                'التكلفة': s.costPrice,
+                                                                'الخراطة': s.millingPrice || 0,
+                                                                'الربح': s.sellingPrice - s.costPrice
+                                                            })),
+                                                            `services_${new Date().toISOString().split('T')[0]}`,
+                                                            'الخدمات'
+                                                        );
+                                                    }}
+                                                    className="p-2 text-green-600 hover:bg-green-50 rounded"
+                                                    title="تصدير Excel"
+                                                >
+                                                    <FileSpreadsheet size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        printTable(
+                                                            services.map(s => ({
+                                                                name: s.name,
+                                                                sell: s.sellingPrice,
+                                                                cost: s.costPrice,
+                                                                mill: s.millingPrice || 0,
+                                                                profit: s.sellingPrice - s.costPrice
+                                                            })),
+                                                            [
+                                                                { key: 'name', label: 'اسم الخدمة' },
+                                                                { key: 'sell', label: 'سعر البيع' },
+                                                                { key: 'cost', label: 'التكلفة' },
+                                                                { key: 'mill', label: 'الخراطة' },
+                                                                { key: 'profit', label: 'الربح' }
+                                                            ],
+                                                            'قائمة أسعار الخدمات'
+                                                        );
+                                                    }}
+                                                    className="p-2 text-gray-600 hover:bg-gray-50 rounded"
+                                                    title="طباعة"
+                                                >
+                                                    <Printer size={18} />
+                                                </button>
+                                            </>
+                                        )}
                                         <span className="text-xs text-red-500 bg-red-50 px-2 py-1 rounded">سري للغاية</span>
                                     </div>
                                 </div>

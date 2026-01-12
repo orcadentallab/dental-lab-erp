@@ -21,6 +21,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [services, setServices] = useState<Service[]>([]);
     const [suppliers, setSuppliers] = useState<any[]>([]);
     // const [representatives, setRepresentatives] = useState<User[]>([]);
+    const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
     const [existingOrders, setExistingOrders] = useState<Order[]>([]);
 
@@ -95,7 +96,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [deliveryDate, setDeliveryDate] = useState(initialData?.deliveryDate || getDefaultDate());
     const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
     const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
-    const [discount] = useState(initialData?.discount || 0);
+    const [discount, setDiscount] = useState(initialData?.discount || 0);
     const [instructions, setInstructions] = useState(initialData?.instructions || '');
     const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || '');
     const [representativeId, setRepresentativeId] = useState(initialData?.representativeId || '');
@@ -110,7 +111,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
 
     // Backdating Support
-    const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? initialData.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
     // Items
     const [items, setItems] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
@@ -134,9 +135,12 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     db.getOrders()
                 ]);
                 setDoctors(doctorsData);
-                setServices(servicesData);
+                // Sort services Z-A (descending) as requested
+                setServices(servicesData.sort((a, b) => b.name.localeCompare(a.name)));
                 setSuppliers(suppliersData);
                 // setRepresentatives(usersData.filter(u => u.role === 'representative'));
+                setSuppliers(suppliersData);
+                setRepresentatives(usersData.filter(u => u.role === 'representative'));
                 setDesigners(usersData.filter(u => u.role === 'designer'));
                 setExistingOrders(ordersData);
             } catch (error) {
@@ -331,14 +335,33 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     </div>
 
                     {/* Urgent Toggle */}
-                    <div className="flex items-center">
-                        <div
+                    <div className="flex items-center gap-2">
+                        {/* Representative Dropdown (Moved Here) */}
+                        <div className="relative">
+                            <select
+                                className="appearance-none bg-white border border-blue-200 text-blue-800 text-sm font-bold py-2.5 px-4 pr-8 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm hover:border-blue-300"
+                                value={representativeId}
+                                onChange={(e) => setRepresentativeId(e.target.value)}
+                                disabled={user?.role === 'representative'}
+                            >
+                                <option value="">-- المحاسب / المندوب --</option>
+                                {representatives.map(rep => (
+                                    <option key={rep.id} value={rep.id}>{rep.name}</option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-blue-500">
+                                <UserIcon size={14} />
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
                             onClick={() => setIsUrgent(!isUrgent)}
-                            className={`cursor-pointer px-4 py-2 rounded-xl border-2 transition-all flex items-center gap-2 ${isUrgent ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-200 scale-105' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300'}`}
+                            className={`cursor-pointer px-4 py-2.5 rounded-xl border-2 transition-all flex items-center gap-2 ${isUrgent ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-200 scale-105' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300'}`}
                         >
                             <AlertTriangle size={20} className={isUrgent ? 'animate-bounce' : ''} />
-                            <span className="font-bold">{isUrgent ? 'مستعجل جداً (Urgent)' : 'تحديد كمستعجل'}</span>
-                        </div>
+                            <span className="font-bold hidden sm:inline">{isUrgent ? 'مستعجل جداً' : 'مستعجل'}</span>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -643,14 +666,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                         onChange={e => setSelectedSupplier(e.target.value)}
                                     >
                                         <option value="">اختر معمل الخراطة...</option>
-                                        {suppliers.filter(s => s.millingPrices && Object.keys(s.millingPrices).length > 0).map(s => (
+                                        {suppliers.map(s => (
                                             <option key={s.id} value={s.id}>{s.name}</option>
                                         ))}
                                     </select>
                                 </div>
                             )}
 
-                            {workflowType === 'full' && user?.role === 'admin' && (
+                            {workflowType === 'full' && (
                                 <select
                                     className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
                                     value={selectedSupplier}
@@ -667,11 +690,28 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 </div>
             </div>
 
+            {/* 4. Representative (REMOVED - Moved to Top) */}
+
             {/* Footer Info & Actions */}
             <div className="flex items-center justify-between pt-6 border-t mt-8">
                 <div>
                     <span className="block text-xs text-gray-500 font-bold uppercase mb-1">الإجمالي التقديري</span>
-                    <span className="text-2xl font-bold text-blue-600">{total.toLocaleString()} <span className="text-sm text-gray-400">ج.م</span></span>
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl font-bold text-blue-600">{total.toLocaleString()} <span className="text-sm text-gray-400">ج.م</span></span>
+
+                        {/* Discount Field */}
+                        <div className="flex flex-col">
+                            <label className="text-[10px] text-gray-400 font-bold uppercase">خصم</label>
+                            <input
+                                type="number"
+                                min="0"
+                                className="w-20 p-1 border border-gray-200 rounded text-sm text-center focus:ring-1 focus:ring-blue-500 outline-none"
+                                value={discount}
+                                onChange={(e) => setDiscount(Number(e.target.value))}
+                                placeholder="0"
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex gap-3">
@@ -692,95 +732,97 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             </div>
 
             {/* Doctor Modal */}
-            {showDoctorModal && (
-                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <h2 className="text-xl font-bold text-gray-800">إضافة طبيب جديد</h2>
-                            <button onClick={() => setShowDoctorModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors">✕</button>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            {doctorError && (
-                                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2">
-                                    <AlertTriangle size={18} />
-                                    {doctorError}
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">اسم الطبيب</label>
-                                <input
-                                    required
-                                    type="text"
-                                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={newDoctor.name}
-                                    onChange={e => {
-                                        setNewDoctor({ ...newDoctor, name: e.target.value });
-                                        setDoctorError(null);
-                                    }}
-                                    placeholder="د. ..."
-                                />
+            {
+                showDoctorModal && (
+                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                <h2 className="text-xl font-bold text-gray-800">إضافة طبيب جديد</h2>
+                                <button onClick={() => setShowDoctorModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors">✕</button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="p-6 space-y-4">
+                                {doctorError && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2">
+                                        <AlertTriangle size={18} />
+                                        {doctorError}
+                                    </div>
+                                )}
+
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">اسم الطبيب</label>
                                     <input
                                         required
-                                        type="tel"
-                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={newDoctor.phone}
-                                        onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">كود الطبيب</label>
-                                    <input
-                                        required
-                                        placeholder="مثال: AHM"
                                         type="text"
-                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono"
-                                        value={newDoctor.doctorCode}
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={newDoctor.name}
                                         onChange={e => {
-                                            setNewDoctor({ ...newDoctor, doctorCode: e.target.value.toUpperCase() });
+                                            setNewDoctor({ ...newDoctor, name: e.target.value });
                                             setDoctorError(null);
                                         }}
+                                        placeholder="د. ..."
                                     />
                                 </div>
-                            </div>
 
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">العنوان</label>
-                                <input
-                                    required
-                                    type="text"
-                                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={newDoctor.address}
-                                    onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}
-                                />
-                            </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
+                                        <input
+                                            required
+                                            type="tel"
+                                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                            value={newDoctor.phone}
+                                            onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">كود الطبيب</label>
+                                        <input
+                                            required
+                                            placeholder="مثال: AHM"
+                                            type="text"
+                                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono"
+                                            value={newDoctor.doctorCode}
+                                            onChange={e => {
+                                                setNewDoctor({ ...newDoctor, doctorCode: e.target.value.toUpperCase() });
+                                                setDoctorError(null);
+                                            }}
+                                        />
+                                    </div>
+                                </div>
 
-                            <div className="pt-4 flex gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowDoctorModal(false)}
-                                    className="flex-1 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 bg-white text-gray-700 font-bold"
-                                >
-                                    إلغاء
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleAddDoctorFull}
-                                    className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold shadow-lg shadow-blue-200"
-                                >
-                                    حفظ الطبيب
-                                </button>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">العنوان</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                                        value={newDoctor.address}
+                                        onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}
+                                    />
+                                </div>
+
+                                <div className="pt-4 flex gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDoctorModal(false)}
+                                        className="flex-1 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 bg-white text-gray-700 font-bold"
+                                    >
+                                        إلغاء
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddDoctorFull}
+                                        className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold shadow-lg shadow-blue-200"
+                                    >
+                                        حفظ الطبيب
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </form>
+                )
+            }
+        </form >
     );
 }

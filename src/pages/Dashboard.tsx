@@ -29,10 +29,9 @@ export default function Dashboard() {
                 // RBAC Filtering
                 let filteredOrders = allOrders;
                 if (user?.role === 'lab') {
-                    filteredOrders = allOrders.filter(o => o.supplierId === user.entityId);
-                } else if (user?.role === 'representative') {
-                    filteredOrders = allOrders.filter(o => o.representativeId === user.id);
+                    filteredOrders = allOrders.filter(o => user.entityId && o.supplierId === user.entityId);
                 }
+                // Representative filter removed - controlled by RLS now
 
                 setOrders(filteredOrders);
                 setTransactions(transactionsData);

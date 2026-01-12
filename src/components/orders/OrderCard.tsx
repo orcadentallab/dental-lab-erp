@@ -1,4 +1,4 @@
-import { Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight, User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon } from 'lucide-react';
+import { Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight, User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon, Trash2 } from 'lucide-react';
 import type { Order } from '../../services/db';
 import clsx from 'clsx';
 import { getTechStatusBadge, checkIsLate } from '../../utils/orderUtils';
@@ -16,6 +16,7 @@ interface OrderCardProps {
     onFeedback?: (order: Order) => void;
     onRegister?: (id: string) => void;
     hideSensitiveInfo?: boolean;
+    onDelete?: (order: Order) => void;
 }
 
 export default function OrderCard({
@@ -27,7 +28,8 @@ export default function OrderCard({
     onEdit,
     onAddNote,
     onTechAction,
-    hideSensitiveInfo
+    hideSensitiveInfo,
+    onDelete
 }: OrderCardProps) {
 
     const isLate = checkIsLate(order);
@@ -135,6 +137,20 @@ export default function OrderCard({
                                     title="Edit Order"
                                 >
                                     <Settings size={14} />
+                                </button>
+                            )}
+
+                            {userRole === 'admin' && onDelete && (
+                                <button
+                                    onClick={() => {
+                                        if (confirm(`⚠️ هل أنت متأكد من حذف هذا الأوردر (${order.caseId}) نهائياً؟`)) {
+                                            onDelete(order);
+                                        }
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all"
+                                    title="Delete Order"
+                                >
+                                    <Trash2 size={14} />
                                 </button>
                             )}
                         </div>

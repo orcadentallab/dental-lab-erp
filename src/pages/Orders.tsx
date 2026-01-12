@@ -61,9 +61,7 @@ export default function Orders() {
         if (user?.role === 'lab') {
             return user.entityId && order.supplierId === user.entityId;
         }
-        if (user?.role === 'representative') {
-            return order.representativeId === user.id;
-        }
+
         return true;
     });
 
@@ -139,6 +137,17 @@ export default function Orders() {
         }
     };
 
+    const handleDeleteOrder = async (order: any) => {
+        try {
+            await db.deleteOrder(order.id);
+            // alert('Order deleted successfully');
+            await refreshOrders();
+        } catch (error) {
+            console.error('Error deleting order:', error);
+            alert('Failed to delete order');
+        }
+    };
+
     const openFullEdit = (order: any) => {
         setFullEditingOrder(order);
     };
@@ -204,53 +213,57 @@ export default function Orders() {
                     </button>
                 )}
                 <div className="flex gap-2">
-                    <button
-                        onClick={() => {
-                            const exportData = filteredOrders.map(order => ({
-                                'رقم الحالة': order.caseId,
-                                'الطبيب': doctors.find((d: any) => d.id === order.doctorId)?.name || '-',
-                                'المريض': order.patientName,
-                                'الحالة': order.status,
-                                'السعر': order.totalPrice,
-                                'تاريخ التسليم': order.deliveryDate,
-                                'الأولوية': order.priority === 'Urgent' ? 'عاجل' : 'عادي'
-                            }));
-                            exportToExcelWithHeaders(exportData, {} as any, `orders_${new Date().toISOString().split('T')[0]}`);
-                        }}
-                        className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-xl hover:bg-green-700 transition-colors"
-                        title="تصدير Excel"
-                    >
-                        <FileSpreadsheet size={18} />
-                        <span className="hidden sm:inline">Excel</span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            printTable(
-                                filteredOrders.map(order => ({
-                                    caseId: order.caseId,
-                                    doctor: doctors.find((d: any) => d.id === order.doctorId)?.name || '-',
-                                    patient: order.patientName,
-                                    status: order.status,
-                                    price: order.totalPrice,
-                                    date: order.deliveryDate
-                                })),
-                                [
-                                    { key: 'caseId', label: 'رقم الحالة' },
-                                    { key: 'doctor', label: 'الطبيب' },
-                                    { key: 'patient', label: 'المريض' },
-                                    { key: 'status', label: 'الحالة' },
-                                    { key: 'price', label: 'السعر' },
-                                    { key: 'date', label: 'تاريخ التسليم' }
-                                ],
-                                'قائمة الأوردرات'
-                            );
-                        }}
-                        className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-xl hover:bg-gray-700 transition-colors"
-                        title="طباعة"
-                    >
-                        <Printer size={18} />
-                        <span className="hidden sm:inline">طباعة</span>
-                    </button>
+                    {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
+                        <>
+                            <button
+                                onClick={() => {
+                                    const exportData = filteredOrders.map(order => ({
+                                        'رقم الحالة': order.caseId,
+                                        'الطبيب': doctors.find((d: any) => d.id === order.doctorId)?.name || '-',
+                                        'المريض': order.patientName,
+                                        'الحالة': order.status,
+                                        'السعر': order.totalPrice,
+                                        'تاريخ التسليم': order.deliveryDate,
+                                        'الأولوية': order.priority === 'Urgent' ? 'عاجل' : 'عادي'
+                                    }));
+                                    exportToExcelWithHeaders(exportData, {} as any, `orders_${new Date().toISOString().split('T')[0]}`);
+                                }}
+                                className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-xl hover:bg-green-700 transition-colors"
+                                title="تصدير Excel"
+                            >
+                                <FileSpreadsheet size={18} />
+                                <span className="hidden sm:inline">Excel</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    printTable(
+                                        filteredOrders.map(order => ({
+                                            caseId: order.caseId,
+                                            doctor: doctors.find((d: any) => d.id === order.doctorId)?.name || '-',
+                                            patient: order.patientName,
+                                            status: order.status,
+                                            price: order.totalPrice,
+                                            date: order.deliveryDate
+                                        })),
+                                        [
+                                            { key: 'caseId', label: 'رقم الحالة' },
+                                            { key: 'doctor', label: 'الطبيب' },
+                                            { key: 'patient', label: 'المريض' },
+                                            { key: 'status', label: 'الحالة' },
+                                            { key: 'price', label: 'السعر' },
+                                            { key: 'date', label: 'تاريخ التسليم' }
+                                        ],
+                                        'قائمة الأوردرات'
+                                    );
+                                }}
+                                className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-xl hover:bg-gray-700 transition-colors"
+                                title="طباعة"
+                            >
+                                <Printer size={18} />
+                                <span className="hidden sm:inline">طباعة</span>
+                            </button>
+                        </>
+                    )}
                 </div>
             </div>
 
@@ -371,8 +384,10 @@ export default function Orders() {
                 orders={filteredOrders}
                 onStatusChange={handleStatusUpdate}
                 userRole={user?.role}
+                userRole={user?.role}
                 onEdit={openFullEdit}
                 onAddNote={openAddNote}
+                onDelete={handleDeleteOrder}
             />
 
             {/* Create New Order Modal */}

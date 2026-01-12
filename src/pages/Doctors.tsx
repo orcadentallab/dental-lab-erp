@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, MapPin, Phone, User as UserIcon, AlertTriangle, Edit, FileSpreadsheet, Printer } from 'lucide-react';
-import { db, type Doctor, type User } from '../services/db';
+import { useState, useEffect } from 'react';
+import { db, type Doctor } from '../services/db';
+import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcel, printTable } from '../lib/exportUtils';
 
 export default function Doctors() {
     const { user } = useAuth();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
-    const [representatives, setRepresentatives] = useState<User[]>([]);
+    // const [representatives, setRepresentatives] = useState<User[]>([]); - REMOVED
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -37,15 +37,12 @@ export default function Doctors() {
 
     useEffect(() => {
         const loadData = async () => {
+            // Load Doctors
             try {
-                const [doctorsData, usersData] = await Promise.all([
-                    db.getDoctors(),
-                    db.getUsers()
-                ]);
+                const doctorsData = await db.getDoctors();
                 setDoctors(doctorsData);
-                setRepresentatives(usersData.filter(u => u.role === 'representative'));
             } catch (error) {
-                console.error('Error loading data:', error);
+                console.error('Error loading doctors:', error);
             }
         };
         loadData();
@@ -95,7 +92,7 @@ export default function Doctors() {
             );
 
             if (nameExists) {
-                setError(`⚠️ هذا الاسم موجود بالفعل: ${nameExists.name}`);
+                setError(`⚠️ هذا الاسم موجود بالفعل: ${nameExists.name} `);
                 return;
             }
 
@@ -150,62 +147,69 @@ export default function Doctors() {
         .sort((a, b) => {
             if (sortBy === 'name') return a.name.localeCompare(b.name);
             if (sortBy === 'code') return (a.doctorCode || '').localeCompare(b.doctorCode || '');
-            if (sortBy === 'rep') return (a.representativeName || '').localeCompare(b.representativeName || '');
+            // if (sortBy === 'rep') return (a.representativeName || '').localeCompare(b.representativeName || '');
             return 0;
         });
+
+    // Access Control for Export/Print
+    const canExport = ['admin', 'accountant', 'lab'].includes(user?.role || '');
 
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">قائمة الأطباء</h1>
                 <div className="flex gap-2">
-                    <button
-                        onClick={() => {
-                            exportToExcel(
-                                filteredDoctors.map(doc => ({
-                                    'الكود': doc.doctorCode,
-                                    'اسم الطبيب': doc.name,
-                                    'الهاتف': doc.phone,
-                                    'هاتف 2': doc.phone2 || '-',
-                                    'العنوان': doc.address,
-                                    'المندوب': doc.representativeName || '-'
-                                })),
-                                `doctors_${new Date().toISOString().split('T')[0]}`,
-                                'الأطباء'
-                            );
-                        }}
-                        className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors"
-                        title="تصدير Excel"
-                    >
-                        <FileSpreadsheet size={18} />
-                        <span className="hidden sm:inline">Excel</span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            printTable(
-                                filteredDoctors.map(doc => ({
-                                    code: doc.doctorCode,
-                                    name: doc.name,
-                                    phone: doc.phone,
-                                    address: doc.address,
-                                    rep: doc.representativeName || '-'
-                                })),
-                                [
-                                    { key: 'code', label: 'الكود' },
-                                    { key: 'name', label: 'اسم الطبيب' },
-                                    { key: 'phone', label: 'الهاتف' },
-                                    { key: 'address', label: 'العنوان' },
-                                    { key: 'rep', label: 'المندوب' }
-                                ],
-                                'قائمة الأطباء'
-                            );
-                        }}
-                        className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-                        title="طباعة"
-                    >
-                        <Printer size={18} />
-                        <span className="hidden sm:inline">طباعة</span>
-                    </button>
+                    {canExport && (
+                        <>
+                            <button
+                                onClick={() => {
+                                    exportToExcel(
+                                        filteredDoctors.map(doc => ({
+                                            'الكود': doc.doctorCode,
+                                            'اسم الطبيب': doc.name,
+                                            'الهاتف': doc.phone,
+                                            'هاتف 2': doc.phone2 || '-',
+                                            'العنوان': doc.address,
+                                            // 'المندوب': doc.representativeName || '-'
+                                        })),
+                                        `doctors_${new Date().toISOString().split('T')[0]} `,
+                                        'الأطباء'
+                                    );
+                                }}
+                                className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                                title="تصدير Excel"
+                            >
+                                <FileSpreadsheet size={18} />
+                                <span className="hidden sm:inline">Excel</span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    printTable(
+                                        filteredDoctors.map(doc => ({
+                                            code: doc.doctorCode,
+                                            name: doc.name,
+                                            phone: doc.phone,
+                                            address: doc.address,
+                                            // rep: doc.representativeName || '-'
+                                        })),
+                                        [
+                                            { key: 'code', label: 'الكود' },
+                                            { key: 'name', label: 'اسم الطبيب' },
+                                            { key: 'phone', label: 'الهاتف' },
+                                            { key: 'address', label: 'العنوان' },
+                                            // { key: 'rep', label: 'المندوب' }
+                                        ],
+                                        'قائمة الأطباء'
+                                    );
+                                }}
+                                className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                                title="طباعة"
+                            >
+                                <Printer size={18} />
+                                <span className="hidden sm:inline">طباعة</span>
+                            </button>
+                        </>
+                    )}
                     <button
                         onClick={openAddModal}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 dark:shadow-none"
@@ -237,7 +241,7 @@ export default function Doctors() {
                     >
                         <option value="name">الاسم</option>
                         <option value="code">كود الطبيب</option>
-                        <option value="rep">المندوب</option>
+                        {/* <option value="rep">المندوب</option> */}
                     </select>
                 </div>
             </div>
@@ -247,16 +251,16 @@ export default function Doctors() {
                 {filteredDoctors.map((doc) => (
                     <div key={doc.id} className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow relative group">
 
-                        {/* Edit Button (Admin or Assigned Rep) */}
-                        {(user?.role === 'admin' || user?.id === doc.representativeId) && (
-                            <button
-                                onClick={() => openEditModal(doc)}
-                                className="absolute top-4 left-4 p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                                title="تعديل بيانات الطبيب"
-                            >
-                                <Edit size={18} />
-                            </button>
-                        )}
+                        {/* Edit Button (Admin or Assigned Rep) - Now anyone can edit? "everyone can see" */}
+                        {/* Assuming Reps can edit doctors they work with, or just generic edit because they are 'Owners' of the relationship in their mind?? */}
+                        {/* With no ownership link, maybe allow edit for all logged in users as per policy? */}
+                        <button
+                            onClick={() => openEditModal(doc)}
+                            className="absolute top-4 left-4 p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                            title="تعديل بيانات الطبيب"
+                        >
+                            <Edit size={18} />
+                        </button>
 
                         <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -282,12 +286,12 @@ export default function Doctors() {
                                 <MapPin size={16} className="text-gray-400 dark:text-gray-500" />
                                 <span>{doc.address}</span>
                             </div>
-                            {doc.representativeName && (
+                            {/* {doc.representativeName && (
                                 <div className="flex items-center gap-2">
                                     <UserIcon size={16} className="text-gray-400 dark:text-gray-500" />
                                     <span>المندوب: <span className="font-semibold text-blue-600 dark:text-blue-400">{doc.representativeName}</span></span>
                                 </div>
-                            )}
+                            )} */}
                         </div>
                     </div>
                 ))}
@@ -369,30 +373,6 @@ export default function Doctors() {
                                     value={newDoctor.address}
                                     onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}
                                 />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">المندوب المسئول</label>
-                                <div className="relative">
-                                    <select
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-white cursor-pointer"
-                                        value={newDoctor.representativeId}
-                                        onChange={e => {
-                                            const repId = e.target.value;
-                                            const rep = representatives.find(r => r.id === repId);
-                                            setNewDoctor({
-                                                ...newDoctor,
-                                                representativeId: repId,
-                                                representativeName: rep ? rep.name : ''
-                                            });
-                                        }}
-                                    >
-                                        <option value="">-- اختياري --</option>
-                                        {representatives.map(rep => (
-                                            <option key={rep.id} value={rep.id}>{rep.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
                             </div>
 
                             <div className="pt-4 flex gap-3">

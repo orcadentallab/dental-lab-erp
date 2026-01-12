@@ -285,28 +285,32 @@ export default function Accounts() {
                             <p className="text-sm text-gray-500">ملخص أرصدة {activeTab === 'doctors' ? 'العملاء' : (activeTab === 'suppliers' ? 'الموردين' : 'المصممين')}</p>
                         </div>
                         <div className="flex gap-2">
-                            <button
-                                onClick={() => {
-                                    exportToExcel(
-                                        filteredSummary.map(item => ({
-                                            'الاسم': item.name,
-                                            'عدد الطلبات': item.totalOrders,
-                                            'إجمالي المستحق': item.totalDebit,
-                                            'إجمالي المدفوع': item.totalCredit,
-                                            'الرصيد': item.balance
-                                        })),
-                                        `accounts_${activeTab}_${new Date().toISOString().split('T')[0]}`,
-                                        activeTab === 'doctors' ? 'العملاء' : 'الموردين'
-                                    );
-                                }}
-                                className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium"
-                            >
-                                <FileSpreadsheet size={16} />
-                                <span>Excel</span>
-                            </button>
-                            <button onClick={handlePrint} className="flex items-center gap-1.5 bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-900 text-sm font-medium">
-                                <Printer size={16} /> <span>طباعة</span>
-                            </button>
+                            {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            exportToExcel(
+                                                filteredSummary.map(item => ({
+                                                    'الاسم': item.name,
+                                                    'عدد الطلبات': item.totalOrders,
+                                                    'إجمالي المستحق': item.totalDebit,
+                                                    'إجمالي المدفوع': item.totalCredit,
+                                                    'الرصيد': item.balance
+                                                })),
+                                                `accounts_${activeTab}_${new Date().toISOString().split('T')[0]}`,
+                                                activeTab === 'doctors' ? 'العملاء' : 'الموردين'
+                                            );
+                                        }}
+                                        className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium"
+                                    >
+                                        <FileSpreadsheet size={16} />
+                                        <span>Excel</span>
+                                    </button>
+                                    <button onClick={handlePrint} className="flex items-center gap-1.5 bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-900 text-sm font-medium">
+                                        <Printer size={16} /> <span>طباعة</span>
+                                    </button>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -464,9 +468,11 @@ export default function Accounts() {
                             </p>
                         </div>
                     </div>
-                    <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800">
-                        <Printer size={18} /> <span>طباعة الكشف</span>
-                    </button>
+                    {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
+                        <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800">
+                            <Printer size={18} /> <span>طباعة الكشف</span>
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex flex-wrap gap-4 items-end border-t border-gray-50 pt-4">

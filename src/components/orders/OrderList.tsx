@@ -13,9 +13,10 @@ interface OrderListProps {
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)
     onAddNote?: (order: Order) => void; // Add Note (Everyone)
+    onDelete?: (order: Order) => void;
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onDelete }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
 
@@ -172,6 +173,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         onFeedback={() => setFeedbackOrder(order)}
                         onRegister={handleRegister}
                         hideSensitiveInfo={hideSensitiveInfo}
+                        onDelete={onDelete}
                     />
                 ))
             )}
