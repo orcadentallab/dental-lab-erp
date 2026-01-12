@@ -57,9 +57,9 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading,
                                 <div key={item.id} className="relative flex gap-4 pr-10">
                                     {/* Timeline Dot */}
                                     <div className={`absolute right-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm z-10 ${item.action_type === 'CREATE' ? 'bg-green-100 text-green-600' :
-                                            item.action_type === 'STATUS_CHANGE' ? 'bg-purple-100 text-purple-600' :
-                                                item.action_type === 'UPDATE' ? 'bg-blue-100 text-blue-600' :
-                                                    'bg-gray-100 text-gray-600'
+                                        item.action_type === 'STATUS_CHANGE' ? 'bg-purple-100 text-purple-600' :
+                                            item.action_type === 'UPDATE' ? 'bg-blue-100 text-blue-600' :
+                                                'bg-gray-100 text-gray-600'
                                         }`}>
                                         {item.action_type === 'CREATE' ? <Clock size={16} /> : <User size={16} />}
                                     </div>
@@ -80,17 +80,27 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading,
 
                                         <p className="text-sm text-gray-600 font-medium mb-2">{item.details}</p>
 
-                                        {/* Changes Diff (Simplified) */}
+                                        {/* Changes Diff */}
                                         {item.changes && Object.keys(item.changes).length > 0 && (
                                             <div className="bg-gray-50 rounded-lg p-2 text-xs text-gray-500 space-y-1">
-                                                {Object.entries(item.changes).map(([key, val]: [string, any]) => (
-                                                    <div key={key} className="flex items-center gap-2">
-                                                        <span className="font-semibold text-gray-400">{key}:</span>
-                                                        <span className="text-red-500 line-through bg-red-50 px-1 rounded">{val.old || 'Empty'}</span>
-                                                        <ArrowRight size={10} className="text-gray-400" />
-                                                        <span className="text-green-600 font-bold bg-green-50 px-1 rounded">{val.new}</span>
-                                                    </div>
-                                                ))}
+                                                {/* Special handling for CREATE - show subset of fields or nothing */}
+                                                {item.action_type === 'CREATE' ? (
+                                                    <div className="text-gray-400 italic">تم إنشاء الطلب</div>
+                                                ) : (
+                                                    Object.entries(item.changes).map(([key, val]: [string, any]) => {
+                                                        // Safety check: ensure val is an object with old/new
+                                                        if (!val || typeof val !== 'object') return null;
+
+                                                        return (
+                                                            <div key={key} className="flex items-center gap-2">
+                                                                <span className="font-semibold text-gray-400">{key}:</span>
+                                                                <span className="text-red-500 line-through bg-red-50 px-1 rounded">{val.old || 'Empty'}</span>
+                                                                <ArrowRight size={10} className="text-gray-400" />
+                                                                <span className="text-green-600 font-bold bg-green-50 px-1 rounded">{val.new || 'Empty'}</span>
+                                                            </div>
+                                                        );
+                                                    })
+                                                )}
                                             </div>
                                         )}
                                     </div>
