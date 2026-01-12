@@ -312,6 +312,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             needsDesignReview,
             isUrgent,
             supplierId: selectedSupplier || undefined,
+            stlUrl: stlUrl || undefined,
+            imagesUrl: imagesUrl || undefined,
+            instructions: instructions || undefined,
+            representativeId: representativeId || undefined,
             representativeId: representativeId || undefined,
             comments: initialData?.comments || []
         });
