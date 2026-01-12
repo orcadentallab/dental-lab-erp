@@ -344,7 +344,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 onChange={(e) => setRepresentativeId(e.target.value)}
                                 disabled={user?.role === 'representative'}
                             >
-                                <option value="">-- المحاسب / المندوب --</option>
+                                <option value="">-- المندوب --</option>
                                 {representatives.map(rep => (
                                     <option key={rep.id} value={rep.id}>{rep.name}</option>
                                 ))}
