@@ -75,8 +75,8 @@ export default function Users() {
         e.preventDefault();
         try {
             // Validation
-            if (!editingUser && (!password || password.length < 6)) {
-                alert('كلمة المرور يجب أن تكون 6 أحرف على الأقل');
+            if (!editingUser && (!password || password.length < 8)) {
+                alert('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
                 return;
             }
 
@@ -243,8 +243,8 @@ export default function Users() {
                                         className="w-full p-2 border rounded-lg"
                                         value={password}
                                         onChange={e => setPassword(e.target.value)}
-                                        placeholder="6 أحرف على الأقل"
-                                        minLength={6}
+                                        placeholder="8 أحرف على الأقل"
+                                        minLength={8}
                                     />
                                     <p className="text-xs text-gray-400 mt-1">يتم إنشاء حساب المستخدم تلقائياً في Supabase Auth</p>
                                 </div>

@@ -20,8 +20,8 @@ export default function Settings() {
             setImportStatus({ success: false, message: 'يرجى إدخال كلمة المرور الحالية' });
             return;
         }
-        if (newPassword.length < 6) {
-            setImportStatus({ success: false, message: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل' });
+        if (newPassword.length < 8) {
+            setImportStatus({ success: false, message: 'كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل' });
             return;
         }
         if (newPassword !== confirmPassword) {
@@ -199,7 +199,7 @@ export default function Settings() {
                     <div className="grid grid-cols-2 gap-3">
                         <input
                             type="password"
-                            placeholder="كلمة المرور الجديدة"
+                            placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
                             className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-gray-400 outline-none"
