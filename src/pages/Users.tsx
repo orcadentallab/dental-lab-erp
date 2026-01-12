@@ -3,6 +3,7 @@ import { db, type User, type Supplier } from '../services/db';
 import { Plus, Trash2, Edit2, User as UserIcon, Shield } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ErrorHandler } from '../lib/errorHandler';
+import { useAuth } from '../context/AuthContext';
 
 export default function Users() {
     const [users, setUsers] = useState<User[]>([]);
@@ -10,6 +11,8 @@ export default function Users() {
     const [showModal, setShowModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(false);
+    const { user: currentUser } = useAuth();
+    const isSuperAdmin = currentUser?.username === 'admin'; // Only 'admin' can add/delete users
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; userId: string | null; userName: string }>({
         isOpen: false,
         userId: null,
@@ -154,13 +157,15 @@ export default function Users() {
                     <h1 className="text-2xl font-bold text-gray-800">إدارة المستخدمين والصلاحيات</h1>
                     {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري التحميل...</span>}
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition"
-                >
-                    <Plus size={20} />
-                    <span>مستخدم جديد</span>
-                </button>
+                {isSuperAdmin && (
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition"
+                    >
+                        <Plus size={20} />
+                        <span>مستخدم جديد</span>
+                    </button>
+                )}
             </div>
 
             {/* Users List */}
@@ -199,10 +204,12 @@ export default function Users() {
                                     ) : '---'}
                                 </td>
                                 <td className="p-4 flex gap-2">
-                                    {user.username !== 'admin' && ( // Prevent editing/deleting main admin easily here (optional safety)
+                                    {user.username !== 'admin' && (
                                         <>
                                             <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg"><Edit2 size={18} /></button>
-                                            <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Trash2 size={18} /></button>
+                                            {isSuperAdmin && (
+                                                <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Trash2 size={18} /></button>
+                                            )}
                                         </>
                                     )}
                                 </td>
