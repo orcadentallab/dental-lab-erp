@@ -102,7 +102,7 @@ export default function Sidebar() {
                             <span className="font-medium">تسجيل الخروج</span>
                         </button>
                         <div className="text-center mt-2 text-[10px] text-gray-300 dark:text-gray-700 font-mono">
-                            v1.4 (Online)
+                            v1.5 (Online)
                         </div>
                     </div>
                 </div>

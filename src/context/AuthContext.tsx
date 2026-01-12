@@ -38,15 +38,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
                 .single();
 
             setUser({
-                username: session.user.email || 'user',
-                name: session.user.email || 'User',
-                ...profile, // Spread first to allow defaults to override if needed, or vice versa? 
-                // We want profile to win.
-                // But if profile is null, we need defaults.
                 id: profile?.id || session.user.id,
+                username: profile?.username || session.user.email || 'user',
+                name: profile?.name || session.user.email || 'User',
+                email: profile?.email || session.user.email,
                 role: profile?.role || 'lab', // IMPORTANT: Default to restricted if not found
-                auth_id: session.user.id
-            } as any);
+                auth_id: session.user.id,
+                entityId: profile?.entity_id || undefined, // Map snake_case to camelCase
+                baseSalary: profile?.base_salary || undefined,
+                unitRate: profile?.unit_rate || undefined
+            } as User);
         } catch (e) {
             console.error("Error fetching profile", e);
             // Fallback
