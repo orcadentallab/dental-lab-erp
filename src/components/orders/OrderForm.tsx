@@ -119,7 +119,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers.join(',') : i.teethNumbers,
         price: i.price
     })) : [
-        { serviceType: 'Zirconia', teethNumbers: '', price: 0 }
+        { serviceType: '', teethNumbers: '', price: 0 }
     ]);
 
 
@@ -137,6 +137,15 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 setDoctors(doctorsData);
                 // Sort services Z-A (descending) as requested
                 setServices(servicesData.sort((a, b) => b.name.localeCompare(a.name)));
+
+                // Default Service Logic: Use the first sorted service for the initial empty item
+                if (!initialData && servicesData.length > 0) {
+                    const defaultService = servicesData[0].name;
+                    setItems(prevItems => prevItems.map(item =>
+                        item.serviceType === '' ? { ...item, serviceType: defaultService } : item
+                    ));
+                }
+
                 setSuppliers(suppliersData);
                 // setRepresentatives(usersData.filter(u => u.role === 'representative'));
                 setSuppliers(suppliersData);
