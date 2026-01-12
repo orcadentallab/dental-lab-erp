@@ -166,6 +166,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     if (updates.deliveryDate !== undefined) dbUpdates.delivery_date = updates.deliveryDate;
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
     if (updates.stlUrl !== undefined) dbUpdates.stl_url = updates.stlUrl || null;
+    if (updates.imagesUrl !== undefined) dbUpdates.images_url = updates.imagesUrl || null;
     if (updates.supplierId !== undefined) dbUpdates.supplier_id = updates.supplierId || null;
     if (updates.instructions !== undefined) dbUpdates.instructions = updates.instructions || null;
     if (updates.priority !== undefined) dbUpdates.priority = updates.priority;

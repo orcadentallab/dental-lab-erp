@@ -316,7 +316,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             imagesUrl: imagesUrl || undefined,
             instructions: instructions || undefined,
             representativeId: representativeId || undefined,
-            representativeId: representativeId || undefined,
             comments: initialData?.comments || []
         });
     };
