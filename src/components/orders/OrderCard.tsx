@@ -16,6 +16,7 @@ interface OrderCardProps {
     order: Order;
     doctors: Record<string, string>;
     suppliers: Record<string, string>;
+    users: Record<string, string>;
     userRole?: string;
     onStatusChange: (id: string, status: string) => void;
     onEdit?: (order: Order) => void;
@@ -32,6 +33,7 @@ export default function OrderCard({
     order,
     doctors,
     suppliers,
+    users,
     userRole,
     onStatusChange,
     onEdit,
@@ -102,6 +104,14 @@ export default function OrderCard({
                         {isLate && (
                             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-600 border border-rose-200 flex items-center gap-1">
                                 <Clock size={10} /> Late
+                            </span>
+                        )}
+                        {order.deliveryType && (
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${order.deliveryType === 'Final'
+                                ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                                : 'bg-amber-100 text-amber-700 border-amber-200'
+                                }`}>
+                                {order.deliveryType === 'Final' ? '✨ Final' : '🦷 Try In'}
                             </span>
                         )}
                     </div>
@@ -260,6 +270,30 @@ export default function OrderCard({
                                 </span>
                             </div>
                         )}
+
+                        <div className="flex items-center gap-4 mt-1">
+                            {/* Representative */}
+                            {order.representativeId && users[order.representativeId] && (
+                                <div className="flex items-center gap-1.5">
+                                    <User size={12} className="text-blue-500" />
+                                    <span className="text-[10px] text-gray-500">مندوب:</span>
+                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                                        {users[order.representativeId]}
+                                    </span>
+                                </div>
+                            )}
+
+                            {/* Designer (if Split) */}
+                            {order.workflowType === 'split' && order.designerId && users[order.designerId] && (
+                                <div className="flex items-center gap-1.5">
+                                    <Settings size={12} className="text-orange-500" />
+                                    <span className="text-[10px] text-gray-500">تصميم:</span>
+                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                                        {users[order.designerId]}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

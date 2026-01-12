@@ -26,16 +26,19 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     // Filter/Privacy Logic
     const hideSensitiveInfo = userRole === 'lab';
+    const filteredOrders = orders || []; // Define filteredOrders
 
-    // Use passed orders directly (Parent handles RBAC filtering)
-    const filteredOrders = orders || [];
+    const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+    const [representatives, setRepresentatives] = useState<any[]>([]);
+    const [selectedRepresentative, setSelectedRepresentative] = useState<string>('');
 
     useEffect(() => {
         const loadAuxData = async () => {
             try {
-                const [docs, sups] = await Promise.all([
+                const [docs, sups, allUsers] = await Promise.all([
                     db.getDoctors(),
-                    Promise.resolve(db.getSuppliers()) // Still sync
+                    Promise.resolve(db.getSuppliers()),
+                    db.getUsers()
                 ]);
 
                 const mapD: Record<string, string> = {};
@@ -45,6 +48,12 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 const mapS: Record<string, string> = {};
                 sups.forEach(s => mapS[s.id] = s.name);
                 setSuppliers(mapS);
+
+                const mapU: Record<string, string> = {};
+                allUsers.forEach(u => mapU[u.id] = u.name);
+                setUsersMap(mapU);
+
+                setRepresentatives(allUsers.filter(u => u.role === 'representative'));
             } catch (error) {
                 console.error('Error loading auxiliary data:', error);
             }
@@ -52,14 +61,24 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         loadAuxData();
     }, []);
 
-    // Helper functions moved to utils/orderUtils.tsx
-    // checkIsLate imported from utils/orderUtils.tsx
-
-
+    // Filter Logic
+    const finalOrders = filteredOrders.filter(order => {
+        if (selectedRepresentative && order.representativeId !== selectedRepresentative) return false;
+        return true;
+    });
 
     const handleTechAction = async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
             await db.updateOrder(orderId, { technicianStatus: action });
+
+            // Auto-Status Logic: If Accepted and current status is 'New Case', move to 'Under Design'
+            if (action === 'Approved') {
+                const order = orders.find(o => o.id === orderId);
+                if (order && order.status === 'New Case') {
+                    await db.updateOrder(orderId, { status: 'Under Design' });
+                }
+            }
+
             onStatusChange(orderId, 'same'); // Triggers refresh
         } catch (error) {
             console.error('Error updating technician status:', error);
@@ -152,18 +171,35 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     return (
         <div className="space-y-3">
-            {filteredOrders.length === 0 ? (
+            {/* Filter Dropdown */}
+            {representatives.length > 0 && (
+                <div className="flex justify-end px-2">
+                    <select
+                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedRepresentative}
+                        onChange={(e) => setSelectedRepresentative(e.target.value)}
+                    >
+                        <option value="">كل المناديب</option>
+                        {representatives.map(rep => (
+                            <option key={rep.id} value={rep.id}>{rep.name}</option>
+                        ))}
+                    </select>
+                </div>
+            )}
+
+            {finalOrders.length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
                     <Package className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
                     <p className="text-gray-500 dark:text-gray-400">لا توجد أوردرات حالياً</p>
                 </div>
             ) : (
-                filteredOrders.map((order) => (
+                finalOrders.map((order) => (
                     <OrderCard
                         key={order.id}
                         order={order}
                         doctors={doctors}
                         suppliers={suppliers}
+                        users={usersMap}
                         userRole={userRole}
                         onStatusChange={onStatusChange}
                         onEdit={onEdit}
