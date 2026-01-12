@@ -1,4 +1,13 @@
-import { Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight, User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import {
+    Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
+    User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
+    Trash2, History, CheckCircle
+} from 'lucide-react';
+import { format } from 'date-fns'; // Also missing? Let me check usages later. "format" was used.
+import { ar } from 'date-fns/locale';
+import OrderHistoryModal from './OrderHistoryModal';
+import { db } from '../../services/db';
 import type { Order } from '../../services/db';
 import clsx from 'clsx';
 import { getTechStatusBadge, checkIsLate } from '../../utils/orderUtils';
@@ -33,6 +42,24 @@ export default function OrderCard({
 }: OrderCardProps) {
 
     const isLate = checkIsLate(order);
+
+    // History State
+    const [showHistory, setShowHistory] = useState(false);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyData, setHistoryData] = useState<any[]>([]);
+
+    const handleShowHistory = async () => {
+        setShowHistory(true);
+        setHistoryLoading(true);
+        try {
+            const data = await db.getOrderHistory(order.id);
+            setHistoryData(data);
+        } catch (error) {
+            console.error('Failed to load history', error);
+        } finally {
+            setHistoryLoading(false);
+        }
+    };
 
     // Latest comment
     const latestComment = order.comments && order.comments.length > 0
@@ -341,6 +368,14 @@ export default function OrderCard({
                     </div>
                 </div>
             </div>
+
+            <OrderHistoryModal
+                isOpen={showHistory}
+                onClose={() => setShowHistory(false)}
+                history={historyData}
+                isLoading={historyLoading}
+                orderId={order.id}
+            />
         </div>
     );
 }
