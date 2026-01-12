@@ -384,7 +384,6 @@ export default function Orders() {
                 orders={filteredOrders}
                 onStatusChange={handleStatusUpdate}
                 userRole={user?.role}
-                userRole={user?.role}
                 onEdit={openFullEdit}
                 onAddNote={openAddNote}
                 onDelete={handleDeleteOrder}
