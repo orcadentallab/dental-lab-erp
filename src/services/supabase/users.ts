@@ -52,7 +52,7 @@ export async function addUser(user: User & { password?: string }): Promise<void>
             ...user,
             password: user.password || undefined
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
 
@@ -64,7 +64,7 @@ export async function addUser(user: User & { password?: string }): Promise<void>
         try {
             // Removed sensitive console.log
             authId = await createAuthUser(user.email, user.password);
-        } catch (e: any) {
+        } catch (e: unknown) {
             // Removed sensitive console.error
             // Auth creation failed - throw error to inform admin
             throw ErrorHandler.handle(e, 'addUser - createAuthUser');
@@ -76,6 +76,8 @@ export async function addUser(user: User & { password?: string }): Promise<void>
     }
 
     // Remove password from user object before saving to database
+    // Remove password from user object before saving to database
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...userWithoutPassword } = user;
     const dbUser = userToDb({ ...userWithoutPassword, auth_id: authId });
 
@@ -92,7 +94,7 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
     // Validate input
     try {
         UserUpdateSchema.parse(user);
-    } catch (error: any) {
+    } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
 

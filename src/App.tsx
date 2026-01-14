@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
+import Dashboard from './pages/DashboardNew';
 import Orders from './pages/Orders';
 import Doctors from './pages/Doctors';
 import Finance from './pages/Finance';
@@ -12,7 +12,6 @@ import UsersPage from './pages/Users';
 import Settings from './pages/Settings';
 import QualityDashboard from './pages/Quality';
 import Staff from './pages/Staff'; // New Import
-import DesignerDashboard from './pages/DesignerDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 
@@ -30,7 +29,7 @@ function App() {
               <Route path="/login" element={<Login />} />
 
               <Route element={<ProtectedRoute />}>
-                <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'representative', 'accountant']} />}>
+                <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'representative', 'accountant', 'designer']} />}>
                   <Route element={<DashboardLayout />}>
                     <Route path="/" element={<Dashboard />} />
                     <Route path="/orders" element={<Orders />} />
@@ -44,10 +43,16 @@ function App() {
                 </Route>
               </Route>
 
-              {/* Shared Admin, Accountant, Lab & Rep Routes */}
-              <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'representative']} />}>
+              {/* Accounts: Shared + Designer */}
+              <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'representative', 'designer']} />}>
                 <Route element={<DashboardLayout />}>
                   <Route path="/accounts" element={<Accounts />} />
+                </Route>
+              </Route>
+
+              {/* Settings: No Designer */}
+              <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'representative']} />}>
+                <Route element={<DashboardLayout />}>
                   <Route path="/settings" element={<Settings />} />
                 </Route>
               </Route>
@@ -76,12 +81,7 @@ function App() {
                 </Route>
               </Route>
 
-              {/* Designer Routes */}
-              <Route element={<ProtectedRoute allowedRoles={['designer', 'admin']} />}>
-                <Route element={<DashboardLayout />}>
-                  <Route path="/designer" element={<DesignerDashboard />} />
-                </Route>
-              </Route>
+              {/* Staff Affairs: Admin, Accountant, Representative */}
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

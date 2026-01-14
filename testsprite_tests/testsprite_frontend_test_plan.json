@@ -1,0 +1,510 @@
+[
+  {
+    "id": "TC001",
+    "title": "User Login Success",
+    "description": "Verify that a user can log in successfully with valid credentials.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login page."
+      },
+      {
+        "type": "action",
+        "description": "Enter valid username and password."
+      },
+      {
+        "type": "action",
+        "description": "Click the login button."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that the user is redirected to the dashboard and receives an authenticated session."
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "User Login Failure with Invalid Credentials",
+    "description": "Verify that login fails with incorrect username or password.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login page."
+      },
+      {
+        "type": "action",
+        "description": "Enter invalid username or password."
+      },
+      {
+        "type": "action",
+        "description": "Click the login button."
+      },
+      {
+        "type": "assertion",
+        "description": "Check that the login fails and an appropriate error message is displayed without redirecting."
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "User Logout",
+    "description": "Verify that a logged-in user can log out successfully and session ends.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in with valid credentials."
+      },
+      {
+        "type": "action",
+        "description": "Click the logout button or link."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that the user session is terminated and the user is redirected to the login page."
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Dashboard Displays Accurate Metrics",
+    "description": "Verify the dashboard shows correct real-time metrics and alerts based on user role.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in as a user with standard role."
+      },
+      {
+        "type": "action",
+        "description": "Navigate to the dashboard page."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify all displayed key metrics are accurate and relevant to the user's role."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify alerts and daily activities update in real-time."
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Order Creation with Valid Data",
+    "description": "Verify that a dental lab order can be created successfully with valid data.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the order management page."
+      },
+      {
+        "type": "action",
+        "description": "Click 'Create New Order'."
+      },
+      {
+        "type": "action",
+        "description": "Fill in all required order fields with valid information."
+      },
+      {
+        "type": "action",
+        "description": "Submit the order form."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that the order is created and visible in the order list with correct details."
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Order Creation with Missing Required Fields",
+    "description": "Verify that order creation fails when required fields are omitted and appropriate error messages are shown.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the order management page."
+      },
+      {
+        "type": "action",
+        "description": "Click 'Create New Order'."
+      },
+      {
+        "type": "action",
+        "description": "Leave required fields empty or invalid."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to submit the order form."
+      },
+      {
+        "type": "assertion",
+        "description": "Check that submission is blocked and relevant validation error messages are displayed."
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Order Update and Status Change",
+    "description": "Verify that an existing order can be updated and its status changed correctly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the order list."
+      },
+      {
+        "type": "action",
+        "description": "Select an existing order."
+      },
+      {
+        "type": "action",
+        "description": "Update order fields including status."
+      },
+      {
+        "type": "action",
+        "description": "Save the changes."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that the updates are saved and reflected correctly in the order details and list."
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Doctor Profile Creation and Validation",
+    "description": "Verify that doctor profiles can be created with all required information and validations are enforced.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the doctor management page."
+      },
+      {
+        "type": "action",
+        "description": "Click 'Add New Doctor'."
+      },
+      {
+        "type": "action",
+        "description": "Fill in all mandatory profile fields with valid data."
+      },
+      {
+        "type": "action",
+        "description": "Submit the doctor profile form."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that the doctor profile is saved and listed correctly with accurate details."
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Doctor Profile Update and Preferences Management",
+    "description": "Verify that existing doctor profiles can be updated including preference settings.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the doctor list page."
+      },
+      {
+        "type": "action",
+        "description": "Select a doctor profile to edit."
+      },
+      {
+        "type": "action",
+        "description": "Modify profile details and preferences."
+      },
+      {
+        "type": "action",
+        "description": "Save the updates."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that changes persist and display correctly in the profile."
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Finance Transactions Recording and Validation",
+    "description": "Verify that financial transactions can be recorded accurately and validate computations in reports.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the finance transactions page."
+      },
+      {
+        "type": "action",
+        "description": "Add a new income transaction with all required fields."
+      },
+      {
+        "type": "action",
+        "description": "Save the transaction."
+      },
+      {
+        "type": "action",
+        "description": "Generate financial reports."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that the transaction appears correctly and the reports reflect accurate income and balances."
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Finance Transactions Input Validation",
+    "description": "Verify that invalid financial transaction data is rejected with appropriate error messages.",
+    "category": "error handling",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the finance transactions page."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to add a transaction with missing or invalid fields."
+      },
+      {
+        "type": "action",
+        "description": "Try to save the invalid transaction data."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm form submission is blocked and validation messages are presented."
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Staff Member Addition and Role Assignment",
+    "description": "Verify that new staff members can be added and roles assigned correctly enforcing role-based access.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the staff management page."
+      },
+      {
+        "type": "action",
+        "description": "Click to add a new staff member."
+      },
+      {
+        "type": "action",
+        "description": "Fill in staff personal details and assign roles."
+      },
+      {
+        "type": "action",
+        "description": "Save the staff record."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the staff member is listed with assigned roles and permissions are enforced accordingly."
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Role-Based Access Control Enforcement",
+    "description": "Verify that system access and features are restricted appropriately based on user roles.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in as a user with limited role permissions."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to access restricted pages or perform unauthorized actions."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm access is denied and user receives an appropriate 'Access Denied' message."
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "Quality Control Issue Reporting and Tracking",
+    "description": "Verify that quality control issues can be reported, tracked, and their statuses updated properly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to quality control section."
+      },
+      {
+        "type": "action",
+        "description": "Create a new quality issue report with required details."
+      },
+      {
+        "type": "action",
+        "description": "Save the issue report."
+      },
+      {
+        "type": "action",
+        "description": "Update the status of an existing quality issue."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that quality issues are accurate, status changes persist, and tracking is effective."
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "Application Settings Modification Persistence",
+    "description": "Verify that changes in system settings are applied globally and persist across user sessions.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in with administrative user."
+      },
+      {
+        "type": "action",
+        "description": "Navigate to the settings page."
+      },
+      {
+        "type": "action",
+        "description": "Change system configuration settings."
+      },
+      {
+        "type": "action",
+        "description": "Save the settings and log out."
+      },
+      {
+        "type": "action",
+        "description": "Log back in and verify the changes are still applied."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm system behavior reflects updated settings persistently and globally."
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Session Timeout and Security",
+    "description": "Verify that user sessions expire correctly after inactivity and require re-authentication.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in successfully."
+      },
+      {
+        "type": "action",
+        "description": "Remain inactive for the configured session timeout duration."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to perform an action after timeout."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that the session has expired and user is redirected to login page."
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Data Integrity on Order Lifecycle Transitions",
+    "description": "Verify that status transitions for orders maintain data integrity and do not allow invalid state changes.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create a new order and set initial status."
+      },
+      {
+        "type": "action",
+        "description": "Attempt valid and invalid status changes according to allowed workflow."
+      },
+      {
+        "type": "assertion",
+        "description": "Ensure only valid status transitions are accepted; invalid ones are rejected with error messages."
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "Responsive UI Across Supported Browsers and Devices",
+    "description": "Verify the application layout and elements render correctly and are usable on multiple supported browsers and device sizes.",
+    "category": "ui",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open the application on multiple browsers (Chrome, Firefox, Edge) and devices (desktop, tablet, mobile)."
+      },
+      {
+        "type": "assertion",
+        "description": "Check that UI elements are fully visible, usable, and responsive without layout breaks."
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Error Handling for Network Failures",
+    "description": "Verify that the system handles network failures gracefully with appropriate user notifications and retry options.",
+    "category": "error handling",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Simulate network disconnection while performing an operation (e.g., saving an order)."
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm that an error message is shown indicating network failure and user can retry the operation."
+      }
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "Concurrent Data Updates Consistency",
+    "description": "Verify that concurrent updates to shared data (e.g., orders, doctor profiles) are handled consistently without data corruption.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Simultaneously edit the same order or profile from two different user sessions."
+      },
+      {
+        "type": "action",
+        "description": "Attempt to save changes in both sessions."
+      },
+      {
+        "type": "assertion",
+        "description": "Verify that one update succeeds and the system prevents or handles conflicting changes with proper notifications."
+      }
+    ]
+  }
+]

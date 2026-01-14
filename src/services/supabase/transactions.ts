@@ -16,6 +16,7 @@ function dbToTransaction(dbTx: DbTransaction): Transaction {
         entityId: dbTx.entity_id || undefined,
         entityType: dbTx.entity_type || undefined,
         isRegistered: dbTx.is_registered || undefined,
+        isApproved: dbTx.is_approved || undefined,
     };
 }
 
@@ -30,6 +31,7 @@ function transactionToDb(tx: Omit<Transaction, 'id'>): DbTransactionInsert {
         entity_id: tx.entityId || null,
         entity_type: tx.entityType || null,
         is_registered: tx.isRegistered || false,
+        is_approved: tx.isApproved || false,
     };
 }
 
@@ -65,7 +67,7 @@ export async function addTransaction(tx: Omit<Transaction, 'id'>): Promise<Trans
     // Validate input
     try {
         TransactionCreateSchema.parse(tx);
-    } catch (error: any) {
+    } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
 
@@ -95,6 +97,7 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
     if (updates.entityId !== undefined) dbUpdates.entity_id = updates.entityId || null;
     if (updates.entityType !== undefined) dbUpdates.entity_type = updates.entityType || null;
     if (updates.isRegistered !== undefined) dbUpdates.is_registered = updates.isRegistered;
+    if (updates.isApproved !== undefined) dbUpdates.is_approved = updates.isApproved;
 
     const { data, error } = await supabase
         .from('transactions')

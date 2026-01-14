@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Palette } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
 
@@ -10,17 +10,16 @@ export default function Sidebar() {
     const [isOpen, setIsOpen] = useState(false);
 
     const navigation = [
-        { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant'] },
-        { name: 'الاوردرات', href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant'] },
+        { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
+        { name: 'الاوردرات', href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
         { name: 'الجودة', href: '/quality', icon: Award, roles: ['admin', 'representative'] },
-        { name: 'الحسابات', href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab'] },
+        { name: 'الحسابات', href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer'] },
         { name: 'المالية', href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
         { name: 'التحليلات', href: '/analytics', icon: BarChart3, roles: ['admin'] },
         { name: 'الأطباء', href: '/doctors', icon: Users, roles: ['admin', 'representative'] },
         { name: 'الموردين', href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
-        { name: 'شؤون الموظفين', href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
+        { name: 'شئون الموظفين', href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
         { name: 'المستخدمين', href: '/users', icon: Shield, roles: ['admin'] },
-        { name: 'التصميم', href: '/designer', icon: Palette, roles: ['admin', 'designer'] },
         { name: 'الإعدادات', href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
     ];
 

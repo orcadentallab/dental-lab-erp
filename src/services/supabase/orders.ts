@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate } from './types';
-import type { Order } from '../db';
+import type { Order, OrderHistoryEntry } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 
@@ -33,6 +33,7 @@ function dbToOrder(dbOrder: DbOrder): Order {
         isRegistered: dbOrder.is_registered || undefined,
         workflowType: dbOrder.workflow_type || undefined,
         designerId: dbOrder.designer_id || undefined,
+        designUrl: dbOrder.design_url || undefined,
         designStatus: dbOrder.design_status || undefined,
         designPrice: dbOrder.design_price || undefined,
         actualDeliveryDate: dbOrder.actual_delivery_date || undefined,
@@ -71,6 +72,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         is_registered: order.isRegistered || false,
         workflow_type: order.workflowType || null,
         designer_id: order.designerId || null,
+        design_url: order.designUrl || null,
         design_status: order.designStatus || null,
         design_price: order.designPrice || null,
         actual_delivery_date: order.actualDeliveryDate || null,
@@ -118,7 +120,7 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<
     // Validate input
     try {
         OrderCreateSchema.parse(order);
-    } catch (error: any) {
+    } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
 
@@ -147,7 +149,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     if (Object.keys(updates).length > 0) {
         try {
             OrderUpdateSchema.parse({ id, ...updates });
-        } catch (error: any) {
+        } catch (error: unknown) {
             throw new ValidationError(formatValidationError(error));
         }
     }
@@ -178,6 +180,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     if (updates.isRegistered !== undefined) dbUpdates.is_registered = updates.isRegistered;
     if (updates.workflowType !== undefined) dbUpdates.workflow_type = updates.workflowType || null;
     if (updates.designerId !== undefined) dbUpdates.designer_id = updates.designerId || null;
+    if (updates.designUrl !== undefined) dbUpdates.design_url = updates.designUrl || null;
     if (updates.designStatus !== undefined) dbUpdates.design_status = updates.designStatus || null;
     if (updates.designPrice !== undefined) dbUpdates.design_price = updates.designPrice || null;
     if (updates.actualDeliveryDate !== undefined) dbUpdates.actual_delivery_date = updates.actualDeliveryDate || null;
@@ -199,7 +202,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
         }
 
         if (currentOrder && currentOrder.status !== updates.status) {
-            let history = currentOrder.statusHistory || [];
+            const history = currentOrder.statusHistory || [];
 
             // 1. Close the previous status entry (if exists)
             // Ideally we find the last entry that matches oldStatus and has no exitedAt
@@ -281,7 +284,7 @@ export async function bulkUpsertOrders(orders: Order[]): Promise<number> {
     return data?.length || 0;
 }
 
-export async function getOrderHistory(orderId: string): Promise<any[]> {
+export async function getOrderHistory(orderId: string): Promise<OrderHistoryEntry[]> {
     const { data, error } = await supabase
         .from('order_history')
         .select('*')

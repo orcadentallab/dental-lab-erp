@@ -28,6 +28,7 @@ export interface Transaction {
     entityId?: string; // Doctor or Supplier ID
     entityType?: 'doctor' | 'supplier' | 'general' | 'designer';
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
+    isApproved?: boolean; // Flag for individual expense approval
 }
 
 export interface Supplier {
@@ -114,9 +115,11 @@ export interface Order {
 
     // Split Workflow Fields
     workflowType?: 'full' | 'split';
+    millingOnly?: boolean; // True if order is milling only
     designerId?: string;
-    designStatus?: 'pending' | 'in_progress' | 'completed';
+    designStatus?: 'pending' | 'accepted' | 'in_progress' | 'waiting_approval' | 'completed' | 'returned';
     designPrice?: number; // Snapshot of cost
+    designUrl?: string; // Design Link (STL/Zip)
 
     // QA & Delivery Tracking
     actualDeliveryDate?: string; // When status becomes Delivered
@@ -138,6 +141,15 @@ export interface Order {
         exitedAt?: string; // ISO timestamp
         durationMinutes?: number;
     }[];
+}
+
+export interface OrderHistoryEntry {
+    id: string;
+    user_name: string;
+    action_type: string;
+    details: string;
+    created_at: string;
+    changes?: Record<string, { old: unknown; new: unknown }> | null;
 }
 
 class MockDB {
@@ -164,17 +176,10 @@ class MockDB {
     }
 
     // --- HISTORY ---
-    async getOrderHistory(orderId: string): Promise<any[]> {
+    async getOrderHistory(orderId: string): Promise<OrderHistoryEntry[]> {
         const { getOrderHistory } = await import('./supabase/orders');
         return getOrderHistory(orderId);
     }
-
-    // --- EXPENSES (Mock -> Transactions) ---
-    getExpenses(): Expense[] { return []; }
-    // Expenses are now Transactions with type='expense'. Keeping legacy stub or remove?
-    // Leaving stub to avoid breaking old references if any, but they should be migrated.
-    addExpense(_expense: Omit<Expense, 'id'>): Expense { throw new Error('Use addTransaction'); }
-    updateExpense(_id: string, _updates: Partial<Expense>): Expense | null { throw new Error('Use updateTransaction'); }
 
     // --- DOCTORS ---
     async getDoctors(): Promise<Doctor[]> {
@@ -252,6 +257,11 @@ class MockDB {
         return updateTransaction(id, updates);
     }
 
+    async deleteTransaction(id: string): Promise<void> {
+        const { deleteTransaction } = await import('./supabase/transactions');
+        return deleteTransaction(id);
+    }
+
     async bulkUpsertTransactions(newTxs: Transaction[]): Promise<number> {
         const { bulkUpsertTransactions } = await import('./supabase/transactions');
         return bulkUpsertTransactions(newTxs);
@@ -285,7 +295,8 @@ class MockDB {
     exportData() { return '{}'; }
     async importData(jsonString: string): Promise<{ success: boolean; error?: string }> {
         try {
-            const data = JSON.parse(jsonString);
+            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+            const data = JSON.parse(jsonString) as { orders?: Order[]; transactions?: Transaction[] };
 
             // Import Orders
             if (data.orders && Array.isArray(data.orders)) {
@@ -302,9 +313,10 @@ class MockDB {
             // For now, we support the bulk bulkUpsert of main transaction data.
 
             return { success: true };
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error("Import failed:", e);
-            return { success: false, error: e.message || 'Legacy import failed' };
+            const errorMessage = e instanceof Error ? e.message : 'Legacy import failed';
+            return { success: false, error: errorMessage };
         }
     }
 }

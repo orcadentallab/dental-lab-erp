@@ -1,9 +1,13 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import * as XLSX from 'xlsx';
-import type { Doctor, Service, Order, Transaction, Supplier } from '../services/db';
+import type { Doctor, Service, Order, Transaction, Supplier, OrderItem } from '../services/db';
 import { generateUUID } from './utils';
 
+// Helper Type for Excel Rows
+type ExcelRow = Record<string, unknown>;
+
 // Helper to parse Excel date to ISO string
-function parseDate(value: any): string {
+function parseDate(value: unknown): string {
     if (!value) return new Date().toISOString().split('T')[0];
 
     // If it's already a date object
@@ -34,13 +38,13 @@ function parseDate(value: any): string {
 }
 
 // Helper to clean string values
-function cleanString(value: any): string {
+function cleanString(value: unknown): string {
     if (value === null || value === undefined) return '';
     return String(value).trim();
 }
 
 // Helper to parse number
-function parseNumber(value: any): number {
+function parseNumber(value: unknown): number {
     if (value === null || value === undefined) return 0;
     const num = parseFloat(String(value).replace(/,/g, ''));
     return isNaN(num) ? 0 : num;
@@ -58,16 +62,23 @@ export function importDoctorsFromExcel(file: File): Promise<Doctor[]> {
                 // Get first sheet
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
 
-                const doctors: Doctor[] = jsonData.map((row: any, index: number) => {
+                const doctors: Doctor[] = jsonData.map((row, index) => {
                     // Flexible column mapping - try different possible column names
-                    const name = cleanString(row['اسم الطبيب'] || row['الاسم'] || row['name'] || row['Name']);
-                    const phone = cleanString(row['الهاتف'] || row['تليفون'] || row['phone'] || row['Phone'] || row['موبايل']);
-                    const phone2 = cleanString(row['هاتف 2'] || row['الهاتف 2'] || row['phone2'] || row['Phone2'] || row['تليفون 2'] || '');
-                    const address = cleanString(row['العنوان'] || row['address'] || row['Address'] || '');
-                    const doctorCode = cleanString(row['كود الطبيب'] || row['الكود'] || row['doctor_code'] || row['DoctorCode'] || row['code'] || `DR${index + 1}`);
-                    const representativeName = cleanString(row['اسم المندوب'] || row['المندوب'] || row['representative_name'] || row['RepresentativeName'] || '');
+                    const getCol = (keys: string[]) => {
+                        for (const k of keys) {
+                            if (row[k] !== undefined && row[k] !== null) return cleanString(String(row[k]));
+                        }
+                        return '';
+                    };
+
+                    const name = getCol(['اسم الطبيب', 'الاسم', 'name', 'Name']);
+                    const phone = getCol(['الهاتف', 'تليفون', 'phone', 'Phone', 'موبايل']);
+                    const phone2 = getCol(['هاتف 2', 'الهاتف 2', 'phone2', 'Phone2', 'تليفون 2']);
+                    const address = getCol(['العنوان', 'address', 'Address']);
+                    const doctorCode = getCol(['كود الطبيب', 'الكود', 'doctor_code', 'DoctorCode', 'code']) || `DR${index + 1}`;
+                    const representativeName = getCol(['اسم المندوب', 'المندوب', 'representative_name', 'RepresentativeName']);
                     const representativeId = row['representative_id'] || row['RepresentativeId'] || null;
 
                     if (!name) {
@@ -82,13 +93,14 @@ export function importDoctorsFromExcel(file: File): Promise<Doctor[]> {
                         address: address || 'غير محدد',
                         doctorCode: doctorCode.toUpperCase(),
                         representativeName: representativeName || 'غير محدد',
-                        representativeId: representativeId || undefined
-                    } as Doctor;
+                        representativeId: (representativeId as string) || undefined
+                    };
                 });
 
                 resolve(doctors);
-            } catch (error: any) {
-                reject(new Error(`خطأ في قراءة ملف Excel: ${error.message}`));
+            } catch (error: unknown) {
+                const msg = error instanceof Error ? error.message : String(error);
+                reject(new Error(`خطأ في قراءة ملف Excel: ${msg}`));
             }
         };
         reader.onerror = () => reject(new Error('فشل قراءة الملف'));
@@ -107,13 +119,20 @@ export function importServicesFromExcel(file: File): Promise<Service[]> {
 
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
 
-                const services: Service[] = jsonData.map((row: any, index: number) => {
-                    const name = cleanString(row['اسم الخدمة'] || row['الاسم'] || row['name'] || row['Name'] || row['الخدمة']);
-                    const sellingPrice = parseNumber(row['سعر البيع'] || row['سعر المبيعة'] || row['selling_price'] || row['SellingPrice'] || row['price']);
-                    const costPrice = parseNumber(row['سعر التكلفة'] || row['التكلفة'] || row['cost_price'] || row['CostPrice'] || row['cost']);
-                    const millingPrice = parseNumber(row['سعر الخراطة'] || row['milling_price'] || row['MillingPrice'] || row['خراطة'] || 0);
+                const services: Service[] = jsonData.map((row, index) => {
+                    const getVal = (keys: string[]) => {
+                        for (const k of keys) {
+                            if (row[k] !== undefined && row[k] !== null) return row[k];
+                        }
+                        return undefined;
+                    };
+
+                    const name = cleanString(getVal(['اسم الخدمة', 'الاسم', 'name', 'Name', 'الخدمة']));
+                    const sellingPrice = parseNumber(getVal(['سعر البيع', 'سعر المبيعة', 'selling_price', 'SellingPrice', 'price']));
+                    const costPrice = parseNumber(getVal(['سعر التكلفة', 'التكلفة', 'cost_price', 'CostPrice', 'cost']));
+                    const millingPrice = parseNumber(getVal(['سعر الخراطة', 'milling_price', 'MillingPrice', 'خراطة']));
 
                     if (!name) {
                         throw new Error(`الصف ${index + 2}: اسم الخدمة مطلوب`);
@@ -125,12 +144,13 @@ export function importServicesFromExcel(file: File): Promise<Service[]> {
                         sellingPrice: sellingPrice || 0,
                         costPrice: costPrice || 0,
                         millingPrice: millingPrice || 0
-                    } as Service;
+                    };
                 });
 
                 resolve(services);
-            } catch (error: any) {
-                reject(new Error(`خطأ في قراءة ملف Excel: ${error.message}`));
+            } catch (error: unknown) {
+                const msg = error instanceof Error ? error.message : String(error);
+                reject(new Error(`خطأ في قراءة ملف Excel: ${msg}`));
             }
         };
         reader.onerror = () => reject(new Error('فشل قراءة الملف'));
@@ -149,12 +169,19 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
 
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
 
-                const orders: Order[] = jsonData.map((row: any, index: number) => {
+                const orders: Order[] = jsonData.map((row, index) => {
+                    const getVal = (keys: string[]) => {
+                        for (const k of keys) {
+                            if (row[k] !== undefined && row[k] !== null) return row[k];
+                        }
+                        return undefined;
+                    };
+
                     // Find doctor
-                    const doctorCode = cleanString(row['كود الطبيب'] || row['doctor_code'] || row['DoctorCode'] || row['الكود']);
-                    const doctorName = cleanString(row['اسم الطبيب'] || row['الطبيب'] || row['doctor_name'] || row['DoctorName']);
+                    const doctorCode = cleanString(getVal(['كود الطبيب', 'doctor_code', 'DoctorCode', 'الكود']));
+                    const doctorName = cleanString(getVal(['اسم الطبيب', 'الطبيب', 'doctor_name', 'DoctorName']));
                     let doctorId = '';
                     let foundDoctor: Doctor | undefined;
 
@@ -168,28 +195,23 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         doctorId = foundDoctor.id;
                     }
 
-                    // Strict requirement: Doctor must exist. If not found, skip or error? 
-                    // User wants to import so we throw error to alert them.
                     if (!doctorId) {
-                        // Optional: Create a dummy doctor? No, better safe.
-                        // But we can fallback to "Unknown" if really needed, but better strictly follow user data.
-                        // For now keeping existing error behavior but making it clear.
                         const identifier = doctorCode || doctorName || 'غير معروف';
                         throw new Error(`الصف ${index + 2}: لم يتم العثور على الطبيب (${identifier})`);
                     }
 
-                    const patientName = cleanString(row['اسم المريض'] || row['المريض'] || row['patient_name'] || row['PatientName']);
+                    const patientName = cleanString(getVal(['اسم المريض', 'المريض', 'patient_name', 'PatientName']));
                     // Generate a unique Case ID if not provided
-                    const caseId = cleanString(row['رقم الحالة'] || row['كود الحالة'] || row['case_id'] || row['CaseId'] || `CASE-${Date.now()}-${index}`);
+                    const caseId = cleanString(getVal(['رقم الحالة', 'كود الحالة', 'case_id', 'CaseId'])) || `CASE-${Date.now()}-${index}`;
 
                     // --- ITEM & SUPPLIER/LAB MAPPING ---
-                    let items: any[] = [];
-                    const serviceName = cleanString(row['الخدمات'] || row['الخدمة'] || row['اسم الخدمة'] || row['Service'] || row['service']);
-                    const countColumn = parseNumber(row['عدد الاسنان'] || row['Count'] || row['count'] || row['Quantity'] || 1);
+                    let items: OrderItem[] = [];
+                    const serviceName = cleanString(getVal(['الخدمات', 'الخدمة', 'اسم الخدمة', 'Service', 'service']));
+                    const countColumn = parseNumber(getVal(['عدد الاسنان', 'Count', 'count', 'Quantity']));
                     const toothCount = countColumn > 0 ? countColumn : 1;
 
                     // --- EXECUTING LAB (SUPPLIER) LOOKUP ---
-                    const supplierName = cleanString(row['المعمل المنفذ'] || row['المعمل'] || row['Executing Lab'] || row['Lab'] || row['Supplier']);
+                    const supplierName = cleanString(getVal(['المعمل المنفذ', 'المعمل', 'Executing Lab', 'Lab', 'Supplier']));
                     let supplierId: string | undefined = undefined;
                     let foundSupplier: Supplier | undefined = undefined;
 
@@ -202,7 +224,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
 
                     // --- ITEM CREATION ---
                     if (serviceName) {
-                        const unitPrice = parseNumber(row['السعر'] || row['Unit Price'] || row['price'] || 0);
+                        const unitPrice = parseNumber(getVal(['السعر', 'Unit Price', 'price']));
                         const teethNumbers: string[] = [];
                         for (let i = 1; i <= toothCount; i++) {
                             teethNumbers.push(String(i));
@@ -215,24 +237,19 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         });
                     } else {
                         try {
-                            const itemsStr = row['العناصر'] || row['items'] || row['Items'] || '[]';
+                            const itemsStr = getVal(['العناصر', 'items', 'Items']) || '[]';
                             if (typeof itemsStr === 'string') {
-                                items = JSON.parse(itemsStr);
+                                items = JSON.parse(itemsStr) as OrderItem[];
                             } else if (Array.isArray(itemsStr)) {
-                                items = itemsStr;
+                                items = itemsStr as unknown as OrderItem[];
                             }
-                        } catch { }
-                    }
-
-                    if (items.length === 0) {
-                        // Add default if nothing found? Or allow empty?
-                        // Let's add a placeholder if missing to avoid errors, or maybe the user wants it empty.
-                        // Order must have items usually.
+                        } catch {
+                            // ignore parse error
+                        }
                     }
 
                     // --- TOTALS ---
-                    // User said: "صافى القيمة" is the total value
-                    const netValue = parseNumber(row['صافى القيمة'] || row['Total Value'] || row['Net Value'] || 0);
+                    const netValue = parseNumber(getVal(['صافى القيمة', 'Total Value', 'Net Value']));
 
                     // Calculate from items if netValue is missing
                     const calculatedTotal = items.reduce((sum, item) => sum + (item.price * item.teethNumbers.length), 0);
@@ -240,22 +257,15 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                     const totalPrice = netValue > 0 ? netValue : calculatedTotal;
 
                     // --- COST LOGIC (IMPROVED) ---
-                    // 1. Try Total Cost from Excel
-                    let cost = parseNumber(row['التكلفة'] || row['cost'] || row['Cost'] || row['اجمالي التكلفة'] || row['Total Cost'] || 0);
+                    let cost = parseNumber(getVal(['التكلفة', 'cost', 'Cost', 'اجمالي التكلفة', 'Total Cost']));
 
                     if (cost === 0 && items.length > 0) {
-                        // 2. Try Unit Cost from Excel * Count
-                        const excelUnitCost = parseNumber(row['سعر الشراء'] || row['Buying Price'] || row['Purchase Price'] || row['سعر المعمل'] || row['Lab Price'] || row['Unit Cost'] || 0);
+                        const excelUnitCost = parseNumber(getVal(['سعر الشراء', 'Buying Price', 'Purchase Price', 'سعر المعمل', 'Lab Price', 'Unit Cost']));
 
                         if (excelUnitCost > 0) {
                             cost = excelUnitCost * toothCount;
                         }
                         else if (foundSupplier && serviceName) {
-                            // 3. Try Supplier Custom Price (Milling or Full) from DB
-                            // Check for exact match or fuzzy match in supplier prices
-                            // Note: `customPrices` is Record<string, number>
-
-                            // Try to match service name with existing services to get Canonical Name if possible
                             const matchedService = services.find(s => s.name === serviceName || s.name.toLowerCase() === serviceName.toLowerCase());
                             const canonicalServiceName = matchedService ? matchedService.name : serviceName;
 
@@ -267,9 +277,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             else if (foundSupplier.millingPrices && foundSupplier.millingPrices[canonicalServiceName]) {
                                 supplierUnitCost = foundSupplier.millingPrices[canonicalServiceName];
                             }
-                            // 4. Fallback to General Service Cost (System Defaults)
                             else if (matchedService) {
-                                // User requested to use Cost Price specifically, not Milling Price
                                 supplierUnitCost = matchedService.costPrice || 0;
                             }
 
@@ -279,11 +287,15 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         }
                     }
 
-                    const discount = parseNumber(row['الخصم'] || row['discount'] || row['Discount'] || 0);
-                    const shade = cleanString(row['اللون'] || row['shade'] || row['Shade'] || 'A1');
-                    const status = cleanString(row['الحالة'] || row['status'] || row['Status'] || 'Delivered');
-                    const deliveryDate = parseDate(row['تاريخ التسليم'] || row['delivery_date'] || row['DeliveryDate'] || row['التاريخ']);
-                    const priority = cleanString(row['الأولوية'] || row['priority'] || row['Priority'] || 'Normal') as 'Normal' | 'Urgent';
+                    const discount = parseNumber(getVal(['الخصم', 'discount', 'Discount']));
+                    const shade = cleanString(getVal(['اللون', 'shade', 'Shade'])) || 'A1';
+                    const statusStr = cleanString(getVal(['الحالة', 'status', 'Status'])) || 'Delivered';
+                    // Safe cast for status
+                    const status = (['New Case', 'Under Design', 'Design Completed', 'Printing', 'Milling', 'Finishing', 'Ready', 'Delivered', 'Completed', 'Cancelled'].includes(statusStr) ? statusStr : 'Delivered') as Order['status'];
+
+                    const deliveryDate = parseDate(getVal(['تاريخ التسليم', 'delivery_date', 'DeliveryDate', 'التاريخ']));
+                    const priorityStr = cleanString(getVal(['الأولوية', 'priority', 'Priority']));
+                    const priority = (priorityStr === 'Urgent' ? 'Urgent' : 'Normal') as 'Normal' | 'Urgent';
 
                     return {
                         id: generateUUID(),
@@ -292,14 +304,14 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         patientName: patientName || 'غير محدد',
                         items: items,
                         discount: discount || 0,
-                        totalPrice: totalPrice, // Using the logic above
-                        shade: shade || 'A1',
-                        status: status as any || 'Delivered', // Default to Delivered
+                        totalPrice: totalPrice,
+                        shade: shade,
+                        status: status,
                         deliveryDate,
                         cost: cost || 0,
-                        priority: priority || 'Normal',
-                        supplierId: supplierId, // Linked Supplier
-                        isRegistered: true, // Auto-register imported cases as requested
+                        priority: priority,
+                        supplierId: supplierId,
+                        isRegistered: true,
                         feedback: {
                             rating: 5,
                             issues: [],
@@ -312,8 +324,9 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                 });
 
                 resolve(orders);
-            } catch (error: any) {
-                reject(new Error(`خطأ في قراءة ملف Excel: ${error.message}`));
+            } catch (error: unknown) {
+                const msg = error instanceof Error ? error.message : String(error);
+                reject(new Error(`خطأ في قراءة ملف Excel: ${msg}`));
             }
         };
         reader.onerror = () => reject(new Error('فشل قراءة الملف'));
@@ -332,14 +345,21 @@ export function importTransactionsFromExcel(file: File): Promise<Transaction[]> 
 
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
 
-                const transactions: Transaction[] = jsonData.map((row: any, index: number) => {
-                    const type = cleanString(row['النوع'] || row['type'] || row['Type'] || 'expense').toLowerCase();
-                    const amount = parseNumber(row['المبلغ'] || row['amount'] || row['Amount']);
-                    const category = cleanString(row['الفئة'] || row['category'] || row['Category'] || 'عام');
-                    const date = parseDate(row['التاريخ'] || row['date'] || row['Date']);
-                    const description = cleanString(row['الوصف'] || row['description'] || row['Description'] || '');
+                const transactions: Transaction[] = jsonData.map((row, index) => {
+                    const getVal = (keys: string[]) => {
+                        for (const k of keys) {
+                            if (row[k] !== undefined && row[k] !== null) return row[k];
+                        }
+                        return undefined;
+                    };
+
+                    const typeStr = cleanString(getVal(['النوع', 'type', 'Type']) || 'expense').toLowerCase();
+                    const amount = parseNumber(getVal(['المبلغ', 'amount', 'Amount']));
+                    const category = cleanString(getVal(['الفئة', 'category', 'Category'])) || 'عام';
+                    const date = parseDate(getVal(['التاريخ', 'date', 'Date']));
+                    const description = cleanString(getVal(['الوصف', 'description', 'Description']));
 
                     if (!amount || amount <= 0) {
                         throw new Error(`الصف ${index + 2}: المبلغ مطلوب`);
@@ -347,7 +367,7 @@ export function importTransactionsFromExcel(file: File): Promise<Transaction[]> 
 
                     return {
                         id: generateUUID(),
-                        type: (type === 'income' || type === 'دخل' || type === 'ايراد') ? 'income' : 'expense',
+                        type: (typeStr === 'income' || typeStr === 'دخل' || typeStr === 'ايراد') ? 'income' : 'expense',
                         amount,
                         category,
                         date,
@@ -357,8 +377,9 @@ export function importTransactionsFromExcel(file: File): Promise<Transaction[]> 
                 });
 
                 resolve(transactions);
-            } catch (error: any) {
-                reject(new Error(`خطأ في قراءة ملف Excel: ${error.message}`));
+            } catch (error: unknown) {
+                const msg = error instanceof Error ? error.message : String(error);
+                reject(new Error(`خطأ في قراءة ملف Excel: ${msg}`));
             }
         };
         reader.onerror = () => reject(new Error('فشل قراءة الملف'));

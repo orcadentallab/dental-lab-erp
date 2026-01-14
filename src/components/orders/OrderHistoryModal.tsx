@@ -1,25 +1,17 @@
 import { X, Clock, User, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-
-interface HistoryItem {
-    id: string;
-    user_name: string;
-    action_type: string;
-    details: string;
-    created_at: string;
-    changes: any;
-}
+import type { OrderHistoryEntry } from '../../services/db';
 
 interface OrderHistoryModalProps {
     isOpen: boolean;
     onClose: () => void;
-    history: HistoryItem[];
+    history: OrderHistoryEntry[];
     isLoading: boolean;
-    orderId: string;
+
 }
 
-export default function OrderHistoryModal({ isOpen, onClose, history, isLoading, orderId }: OrderHistoryModalProps) {
+export default function OrderHistoryModal({ isOpen, onClose, history, isLoading }: OrderHistoryModalProps) {
     if (!isOpen) return null;
 
     return (
@@ -36,7 +28,7 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading,
                             <p className="text-xs text-gray-500">تتبع جميع التعديلات والحالات لهذا الطلب</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors" aria-label="إغلاق">
                         <X size={24} />
                     </button>
                 </div>
@@ -87,16 +79,18 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading,
                                                 {item.action_type === 'CREATE' ? (
                                                     <div className="text-gray-400 italic">تم إنشاء الطلب</div>
                                                 ) : (
-                                                    Object.entries(item.changes).map(([key, val]: [string, any]) => {
+                                                    Object.entries(item.changes).map(([key, val]) => {
                                                         // Safety check: ensure val is an object with old/new
                                                         if (!val || typeof val !== 'object') return null;
+                                                        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                                                        const safeVal = val as Record<string, unknown>;
 
                                                         return (
                                                             <div key={key} className="flex items-center gap-2">
                                                                 <span className="font-semibold text-gray-400">{key}:</span>
-                                                                <span className="text-red-500 line-through bg-red-50 px-1 rounded">{val.old || 'Empty'}</span>
+                                                                <span className="text-red-500 line-through bg-red-50 px-1 rounded">{String(safeVal.old || 'Empty')}</span>
                                                                 <ArrowRight size={10} className="text-gray-400" />
-                                                                <span className="text-green-600 font-bold bg-green-50 px-1 rounded">{val.new || 'Empty'}</span>
+                                                                <span className="text-green-600 font-bold bg-green-50 px-1 rounded">{String(safeVal.new || 'Empty')}</span>
                                                             </div>
                                                         );
                                                     })

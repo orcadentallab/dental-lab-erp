@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
 import { db, type Order, type Supplier, type Doctor } from '../services/db';
 import { AlertCircle, Clock, Star, CheckCircle, Building2 } from 'lucide-react';

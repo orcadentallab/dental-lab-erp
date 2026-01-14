@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import * as XLSX from 'xlsx';
 
 /**
@@ -6,7 +7,7 @@ import * as XLSX from 'xlsx';
  * @param filename Name of the file (without extension)
  * @param sheetName Name of the sheet in Excel
  */
-export function exportToExcel<T extends Record<string, any>>(
+export function exportToExcel<T extends Record<string, unknown>>(
     data: T[],
     filename: string,
     sheetName: string = 'Sheet1'
@@ -51,7 +52,7 @@ export function exportToExcel<T extends Record<string, any>>(
  * @param columnMap Mapping of original keys to Arabic headers
  * @param filename Name of the file
  */
-export function exportToExcelWithHeaders<T extends Record<string, any>>(
+export function exportToExcelWithHeaders<T extends Record<string, unknown>>(
     data: T[],
     columnMap: Record<keyof T, string>,
     filename: string

@@ -24,40 +24,42 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    const fetchProfileAndSetUser = async (session: any) => {
+    const fetchProfileAndSetUser = async (session: { user?: { id: string; email?: string } } | null) => {
         if (!session?.user) {
             setUser(null);
             return;
         }
 
         try {
-            const { data: profile } = await supabase
+            const { data: profile, error } = await supabase
                 .from('users')
                 .select('*')
                 .eq('auth_id', session.user.id)
                 .single();
 
-            setUser({
-                id: profile?.id || session.user.id,
-                username: profile?.username || session.user.email || 'user',
-                name: profile?.name || session.user.email || 'User',
-                email: profile?.email || session.user.email,
-                role: profile?.role || 'lab', // IMPORTANT: Default to restricted if not found
+            // SECURITY: Block access if no profile exists
+            if (error || !profile) {
+                console.error('No profile found for user:', session.user.id);
+                setUser(null);
+                return;
+            }
+
+            const newUser: User = {
+                id: profile.id,
+                username: profile.username,
+                name: profile.name,
+                email: profile.email || session.user.email,
+                role: profile.role,
                 auth_id: session.user.id,
-                entityId: profile?.entity_id || undefined, // Map snake_case to camelCase
-                baseSalary: profile?.base_salary || undefined,
-                unitRate: profile?.unit_rate || undefined
-            } as User);
+                entityId: profile.entity_id || undefined,
+                baseSalary: profile.base_salary || undefined,
+                unitRate: profile.unit_rate || undefined
+            };
+            setUser(newUser);
         } catch (e) {
             console.error("Error fetching profile", e);
-            // Fallback
-            setUser({
-                id: session.user.id,
-                username: session.user.email || 'user',
-                name: session.user.email || 'User',
-                role: 'lab',
-                auth_id: session.user.id
-            } as any);
+            // SECURITY: Block access on error instead of fallback
+            setUser(null);
         }
     };
 
@@ -105,7 +107,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
             }
 
             if (resolvedEmail) {
-                email = resolvedEmail as string;
+                if (typeof resolvedEmail === 'string') {
+                    email = resolvedEmail;
+                }
             } else {
                 // Return specific error if username not found
                 setIsLoading(false);
@@ -143,6 +147,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
     const context = useContext(AuthContext);
     if (context === undefined) {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
 import { db, type User, type Supplier } from '../services/db';
 import { Plus, Trash2, Edit2, User as UserIcon, Shield } from 'lucide-react';
@@ -91,7 +92,7 @@ export default function Users() {
                 ...(editingUser ? {} : { password }), // Only include password for new users
                 role,
                 entityId: role === 'lab' ? entityId : undefined,
-                baseSalary: role === 'representative' ? parseFloat(baseSalary) || 0 : undefined,
+                baseSalary: (role === 'representative' || role === 'admin') ? parseFloat(baseSalary) || 0 : undefined,
                 unitRate: role === 'designer' ? parseFloat(unitRate) || 0 : undefined,
                 auth_id: editingUser?.auth_id
             };
@@ -103,7 +104,7 @@ export default function Users() {
             }
             setShowModal(false);
             await loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             alert(ErrorHandler.getUserMessage(error));
         }
     };
@@ -123,7 +124,7 @@ export default function Users() {
             await db.deleteUser(deleteConfirm.userId);
             setDeleteConfirm({ isOpen: false, userId: null, userName: '' });
             await loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             alert(ErrorHandler.getUserMessage(error));
         }
     };
@@ -199,17 +200,17 @@ export default function Users() {
                                         </span>
                                     ) : user.role === 'representative' ? (
                                         <span className="text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
+                                    ) : user.role === 'admin' && user.username !== 'admin' ? (
+                                        <span className="text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
                                     ) : user.role === 'designer' ? (
                                         <span className="text-amber-600 font-bold">{user.unitRate?.toLocaleString()} ج.م / Unit</span>
                                     ) : '---'}
                                 </td>
                                 <td className="p-4 flex gap-2">
-                                    {user.username !== 'admin' && (
+                                    {user.username !== 'admin' && isSuperAdmin && (
                                         <>
-                                            <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg"><Edit2 size={18} /></button>
-                                            {isSuperAdmin && (
-                                                <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg"><Trash2 size={18} /></button>
-                                            )}
+                                            <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg" title="تعديل"><Edit2 size={18} /></button>
+                                            <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg" title="حذف"><Trash2 size={18} /></button>
                                         </>
                                     )}
                                 </td>
@@ -230,16 +231,16 @@ export default function Users() {
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">الاسم بالكامل</label>
-                                <input required type="text" className="w-full p-2 border rounded-lg" value={name} onChange={e => setName(e.target.value)} />
+                                <input required type="text" aria-label="الاسم بالكامل" className="w-full p-2 border rounded-lg" value={name} onChange={e => setName(e.target.value)} />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">البريد الإلكتروني (Login Email)</label>
-                                <input required type="email" className="w-full p-2 border rounded-lg" value={email} onChange={e => setEmail(e.target.value)} placeholder="example@lab.com" />
+                                <input required type="email" aria-label="البريد الإلكتروني" className="w-full p-2 border rounded-lg" value={email} onChange={e => setEmail(e.target.value)} placeholder="example@lab.com" />
                                 <p className="text-xs text-gray-400 mt-1">يجب أن يطابق الإيميل المسجل في جزء Authentication.</p>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم (للدخول)</label>
-                                <input required type="text" className="w-full p-2 border rounded-lg" value={username} onChange={e => setUsername(e.target.value)} />
+                                <input required type="text" aria-label="اسم المستخدم" className="w-full p-2 border rounded-lg" value={username} onChange={e => setUsername(e.target.value)} />
                             </div>
                             {!editingUser && (
                                 <div>
@@ -263,7 +264,7 @@ export default function Users() {
                             )}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">الدور (Role)</label>
-                                <select className="w-full p-2 border rounded-lg" value={role} onChange={e => setRole(e.target.value as any)}>
+                                <select className="w-full p-2 border rounded-lg" aria-label="الدور الوظيفي" value={role} onChange={e => setRole(e.target.value as User['role'])}>
                                     <option value="admin">مدير نظام (Admin)</option>
                                     <option value="lab">معمل خارجي (Lab)</option>
                                     <option value="representative">مندوب (Representative)</option>
@@ -279,6 +280,7 @@ export default function Users() {
                                     <select
                                         required
                                         className="w-full p-2 border rounded-lg"
+                                        aria-label="المعمل"
                                         value={entityId}
                                         onChange={e => setEntityId(e.target.value)}
                                     >
@@ -291,9 +293,13 @@ export default function Users() {
                                 </div>
                             )}
 
-                            {role === 'representative' && (
+                            {(role === 'representative' || role === 'admin') && (
                                 <div className="bg-green-50 p-3 rounded-lg border border-green-100 space-y-2">
-                                    <p className="text-xs text-green-700">هذا المستخدم سيتمكن من إضافة حالات، وسيرى فقط الحالات التي أضافها أو التي تم تعيينه لها كمندوب.</p>
+                                    <p className="text-xs text-green-700">
+                                        {role === 'admin'
+                                            ? 'هذا الأدمن سيظهر كمندوب في الأوردرات ويمكن تحديد مرتب ومصاريف له.'
+                                            : 'هذا المستخدم سيتمكن من إضافة حالات، وسيرى فقط الحالات التي أضافها أو التي تم تعيينه لها كمندوب.'}
+                                    </p>
                                     <div>
                                         <label className="block text-sm font-bold text-green-800 mb-1">الراتب الأساسي (Base Salary)</label>
                                         <input
@@ -304,7 +310,7 @@ export default function Users() {
                                             onChange={e => setBaseSalary(e.target.value)}
                                             placeholder="0.00"
                                         />
-                                        <p className="text-xs text-green-600 mt-1">يُستخدم لحساب الرواتب والعمولات في صفحة شؤون الموظفين.</p>
+                                        <p className="text-xs text-green-600 mt-1">يُستخدم لحساب الرواتب والعمولات في صفحة شئون الموظفين.</p>
                                     </div>
                                 </div>
                             )}

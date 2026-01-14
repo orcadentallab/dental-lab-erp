@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { Key } from 'lucide-react';
 
 export default function Login() {
-    const { login, isAuthenticated } = useAuth();
+    const { login, isAuthenticated, user } = useAuth();
     const navigate = useNavigate();
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [username, setUsername] = useState('');
@@ -12,10 +12,10 @@ export default function Login() {
     const [error, setError] = useState('');
 
     useEffect(() => {
-        if (isAuthenticated) {
+        if (isAuthenticated && user) {
             navigate('/', { replace: true });
         }
-    }, [isAuthenticated, navigate]);
+    }, [isAuthenticated, user, navigate]);
 
     useEffect(() => {
         // Removed insecure localStorage credential retrieval

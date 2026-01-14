@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, Edit2, Trash2, FileSpreadsheet, Printer } from 'lucide-react';
-import { db, type Service, type Transaction } from '../services/db';
+import { db, type Service, type Transaction, type Doctor, type Supplier, type User } from '../services/db';
 import clsx from 'clsx';
 import { exportToExcel, printTable } from '../lib/exportUtils';
 import { useAuth } from '../context/AuthContext';
@@ -15,9 +15,10 @@ export default function Finance() {
     const [services, setServices] = useState<Service[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-    const [doctors, setDoctors] = useState<any[]>([]);
-    const [suppliers, setSuppliers] = useState<any[]>([]);
-    const [designers, setDesigners] = useState<any[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [designers, setDesigners] = useState<User[]>([]);
+    const [representatives, setRepresentatives] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [editingService, setEditingService] = useState<Service | null>(null);
     const serviceFormRef = useRef<HTMLFormElement>(null);
@@ -57,6 +58,7 @@ export default function Finance() {
                 setDoctors(doctorsData);
                 setSuppliers(suppliersData);
                 setDesigners(usersData.filter(u => u.role === 'designer'));
+                setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
             } catch (error) {
                 console.error('Error loading finance data:', error);
             } finally {
@@ -66,8 +68,16 @@ export default function Finance() {
         loadData();
     }, [activeTab]);
 
-    // Financial Metrics
-    const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+    // Financial Metrics - exclude unsettled staff expenses from calculations
+    const totalExpenses = transactions
+        .filter(t => {
+            if (t.type !== 'expense') return false;
+            // If it's a rep expense and not settled, don't count it
+            const isRepExpense = representatives.some(r => r.id === t.entityId);
+            if (isRepExpense && !t.isRegistered) return false;
+            return true;
+        })
+        .reduce((sum, t) => sum + t.amount, 0);
     const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
     const currentBalance = totalIncome - totalExpenses;
 
@@ -247,7 +257,7 @@ export default function Finance() {
                             <form onSubmit={handleAddExpense} className="space-y-4">
                                 <div>
                                     <label className="block text-sm text-gray-600 mb-1">تاريخ المعاملة</label>
-                                    <input required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg" />
+                                    <input required type="date" aria-label="تاريخ المصروف" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg" />
                                 </div>
                                 <div>
                                     <label className="block text-sm text-gray-600 mb-1">نوع المصروف</label>
@@ -271,11 +281,11 @@ export default function Finance() {
                                 </div>
                                 <div>
                                     <label className="block text-sm text-gray-600 mb-1">المبلغ</label>
-                                    <input required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border border-gray-200 rounded-lg" />
+                                    <input required type="number" min="0" aria-label="مبلغ المصروف" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border border-gray-200 rounded-lg" />
                                 </div>
                                 <div>
                                     <label className="block text-sm text-gray-600 mb-1">ملاحظات / وصف</label>
-                                    <textarea required value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border border-gray-200 rounded-lg" placeholder="مثال: فاتورة كهرباء شهر 5" />
+                                    <textarea required aria-label="وصف المصروف" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border border-gray-200 rounded-lg" placeholder="مثال: فاتورة كهرباء شهر 5" />
                                 </div>
                                 <button type="submit" className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700">تسجيل المصروف</button>
                             </form>
@@ -285,9 +295,16 @@ export default function Finance() {
                         <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                             <h3 className="p-4 font-bold border-b bg-gray-50">سجل المصروفات العامة</h3>
                             <table className="w-full text-sm text-right">
-                                <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">النوع</th><th className="p-3">الوصف</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th></tr></thead>
+                                <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">النوع</th><th className="p-3">الوصف</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th>{user?.role === 'admin' && <th className="p-3">إجراءات</th>}</tr></thead>
                                 <tbody>
-                                    {transactions.filter(t => t.type === 'expense' && t.entityType === 'general').map(t => (
+                                    {transactions.filter(t => {
+                                        // General Filter
+                                        if (t.type !== 'expense' || t.entityType !== 'general') return false;
+                                        // Hide Unsettled Staff Expenses
+                                        const isRepExpense = representatives.some(r => r.id === t.entityId);
+                                        if (isRepExpense && !t.isRegistered) return false;
+                                        return true;
+                                    }).map(t => (
                                         <tr key={t.id} className="border-t hover:bg-gray-50">
                                             <td className="p-3 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                             <td className="p-3 font-bold">{t.category}</td>
@@ -309,10 +326,26 @@ export default function Finance() {
                                                     </button>
                                                 )}
                                             </td>
+                                            {user?.role === 'admin' && (
+                                                <td className="p-3 text-center">
+                                                    <button
+                                                        onClick={async () => {
+                                                            if (!confirm(`هل أنت متأكد من حذف هذه المعاملة؟\n${t.description} - ${t.amount} ج.م`)) return;
+                                                            await db.deleteTransaction(t.id);
+                                                            const updatedTx = await db.getTransactions();
+                                                            setTransactions(updatedTx);
+                                                        }}
+                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                        title="حذف"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                                     {transactions.filter(t => t.type === 'expense' && t.entityType === 'general').length === 0 && (
-                                        <tr><td colSpan={4} className="p-4 text-center text-gray-400">لا توجد مصروفات مسجلة</td></tr>
+                                        <tr><td colSpan={user?.role === 'admin' ? 6 : 5} className="p-4 text-center text-gray-400">لا توجد مصروفات مسجلة</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -332,15 +365,15 @@ export default function Finance() {
                                 <form onSubmit={handleAddRevenue} className="space-y-4">
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">تاريخ المعاملة</label>
-                                        <input required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg" />
+                                        <input required type="date" aria-label="تاريخ الإيراد" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">المبلغ</label>
-                                        <input required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border border-gray-200 rounded-lg" />
+                                        <input required type="number" min="0" aria-label="مبلغ الإيراد" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border border-gray-200 rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">وصف الإيراد</label>
-                                        <textarea required value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border border-gray-200 rounded-lg" placeholder="مثال: هدية من صديق / استرداد مبلغ" />
+                                        <textarea required aria-label="وصف الإيراد" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border border-gray-200 rounded-lg" placeholder="مثال: هدية من صديق / استرداد مبلغ" />
                                     </div>
                                     <button type="submit" className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">تسجيل الإيراد</button>
                                 </form>
@@ -350,7 +383,7 @@ export default function Finance() {
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="p-4 font-bold border-b bg-gray-50">سجل الإيرادات العامة</h3>
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">الوصف</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th></tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">الوصف</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th>{user?.role === 'admin' && <th className="p-3">إجراءات</th>}</tr></thead>
                                     <tbody>
                                         {transactions.filter(t => t.type === 'income' && t.entityType === 'general').map(t => (
                                             <tr key={t.id} className="border-t hover:bg-gray-50">
@@ -373,6 +406,23 @@ export default function Finance() {
                                                         </button>
                                                     )}
                                                 </td>
+                                                {user?.role === 'admin' && (
+                                                    <td className="p-3 text-center">
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (!confirm(`هل أنت متأكد من حذف هذه المعاملة؟\n${t.description} - ${t.amount} ج.م`)) return;
+                                                                await db.deleteTransaction(t.id);
+                                                                const updatedTx = await db.getTransactions();
+                                                                setTransactions(updatedTx);
+                                                            }}
+                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                            title="حذف"
+                                                            aria-label="حذف"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                         {transactions.filter(t => t.type === 'income' && t.entityType === 'general').length === 0 && (
@@ -396,22 +446,22 @@ export default function Finance() {
                                 <form onSubmit={handleAddDoctorPayment} className="space-y-4">
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">تاريخ المعاملة</label>
-                                        <input required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border rounded-lg" />
+                                        <input required type="date" aria-label="تاريخ الدفعة" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">الطبيب</label>
-                                        <select required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2 border rounded-lg">
+                                        <select required aria-label="اختر الطبيب" value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2 border rounded-lg">
                                             <option value="">-- اختر الطبيب --</option>
                                             {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">المبلغ المدفوع</label>
-                                        <input required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
+                                        <input required type="number" min="0" aria-label="المبلغ المدفوع" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">بيان / ملاحظات</label>
-                                        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border rounded-lg" placeholder="مثال: دفعة تحت الحساب" />
+                                        <textarea aria-label="بيان الدفعة" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border rounded-lg" placeholder="مثال: دفعة تحت الحساب" />
                                     </div>
                                     <button type="submit" className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">تسجيل التحصيل</button>
                                 </form>
@@ -421,7 +471,7 @@ export default function Finance() {
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="p-4 font-bold border-b bg-gray-50">سجل تحصيلات الأطباء</h3>
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">الطبيب</th><th className="p-3">البيان</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th></tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">الطبيب</th><th className="p-3">البيان</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th>{user?.role === 'admin' && <th className="p-3">إجراءات</th>}</tr></thead>
                                     <tbody>
                                         {transactions.filter(t => t.type === 'income' && t.entityType === 'doctor').map(t => {
                                             const docName = doctors.find(d => d.id === t.entityId)?.name || 'غير معروف';
@@ -442,16 +492,33 @@ export default function Finance() {
                                                                     setTransactions(updatedTx);
                                                                 }}
                                                                 className="text-[10px] bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded border border-gray-200 transition-colors"
+                                                                aria-label="تسجيل المعاملة"
                                                             >
                                                                 تسجيل
                                                             </button>
                                                         )}
                                                     </td>
+                                                    {user?.role === 'admin' && (
+                                                        <td className="p-3 text-center">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (!confirm(`هل أنت متأكد من حذف هذه المعاملة؟\n${t.description} - ${t.amount} ج.م`)) return;
+                                                                    await db.deleteTransaction(t.id);
+                                                                    const updatedTx = await db.getTransactions();
+                                                                    setTransactions(updatedTx);
+                                                                }}
+                                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                                title="حذف"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             );
                                         })}
                                         {transactions.filter(t => t.type === 'income' && t.entityType === 'doctor').length === 0 && (
-                                            <tr><td colSpan={4} className="p-4 text-center text-gray-400">لا توجد تحصيلات مسجلة</td></tr>
+                                            <tr><td colSpan={user?.role === 'admin' ? 6 : 5} className="p-4 text-center text-gray-400">لا توجد تحصيلات مسجلة</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -471,22 +538,22 @@ export default function Finance() {
                                 <form onSubmit={handleAddSupplierPayment} className="space-y-4">
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">تاريخ المعاملة</label>
-                                        <input required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border rounded-lg" />
+                                        <input required type="date" aria-label="تاريخ الدفعة" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">المورد / المعمل</label>
-                                        <select required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2 border rounded-lg">
+                                        <select required aria-label="اختر المورد" value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2 border rounded-lg">
                                             <option value="">-- اختر المورد --</option>
                                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">المبلغ المدفوع</label>
-                                        <input required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
+                                        <input required type="number" min="0" aria-label="المبلغ المدفوع" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">بيان / ملاحظات</label>
-                                        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border rounded-lg" placeholder="مثال: باقي حساب فاتورة رقم 5" />
+                                        <textarea aria-label="بيان السداد" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border rounded-lg" placeholder="مثال: باقي حساب فاتورة رقم 5" />
                                     </div>
                                     <button type="submit" className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700">تسجيل السداد</button>
                                 </form>
@@ -496,7 +563,7 @@ export default function Finance() {
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="p-4 font-bold border-b bg-gray-50">سجل سداد الموردين</h3>
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">المورد</th><th className="p-3">البيان</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th></tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">المورد</th><th className="p-3">البيان</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th>{user?.role === 'admin' && <th className="p-3">إجراءات</th>}</tr></thead>
                                     <tbody>
                                         {transactions.filter(t => t.type === 'expense' && t.entityType === 'supplier').map(t => {
                                             const supName = suppliers.find(s => s.id === t.entityId)?.name || 'غير معروف';
@@ -517,16 +584,33 @@ export default function Finance() {
                                                                     setTransactions(updatedTx);
                                                                 }}
                                                                 className="text-[10px] bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded border border-gray-200 transition-colors"
+                                                                aria-label="تسجيل المعاملة"
                                                             >
                                                                 تسجيل
                                                             </button>
                                                         )}
                                                     </td>
+                                                    {user?.role === 'admin' && (
+                                                        <td className="p-3 text-center">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (!confirm(`هل أنت متأكد من حذف هذه المعاملة؟\n${t.description} - ${t.amount} ج.م`)) return;
+                                                                    await db.deleteTransaction(t.id);
+                                                                    const updatedTx = await db.getTransactions();
+                                                                    setTransactions(updatedTx);
+                                                                }}
+                                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                                title="حذف"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             );
                                         })}
                                         {transactions.filter(t => t.type === 'expense' && t.entityType === 'supplier').length === 0 && (
-                                            <tr><td colSpan={4} className="p-4 text-center text-gray-400">لا توجد سدادات مسجلة</td></tr>
+                                            <tr><td colSpan={user?.role === 'admin' ? 6 : 5} className="p-4 text-center text-gray-400">لا توجد سدادات مسجلة</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -546,22 +630,22 @@ export default function Finance() {
                                 <form onSubmit={handleAddDesignerPayment} className="space-y-4">
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">تاريخ المعاملة</label>
-                                        <input required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border rounded-lg" />
+                                        <input required type="date" aria-label="تاريخ الدفعة" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2 border rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">المصمم</label>
-                                        <select required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2 border rounded-lg">
+                                        <select required aria-label="اختر المصمم" value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2 border rounded-lg">
                                             <option value="">-- اختر المصمم --</option>
                                             {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">المبلغ المدفوع</label>
-                                        <input required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
+                                        <input required type="number" min="0" aria-label="المبلغ المدفوع" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2 border rounded-lg" />
                                     </div>
                                     <div>
                                         <label className="block text-sm text-gray-600 mb-1">بيان / ملاحظات</label>
-                                        <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border rounded-lg" placeholder="مثال: حساب الأسبوع" />
+                                        <textarea aria-label="بيان السداد" value={description} onChange={e => setDescription(e.target.value)} rows={2} className="w-full p-2 border rounded-lg" placeholder="مثال: حساب الأسبوع" />
                                     </div>
                                     <button type="submit" className="w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700">تسجيل السداد</button>
                                 </form>
@@ -571,7 +655,7 @@ export default function Finance() {
                             <div className="bg-white rounded-xl shadow-sm border border-gray-100">
                                 <h3 className="p-4 font-bold border-b bg-gray-50">سجل سداد المصممين</h3>
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">المصمم</th><th className="p-3">البيان</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th></tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50"><tr><th className="p-3">التاريخ</th><th className="p-3">المصمم</th><th className="p-3">البيان</th><th className="p-3">المبلغ</th><th className="p-3">تسجيل؟</th>{user?.role === 'admin' && <th className="p-3">إجراءات</th>}</tr></thead>
                                     <tbody>
                                         {transactions.filter(t => t.type === 'expense' && t.entityType === 'designer').map(t => {
                                             const desName = designers.find(d => d.id === t.entityId)?.name || 'غير معروف';
@@ -591,17 +675,33 @@ export default function Finance() {
                                                                     const updatedTx = await db.getTransactions();
                                                                     setTransactions(updatedTx);
                                                                 }}
-                                                                className="text-[10px] bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded border border-gray-200 transition-colors"
+                                                                aria-label="تسجيل المعاملة"
                                                             >
                                                                 تسجيل
                                                             </button>
                                                         )}
                                                     </td>
+                                                    {user?.role === 'admin' && (
+                                                        <td className="p-3 text-center">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    if (!confirm(`هل أنت متأكد من حذف هذه المعاملة؟\n${t.description} - ${t.amount} ج.م`)) return;
+                                                                    await db.deleteTransaction(t.id);
+                                                                    const updatedTx = await db.getTransactions();
+                                                                    setTransactions(updatedTx);
+                                                                }}
+                                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                                title="حذف"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             );
                                         })}
                                         {transactions.filter(t => t.type === 'expense' && t.entityType === 'designer').length === 0 && (
-                                            <tr><td colSpan={4} className="p-4 text-center text-gray-400">لا توجد سدادات مسجلة</td></tr>
+                                            <tr><td colSpan={user?.role === 'admin' ? 6 : 5} className="p-4 text-center text-gray-400">لا توجد سدادات مسجلة</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -621,7 +721,7 @@ export default function Finance() {
                                 <form ref={serviceFormRef} onSubmit={async (e) => {
                                     e.preventDefault();
                                     const formData = new FormData(e.currentTarget);
-                                    const name = formData.get('name') as string;
+                                    const name = formData.get('name')?.toString() || '';
                                     const sellingPrice = Number(formData.get('sellingPrice'));
                                     const costPrice = Number(formData.get('costPrice'));
                                     const millingPrice = Number(formData.get('millingPrice')) || 0;

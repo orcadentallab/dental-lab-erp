@@ -1,26 +1,48 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
 import OrderForm from '../components/orders/OrderForm';
 import { db } from '../services/db';
+import type { Order, Doctor, Supplier, User } from '../services/db';
 import { Plus, X, Search, Filter, Send, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcelWithHeaders, printTable } from '../lib/exportUtils';
 
 export default function Orders() {
     const { user } = useAuth();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
+    // Highlighted order from dashboard navigation
+    const highlightedOrderId = searchParams.get('highlight');
+
+    // Clear highlight after 5 seconds
+    useEffect(() => {
+        if (highlightedOrderId) {
+            const timer = setTimeout(() => {
+                setSearchParams({}, { replace: true });
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [highlightedOrderId, setSearchParams]);
+
+    const isDesigner = user?.role === 'designer';
+    const isAccountant = user?.role === 'accountant';
+
     // Data State
-    const [orders, setOrders] = useState<any[]>([]);
-    const [doctors, setDoctors] = useState<any[]>([]);
-    const [suppliers, setSuppliers] = useState<any[]>([]);
+    // Data State
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [users, setUsers] = useState<User[]>([]); // For Designer Filter
 
     // Filter State
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('');
+    const [designerFilter, setDesignerFilter] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
@@ -28,23 +50,29 @@ export default function Orders() {
     const [hideDelivered, setHideDelivered] = useState(false);
 
     // Edit State (Admin - Full Edit)
-    const [fullEditingOrder, setFullEditingOrder] = useState<any | null>(null);
+    const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
 
     // Note State (Chat Log)
-    const [noteEditingOrder, setNoteEditingOrder] = useState<any | null>(null);
+    const [noteEditingOrder, setNoteEditingOrder] = useState<Order | null>(null);
     const [newComment, setNewComment] = useState('');
+
+    // Design Link Modal State
+    const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
+    const [designLinkUrl, setDesignLinkUrl] = useState('');
 
     const refreshOrders = async () => {
         setIsLoading(true);
         try {
-            const [ordersData, doctorsData, suppliersData] = await Promise.all([
+            const [ordersData, doctorsData, suppliersData, usersData] = await Promise.all([
                 db.getOrders(),
                 db.getDoctors(),
-                db.getSuppliers()
+                db.getSuppliers(),
+                db.getUsers()
             ]);
             setOrders(ordersData);
             setDoctors(doctorsData);
             setSuppliers(suppliersData);
+            setUsers(usersData);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -59,7 +87,17 @@ export default function Orders() {
     // Filter Logic
     const rbacFilteredOrders = orders.filter(order => {
         if (user?.role === 'lab') {
+            // Prevent Lab from seeing Split orders until 'Under Production' ONLY IF a designer is assigned
+            // If it's a split order but NO designer is assigned (yet), they should see it to potentially flag it or just be aware.
+            const isSplitWithDesigner = order.workflowType === 'split' && order.designerId;
+            if (isSplitWithDesigner && !['Under Production', 'Try In', 'Try In Approved', 'Ready', 'Ready for Delivery', 'Delivered', 'Returned for Adjustments'].includes(order.status)) {
+                return false;
+            }
             return user.entityId && order.supplierId === user.entityId;
+        }
+
+        if (isDesigner) {
+            return order.workflowType === 'split' && order.designerId === user.id;
         }
 
         return true;
@@ -75,6 +113,7 @@ export default function Orders() {
 
         const matchesDoctor = doctorFilter ? order.doctorId === doctorFilter : true;
         const matchesSupplier = supplierFilter ? order.supplierId === supplierFilter : true;
+        const matchesDesigner = designerFilter ? order.designerId === designerFilter : true;
 
         // Date Logic
         let matchesDate = true;
@@ -99,10 +138,10 @@ export default function Orders() {
         // Hide Delivered/Rejected Check
         const matchesDelivered = hideDelivered ? (order.status !== 'Delivered' && order.status !== 'Returned for Adjustments' && order.technicianStatus !== 'Rejected') : true;
 
-        return matchesSearch && matchesStatus && matchesDoctor && matchesSupplier && matchesDelivered && matchesDate;
+        return matchesSearch && matchesStatus && matchesDoctor && matchesSupplier && matchesDesigner && matchesDelivered && matchesDate;
     });
 
-    const handleCreateOrder = async (orderData: any) => {
+    const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'createdAt'>) => {
         try {
             await db.addOrder(orderData);
             setIsFormOpen(false);
@@ -112,7 +151,7 @@ export default function Orders() {
         }
     };
 
-    const handleUpdateOrder = async (orderData: any) => {
+    const handleUpdateOrder = async (orderData: Partial<Order>) => {
         if (!fullEditingOrder) return;
         try {
             await db.updateOrder(fullEditingOrder.id, orderData);
@@ -123,21 +162,22 @@ export default function Orders() {
         }
     };
 
-    const handleStatusUpdate = async (id: string, status: string) => {
+    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same') => {
         if (status === 'same') {
             await refreshOrders();
             return;
         }
         try {
-            await db.updateOrder(id, { status: status as any });
+            await db.updateOrder(id, { status });
             await refreshOrders();
-        } catch (error: any) {
+            await refreshOrders();
+        } catch (error) {
             console.error('Error updating status:', error);
-            alert(`فشل تحديث الحالة: ${error.message || 'حدث خطأ غير متوقع'}`);
+            alert(`فشل تحديث الحالة: ${error instanceof Error ? error.message : 'حدث خطأ غير متوقع'}`);
         }
     };
 
-    const handleDeleteOrder = async (order: any) => {
+    const handleDeleteOrder = async (order: Order) => {
         try {
             await db.deleteOrder(order.id);
             // alert('Order deleted successfully');
@@ -148,11 +188,11 @@ export default function Orders() {
         }
     };
 
-    const openFullEdit = (order: any) => {
+    const openFullEdit = (order: Order) => {
         setFullEditingOrder(order);
     };
 
-    const openAddNote = (order: any) => {
+    const openAddNote = (order: Order) => {
         setNoteEditingOrder(order);
         setNewComment('');
     };
@@ -174,11 +214,49 @@ export default function Orders() {
 
         try {
             await db.updateOrder(noteEditingOrder.id, { comments: updatedComments });
-            setNoteEditingOrder((prev: any) => ({ ...prev, comments: updatedComments }));
+            setNoteEditingOrder((prev) => prev ? ({ ...prev, comments: updatedComments }) : null);
             setNewComment('');
             await refreshOrders();
         } catch (error) {
             console.error('Error adding comment:', error);
+        }
+    };
+
+    // Design Link Update Logic
+    const openDesignLinkModal = (order: Order) => {
+        setDesignLinkOrder(order);
+        setDesignLinkUrl(order.designUrl || '');
+    };
+
+    const handleUpdateDesignUrl = async () => {
+        if (!designLinkOrder) return;
+
+        try {
+            await db.updateOrder(designLinkOrder.id, {
+                designUrl: designLinkUrl,
+                status: 'Waiting Dr Approval', // Auto-transition
+                designStatus: 'waiting_approval' // Update internal design status too
+            });
+
+            // Add System Comment with the link
+            const timestamp = new Date().toISOString();
+            const commentObj = {
+                id: Math.random().toString(36).substr(2, 9),
+                text: `🔗 تم إضافة/تحديث رابط التصميم:\n${designLinkUrl}`,
+                userId: user?.id || 'system',
+                userName: user?.name || 'System',
+                createdAt: timestamp
+            };
+            const updatedComments = [...(designLinkOrder.comments || []), commentObj];
+            await db.updateOrder(designLinkOrder.id, { comments: updatedComments });
+
+            setDesignLinkOrder(null);
+            setDesignLinkUrl('');
+            await refreshOrders();
+            // alert('Design link updated and status set to Waiting Approval');
+        } catch (error) {
+            console.error('Error updating design link:', error);
+            alert('Failed to update design link');
         }
     };
 
@@ -203,7 +281,7 @@ export default function Orders() {
                     <h1 className="text-2xl font-bold text-gray-800">إدارة الأوردرات</h1>
                     <p className="text-gray-500 mt-1">إنشاء ومتابعة طلبات المعمل</p>
                 </div>
-                {(user?.role === 'admin' || user?.role === 'representative') && (
+                {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
                     <button
                         onClick={() => setIsFormOpen(true)}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
@@ -219,14 +297,23 @@ export default function Orders() {
                                 onClick={() => {
                                     const exportData = filteredOrders.map(order => ({
                                         'رقم الحالة': order.caseId,
-                                        'الطبيب': doctors.find((d: any) => d.id === order.doctorId)?.name || '-',
+                                        'الطبيب': doctors.find(d => d.id === order.doctorId)?.name || '-',
                                         'المريض': order.patientName,
                                         'الحالة': order.status,
                                         'السعر': order.totalPrice,
                                         'تاريخ التسليم': order.deliveryDate,
                                         'الأولوية': order.priority === 'Urgent' ? 'عاجل' : 'عادي'
                                     }));
-                                    exportToExcelWithHeaders(exportData, {} as any, `orders_${new Date().toISOString().split('T')[0]}`);
+                                    const headers = {
+                                        'رقم الحالة': 'رقم الحالة',
+                                        'الطبيب': 'الطبيب',
+                                        'المريض': 'المريض',
+                                        'الحالة': 'الحالة',
+                                        'السعر': 'السعر',
+                                        'تاريخ التسليم': 'تاريخ التسليم',
+                                        'الأولوية': 'الأولوية'
+                                    };
+                                    exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
                                 }}
                                 className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-xl hover:bg-green-700 transition-colors"
                                 title="تصدير Excel"
@@ -239,7 +326,7 @@ export default function Orders() {
                                     printTable(
                                         filteredOrders.map(order => ({
                                             caseId: order.caseId,
-                                            doctor: doctors.find((d: any) => d.id === order.doctorId)?.name || '-',
+                                            doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
                                             patient: order.patientName,
                                             status: order.status,
                                             price: order.totalPrice,
@@ -305,6 +392,7 @@ export default function Orders() {
                             className="appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer min-w-[160px]"
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
+                            aria-label="تصفية حسب الحالة"
                         >
                             <option value="">🧩 كل الحالات</option>
                             <option value="New Case">✨ New Case</option>
@@ -316,6 +404,7 @@ export default function Orders() {
                             <option value="Ready">📦 Ready</option>
                             <option value="Delivered">🚚 Delivered</option>
                             <option value="Returned for Adjustments">↩️ Returned</option>
+                            <option value="Rejected">❌ Rejected</option>
                         </select>
                         <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
                     </div>
@@ -327,6 +416,7 @@ export default function Orders() {
                                 className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer max-w-[180px]"
                                 value={doctorFilter}
                                 onChange={(e) => setDoctorFilter(e.target.value)}
+                                aria-label="تصفية حسب الطبيب"
                             >
                                 <option value="">👨‍⚕️ كل الأطباء</option>
                                 {doctors.map(doc => (
@@ -338,10 +428,23 @@ export default function Orders() {
                                 className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer max-w-[180px]"
                                 value={supplierFilter}
                                 onChange={(e) => setSupplierFilter(e.target.value)}
+                                aria-label="تصفية حسب المورد"
                             >
                                 <option value="">🏢 كل الموردين</option>
                                 {suppliers.map(sup => (
                                     <option key={sup.id} value={sup.id}>{sup.name}</option>
+                                ))}
+                            </select>
+
+                            <select
+                                className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer max-w-[180px]"
+                                value={designerFilter}
+                                onChange={(e) => setDesignerFilter(e.target.value)}
+                                aria-label="تصفية حسب المصمم"
+                            >
+                                <option value="">🎨 كل المصممين</option>
+                                {users.filter(u => u.role === 'designer').map(des => (
+                                    <option key={des.id} value={des.id}>{des.name}</option>
                                 ))}
                             </select>
                         </>
@@ -354,6 +457,7 @@ export default function Orders() {
                             type="date"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
+                            aria-label="تاريخ البداية"
                             className="bg-transparent text-sm focus:outline-none text-gray-700"
                         />
                     </div>
@@ -364,14 +468,15 @@ export default function Orders() {
                             type="date"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
+                            aria-label="تاريخ النهاية"
                             className="bg-transparent text-sm focus:outline-none text-gray-700"
                         />
                     </div>
 
                     {/* Reset Button */}
-                    {(searchQuery || statusFilter || doctorFilter || supplierFilter || startDate || endDate) && (
+                    {(searchQuery || statusFilter || doctorFilter || supplierFilter || designerFilter || startDate || endDate) && (
                         <button
-                            onClick={() => { setSearchQuery(''); setStatusFilter(''); setDoctorFilter(''); setSupplierFilter(''); setStartDate(''); setEndDate(''); }}
+                            onClick={() => { setSearchQuery(''); setStatusFilter(''); setDoctorFilter(''); setSupplierFilter(''); setDesignerFilter(''); setStartDate(''); setEndDate(''); }}
                             className="text-red-500 text-sm font-medium hover:bg-red-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-red-100"
                         >
                             مسح الفلتر ✕
@@ -387,6 +492,8 @@ export default function Orders() {
                 onEdit={openFullEdit}
                 onAddNote={openAddNote}
                 onDelete={handleDeleteOrder}
+                onUpdateDesignUrl={openDesignLinkModal}
+                highlightedOrderId={highlightedOrderId}
             />
 
             {/* Create New Order Modal */}
@@ -397,7 +504,7 @@ export default function Orders() {
                             <div className="p-6">
                                 <div className="flex justify-between items-center mb-6">
                                     <h2 className="text-xl font-bold text-gray-800">إنشاء أوردر جديد</h2>
-                                    <button onClick={() => setIsFormOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                    <button onClick={() => setIsFormOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                         <X size={24} />
                                     </button>
                                 </div>
@@ -419,7 +526,7 @@ export default function Orders() {
                                         <h2 className="text-xl font-bold text-gray-800">تعديل الأوردر</h2>
                                         <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-mono">#{fullEditingOrder.caseId}</span>
                                     </div>
-                                    <button onClick={() => setFullEditingOrder(null)} className="text-gray-400 hover:text-gray-600">
+                                    <button onClick={() => setFullEditingOrder(null)} className="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                         <X size={24} />
                                     </button>
                                 </div>
@@ -448,7 +555,7 @@ export default function Orders() {
                                     </h3>
                                     <p className="text-xs text-gray-500">الحالة #{noteEditingOrder.caseId}</p>
                                 </div>
-                                <button onClick={() => setNoteEditingOrder(null)}><X className="text-gray-400 hover:text-red-500" /></button>
+                                <button onClick={() => setNoteEditingOrder(null)} aria-label="إغلاق"><X className="text-gray-400 hover:text-red-500" /></button>
                             </div>
 
                             {/* Chat Area */}
@@ -463,7 +570,7 @@ export default function Orders() {
 
                                 {/* Comments Log */}
                                 {noteEditingOrder.comments && noteEditingOrder.comments.length > 0 ? (
-                                    noteEditingOrder.comments.map((comment: any) => (
+                                    noteEditingOrder.comments.map((comment) => (
                                         <div key={comment.id} className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
                                             <div className="flex justify-between items-center mb-1">
                                                 <span className="text-xs font-bold text-blue-600">{comment.userName}</span>
@@ -485,6 +592,7 @@ export default function Orders() {
                                         className="flex-1 p-3 border border-gray-200 rounded-lg h-20 focus:ring-2 focus:ring-blue-100 outline-none resize-none text-sm"
                                         value={newComment}
                                         onChange={e => setNewComment(e.target.value)}
+                                        aria-label="اكتب ملاحظة"
                                         placeholder="اكتب ملاحظاتك هنا..."
                                         onKeyDown={e => {
                                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -497,8 +605,49 @@ export default function Orders() {
                                         onClick={handleAddComment}
                                         className="px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center transition-colors"
                                         disabled={!newComment.trim()}
+                                        aria-label="إرسال الملاحظة"
                                     >
                                         <Send size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+            {/* Design Link Modal */}
+            {
+                designLinkOrder && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+                            <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+                                <h3 className="font-bold text-gray-800">إضافة رابط التصميم</h3>
+                                <button onClick={() => setDesignLinkOrder(null)} aria-label="إغلاق"><X size={20} className="text-gray-400" /></button>
+                            </div>
+                            <div className="p-6">
+                                <label className="block text-sm font-bold text-gray-700 mb-2">رابط الملف (Google Drive / Dropbox)</label>
+                                <input
+                                    type="url"
+                                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dir-ltr mb-4"
+                                    placeholder="https://..."
+                                    value={designLinkUrl}
+                                    onChange={e => setDesignLinkUrl(e.target.value)}
+                                />
+                                <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-800 mb-6">
+                                    ℹ️ عند الحفظ، سيتم تحديث حالة الأوردر تلقائياً إلى "Waiting Dr Approval" وإبلاغ الطبيب.
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={handleUpdateDesignUrl}
+                                        className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 transition"
+                                    >
+                                        حفظ وإرسال
+                                    </button>
+                                    <button
+                                        onClick={() => setDesignLinkOrder(null)}
+                                        className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-bold hover:bg-gray-200 transition"
+                                    >
+                                        إلغاء
                                     </button>
                                 </div>
                             </div>

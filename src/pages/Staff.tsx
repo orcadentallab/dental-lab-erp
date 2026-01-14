@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/db';
 import type { User, Transaction } from '../services/db';
 import { useAuth } from '../context/AuthContext';
-import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, MapPin } from 'lucide-react';
+import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, MapPin, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 // Helper: Calculate Commission Rate
@@ -32,13 +32,15 @@ interface RepresentativeStats {
     commissionAmount: number;
     approvedExpenses: number; // Pending Payout
     netPayout: number;
+    isSalaryPaid?: boolean;
 }
 
 export default function Staff() {
     const { user: currentUser } = useAuth();
     const [stats, setStats] = useState<RepresentativeStats[]>([]);
     const [expenses, setExpenses] = useState<Transaction[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+
+    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
     // KPI State
     const [kpiMap, setKpiMap] = useState<Record<string, number>>({});
@@ -48,8 +50,7 @@ export default function Staff() {
     const [newExpense, setNewExpense] = useState({ amount: '', description: '', category: '' });
 
     // Load Data
-    const loadData = async () => {
-        setIsLoading(true);
+    const loadData = useCallback(async () => {
         try {
             const [allUsers, allOrders, allTransactions] = await Promise.all([
                 db.getUsers(),
@@ -57,11 +58,14 @@ export default function Staff() {
                 db.getTransactions()
             ]);
 
-            const representatives = allUsers.filter(u => u.role === 'representative');
+            // Representatives = role='representative' OR (role='admin' AND username !== 'admin')
+            // Super Admin (username='admin') is excluded
+            const representatives = allUsers.filter(u =>
+                u.role === 'representative' ||
+                (u.role === 'admin' && u.username !== 'admin')
+            );
 
-            // Filter expenses related to staff (conceptually)
-            // We assume transactions with type 'expense' and entity_type 'representative' (we need to ensure we use this type)
-            // Or we check if entityId matches a representative ID.
+            // Filter expenses related to staff (reps + admins)
             const staffExpenses = allTransactions.filter(t =>
                 t.type === 'expense' &&
                 representatives.some(r => r.id === t.entityId)
@@ -70,13 +74,14 @@ export default function Staff() {
             setExpenses(staffExpenses);
 
             const newStats = representatives.map(rep => {
+                // Filter Orders by Selected Month for Sales/Commission
                 const repOrders = allOrders.filter(o =>
                     o.representativeId === rep.id &&
-                    ['Completed', 'Delivered'].includes(o.status)
+                    ['Completed', 'Delivered'].includes(o.status) &&
+                    o.createdAt.startsWith(selectedMonth) // Simple string match for YYYY-MM
                 );
 
                 const totalSales = repOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-
                 const baseSalary = rep.baseSalary || 0;
                 const fixedPart = baseSalary * (2 / 3);
 
@@ -86,29 +91,20 @@ export default function Staff() {
                 const rate = getCommissionRate(totalSales);
                 const commission = totalSales * rate;
 
-                // Approved but NOT Registered (Settled) expenses
-                // In Transactions, we use 'isRegistered' to mark as settled/processed by accountant?
-                // Or we can add a 'status' field to Transaction? 
-                // Creating a convention: For staff expenses, we used 'status' in Expense interface.
-                // Transaction doesn't have 'status'.
-                // We will use 'isRegistered' to mean "Settled/Paid Out".
-                // But we need "Approved" vs "Pending".
-                // We'll treat all transactions as "Approved" for now unless we add a status field to DB.
-                // Or we can use `description` prefix "[Pending]"? No, that's hacky.
-                // Let's assume for this migration that all created expenses are 'Approved' immediately 
-                // OR we can't support the approval flow without schema change.
-                // DECISION: To keep "Pending/Approved/Rejected" flow, we need a column. 
-                // But user wants "Zero build errors".
-                // Existing `Transaction` has `isRegistered`. 
-                // Let's assume all inputs are valid expenses. We drop the approval flow for now or auto-approve.
-                // OR we use the `category` to flag status? No.
-                // We will auto-approve for now to simplify async migration (User: "Ensure all components correctly handle async").
-                // If I remove approval logic, I change feature set.
-                // I'll stick to: Created = Approved, isRegistered = Paid Out.
-
+                // Pending Expenses (All time, or just this month? Usually all pending need distinct settlement)
+                // We keep expenses cumulative as they are irrelevant to the month of Salary
+                // Only count APPROVED expenses (awaiting settlement)
                 const unpaidExpenses = staffExpenses
-                    .filter(e => e.entityId === rep.id && !e.isRegistered)
+                    .filter(e => e.entityId === rep.id && e.isApproved && !e.isRegistered)
                     .reduce((sum, e) => sum + e.amount, 0);
+
+                // Check if Salary is already paid for this month
+                // Look for transaction: category='salaries', entityId=rep.id, date startsWith selectedMonth
+                const isSalaryPaid = allTransactions.some(t =>
+                    t.category === 'salaries' &&
+                    t.entityId === rep.id &&
+                    t.date.startsWith(selectedMonth)
+                );
 
                 return {
                     user: rep,
@@ -120,20 +116,21 @@ export default function Staff() {
                     commissionRate: rate,
                     commissionAmount: commission,
                     approvedExpenses: unpaidExpenses,
-                    netPayout: fixedPart + variablePart + commission + unpaidExpenses
+                    netPayout: fixedPart + variablePart + commission, // Salary Payout Only
+                    isSalaryPaid // New Flag
                 };
             });
             setStats(newStats);
         } catch (error) {
             console.error('Error loading staff data:', error);
         } finally {
-            setIsLoading(false);
+            // Loading finished
         }
-    };
+    }, [kpiMap, selectedMonth]);
 
     useEffect(() => {
         loadData();
-    }, [kpiMap, currentUser]);
+    }, [loadData]);
 
     // Handlers
     const handleKpiChange = (userId: string, val: string) => {
@@ -150,14 +147,11 @@ export default function Staff() {
                 type: 'expense',
                 amount: parseFloat(newExpense.amount),
                 description: newExpense.description,
-                date: new Date().toISOString(),
+                date: new Date().toISOString().split('T')[0],
                 category: newExpense.category || 'other',
                 entityId: currentUser.id,
-                entityType: 'general', // Using 'general' or we can add 'representative' to types if strict. 
-                // Schema has Check constraint? 'doctor', 'supplier', 'general', 'designer'. 
-                // So 'general' is safest or I need to alter schema.
-                // I'll use 'general' but entityId tracks the user.
-                isRegistered: false // Not Paid Out
+                entityType: 'general',
+                isRegistered: false
             });
 
             setNewExpense({ amount: '', description: '', category: '' });
@@ -168,61 +162,144 @@ export default function Staff() {
         }
     };
 
-    // Removed handleExpenseAction as we use auto-approve now.
+    // 1. Pay Monthly Salary
+    const handlePaySalary = async (stat: RepresentativeStats) => {
+        if (!confirm(`هل أنت متأكد من صرف راتب شهر ${selectedMonth} للمندوب ${stat.user.name}؟\nالمبلغ: ${stat.netPayout.toFixed(0)} ج.م`)) return;
 
-    const handleSettlePayout = async (stat: RepresentativeStats) => {
-        if (!confirm(`هل أنت متأكد من تسوية راتب ${stat.user.name} وصرف مبلغ ${stat.netPayout.toFixed(0)} ج.م؟\nسيتم تسجيل المعاملات في المالية.`)) return;
+        // Or use selectedMonth + '-01'? No, payment date is now.
+        // But we want to tag it as belonging to selectedMonth. We can put it in description.
 
-        const date = new Date().toISOString();
-
-        // 1. Record Salary + Commission (Fixed + Variable + Commission)
-        const salaryTotal = stat.fixedSalary + stat.variableSalary + stat.commissionAmount;
-        if (salaryTotal > 0) {
+        try {
             await db.addTransaction({
                 type: 'expense',
-                amount: salaryTotal,
+                amount: stat.netPayout,
                 category: 'salaries',
-                description: `راتب وعمولة شهرية - ${stat.user.name}`,
-                date,
+                description: `راتب شهر ${selectedMonth} - ${stat.user.name}`,
+                date: selectedMonth + '-01', // Force date to be 1st of selected month for easy checking? 
+                // Better: Use real date, but check is done by finding *any* salary tx in that month range? 
+                // Or we store 'reference_month' in metadata? We don't have metadata column.
+                // Let's rely on the record Date being in that month. 
+                // Wait, if I pay January salary in February, the transaction date is Feb.
+                // But I check `t.date.startsWith(selectedMonth)`. 
+                // So I MUST set the transaction date to be within the payroll month to "lock" it.
+                // OR I rely on Description parsing. 
+                // Let's set the date to the END of the payroll month (or 1st) to ensure it appears in that month's filter.
+                // User requirement: "Filter by month... get salary status".
+                // If I set date to '2023-10-28' (payment date) but salary is for '2023-09', it won't show as paid in Sept view if I filter by date.
+                // TRADEOFF: Set transaction date to the selected month (e.g., 28th of selected month) so it registers as "Paid" for that month.
+                entityId: stat.user.id,
                 entityType: 'general',
-                isRegistered: true // Marked as paid/registered immediately
+                isRegistered: true
             });
+
+            await loadData();
+            alert('تم صرف الراتب بنجاح ✅');
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء صرف الراتب');
         }
+    };
 
-        // 2. Mark Expenses as Settled (isRegistered = true)
-        const repExpenses = expenses.filter(e => e.entityId === stat.user.id && !e.isRegistered);
+    // 2. Settle Expenses
+    const handleSettleExpenses = async (stat: RepresentativeStats) => {
+        // Only settle APPROVED expenses
+        const approvedExpenses = expenses.filter(e => e.entityId === stat.user.id && e.isApproved && !e.isRegistered);
+        if (approvedExpenses.length === 0) {
+            alert('لا توجد مصاريف معتمدة للتسوية');
+            return;
+        }
+        const totalAmount = approvedExpenses.reduce((sum, e) => sum + e.amount, 0);
+        if (!confirm(`هل أنت متأكد من تسوية المصاريف المعتمدة للمندوب ${stat.user.name}؟\nعدد المصاريف: ${approvedExpenses.length}\nالمبلغ الإجمالي: ${totalAmount.toFixed(0)} ج.م`)) return;
 
-        // Parallel update
-        await Promise.all(repExpenses.map(exp =>
-            db.updateTransaction(exp.id, { isRegistered: true })
-        ));
+        try {
+            // Clear entityId to move it out of "staff expenses" and into "general expenses" for accountant to register
+            // Append Rep Name to description for attribution
+            await Promise.all(approvedExpenses.map(exp =>
+                db.updateTransaction(exp.id, {
+                    entityId: undefined, // Clear entityId - no longer a "staff" expense
+                    description: `${exp.description} - ${stat.user.name}`
+                })
+            ));
 
-        alert('تم تسوية الراتب وتسجيل المصروفات بنجاح ✅');
-        await loadData();
+            await loadData();
+            alert('تم تسوية المصاريف بنجاح ✅');
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء تسوية المصاريف');
+        }
+    };
+
+    // 3. Approve Individual Expense
+    const handleApproveExpense = async (expense: Transaction) => {
+        try {
+            await db.updateTransaction(expense.id, { isApproved: true });
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء اعتماد المصروف');
+        }
+    };
+
+    // 4. Reject (Delete) Expense
+    const handleRejectExpense = async (expense: Transaction) => {
+        if (!confirm(`هل أنت متأكد من رفض وحذف هذا المصروف؟\n${expense.description} - ${expense.amount} ج.م`)) return;
+        try {
+            await db.deleteTransaction(expense.id);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء حذف المصروف');
+        }
+    };
+
+    // 5. Delete Any Transaction (Admin Only)
+    const handleDeleteTransaction = async (tx: Transaction) => {
+        if (!confirm(`هل أنت متأكد من حذف هذه العملية المالية؟\n${tx.description} - ${tx.amount} ج.م`)) return;
+        try {
+            await db.deleteTransaction(tx.id);
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء حذف العملية');
+        }
     };
 
     const isAdminOrAccountant = ['admin', 'accountant'].includes(currentUser?.role || '');
-    const isRep = currentUser?.role === 'representative';
+    const isAdmin = currentUser?.role === 'admin';
+    const isRep = currentUser?.role === 'representative' || (currentUser?.role === 'admin' && currentUser?.username !== 'admin');
 
     if (!currentUser) return null;
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">شؤون الموظفين والرواتب</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">شئون الموظفين والرواتب</h1>
                     <p className="text-gray-500">إدارة الرواتب، العمولات، والمصاريف</p>
-                    {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري التحديث...</span>}
                 </div>
-                {isRep && (
-                    <button
-                        onClick={() => setIsExpenseModalOpen(true)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
-                    >
-                        <Plus size={20} />
-                        تسجيل مصروف
-                    </button>
-                )}
+                <div className="flex items-center gap-4">
+                    {isAdminOrAccountant && (
+                        <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
+                            <span className="text-sm text-gray-500 font-bold">شهر:</span>
+                            <input
+                                type="month"
+                                aria-label="اختر الشهر"
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="border-none focus:ring-0 text-sm font-bold text-blue-600"
+                            />
+                        </div>
+                    )}
+                    {isRep && (
+                        <button
+                            onClick={() => setIsExpenseModalOpen(true)}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                        >
+                            <Plus size={20} />
+                            تسجيل مصروف
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Admin/Accountant View */}
@@ -233,7 +310,7 @@ export default function Staff() {
                         <div className="p-4 border-b border-gray-100 bg-gray-50">
                             <h2 className="font-bold text-gray-700 flex items-center gap-2">
                                 <DollarSign size={18} />
-                                كشف رواتب المندوبين
+                                كشف رواتب المندوبين ({selectedMonth})
                             </h2>
                         </div>
                         <div className="overflow-x-auto">
@@ -241,12 +318,13 @@ export default function Staff() {
                                 <thead className="bg-gray-50 text-gray-600 text-sm">
                                     <tr>
                                         <th className="p-4">المندوب</th>
-                                        <th className="p-4">المبيعات</th>
+                                        <th className="p-4">المبيعات (ش)</th>
                                         <th className="p-4">الأساسي</th>
                                         <th className="p-4">الثابت / المتغير</th>
                                         <th className="p-4">العمولة</th>
-                                        <th className="p-4">مصاريف مستحقة</th>
-                                        <th className="p-4">الإجمالي المستحق</th>
+                                        <th className="p-4">الراتب المستحق</th>
+                                        <th className="p-4">حالة الراتب</th>
+                                        <th className="p-4">مصاريف معلقة</th>
                                         <th className="p-4">إجراءات</th>
                                     </tr>
                                 </thead>
@@ -258,17 +336,20 @@ export default function Staff() {
                                             <td className="p-4 text-gray-500">{stat.baseSalary.toLocaleString()}</td>
                                             <td className="p-4 text-xs">
                                                 <div>ث: {stat.fixedSalary.toFixed(0)}</div>
-                                                <div className="flex items-center gap-1 mt-1">
-                                                    <span>م:</span>
-                                                    <input
-                                                        type="number"
-                                                        min="0" max="100"
-                                                        value={stat.kpiPercent}
-                                                        onChange={(e) => handleKpiChange(stat.user.id, e.target.value)}
-                                                        className="w-12 px-1 py-0.5 border rounded text-center text-xs"
-                                                    />
-                                                    <span>%</span>
-                                                </div>
+                                                {!stat.isSalaryPaid && (
+                                                    <div className="flex items-center gap-1 mt-1">
+                                                        <span>م:</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0" max="100"
+                                                            value={stat.kpiPercent}
+                                                            onChange={(e) => handleKpiChange(stat.user.id, e.target.value)}
+                                                            aria-label="نسبة المتغير"
+                                                            className="w-12 px-1 py-0.5 border rounded text-center text-xs"
+                                                        />
+                                                        <span>%</span>
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="p-4 text-green-600">
                                                 <div className="flex flex-col text-xs">
@@ -276,17 +357,38 @@ export default function Staff() {
                                                     <span className="text-gray-400">{(stat.commissionRate * 100).toFixed(0)}%</span>
                                                 </div>
                                             </td>
-                                            <td className="p-4 text-orange-600 font-bold">{stat.approvedExpenses.toFixed(0)}</td>
-                                            <td className="p-4 font-bold text-blue-600 text-lg">{stat.netPayout.toFixed(0)} ج.م</td>
+                                            <td className="p-4 font-bold text-blue-600">
+                                                {stat.netPayout.toFixed(0)} ج.م
+                                            </td>
                                             <td className="p-4">
-                                                <button
-                                                    onClick={() => handleSettlePayout(stat)}
-                                                    className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-green-700"
-                                                    title="صرف الراتب وتسجيل المصاريف"
-                                                >
-                                                    <Wallet size={14} />
-                                                    صرف وتسوية
-                                                </button>
+                                                {stat.isSalaryPaid ? (
+                                                    <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">مدفوع</span>
+                                                ) : (
+                                                    <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">غير مدفوع</span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-orange-600 font-bold">
+                                                {stat.approvedExpenses.toFixed(0)}
+                                            </td>
+                                            <td className="p-4 flex flex-col gap-2">
+                                                {!stat.isSalaryPaid && stat.netPayout > 0 && (
+                                                    <button
+                                                        onClick={() => handlePaySalary(stat)}
+                                                        className="flex items-center justify-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-green-700"
+                                                    >
+                                                        <Wallet size={14} />
+                                                        صرف الراتب
+                                                    </button>
+                                                )}
+                                                {stat.approvedExpenses > 0 && (
+                                                    <button
+                                                        onClick={() => handleSettleExpenses(stat)}
+                                                        className="flex items-center justify-center gap-1 bg-orange-500 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-orange-600"
+                                                    >
+                                                        <DollarSign size={14} />
+                                                        تسوية المصاريف
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -311,32 +413,65 @@ export default function Staff() {
                                     .filter(e => !e.isRegistered)
                                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                     .map(expense => {
-                                        // Fetch user (we might need to store users list in state to find name efficiently)
-                                        // For now, assuming expense has entityId which is user id
-                                        // We will just show "المندوب" if we don't have the list handy in this scope, 
-                                        // BUT loadData fetches users. We should store users in state.
-                                        // Simplification: just show description/amount
                                         const cat = expenseCategories.find(c => c.label === expense.category);
                                         const Icon = cat?.icon || Banknote;
+                                        const isPending = !expense.isApproved;
+                                        const isApproved = expense.isApproved && !expense.isRegistered;
 
                                         return (
                                             <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
                                                 <div className="flex items-center gap-4">
-                                                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600">
+                                                    <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isPending ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600")}>
                                                         <Icon size={20} />
                                                     </div>
                                                     <div>
                                                         <div className="flex items-center gap-2">
-                                                            {/* <p className="font-bold text-gray-900">{requester?.name || 'مستخدم'}</p> */}
                                                             <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
                                                         </div>
                                                         <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-3">
                                                     <span className="font-bold text-lg">{expense.amount} ج.م</span>
-                                                    {/* Removed Approve/Reject buttons as we auto-approve */}
-                                                    <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded">معتمد تلقائي</span>
+
+                                                    {/* Status Badge */}
+                                                    {isPending && (
+                                                        <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
+                                                    )}
+                                                    {isApproved && (
+                                                        <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
+                                                    )}
+
+                                                    {/* Action Buttons */}
+                                                    {isPending && (
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                onClick={() => handleApproveExpense(expense)}
+                                                                className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                                                                title="اعتماد المصروف"
+                                                            >
+                                                                <CheckCircle size={18} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleRejectExpense(expense)}
+                                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                                title="رفض وحذف المصروف"
+                                                            >
+                                                                <XCircle size={18} />
+                                                            </button>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Admin Delete Button for Approved Expenses */}
+                                                    {isApproved && isAdmin && (
+                                                        <button
+                                                            onClick={() => handleDeleteTransaction(expense)}
+                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                            title="حذف المصروف"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         );

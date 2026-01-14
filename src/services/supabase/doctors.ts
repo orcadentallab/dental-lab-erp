@@ -68,7 +68,7 @@ export async function addDoctor(doctor: Omit<Doctor, 'id'>): Promise<Doctor> {
     // Validate input
     try {
         DoctorCreateSchema.parse(doctor);
-    } catch (error: any) {
+    } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
 
@@ -97,7 +97,7 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     if (Object.keys(updates).length > 0) {
         try {
             DoctorUpdateSchema.parse({ id, ...updates });
-        } catch (error: any) {
+        } catch (error: unknown) {
             throw new ValidationError(formatValidationError(error));
         }
     }

@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
+import { useState, useEffect, useRef } from 'react';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
-    Trash2, History, CheckCircle
+    Trash2, History
 } from 'lucide-react';
-import { format } from 'date-fns'; // Also missing? Let me check usages later. "format" was used.
-import { ar } from 'date-fns/locale';
 import OrderHistoryModal from './OrderHistoryModal';
 import { db } from '../../services/db';
-import type { Order } from '../../services/db';
+import type { Order, OrderHistoryEntry } from '../../services/db';
 import clsx from 'clsx';
 import { getTechStatusBadge, checkIsLate } from '../../utils/orderUtils';
 
@@ -18,15 +17,17 @@ interface OrderCardProps {
     suppliers: Record<string, string>;
     users: Record<string, string>;
     userRole?: string;
-    onStatusChange: (id: string, status: string) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same') => void;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
+    onUpdateDesignUrl?: (order: Order) => void;
     onTechAction?: (id: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => void;
     onRequestRedo?: (order: Order) => void;
     onFeedback?: (order: Order) => void;
     onRegister?: (id: string) => void;
     hideSensitiveInfo?: boolean;
     onDelete?: (order: Order) => void;
+    isHighlighted?: boolean;
 }
 
 export default function OrderCard({
@@ -38,17 +39,27 @@ export default function OrderCard({
     onStatusChange,
     onEdit,
     onAddNote,
+    onUpdateDesignUrl,
     onTechAction,
     hideSensitiveInfo,
-    onDelete
+    onDelete,
+    onRegister,
+    isHighlighted = false
 }: OrderCardProps) {
 
     const isLate = checkIsLate(order);
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (isHighlighted && cardRef.current) {
+            cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [isHighlighted]);
 
     // History State
     const [showHistory, setShowHistory] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
-    const [historyData, setHistoryData] = useState<any[]>([]);
+    const [historyData, setHistoryData] = useState<OrderHistoryEntry[]>([]);
 
     const handleShowHistory = async () => {
         setShowHistory(true);
@@ -71,14 +82,17 @@ export default function OrderCard({
     const isReturnedOrRejected = order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected';
 
     return (
-        <div className={clsx(
-            "group relative border rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden bg-white dark:bg-gray-800",
-            order.status === 'Delivered'
-                ? 'border-green-200/60 dark:border-green-800'
-                : isReturnedOrRejected
-                    ? 'border-red-200/60 dark:border-red-800'
-                    : 'border-gray-200 dark:border-gray-700'
-        )}>
+        <div
+            ref={cardRef}
+            className={clsx(
+                "group relative border rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden bg-white dark:bg-gray-800",
+                isHighlighted ? 'ring-2 ring-blue-500 shadow-lg scale-[1.01] z-10' : '',
+                order.status === 'Delivered'
+                    ? 'border-green-200/60 dark:border-green-800'
+                    : isReturnedOrRejected
+                        ? 'border-red-200/60 dark:border-red-800'
+                        : 'border-gray-200 dark:border-gray-700'
+            )}>
             {/* Urgent Status Strip (Left Side) */}
             {(order.isUrgent || order.priority === 'Urgent') && (
                 <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-red-500 z-10" />
@@ -114,12 +128,47 @@ export default function OrderCard({
                                 {order.deliveryType === 'Final' ? '✨ Final' : '🦷 Try In'}
                             </span>
                         )}
+                        {order.workflowType === 'split' && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700 border border-cyan-200 flex items-center gap-1">
+                                <Settings size={10} /> خراطة فقط
+                            </span>
+                        )}
                     </div>
 
                     {/* Right Side: Actions & Date */}
                     <div className="flex items-center gap-2">
                         {/* Header Actions - Wide & Colored */}
                         <div className="flex items-center gap-2">
+                            {/* Designer Action: Upload/Update Link */}
+                            {onUpdateDesignUrl && (userRole === 'designer' || userRole === 'admin' || userRole === 'lab') && (
+                                <button
+                                    onClick={() => onUpdateDesignUrl(order)}
+                                    className={clsx(
+                                        "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all shadow-sm",
+                                        order.designUrl
+                                            ? "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100" // Update style
+                                            : "bg-orange-600 text-white border border-orange-700 hover:bg-orange-700 shadow-orange-100" // Upload style (Prominent)
+                                    )}
+                                    title={order.designUrl ? "تحديث رابط التصميم" : "رفع رابط التصميم"}
+                                >
+                                    <LinkIcon size={14} />
+                                    <span>{order.designUrl ? 'تحديث الرابط' : 'رفع التصميم'}</span>
+                                </button>
+                            )}
+
+                            {order.designUrl && (
+                                <a
+                                    href={order.designUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-all shadow-sm ring-1 ring-orange-500/10"
+                                    title="Download Design"
+                                >
+                                    <LinkIcon size={14} />
+                                    <span>تحميل التصميم</span>
+                                </a>
+                            )}
+
                             {onAddNote && (
                                 <button
                                     onClick={() => onAddNote(order)}
@@ -198,6 +247,17 @@ export default function OrderCard({
                                     <Trash2 size={14} />
                                 </button>
                             )}
+
+                            {/* Registration Button - Admin/Accountant only, for delivered unregistered orders */}
+                            {(userRole === 'admin' || userRole === 'accountant') && onRegister && order.status === 'Delivered' && !order.isRegistered && (
+                                <button
+                                    onClick={() => onRegister(order.id)}
+                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 transition-all"
+                                    title="تسجيل في النظام الداخلي"
+                                >
+                                    <Check size={14} /> تسجيل
+                                </button>
+                            )}
                         </div>
 
                         <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
@@ -258,6 +318,12 @@ export default function OrderCard({
                                         )}
                                     </span>
                                 ))}
+                                {order.shade && (
+                                    <span className="inline-flex flex-col justify-center px-2 py-1 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50">
+                                        <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-bold uppercase tracking-wider">Shade</span>
+                                        <span className="text-xs font-bold text-yellow-800 dark:text-yellow-300">{order.shade}</span>
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -330,7 +396,7 @@ export default function OrderCard({
                         <div className="relative">
                             <select
                                 value={order.status || 'New Case'}
-                                onChange={(e) => onStatusChange(order.id, e.target.value)}
+                                onChange={(e) => onStatusChange(order.id, e.target.value as Order['status'])}
                                 className={clsx(
                                     "appearance-none pl-2 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none focus:ring-1 transition-all w-[140px]",
                                     order.status === 'Delivered'
@@ -338,6 +404,7 @@ export default function OrderCard({
                                         : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
                                 )}
                                 disabled={userRole === 'lab' && order.status === 'Delivered'}
+                                aria-label="تغيير حالة الطلب"
                             >
                                 <option value="New Case">✨ New Case</option>
                                 <option value="Under Design">🎨 Under Design</option>
@@ -348,6 +415,7 @@ export default function OrderCard({
                                 <option value="Ready">📦 Ready</option>
                                 <option value="Delivered">🚚 Delivered</option>
                                 <option value="Returned for Adjustments">↩️ Returned</option>
+                                <option value="Rejected">❌ Rejected</option>
                             </select>
                             <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-gray-400">
                                 <ChevronRight size={14} className="rotate-90" />
@@ -355,7 +423,7 @@ export default function OrderCard({
                         </div>
 
                         {/* Tech Actions */}
-                        {onTechAction && (userRole === 'technician' || userRole === 'admin' || userRole === 'lab') && (
+                        {onTechAction && (userRole === 'technician' || userRole === 'admin' || userRole === 'representative' || userRole === 'lab' || userRole === 'designer') && (
                             <div className="flex flex-wrap gap-2 items-center">
                                 <button
                                     onClick={() => onTechAction(order.id, 'Approved')}
@@ -408,7 +476,6 @@ export default function OrderCard({
                 onClose={() => setShowHistory(false)}
                 history={historyData}
                 isLoading={historyLoading}
-                orderId={order.id}
             />
         </div>
     );

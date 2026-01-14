@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Package, Star } from 'lucide-react';
-import type { Order } from '../../services/db';
+import type { Order, User } from '../../services/db';
 import { db } from '../../services/db';
 import clsx from 'clsx';
 import { generateCaseId } from '../../utils/caseId';
@@ -8,28 +8,30 @@ import OrderCard from './OrderCard';
 
 interface OrderListProps {
     orders: Order[];
-    onStatusChange: (id: string, status: string) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same') => void;
     userRole?: string;
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)
     onAddNote?: (order: Order) => void; // Add Note (Everyone)
+    onUpdateDesignUrl?: (order: Order) => void; // Update Design URL (Designer/Admin)
     onDelete?: (order: Order) => void;
+    highlightedOrderId?: string | null; // Order ID to highlight and scroll to
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onDelete }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
 
     // Feedback Modal State
     const [feedbackOrder, setFeedbackOrder] = useState<Order | null>(null);
-    const [feedbackData, setFeedbackData] = useState({ rating: 5, issues: [] as string[], notes: '', rootCause: 'Lab' });
+    const [feedbackData, setFeedbackData] = useState<{ rating: number; issues: string[]; notes: string; rootCause: 'Lab' | 'Doctor' | 'Scan' | 'Communication' }>({ rating: 5, issues: [], notes: '', rootCause: 'Lab' });
 
     // Filter/Privacy Logic
-    const hideSensitiveInfo = userRole === 'lab';
+    const hideSensitiveInfo = userRole === 'lab' || userRole === 'designer';
     const filteredOrders = orders || []; // Define filteredOrders
 
     const [usersMap, setUsersMap] = useState<Record<string, string>>({});
-    const [representatives, setRepresentatives] = useState<any[]>([]);
+    const [representatives, setRepresentatives] = useState<User[]>([]);
     const [selectedRepresentative, setSelectedRepresentative] = useState<string>('');
 
     useEffect(() => {
@@ -53,7 +55,9 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 allUsers.forEach(u => mapU[u.id] = u.name);
                 setUsersMap(mapU);
 
-                setRepresentatives(allUsers.filter(u => u.role === 'representative'));
+                setRepresentatives(allUsers.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
+
+                // Add Designers Map logic if needed for filters inside list, though handled above
             } catch (error) {
                 console.error('Error loading auxiliary data:', error);
             }
@@ -77,6 +81,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 if (order && order.status === 'New Case') {
                     await db.updateOrder(orderId, { status: 'Under Design' });
                 }
+            }
+
+            // Auto-Status Logic: If Rejected, mark order as Rejected
+            if (action === 'Rejected') {
+                await db.updateOrder(orderId, { status: 'Rejected' });
             }
 
             onStatusChange(orderId, 'same'); // Triggers refresh
@@ -146,7 +155,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 feedback: {
                     rating: feedbackData.rating,
                     issues: feedbackData.issues,
-                    rootCause: feedbackData.rootCause as any,
+                    rootCause: feedbackData.rootCause,
                     notes: feedbackData.notes,
                     createdAt: new Date().toISOString()
                 }
@@ -176,6 +185,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 <div className="flex justify-end px-2">
                     <select
                         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-label="Filter orders by representative"
                         value={selectedRepresentative}
                         onChange={(e) => setSelectedRepresentative(e.target.value)}
                     >
@@ -204,12 +214,14 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         onStatusChange={onStatusChange}
                         onEdit={onEdit}
                         onAddNote={onAddNote}
+                        onUpdateDesignUrl={onUpdateDesignUrl}
                         onTechAction={handleTechAction}
                         onRequestRedo={handleRequestRedo}
                         onFeedback={() => setFeedbackOrder(order)}
                         onRegister={handleRegister}
                         hideSensitiveInfo={hideSensitiveInfo}
                         onDelete={onDelete}
+                        isHighlighted={highlightedOrderId === order.id}
                     />
                 ))
             )}
@@ -234,6 +246,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                                         key={star}
                                         onClick={() => setFeedbackData({ ...feedbackData, rating: star })}
                                         className={clsx("transition-transform hover:scale-110", feedbackData.rating >= star ? "text-yellow-400 fill-yellow-400" : "text-gray-200 dark:text-gray-700")}
+                                        aria-label={`Rate ${star} stars`}
                                     >
                                         <Star size={32} />
                                     </button>
@@ -263,7 +276,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                             <div>
                                 <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-2">السبب الرئيسي (Root Cause)</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    {['Lab', 'Doctor', 'Scan', 'Communication'].map(cause => (
+                                    {(['Lab', 'Doctor', 'Scan', 'Communication'] as const).map(cause => (
                                         <label key={cause} className={clsx("flex items-center gap-2 p-2 border rounded-lg cursor-pointer transition-all", feedbackData.rootCause === cause ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700")}>
                                             <input
                                                 type="radio"

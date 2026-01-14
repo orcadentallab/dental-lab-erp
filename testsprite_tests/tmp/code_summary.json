@@ -1,0 +1,77 @@
+{
+    "tech_stack": [
+        "TypeScript",
+        "React",
+        "Vite",
+        "Supabase",
+        "TailwindCSS",
+        "React Router"
+    ],
+    "features": [
+        {
+            "name": "Authentication",
+            "description": "User login and authentication management",
+            "files": [
+                "src/pages/Login.tsx",
+                "src/context/AuthContext.tsx"
+            ],
+            "api_doc": {}
+        },
+        {
+            "name": "Dashboard",
+            "description": "Main dashboard showing key metrics and alerts",
+            "files": [
+                "src/pages/Dashboard.tsx",
+                "src/pages/DashboardNew.tsx",
+                "src/pages/DesignerDashboard.tsx"
+            ],
+            "api_doc": {}
+        },
+        {
+            "name": "Order Management",
+            "description": "Create, view, update, and manage dental lab orders",
+            "files": [
+                "src/pages/Orders.tsx",
+                "src/services/supabase/orders.ts"
+            ],
+            "api_doc": {}
+        },
+        {
+            "name": "Doctor Management",
+            "description": "Manage doctor profiles and details",
+            "files": [
+                "src/pages/Doctors.tsx",
+                "src/services/supabase/doctors.ts"
+            ],
+            "api_doc": {}
+        },
+        {
+            "name": "Finance & Accounting",
+            "description": "Manage transactions, accounts, and financial reports",
+            "files": [
+                "src/pages/Finance.tsx",
+                "src/pages/Accounts.tsx",
+                "src/services/supabase/transactions.ts"
+            ],
+            "api_doc": {}
+        },
+        {
+            "name": "Staff Management",
+            "description": "Manage staff members and technicians",
+            "files": [
+                "src/pages/Staff.tsx",
+                "src/pages/Users.tsx",
+                "src/services/supabase/users.ts"
+            ],
+            "api_doc": {}
+        },
+        {
+            "name": "Settings",
+            "description": "Application settings and configuration",
+            "files": [
+                "src/pages/Settings.tsx"
+            ],
+            "api_doc": {}
+        }
+    ]
+}

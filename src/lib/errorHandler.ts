@@ -84,6 +84,16 @@ export class ErrorHandler {
                 return notFoundError;
             }
 
+            // RLS / Permission errors
+            if (error.message.includes('row-level security') ||
+                error.message.includes('42501') ||
+                error.message.includes('permission denied') ||
+                error.message.includes('new row violates row-level security')) {
+                const authError = new AuthError(error.message, 'غير مصرح لك بهذا الإجراء');
+                this.logError(authError, context);
+                return authError;
+            }
+
             // Database errors
             if (error.message.includes('violates') || error.message.includes('constraint')) {
                 const dbError = new DatabaseError(error.message, 'بيانات غير صحيحة أو مكررة');

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, type Doctor, type Order, type Service, type OrderItem, type User } from '../../services/db';
+import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateCaseId } from '../../utils/caseId';
 import { Plus, Trash2, AlertTriangle, CheckCircle, Truck, Settings, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -19,11 +19,21 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const { user } = useAuth();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<Service[]>([]);
-    const [suppliers, setSuppliers] = useState<any[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     // const [representatives, setRepresentatives] = useState<User[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
     const [existingOrders, setExistingOrders] = useState<Order[]>([]);
+
+    // Doctor Search State
+    const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
+    const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
+    const [doctorId, setDoctorId] = useState(initialData?.doctorId || '');
+    const [patientName, setPatientName] = useState(initialData?.patientName || '');
+    const [shade, setShade] = useState(initialData?.shade || '');
+    const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
+    const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
+    const [discount, setDiscount] = useState(initialData?.discount || 0);
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
@@ -75,16 +85,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             setShowDoctorModal(false);
             setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Add Doctor Error:', err);
             setDoctorError('حدث خطأ غير متوقع أثناء الحفظ.');
         }
     };
 
     // Header Info
-    const [doctorId, setDoctorId] = useState(initialData?.doctorId || '');
-    const [patientName, setPatientName] = useState(initialData?.patientName || '');
-    const [shade, setShade] = useState(initialData?.shade || 'A1');
+    // Header Info
 
     // Helper for default date (Today + 3 Days)
     const getDefaultDate = () => {
@@ -94,9 +102,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     };
 
     const [deliveryDate, setDeliveryDate] = useState(initialData?.deliveryDate || getDefaultDate());
-    const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
-    const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
-    const [discount, setDiscount] = useState(initialData?.discount || 0);
+
     const [instructions, setInstructions] = useState(initialData?.instructions || '');
     const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || '');
     const [representativeId, setRepresentativeId] = useState(initialData?.representativeId || '');
@@ -149,7 +155,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 setSuppliers(suppliersData);
                 // setRepresentatives(usersData.filter(u => u.role === 'representative'));
                 setSuppliers(suppliersData);
-                setRepresentatives(usersData.filter(u => u.role === 'representative'));
+                setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
                 setDesigners(usersData.filter(u => u.role === 'designer'));
                 setExistingOrders(ordersData);
             } catch (error) {
@@ -157,42 +163,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             }
         };
         loadData();
-
-        // If current user is Representative, lock it
-        if (user?.role === 'representative' && !initialData) {
-            setRepresentativeId(user.id);
-        }
-    }, [user, initialData]);
-
-    // Searchable Doctor Dropdown State
-    const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
-    const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
-
-    useEffect(() => {
-        if (doctorId && doctors.length > 0) {
-            const doc = doctors.find(d => d.id === doctorId);
-            if (doc) {
-
-                // Only set search term if it's empty (initial load) to avoid overwriting user typing
-                if (!doctorSearchTerm) {
-                    setDoctorSearchTerm(doc.name);
-                }
-            }
-        }
-    }, [doctorId, doctors, initialData]);
-
-    // Update search term when doctors list loads or initialData is present
-    useEffect(() => {
-        if (initialData?.doctorId && doctors.length > 0) {
-            const doc = doctors.find(d => d.id === initialData.doctorId);
-            if (doc) setDoctorSearchTerm(doc.name);
-        }
-    }, [initialData, doctors]);
-
-    const handleAddItem = () => {
-        setItems([...items, { serviceType: 'Zirconia', teethNumbers: '', price: 0 }]);
-    };
-
+    }, [initialData]);
     const handleRemoveItem = (index: number) => {
         if (items.length > 1) {
             const newItems = [...items];
@@ -201,7 +172,15 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         }
     };
 
-    const updateItem = (index: number, field: keyof FormOrderItem, value: any) => {
+    const handleAddItem = () => {
+        if (services.length > 0) {
+            setItems([...items, { serviceType: services[0].name, teethNumbers: '', price: 0 }]);
+        } else {
+            setItems([...items, { serviceType: '', teethNumbers: '', price: 0 }]);
+        }
+    };
+
+    const updateItem = (index: number, field: keyof FormOrderItem, value: FormOrderItem[keyof FormOrderItem]) => {
         const newItems = [...items];
         const currentItem = { ...newItems[index], [field]: value };
         newItems[index] = currentItem;
@@ -221,7 +200,21 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!doctorId) return;
+        if (!doctorId) {
+            alert('يرجى اختيار الطبيب');
+            return;
+        }
+
+        // Validate Items
+        const invalidItems = items.filter(i => {
+            const validTeeth = i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0);
+            return validTeeth.length === 0;
+        });
+
+        if (invalidItems.length > 0) {
+            alert('يرجى إدخال أرقام الأسنان بشكل صحيح لكل البنود (مثال: 11, 21)');
+            return;
+        }
 
         const doc = doctors.find(d => d.id === doctorId);
 
@@ -312,9 +305,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             needsDesignReview,
             isUrgent,
             supplierId: selectedSupplier || undefined,
-            stlUrl: stlUrl || undefined,
-            imagesUrl: imagesUrl || undefined,
-            instructions: instructions || undefined,
+
             representativeId: representativeId || undefined,
             comments: initialData?.comments || []
         });
@@ -339,6 +330,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <input
                                 type="date"
                                 required
+                                aria-label="تاريخ الاستلام"
                                 className={`bg-transparent font-mono font-bold text-lg outline-none ${isUrgent ? 'text-red-700' : 'text-blue-700'}`}
                                 value={receivedDate}
                                 onChange={(e) => setReceivedDate(e.target.value)}
@@ -352,6 +344,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                         <div className="relative">
                             <select
                                 className="appearance-none bg-white border border-blue-200 text-blue-800 text-sm font-bold py-2.5 px-4 pr-8 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm hover:border-blue-300"
+                                aria-label="المندوب"
                                 value={representativeId}
                                 onChange={(e) => setRepresentativeId(e.target.value)}
                                 disabled={user?.role === 'representative'}
@@ -398,6 +391,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <input
                                         type="text"
                                         required
+                                        aria-label="بحث عن طبيب"
                                         placeholder="ابحث باسم الطبيب أو الكود..."
                                         className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-semibold"
                                         value={doctorSearchTerm}
@@ -459,6 +453,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <input
                                     type="text"
                                     required
+                                    aria-label="اسم المريض"
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-semibold"
                                     value={patientName}
                                     onChange={(e) => setPatientName(e.target.value)}
@@ -498,6 +493,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                             className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
                                             value={item.serviceType}
                                             onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
+                                            aria-label="نوع الخدمة"
                                         >
                                             {services.map(s => (
                                                 <option key={s.id} value={s.name}>{s.name}</option>
@@ -520,6 +516,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                             type="button"
                                             onClick={() => handleRemoveItem(index)}
                                             className="text-gray-400 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            aria-label="حذف"
                                         >
                                             <Trash2 size={16} />
                                         </button>
@@ -569,6 +566,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <textarea
                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-20 resize-none text-sm"
                                 placeholder="تعليمات هامة للمعمل..."
+                                aria-label="ملاحظات فنية"
                                 value={instructions}
                                 onChange={(e) => setInstructions(e.target.value)}
                             />
@@ -592,6 +590,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <input
                                     type="date"
                                     required
+                                    aria-label="تاريخ التسليم"
                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-bold text-gray-700"
                                     value={deliveryDate}
                                     onChange={(e) => setDeliveryDate(e.target.value)}
@@ -665,6 +664,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <select
                                         className="w-full p-2 bg-purple-50/50 border border-purple-100 rounded-lg text-sm"
                                         value={designerId}
+                                        aria-label="اختر المصمم"
                                         onChange={e => setDesignerId(e.target.value)}
                                     >
                                         <option value="">اختر المصمم...</option>
@@ -675,6 +675,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <select
                                         className="w-full p-2 bg-purple-50/50 border border-purple-100 rounded-lg text-sm"
                                         value={selectedSupplier}
+                                        aria-label="اختر المعمل"
                                         onChange={e => setSelectedSupplier(e.target.value)}
                                     >
                                         <option value="">اختر معمل الخراطة...</option>
@@ -689,6 +690,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <select
                                     className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
                                     value={selectedSupplier}
+                                    aria-label="اختر المعمل الخارجي"
                                     onChange={(e) => setSelectedSupplier(e.target.value)}
                                 >
                                     <option value="">-- معمل داخلي / Outsource --</option>
@@ -766,6 +768,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <input
                                         required
                                         type="text"
+                                        aria-label="اسم الطبيب"
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                                         value={newDoctor.name}
                                         onChange={e => {
@@ -782,6 +785,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                         <input
                                             required
                                             type="tel"
+                                            aria-label="رقم الهاتف"
                                             className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                                             value={newDoctor.phone}
                                             onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })}
@@ -793,6 +797,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                             required
                                             placeholder="مثال: AHM"
                                             type="text"
+                                            aria-label="كود الطبيب"
                                             className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono"
                                             value={newDoctor.doctorCode}
                                             onChange={e => {
@@ -808,6 +813,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <input
                                         required
                                         type="text"
+                                        aria-label="العنوان"
                                         className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
                                         value={newDoctor.address}
                                         onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}

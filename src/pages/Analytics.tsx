@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect, useState, useCallback } from 'react';
 import { db } from '../services/db';
 import { TrendingUp, DollarSign, Activity, Wallet, FileText, Layers } from 'lucide-react';
 
@@ -27,11 +28,7 @@ export default function Analytics() {
 
     const [isLoading, setIsLoading] = useState(false);
 
-    useEffect(() => {
-        calculateStats();
-    }, [startDate, endDate]);
-
-    const calculateStats = async () => {
+    const calculateStats = useCallback(async () => {
         setIsLoading(true);
         try {
             const [orders, transactions, doctors] = await Promise.all([
@@ -144,17 +141,30 @@ export default function Analytics() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [startDate, endDate]);
 
-    const KPICard = ({ title, value, subtext, icon: Icon, color, subColor }: any) => (
+    useEffect(() => {
+        calculateStats();
+    }, [calculateStats]);
+
+    interface KPICardProps {
+        title: string;
+        value: number;
+        subtext: string;
+        icon: React.ElementType;
+        color: string;
+        subColor: string;
+    }
+
+    const KPICard = ({ title, value, subtext, icon: Icon, color, subColor }: KPICardProps) => (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
             <div className="flex justify-between items-start">
                 <div>
                     <p className="text-gray-500 text-sm font-medium mb-1">{title}</p>
                     <h3 className="text-2xl font-bold text-gray-800">{value.toLocaleString()} <span className="text-sm text-gray-400 font-normal">{typeof value === 'number' ? 'ج.م' : ''}</span></h3>
-                    {subtext && <p className={`text-xs mt-2 ${subColor} font-medium`}>{subtext}</p>}
+                    {subtext && <p className={`text - xs mt - 2 ${subColor} font - medium`}>{subtext}</p>}
                 </div>
-                <div className={`p-3 rounded-xl ${color}`}>
+                <div className={`p - 3 rounded - xl ${color} `}>
                     <Icon className="text-white" size={24} />
                 </div>
             </div>
@@ -177,6 +187,7 @@ export default function Analytics() {
                     <span className="text-xs font-bold text-gray-500 px-2">الفترة:</span>
                     <input
                         type="date"
+                        aria-label="Start Date"
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
                         className="bg-gray-50 border-none text-sm font-bold text-gray-700 focus:ring-0 rounded-lg py-1.5"
@@ -184,6 +195,7 @@ export default function Analytics() {
                     <span className="text-gray-300">|</span>
                     <input
                         type="date"
+                        aria-label="End Date"
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
                         className="bg-gray-50 border-none text-sm font-bold text-gray-700 focus:ring-0 rounded-lg py-1.5"
@@ -338,7 +350,7 @@ export default function Analytics() {
                                     <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
                                         <div
                                             className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                                            style={{ width: `${percent}%` }}
+                                            style={{ width: `${percent}% ` }}
                                         ></div>
                                     </div>
                                     <p className="text-xs text-gray-400 mt-1">{doc.count} طلب</p>

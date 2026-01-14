@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from 'zod';
 
 // User Validation Schemas
@@ -56,8 +57,8 @@ export const OrderSchema = z.object({
     items: z.array(OrderItemSchema).min(1, 'يجب إضافة عنصر واحد على الأقل'),
     discount: z.number().min(0).max(100),
     totalPrice: z.number().min(0),
-    shade: z.string().min(1).max(50),
-    status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments']),
+    shade: z.string().max(50).optional().nullable(),
+    status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments', 'Rejected']),
     isUrgent: z.boolean().optional(),
     deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صحيح'),
     cost: z.number().min(0),
@@ -79,7 +80,7 @@ export const OrderSchema = z.object({
     isRegistered: z.boolean().default(false),
     workflowType: z.enum(['full', 'split']).optional().nullable(),
     designerId: z.string().uuid().optional().nullable(),
-    designStatus: z.enum(['pending', 'in_progress', 'completed']).optional().nullable(),
+    designStatus: z.enum(['pending', 'accepted', 'in_progress', 'waiting_approval', 'completed', 'returned']).optional().nullable(),
     designPrice: z.number().min(0).optional().nullable(),
     actualDeliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
     feedback: z.object({

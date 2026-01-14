@@ -5,7 +5,19 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true, // Listen on all addresses (0.0.0.0)
+    host: true,
     allowedHosts: true
+  },
+  build: {
+    chunkSizeWarningLimit: 1000, // 1MB
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'supabase': ['@supabase/supabase-js'],
+          'validation': ['zod']
+        }
+      }
+    }
   }
 })

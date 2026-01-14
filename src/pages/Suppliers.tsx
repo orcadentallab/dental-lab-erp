@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { db, type Supplier, type Service } from '../services/db';
+import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, X } from 'lucide-react';
 
 
 export default function Suppliers() {
+    const { user } = useAuth();
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [services, setServices] = useState<Service[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -11,13 +13,20 @@ export default function Suppliers() {
     const [isLoading, setIsLoading] = useState(false);
 
     // Form State
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState<{
+        name: string;
+        username: string;
+        phone: string;
+        redoCostPercentage: number;
+        customPrices: Record<string, number>;
+        millingPrices: Record<string, number>;
+    }>({
         name: '',
         username: '',
         phone: '',
         redoCostPercentage: 0,
-        customPrices: {} as Record<string, number>,
-        millingPrices: {} as Record<string, number>
+        customPrices: {},
+        millingPrices: {}
     });
 
     const loadData = async () => {
@@ -91,13 +100,15 @@ export default function Suppliers() {
                     <h1 className="text-2xl font-bold text-gray-800">إدارة الموردين (المعامل الخارجية)</h1>
                     {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري التحميل...</span>}
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                >
-                    <Plus size={20} />
-                    <span>إضافة مورد</span>
-                </button>
+                {user?.role !== 'accountant' && (
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    >
+                        <Plus size={20} />
+                        <span>إضافة مورد</span>
+                    </button>
+                )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -108,9 +119,11 @@ export default function Suppliers() {
                                 <h3 className="text-lg font-bold text-gray-900">{supplier.name}</h3>
                                 <p className="text-sm text-gray-500">@{supplier.username}</p>
                             </div>
-                            <button onClick={() => handleOpenModal(supplier)} className="p-2 text-gray-400 hover:text-blue-600 bg-gray-50 rounded-lg">
-                                <Edit2 size={16} />
-                            </button>
+                            {user?.role !== 'accountant' && (
+                                <button onClick={() => handleOpenModal(supplier)} className="p-2 text-gray-400 hover:text-blue-600 bg-gray-50 rounded-lg" aria-label="تعديل">
+                                    <Edit2 size={16} />
+                                </button>
+                            )}
                         </div>
 
                         <div className="space-y-2 text-sm text-gray-600 mb-4">
@@ -154,7 +167,7 @@ export default function Suppliers() {
                             <h2 className="text-xl font-bold">
                                 {editingSupplier ? 'تعديل بيانات المورد' : 'إضافة مورد جديد'}
                             </h2>
-                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
                                 <X size={24} />
                             </button>
                         </div>
@@ -169,6 +182,7 @@ export default function Suppliers() {
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                                         className="w-full p-2 border rounded-lg"
+                                        aria-label="اسم المعمل / المورد"
                                     />
                                 </div>
                                 <div>
@@ -179,6 +193,7 @@ export default function Suppliers() {
                                         value={formData.username}
                                         onChange={e => setFormData({ ...formData, username: e.target.value })}
                                         className="w-full p-2 border rounded-lg"
+                                        aria-label="اسم المستخدم (للدخول)"
                                     />
                                 </div>
                                 <div>
@@ -189,6 +204,7 @@ export default function Suppliers() {
                                         value={formData.phone}
                                         onChange={e => setFormData({ ...formData, phone: e.target.value })}
                                         className="w-full p-2 border rounded-lg"
+                                        aria-label="الهاتف"
                                     />
                                 </div>
                                 <div>

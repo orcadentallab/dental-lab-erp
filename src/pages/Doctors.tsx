@@ -125,7 +125,7 @@ export default function Doctors() {
             setEditingId(null);
             setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Save Doctor Error:', err);
             setError('حدث خطأ غير متوقع أثناء الحفظ.');
         }
@@ -229,6 +229,7 @@ export default function Doctors() {
                         placeholder="بحث باسم الطبيب، الكود، أو رقم الهاتف..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
+                        aria-label="بحث عن طبيب"
                         className="w-full pr-10 pl-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                     />
                 </div>
@@ -237,7 +238,13 @@ export default function Doctors() {
                     <select
                         className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-white cursor-pointer"
                         value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as 'name' | 'code' | 'rep')}
+                        aria-label="ترتيب حسب"
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'name' || val === 'code' || val === 'rep') {
+                                setSortBy(val);
+                            }
+                        }}
                     >
                         <option value="name">الاسم</option>
                         <option value="code">كود الطبيب</option>
@@ -305,7 +312,7 @@ export default function Doctors() {
                             <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
                                 {editingId ? 'تعديل بيانات الطبيب' : 'إضافة طبيب جديد'}
                             </h2>
-                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">✕</button>
+                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" aria-label="إغلاق">✕</button>
                         </div>
 
                         <form onSubmit={handleSaveDoctor} className="p-6 space-y-4">
@@ -321,6 +328,7 @@ export default function Doctors() {
                                 <input
                                     required
                                     type="text"
+                                    aria-label="اسم الطبيب"
                                     className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                     value={newDoctor.name}
                                     onChange={e => {
@@ -336,6 +344,7 @@ export default function Doctors() {
                                     <input
                                         required
                                         type="tel"
+                                        aria-label="رقم الهاتف"
                                         className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                         value={newDoctor.phone}
                                         onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })}
@@ -345,6 +354,7 @@ export default function Doctors() {
                                         placeholder="رقم هاتف 2 (اختياري)"
                                         className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 mt-2 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                         value={newDoctor.phone2 || ''}
+                                        aria-label="رقم هاتف إضافي"
                                         onChange={e => setNewDoctor({ ...newDoctor, phone2: e.target.value })}
                                     />
                                 </div>
@@ -354,6 +364,7 @@ export default function Doctors() {
                                         required
                                         placeholder="مثال: AHM"
                                         type="text"
+                                        aria-label="كود الطبيب"
                                         className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                         value={newDoctor.doctorCode}
                                         onChange={e => {
@@ -369,6 +380,7 @@ export default function Doctors() {
                                 <input
                                     required
                                     type="text"
+                                    aria-label="العنوان"
                                     className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                     value={newDoctor.address}
                                     onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}

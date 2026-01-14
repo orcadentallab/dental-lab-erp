@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type Transaction } from '../services/db';
-import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, CheckSquare, PlusCircle, UserPlus, Banknote, FileText } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, CheckSquare, PlusCircle, UserPlus, Banknote, FileText, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
@@ -12,24 +13,65 @@ export default function Dashboard() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
+    const [usersMap, setUsersMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [allOrders, transactionsData, suppliersData, docs] = await Promise.all([
-                    db.getOrders(),
-                    db.getTransactions(),
-                    db.getSuppliers(),
-                    db.getDoctors()
-                ]);
+                // Core data for everyone
+                const ordersPromise = db.getOrders();
+                const doctorsPromise = db.getDoctors();
 
-                // Removed sensitive debug logs
+                // DATA FETCHING STRATEGY:
+                // 1. Transactions: Admin/Accountant only
+                // 2. Suppliers: Admin/Rep/Lab/Accountant (Designers don't strictly *need* it for their view, but used for fallback name)
+                // 3. Users: Admin/Rep (for mapping designer names)
+
+
+
+                // Fetch extra data based on role or just try/catch individually if needed. 
+                // For simplicity, we'll fetch others but handle potential RLS failures gracefully or just fetch for all if policies allow.
+                // Assuming RLS blocks transactions for designers:
+                let transactionsData: Transaction[] = [];
+                if (user?.role === 'admin' || user?.role === 'accountant') {
+                    const tx = await db.getTransactions();
+                    transactionsData = tx;
+                }
+
+                // Suppliers and Users are generally useful.
+                const suppliersPromise = db.getSuppliers();
+                const usersPromise = db.getUsers();
+
+                const [allOrders, docs, suppliersData, allUsers] = await Promise.all([
+                    ordersPromise,
+                    doctorsPromise,
+                    suppliersPromise,
+                    usersPromise
+                ]);
 
                 // RBAC Filtering
                 let filteredOrders = allOrders;
                 if (user?.role === 'lab') {
-                    filteredOrders = allOrders.filter(o => user.entityId && o.supplierId === user.entityId);
+                    filteredOrders = allOrders.filter(o => {
+                        if (!user.entityId || o.supplierId !== user.entityId) return false;
+
+                        // Lab sees Full orders immediately.
+                        // For Split orders: Only see if 'Under Production' OR if no designer is assigned (rare edge case)
+                        const isSplitWithDesigner = o.workflowType === 'split' && o.designerId;
+                        if (isSplitWithDesigner) {
+                            const visibleStatuses = ['Under Production', 'Try In', 'Try In Approved', 'Ready for QC', 'Ready for Delivery', 'Delivered', 'Returned for Adjustments'];
+                            return visibleStatuses.includes(o.status);
+                        }
+                        return true;
+                    });
+                } else if (user?.role === 'designer') {
+                    // Designer sees:
+                    // 1. Orders assigned to them
+                    // 2. Potentially they shouldn't see the "Under Design" table for *other* designers, 
+                    //    but the Dashboard component is shared. 
+                    //    For now, we let them see their own assigned orders.
+                    filteredOrders = allOrders.filter(o => o.designerId === user.id);
                 }
                 // Representative filter removed - controlled by RLS now
 
@@ -41,6 +83,11 @@ export default function Dashboard() {
                 const dMap: Record<string, string> = {};
                 docs.forEach(d => dMap[d.id] = d.name);
                 setDoctorsMap(dMap);
+
+                // Map Users (Designers)
+                const uMap: Record<string, string> = {};
+                allUsers.forEach(u => uMap[u.id] = u.name);
+                setUsersMap(uMap);
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             } finally {
@@ -192,6 +239,177 @@ export default function Dashboard() {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
                     <p className="text-gray-600 dark:text-gray-400">جاري تحميل البيانات...</p>
                 </div>
+            </div>
+        );
+    }
+    // --- DESIGNER SPECIFIC VIEW ---
+    if (user?.role === 'designer') {
+        const pendingOrders = orders.filter(o => o.status === 'New Case');
+        const inProgressOrders = orders.filter(o => o.status === 'Under Design');
+        const waitingApprovalOrders = orders.filter(o => o.status === 'Waiting Dr Approval');
+        const returnedOrders = orders.filter(o => o.status === 'Returned for Adjustments');
+
+        return (
+            <div className="space-y-8">
+                <div className="flex justify-between items-center border-b border-gray-100 dark:border-gray-800 pb-6">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800 dark:text-white">لوحة تحكم المصمم</h1>
+                        <p className="text-gray-500 dark:text-gray-400">أهلاً بك، {user.name} 👋</p>
+                    </div>
+                </div>
+
+                {/* Designer Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl shadow-lg text-white">
+                        <p className="text-xs text-blue-100 font-bold uppercase tracking-wider mb-1">منتظر الرد</p>
+                        <h3 className="text-3xl font-black">{pendingOrders.length}</h3>
+                    </div>
+                    <div className="bg-gradient-to-br from-amber-500 to-amber-600 p-6 rounded-2xl shadow-lg text-white">
+                        <p className="text-xs text-amber-100 font-bold uppercase tracking-wider mb-1">جارى التصميم</p>
+                        <h3 className="text-3xl font-black">{inProgressOrders.length}</h3>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-6 rounded-2xl shadow-lg text-white">
+                        <p className="text-xs text-purple-100 font-bold uppercase tracking-wider mb-1">انتظار موافقة</p>
+                        <h3 className="text-3xl font-black">{waitingApprovalOrders.length}</h3>
+                    </div>
+                    <div className="bg-gradient-to-br from-rose-500 to-rose-600 p-6 rounded-2xl shadow-lg text-white">
+                        <p className="text-xs text-rose-100 font-bold uppercase tracking-wider mb-1">مرتجع</p>
+                        <h3 className="text-3xl font-black">{returnedOrders.length}</h3>
+                    </div>
+                </div>
+
+                {/* Pending Orders - منتظر الرد */}
+                {pendingOrders.length > 0 && (
+                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-6">
+                        <h3 className="text-blue-800 dark:text-blue-400 font-bold flex items-center gap-2 mb-4">
+                            <Package className="text-blue-600" />
+                            حالات جديدة - منتظر الرد ({pendingOrders.length})
+                        </h3>
+                        <p className="text-sm text-blue-700 dark:text-blue-500 mb-4">يرجى قبول أو رفض هذه الحالات من صفحة الأوردرات.</p>
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/50 overflow-hidden">
+                            <table className="w-full text-right text-sm">
+                                <thead className="bg-blue-50 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 font-bold">
+                                    <tr>
+                                        <th className="p-3">رقم الحالة</th>
+                                        <th className="p-3">المريض</th>
+                                        <th className="p-3">التفاصيل</th>
+                                        <th className="p-3">تاريخ التسليم</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-blue-50 dark:divide-gray-700">
+                                    {pendingOrders.map(order => (
+                                        <tr key={order.id} className="hover:bg-blue-50/50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => navigate('/orders')}>
+                                            <td className="p-3 font-bold font-mono text-gray-800 dark:text-gray-200">#{order.caseId}</td>
+                                            <td className="p-3 font-bold text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                            <td className="p-3 text-gray-600 dark:text-gray-400">{order.items?.map((i: any) => i.serviceType).join(', ')}</td>
+                                            <td className="p-3 font-bold text-blue-600 dark:text-blue-400 ltr">{order.deliveryDate}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* In Progress Orders - جارى التصميم */}
+                {inProgressOrders.length > 0 && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-6">
+                        <h3 className="text-amber-800 dark:text-amber-400 font-bold flex items-center gap-2 mb-4">
+                            <Building2 className="text-amber-600" />
+                            حالات تحت التصميم ({inProgressOrders.length})
+                        </h3>
+                        <p className="text-sm text-amber-700 dark:text-amber-500 mb-4">بعد الانتهاء، ارفع رابط التصميم من صفحة الأوردرات.</p>
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-amber-100 dark:border-amber-900/50 overflow-hidden">
+                            <table className="w-full text-right text-sm">
+                                <thead className="bg-amber-50 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 font-bold">
+                                    <tr>
+                                        <th className="p-3">رقم الحالة</th>
+                                        <th className="p-3">المريض</th>
+                                        <th className="p-3">تاريخ التسليم</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-amber-50 dark:divide-gray-700">
+                                    {inProgressOrders.map(order => (
+                                        <tr key={order.id} className="hover:bg-amber-50/50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => navigate('/orders')}>
+                                            <td className="p-3 font-bold font-mono text-gray-800 dark:text-gray-200">#{order.caseId}</td>
+                                            <td className="p-3 font-bold text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                            <td className="p-3 font-bold text-amber-600 dark:text-amber-400 ltr">{order.deliveryDate}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Waiting Approval */}
+                {waitingApprovalOrders.length > 0 && (
+                    <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-6">
+                        <h3 className="text-purple-800 dark:text-purple-400 font-bold flex items-center gap-2 mb-4">
+                            <CheckSquare className="text-purple-600" />
+                            حالات انتظار موافقة الطبيب ({waitingApprovalOrders.length})
+                        </h3>
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-purple-100 dark:border-purple-900/50 overflow-hidden">
+                            <table className="w-full text-right text-sm">
+                                <thead className="bg-purple-50 dark:bg-purple-900/40 text-purple-900 dark:text-purple-100 font-bold">
+                                    <tr>
+                                        <th className="p-3">رقم الحالة</th>
+                                        <th className="p-3">المريض</th>
+                                        <th className="p-3">تاريخ التسليم</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-purple-50 dark:divide-gray-700">
+                                    {waitingApprovalOrders.map(order => (
+                                        <tr key={order.id} className="hover:bg-purple-50/50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => navigate('/orders')}>
+                                            <td className="p-3 font-bold font-mono text-gray-800 dark:text-gray-200">#{order.caseId}</td>
+                                            <td className="p-3 font-bold text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                            <td className="p-3 font-bold text-purple-600 dark:text-purple-400 ltr">{order.deliveryDate}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Returned Orders */}
+                {returnedOrders.length > 0 && (
+                    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6">
+                        <h3 className="text-red-800 dark:text-red-400 font-bold flex items-center gap-2 mb-4">
+                            <AlertTriangle className="text-red-600" />
+                            حالات مرتجعة - تحتاج تعديل ({returnedOrders.length})
+                        </h3>
+                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-red-100 dark:border-red-900/50 overflow-hidden">
+                            <table className="w-full text-right text-sm">
+                                <thead className="bg-red-50 dark:bg-red-900/40 text-red-900 dark:text-red-100 font-bold">
+                                    <tr>
+                                        <th className="p-3">رقم الحالة</th>
+                                        <th className="p-3">المريض</th>
+                                        <th className="p-3">تاريخ التسليم</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-red-50 dark:divide-gray-700">
+                                    {returnedOrders.map(order => (
+                                        <tr key={order.id} className="hover:bg-red-50/50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => navigate('/orders')}>
+                                            <td className="p-3 font-bold font-mono text-gray-800 dark:text-gray-200">#{order.caseId}</td>
+                                            <td className="p-3 font-bold text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                            <td className="p-3 font-bold text-red-600 dark:text-red-400 ltr">{order.deliveryDate}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {/* Empty State */}
+                {orders.length === 0 && (
+                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-2xl">
+                        <CheckCircle size={48} className="mx-auto text-green-500 mb-4" />
+                        <h3 className="text-xl font-bold text-gray-800 dark:text-gray-200 mb-2">لا توجد حالات مسندة إليك حالياً</h3>
+                        <p className="text-gray-500 dark:text-gray-400">ستظهر هنا الحالات عند إسنادها من قبل الإدارة.</p>
+                    </div>
+                )}
             </div>
         );
     }
@@ -593,7 +811,12 @@ export default function Dashboard() {
             {(user?.role === 'admin' || user?.role === 'accountant') && (
                 (() => {
                     const pendingRegOrders = orders.filter(o => (o.status === 'Delivered' || o.status === 'Completed') && !o.isRegistered);
-                    const pendingRegTx = transactions.filter(t => !t.isRegistered);
+                    const pendingRegTx = transactions.filter(t => {
+                        if (t.isRegistered) return false; // Only show unregistered
+                        // Hide staff expenses (type=expense, entityType=general, entityId exists) - they should be handled via Staff page
+                        if (t.type === 'expense' && t.entityType === 'general' && t.entityId) return false;
+                        return true;
+                    });
 
                     if (pendingRegOrders.length === 0 && pendingRegTx.length === 0) return null;
 
@@ -658,6 +881,120 @@ export default function Dashboard() {
                         </div>
                     );
                 })()
+            )}
+
+            {/* 0. New Orders - Waiting Acceptance */}
+            {activeOrders.filter(o => o.status === 'New Case').length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-purple-200 dark:border-purple-900 overflow-hidden mb-6">
+                    <div className="p-4 border-b border-purple-100 dark:border-purple-800 flex justify-between items-center bg-purple-50 dark:bg-purple-900/20">
+                        <h3 className="font-bold text-purple-800 dark:text-purple-300 flex items-center gap-2 text-sm">
+                            <Clock size={18} />
+                            حالات جديدة في انتظار القبول (New Orders)
+                        </h3>
+                        <span className="bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-200 px-2 py-0.5 rounded text-xs font-bold">
+                            {activeOrders.filter(o => o.status === 'New Case').length}
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-right">
+                            <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs text-right">
+                                <tr>
+                                    <th className="p-3">Case#</th>
+                                    <th className="p-3">المريض</th>
+                                    <th className="p-3">المعمل/المصمم</th>
+                                    <th className="p-3">التفاصيل</th>
+                                    <th className="p-3">الحالة</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {activeOrders
+                                    .filter(o => o.status === 'New Case')
+                                    .map(o => {
+                                        let assignedTo = 'غير محدد';
+                                        if (o.workflowType === 'split' && o.designerId && usersMap[o.designerId]) {
+                                            assignedTo = `🎨 ${usersMap[o.designerId]}`;
+                                        } else if (o.supplierId) {
+                                            const sup = suppliers.find(s => s.id === o.supplierId);
+                                            if (sup) assignedTo = `🏭 ${sup.name}`;
+                                        }
+
+                                        return (
+                                            <tr key={o.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate('/orders')}>
+                                                <td className="p-3 font-bold text-blue-600">#{o.caseId}</td>
+                                                <td className="p-3 font-bold text-gray-800 dark:text-gray-200">{o.patientName}</td>
+                                                <td className="p-3 font-bold text-purple-600">{assignedTo}</td>
+                                                <td className="p-3 text-gray-500">
+                                                    {o.items?.map((i, idx) => (
+                                                        <span key={idx} className="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-[10px] ml-1">
+                                                            {i.serviceType}
+                                                        </span>
+                                                    ))}
+                                                </td>
+                                                <td className="p-3">
+                                                    <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-bold">
+                                                        New Case
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* 0. Under Design & Waiting Approval Orders (Updated) */}
+            {activeOrders.filter(o => o.status === 'Under Design' || o.status === 'Waiting Dr Approval').length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-900 overflow-hidden mb-6">
+                    <div className="p-4 border-b border-blue-100 dark:border-blue-800 flex justify-between items-center bg-blue-50 dark:bg-blue-900/20">
+                        <h3 className="font-bold text-blue-800 dark:text-blue-300 flex items-center gap-2 text-sm">
+                            <Package size={18} />
+                            حالات التصميم والموافقات (Design & Approvals)
+                        </h3>
+                        <span className="bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded text-xs font-bold">
+                            {activeOrders.filter(o => o.status === 'Under Design' || o.status === 'Waiting Dr Approval').length}
+                        </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-right">
+                            <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs text-right">
+                                <tr>
+                                    <th className="p-3">Case#</th>
+                                    <th className="p-3">المصمم / المعمل</th>
+                                    <th className="p-3">المريض</th>
+                                    <th className="p-3">الحالة</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                {activeOrders
+                                    .filter(o => o.status === 'Under Design' || o.status === 'Waiting Dr Approval')
+                                    .map(o => {
+                                        let designerName = 'غير محدد';
+                                        if (o.designerId && usersMap[o.designerId]) {
+                                            designerName = usersMap[o.designerId];
+                                        } else if (o.supplierId) {
+                                            const sup = suppliers.find(s => s.id === o.supplierId);
+                                            if (sup) designerName = `${sup.name} (معمل)`;
+                                        }
+
+                                        return (
+                                            <tr key={o.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate('/orders')}>
+                                                <td className="p-3 font-bold text-blue-600">#{o.caseId}</td>
+                                                <td className="p-3 font-bold text-purple-600">{designerName}</td>
+                                                <td className="p-3">{o.patientName}</td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-0.5 rounded text-xs ${o.status === 'Waiting Dr Approval' || o.designStatus === 'waiting_approval' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-800'}`}>
+                                                        {o.status === 'Waiting Dr Approval' || o.designStatus === 'waiting_approval' ? 'Waiting Approval' : 'Under Design'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             )}
 
             {/* 1. Delayed Orders (ALWAYS VISIBLE IF EXISTS) */}

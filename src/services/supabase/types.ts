@@ -63,7 +63,8 @@ export interface DbOrder {
     is_registered: boolean;
     workflow_type?: 'full' | 'split' | null;
     designer_id?: string | null;
-    design_status?: 'pending' | 'in_progress' | 'completed' | null;
+    design_url?: string | null;
+    design_status?: 'pending' | 'accepted' | 'in_progress' | 'waiting_approval' | 'completed' | 'returned' | null;
     design_price?: number | null;
     actual_delivery_date?: string | null;
     feedback?: DbOrderFeedback | null;
@@ -89,6 +90,7 @@ export interface DbTransaction {
     entity_id?: string | null;
     entity_type?: 'doctor' | 'supplier' | 'general' | 'designer' | null;
     is_registered: boolean;
+    is_approved?: boolean;
     created_at: string;
     updated_at: string;
 }

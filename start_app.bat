@@ -1,0 +1,6 @@
+@echo off
+echo Starting Dental Lab ERP...
+echo Backend is hosted on Supabase (Remote).
+echo Starting Frontend (Vite)...
+cd /d "%~dp0"
+start "Dental Lab ERP Frontend" cmd /k "npm run dev"

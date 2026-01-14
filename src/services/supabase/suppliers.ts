@@ -43,7 +43,7 @@ export async function addSupplier(supplier: Omit<Supplier, 'id'>): Promise<Suppl
     // Validate input
     try {
         SupplierCreateSchema.parse(supplier);
-    } catch (error: any) {
+    } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
 

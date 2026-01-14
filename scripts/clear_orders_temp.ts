@@ -30,7 +30,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function clearOrders() {
     console.log('Start clearing orders...');
-    const { count, error } = await supabase
+    const { error } = await supabase
         .from('orders')
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all not equal to zero uuid

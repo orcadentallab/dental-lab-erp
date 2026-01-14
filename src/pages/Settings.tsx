@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState } from 'react';
 import { db } from '../services/db';
 import { Download, Upload, AlertCircle, CheckCircle, FileSpreadsheet, Cloud, Lock, Settings as SettingsIcon } from 'lucide-react';
@@ -52,8 +53,8 @@ export default function Settings() {
             setOldPassword('');
             setNewPassword('');
             setConfirmPassword('');
-        } catch (error: any) {
-            setImportStatus({ success: false, message: `فشل تغيير كلمة المرور: ${error.message}` });
+        } catch (error: unknown) {
+            setImportStatus({ success: false, message: `فشل تغيير كلمة المرور: ${error instanceof Error ? error.message : 'خطأ غير معروف'}` });
         } finally {
             setIsChangingPassword(false);
         }
@@ -88,8 +89,8 @@ export default function Settings() {
                 } else {
                     setImportStatus({ success: false, message: `فشل الاسترجاع: ${result.error}` });
                 }
-            } catch (err: any) {
-                setImportStatus({ success: false, message: `حدث خطأ: ${err.message}` });
+            } catch (err: unknown) {
+                setImportStatus({ success: false, message: `حدث خطأ: ${err instanceof Error ? err.message : 'غير معروف'}` });
             }
         };
         reader.readAsText(file);
@@ -120,7 +121,7 @@ export default function Settings() {
             {isAdmin && (
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                     <div className="p-4 bg-gray-50 border-b border-gray-200">
-                        <h2 className="font-bold text-gray-800">النسخ الاحتياطي</h2>
+                        <h2 className="font-bold text-gray-800">النسخ الاحتياطى على الكمبيوتر</h2>
                     </div>
                     <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Export */}
@@ -143,6 +144,7 @@ export default function Settings() {
                                 type="file"
                                 accept=".json"
                                 onChange={handleImport}
+                                aria-label="استيراد نسخة احتياطية"
                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                             />
                             <div className="flex items-center gap-3 p-4 border border-gray-200 rounded-lg hover:border-amber-300 hover:bg-amber-50 transition-colors text-right cursor-pointer">
@@ -193,6 +195,7 @@ export default function Settings() {
                         type="password"
                         placeholder="كلمة المرور الحالية"
                         value={oldPassword}
+                        aria-label="كلمة المرور الحالية"
                         onChange={(e) => setOldPassword(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-gray-400 outline-none"
                     />
@@ -201,6 +204,7 @@ export default function Settings() {
                             type="password"
                             placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)"
                             value={newPassword}
+                            aria-label="كلمة المرور الجديدة"
                             onChange={(e) => setNewPassword(e.target.value)}
                             className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-gray-400 outline-none"
                         />
@@ -208,6 +212,7 @@ export default function Settings() {
                             type="password"
                             placeholder="تأكيد كلمة المرور"
                             value={confirmPassword}
+                            aria-label="تأكيد كلمة المرور"
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-gray-400 outline-none"
                         />
@@ -265,6 +270,7 @@ export default function Settings() {
                                         }
                                     }}
                                     disabled={isImporting}
+                                    aria-label="استيراد الأطباء"
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 />
                                 <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-blue-400 hover:bg-blue-50 cursor-pointer">
@@ -294,6 +300,7 @@ export default function Settings() {
                                         }
                                     }}
                                     disabled={isImporting}
+                                    aria-label="استيراد الخدمات"
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 />
                                 <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-green-400 hover:bg-green-50 cursor-pointer">
@@ -328,6 +335,7 @@ export default function Settings() {
                                         }
                                     }}
                                     disabled={isImporting}
+                                    aria-label="استيراد الحالات"
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 />
                                 <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-purple-400 hover:bg-purple-50 cursor-pointer">
@@ -357,6 +365,7 @@ export default function Settings() {
                                         }
                                     }}
                                     disabled={isImporting}
+                                    aria-label="استيراد الحسابات"
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                 />
                                 <div className="p-3 border border-dashed border-gray-300 rounded-lg text-center hover:border-amber-400 hover:bg-amber-50 cursor-pointer">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
 import { Printer, ArrowRight, Search, FileSpreadsheet } from 'lucide-react';
@@ -22,11 +22,13 @@ interface EntitySummary {
     totalDebit: number;    // Money owed (Work)
     totalCredit: number;   // Money paid
     balance: number;
+    code?: string; // Doctor Code
 }
 
 export default function Accounts() {
     const { user } = useAuth();
     const isLab = user?.role === 'lab';
+    const isDesigner = user?.role === 'designer';
 
     const [viewMode, setViewMode] = useState<'summary' | 'detail'>('summary');
     const [activeTab, setActiveTab] = useState<'doctors' | 'suppliers' | 'designers'>('doctors');
@@ -34,7 +36,7 @@ export default function Accounts() {
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
     // Options
-    const [showInProgress, setShowInProgress] = useState(false);
+
     const [showAllOrders, setShowAllOrders] = useState(false);
     const [hideZeroBalance, setHideZeroBalance] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -45,14 +47,12 @@ export default function Accounts() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
-    // const [isLoading, setIsLoading] = useState(false); // Unused
 
     // Summary Data
-    const [summaryData, setSummaryData] = useState<EntitySummary[]>([]);
+
 
     useEffect(() => {
         const loadData = async () => {
-
             try {
                 const [docs, sups, ords, txs, users] = await Promise.all([
                     db.getDoctors(),
@@ -68,25 +68,29 @@ export default function Accounts() {
                 setDesigners(users.filter(u => u.role === 'designer'));
             } catch (error) {
                 console.error('Error loading account data:', error);
-            } finally {
-
             }
         };
         loadData();
+    }, []);
 
-        // Enforce Lab View
+    // Enforce Role Views on mount
+    useEffect(() => {
         if (isLab && user?.entityId) {
             setViewMode('detail');
             setActiveTab('suppliers');
             setSelectedEntityId(user.entityId);
+        } else if (isDesigner && user?.id) {
+            setViewMode('detail');
+            setActiveTab('designers');
+            setSelectedEntityId(user.id);
         }
-    }, [isLab, user]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Helper: Calculate Summary for ALL
-    useEffect(() => {
-        if (viewMode !== 'summary') return;
+    const summaryData = useMemo(() => {
+        if (viewMode !== 'summary') return [];
 
-        // Use state instead of db calls
         const allOrders = orders;
         const allTransactions = transactions;
 
@@ -97,9 +101,13 @@ export default function Accounts() {
                 // Doctor Orders (Debit) - Show all if showAllOrders is enabled
                 const docOrders = allOrders.filter(o =>
                     o.doctorId === doc.id &&
+                    (showAllOrders || o.status !== 'Rejected') && // Soft filter rejected
                     (showAllOrders || ['Delivered', 'Completed', 'Ready'].includes(o.status))
                 );
-                const totalDebit = docOrders.reduce((sum, o) => sum + o.totalPrice, 0);
+                const totalDebit = docOrders.reduce((sum, o) => {
+                    if (o.status === 'Rejected') return sum; // Rejected = 0 value
+                    return sum + o.totalPrice;
+                }, 0);
 
                 // Doctor Payments (Credit)
                 const docTx = allTransactions.filter(t =>
@@ -113,13 +121,14 @@ export default function Accounts() {
                     totalOrders: docOrders.length,
                     totalDebit,
                     totalCredit,
-                    balance: totalDebit - totalCredit // Positive = He owes us
+                    balance: totalDebit - totalCredit, // Positive = He owes us
+                    code: doc.doctorCode
                 };
             });
         } else if (activeTab === 'suppliers') {
             summaries = suppliers.map(sup => {
                 // Supplier Orders (Credit - We owe them) - Only count Delivered orders unless showAllOrders
-                const supOrders = allOrders.filter(o => o.supplierId === sup.id && (showAllOrders || o.status === 'Delivered'));
+                const supOrders = allOrders.filter(o => o.supplierId === sup.id && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
                 // Fix: Subtract designer price if split workflow
                 const totalCredit = supOrders.reduce((sum, o) => {
                     let cost = o.cost || 0;
@@ -150,7 +159,7 @@ export default function Accounts() {
 
             summaries = allDesigners.map(des => {
                 // Designer Orders (Credit - We owe them) - Only count Delivered orders unless showAllOrders
-                const desOrders = allOrders.filter(o => o.designerId === des.id && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered'));
+                const desOrders = allOrders.filter(o => o.designerId === des.id && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
                 const totalCredit = desOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
 
                 // Designer Payments (Debit - We paid them)
@@ -169,100 +178,104 @@ export default function Accounts() {
                 };
             });
         }
-        setSummaryData(summaries);
+        return summaries;
     }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, showAllOrders]);
 
-
     // Helper: Logic for Individual Statement
-    const [individualStatement, setIndividualStatement] = useState<{ items: StatementItem[], totals: any }>({ items: [], totals: {} });
+    const individualStatement = useMemo(() => {
+        if (viewMode !== 'detail' || !selectedEntityId) return { items: [], totals: { totalDebit: 0, totalCredit: 0, balance: 0 } };
 
-    useEffect(() => {
-        if (viewMode === 'detail' && selectedEntityId) {
-            const allOrders = orders;
-            const allTransactions = transactions;
-            let items: StatementItem[] = [];
+        const allOrders = orders;
+        const allTransactions = transactions;
+        let items: StatementItem[] = [];
 
-            if (activeTab === 'doctors') {
-                const docOrders = allOrders.filter(o => {
-                    if (o.doctorId !== selectedEntityId) return false;
-                    if (!showInProgress) return ['Delivered', 'Completed', 'Ready'].includes(o.status);
-                    return true;
-                });
+        if (activeTab === 'doctors') {
+            const docOrders = allOrders.filter(o => {
+                if (o.doctorId !== selectedEntityId) return false;
+                // Allow rejected to show (Soft Filter) so list isn't empty, relying on Amount=0 for finance.
+                // We only filter by Progress/Completed logic now.
 
-                items = docOrders.map(o => ({
+                if (o.status === 'Rejected') return true; // Always show Rejected (processed as 0 value)
+
+                // Show all if requested, otherwise only finished
+                if (showAllOrders) return true;
+                return ['Delivered', 'Completed', 'Ready'].includes(o.status);
+            });
+
+            items = docOrders.map(o => ({
+                id: o.id,
+                date: o.deliveryDate || o.createdAt.split('T')[0],
+                description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                details: o.items.map((i: any) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
+                type: 'debit' as const,
+                amount: o.status === 'Rejected' ? 0 : o.totalPrice, // Zero amount for rejected
+                status: o.status
+            }));
+
+            const docTx = allTransactions.filter(t => t.entityType === 'doctor' && t.entityId === selectedEntityId && t.type === 'income');
+            items = [...items, ...docTx.map(t => ({
+                id: t.id,
+                date: t.date.split('T')[0],
+                description: `دفعة نقدية - ${t.description || ''}`,
+                type: 'credit' as const,
+                amount: t.amount
+            }))];
+        } else if (activeTab === 'suppliers') {
+            // Only count Delivered orders for suppliers unless showAll is checked (and not rejected)
+            const supOrders = allOrders.filter(o => o.supplierId === selectedEntityId && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
+            items = supOrders.map(o => {
+                let cost = o.cost || 0;
+                if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
+                return {
                     id: o.id,
                     date: o.deliveryDate || o.createdAt.split('T')[0],
-                    description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
-                    details: o.items.map((i: any) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
-                    type: 'debit' as const,
-                    amount: o.totalPrice,
-                    status: o.status
-                }));
-
-                const docTx = allTransactions.filter(t => t.entityType === 'doctor' && t.entityId === selectedEntityId && t.type === 'income');
-                items = [...items, ...docTx.map(t => ({
-                    id: t.id,
-                    date: t.date.split('T')[0],
-                    description: `دفعة نقدية - ${t.description || ''}`,
+                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
                     type: 'credit' as const,
-                    amount: t.amount
-                }))];
-            } else if (activeTab === 'suppliers') {
-                // Only count Delivered orders for suppliers unless showAll is checked
-                const supOrders = allOrders.filter(o => o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered'));
-                items = supOrders.map(o => {
-                    let cost = o.cost || 0;
-                    if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
-                    return {
-                        id: o.id,
-                        date: o.deliveryDate || o.createdAt.split('T')[0],
-                        description: `طلب خارجي #${o.caseId} - ${o.patientName}`,
-                        type: 'credit' as const,
-                        amount: cost
-                    };
-                });
+                    amount: cost
+                };
+            });
 
-                const supTx = allTransactions.filter(t => t.entityType === 'supplier' && t.entityId === selectedEntityId && t.type === 'expense');
-                items = [...items, ...supTx.map(t => ({
-                    id: t.id,
-                    date: t.date.split('T')[0],
-                    description: `سداد للمورد - ${t.description || ''}`,
-                    type: 'debit' as const,
-                    amount: t.amount
-                }))];
-            } else if (activeTab === 'designers') {
-                // Only count Delivered orders for designers unless showAll is checked
-                const desOrders = allOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered'));
-                items = desOrders.map(o => ({
-                    id: o.id,
-                    date: o.deliveryDate || o.createdAt.split('T')[0],
-                    description: `تصميم #${o.caseId} - ${o.patientName}`,
-                    type: 'credit' as const,
-                    amount: o.designPrice || 0
-                }));
+            const supTx = allTransactions.filter(t => t.entityType === 'supplier' && t.entityId === selectedEntityId && t.type === 'expense');
+            items = [...items, ...supTx.map(t => ({
+                id: t.id,
+                date: t.date.split('T')[0],
+                description: `سداد للمورد - ${t.description || ''}`,
+                type: 'debit' as const,
+                amount: t.amount
+            }))];
+        } else if (activeTab === 'designers') {
+            // Only count Delivered orders for designers unless showAll is checked
+            const desOrders = allOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
+            items = desOrders.map(o => ({
+                id: o.id,
+                date: o.deliveryDate || o.createdAt.split('T')[0],
+                description: `تصميم #${o.caseId} - ${o.patientName}`,
+                type: 'credit' as const,
+                amount: o.designPrice || 0
+            }));
 
-                const desTx = allTransactions.filter(t => t.entityType === 'designer' && t.entityId === selectedEntityId && t.type === 'expense');
-                items = [...items, ...desTx.map(t => ({
-                    id: t.id,
-                    date: t.date.split('T')[0],
-                    description: `سداد للمصمم - ${t.description || ''}`,
-                    type: 'debit' as const,
-                    amount: t.amount
-                }))];
-            }
-
-            if (dateRange.start) items = items.filter(i => i.date >= dateRange.start);
-            if (dateRange.end) items = items.filter(i => i.date <= dateRange.end);
-
-            items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            const totalDebit = items.filter(i => i.type === 'debit').reduce((sum, i) => sum + i.amount, 0);
-            const totalCredit = items.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
-            const balance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
-
-            setIndividualStatement({ items, totals: { totalDebit, totalCredit, balance } });
+            const desTx = allTransactions.filter(t => t.entityType === 'designer' && t.entityId === selectedEntityId && t.type === 'expense');
+            items = [...items, ...desTx.map(t => ({
+                id: t.id,
+                date: t.date.split('T')[0],
+                description: `سداد للمصمم - ${t.description || ''}`,
+                type: 'debit' as const,
+                amount: t.amount
+            }))];
         }
-    }, [viewMode, selectedEntityId, activeTab, showInProgress, dateRange, orders, transactions]);
+
+        if (dateRange.start) items = items.filter(i => i.date >= dateRange.start);
+        if (dateRange.end) items = items.filter(i => i.date <= dateRange.end);
+
+        items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        const totalDebit = items.filter(i => i.type === 'debit').reduce((sum, i) => sum + i.amount, 0);
+        const totalCredit = items.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
+        const balance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
+
+        return { items, totals: { totalDebit, totalCredit, balance } };
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions]);
 
 
     const handlePrint = () => window.print();
@@ -272,7 +285,12 @@ export default function Accounts() {
         const filteredSummary = summaryData
             .filter(item => {
                 if (hideZeroBalance && item.balance === 0) return false;
-                if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+                if (searchQuery) {
+                    const q = searchQuery.toLowerCase();
+                    const matchesName = item.name.toLowerCase().includes(q);
+                    const matchesCode = item.code?.toLowerCase().includes(q);
+                    if (!matchesName && !matchesCode) return false;
+                }
                 return true;
             });
 
@@ -341,7 +359,7 @@ export default function Accounts() {
                                     onChange={e => setShowAllOrders(e.target.checked)}
                                     className="w-4 h-4 text-purple-600 rounded"
                                 />
-                                <span className="text-sm font-bold text-purple-700">عرض كل الحالات (غير المنتهية)</span>
+                                <span className="text-sm font-bold text-purple-700">عرض كل الحالات</span>
                             </label>
                         </div>
 
@@ -361,6 +379,7 @@ export default function Accounts() {
 
                             {/* Quick Jump */}
                             <select
+                                aria-label="Quick jump to entity"
                                 onChange={(e) => {
                                     if (e.target.value) {
                                         setSelectedEntityId(e.target.value);
@@ -447,32 +466,32 @@ export default function Accounts() {
     // VIEW 2: INDIVIDUAL DETAIL (Existing UI wrapped)
     return (
         <div className="space-y-6">
-            {/* Header Controls - Hidden in Print */}
-            <div className="print:hidden flex flex-col gap-6 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            {/* Header Controls */}
+            <div className="flex flex-col gap-6 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-4">
-                        {!isLab && (
+                        {!isLab && !isDesigner && (
                             <button onClick={() => setViewMode('summary')} className="p-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-2 text-gray-600" title="عودة للقائمة">
                                 <ArrowRight /> <span className="text-sm font-bold">عودة للملخص</span>
                             </button>
                         )}
+
                         <div>
                             <h1 className="text-2xl font-bold text-gray-800">كشف حساب تفصيلي</h1>
                             <p className="text-gray-500">
                                 {activeTab === 'doctors'
-                                    ? doctors.find(d => d.id === selectedEntityId)?.name
+                                    ? (doctors.find(d => d.id === selectedEntityId)?.name || 'غير معروف')
                                     : (activeTab === 'suppliers'
-                                        ? suppliers.find(s => s.id === selectedEntityId)?.name
-                                        : designers.find(u => u.id === selectedEntityId)?.name)
+                                        ? (suppliers.find(s => s.id === selectedEntityId)?.name || 'غير معروف')
+                                        : (designers.find(u => u.id === selectedEntityId)?.name || 'غير معروف'))
                                 }
                             </p>
                         </div>
                     </div>
-                    {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
-                        <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800">
-                            <Printer size={18} /> <span>طباعة الكشف</span>
-                        </button>
-                    )}
+                    {/* Print Button valid for authorized roles */}
+                    <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800">
+                        <Printer size={18} /> <span>طباعة الكشف</span>
+                    </button>
                 </div>
 
                 <div className="flex flex-wrap gap-4 items-end border-t border-gray-50 pt-4">
@@ -480,21 +499,30 @@ export default function Accounts() {
                     <div className="flex gap-2">
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-1">من</label>
-                            <input type="date" className="p-2 border border-gray-200 rounded-lg text-sm" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
+                            <input type="date" aria-label="Start Date" className="p-2 border border-gray-200 rounded-lg text-sm" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-gray-500 mb-1">إلى</label>
-                            <input type="date" className="p-2 border border-gray-200 rounded-lg text-sm" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
+                            <input type="date" aria-label="End Date" className="p-2 border border-gray-200 rounded-lg text-sm" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
                         </div>
                     </div>
 
                     {/* Filter Options for Orders */}
-                    {activeTab === 'doctors' && (
-                        <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
-                            <input type="checkbox" id="showInProgress" checked={showInProgress} onChange={(e) => setShowInProgress(e.target.checked)} className="w-4 h-4 text-blue-600 rounded cursor-pointer" />
-                            <label htmlFor="showInProgress" className="text-sm font-medium text-blue-800 cursor-pointer">عرض "الجاري تنفيذه"</label>
-                        </div>
-                    )}
+                    {/* Filter Options for Orders */}
+                    <div className="flex items-center gap-4">
+
+
+                        {/* Show All Orders Option */}
+                        <label className="flex items-center gap-2 cursor-pointer bg-purple-50 px-3 py-2 rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
+                            <input
+                                type="checkbox"
+                                checked={showAllOrders}
+                                onChange={e => setShowAllOrders(e.target.checked)}
+                                className="w-4 h-4 text-purple-600 rounded"
+                            />
+                            <span className="text-sm font-bold text-purple-700">عرض كل الحالات</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -564,12 +592,12 @@ export default function Accounts() {
                                 <tr><td colSpan={4} className="p-8 text-center text-gray-400">لا توجد حركات</td></tr>
                             ) : (
                                 individualStatement.items.map((item, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-50">
+                                    <tr key={idx} className={clsx("hover:bg-gray-50", item.status === 'Rejected' && "bg-red-50 opacity-75")}>
                                         <td className="p-3 whitespace-nowrap text-gray-500">{item.date}</td>
                                         <td className="p-3">
-                                            <div className="font-medium text-gray-900">{item.description}</div>
-                                            {item.details && <div className="text-xs text-blue-600 mt-1">{item.details}</div>}
-                                            {item.status && showInProgress && <span className="text-[10px] bg-gray-100 px-1.5 rounded text-gray-500 mr-2">{item.status}</span>}
+                                            <div className={clsx("font-medium", item.status === 'Rejected' ? "text-red-700 line-through" : "text-gray-900")}>{item.description}</div>
+                                            {item.details && <div className={clsx("text-xs mt-1", item.status === 'Rejected' ? "text-red-500" : "text-blue-600")}>{item.details}</div>}
+                                            {item.status && showAllOrders && <span className="text-[10px] bg-gray-100 px-1.5 rounded text-gray-500 mr-2">{item.status}</span>}
                                         </td>
                                         <td className="p-3 font-medium text-gray-700">{item.type === 'debit' ? item.amount.toLocaleString() : '-'}</td>
                                         <td className="p-3 font-medium text-gray-700">{item.type === 'credit' ? item.amount.toLocaleString() : '-'}</td>
