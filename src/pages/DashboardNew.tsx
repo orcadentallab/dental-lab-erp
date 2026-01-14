@@ -127,7 +127,7 @@ export default function DashboardNew() {
     }
 
     const showFinancial = user?.role === 'admin' || user?.role === 'accountant';
-    const showAllAlerts = user?.role === 'admin' || user?.role === 'representative';
+
 
     return (
         <div className="space-y-6">
