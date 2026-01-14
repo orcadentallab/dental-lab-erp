@@ -223,7 +223,7 @@ export default function DashboardNew() {
                             تنبيهات هامة
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {showAllAlerts && rejectedOrders.length > 0 && (
+                            {rejectedOrders.length > 0 && (
                                 <AlertCard
                                     title="حالات مرفوضة/مرتجعة"
                                     count={rejectedOrders.length}
@@ -233,7 +233,7 @@ export default function DashboardNew() {
                                     onExpand={() => setActiveModal('rejected')}
                                 />
                             )}
-                            {showAllAlerts && overdueOrders.length > 0 && (
+                            {overdueOrders.length > 0 && (
                                 <AlertCard
                                     title="حالات متأخرة"
                                     count={overdueOrders.length}
@@ -265,7 +265,7 @@ export default function DashboardNew() {
                             متابعة سير العمل
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {showAllAlerts && pendingApprovalOrders.length > 0 && (
+                            {pendingApprovalOrders.length > 0 && (
                                 <AlertCard
                                     title="حالات منتظرة موافقة المعمل/المصمم"
                                     count={pendingApprovalOrders.length}
@@ -275,7 +275,7 @@ export default function DashboardNew() {
                                     onExpand={() => setActiveModal('pending')}
                                 />
                             )}
-                            {showAllAlerts && designPhaseOrders.length > 0 && (
+                            {designPhaseOrders.length > 0 && (
                                 <AlertCard
                                     title="في مرحلة التصميم/الموافقة"
                                     count={designPhaseOrders.length}
@@ -285,7 +285,7 @@ export default function DashboardNew() {
                                     onExpand={() => setActiveModal('design')}
                                 />
                             )}
-                            {showAllAlerts && tryInOrders.length > 0 && (
+                            {tryInOrders.length > 0 && (
                                 <AlertCard
                                     title="Try-In منتظر رد الطبيب"
                                     count={tryInOrders.length}
