@@ -103,7 +103,7 @@ export default function Sidebar() {
                             <span className="font-medium">{t.nav.logout}</span>
                         </button>
                         <div className="text-center mt-2 text-[10px] text-gray-300 dark:text-gray-700 font-mono">
-                            v1.2 (Online)
+                            v1.1 (Online)
                         </div>
                     </div>
                 </div>
