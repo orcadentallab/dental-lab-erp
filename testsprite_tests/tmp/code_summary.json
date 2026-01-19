@@ -4,74 +4,59 @@
         "React",
         "Vite",
         "Supabase",
-        "TailwindCSS",
-        "React Router"
+        "Tailwind CSS",
+        "Playwright"
     ],
     "features": [
         {
             "name": "Authentication",
-            "description": "User login and authentication management",
+            "description": "User login, logout, and role-based access control.",
             "files": [
-                "src/pages/Login.tsx",
-                "src/context/AuthContext.tsx"
-            ],
-            "api_doc": {}
+                "src/context/AuthContext.tsx",
+                "src/pages/Login.tsx"
+            ]
         },
         {
             "name": "Dashboard",
-            "description": "Main dashboard showing key metrics and alerts",
+            "description": "Main dashboard showing statistics, order tracking alerts (Late, Rejected, etc.), and lab workload.",
             "files": [
-                "src/pages/Dashboard.tsx",
                 "src/pages/DashboardNew.tsx",
-                "src/pages/DesignerDashboard.tsx"
-            ],
-            "api_doc": {}
+                "src/components/dashboard/AlertCard.tsx",
+                "src/components/dashboard/OrderListItem.tsx",
+                "src/components/dashboard/OrderListModal.tsx"
+            ]
         },
         {
             "name": "Order Management",
-            "description": "Create, view, update, and manage dental lab orders",
+            "description": "Create, update, and manage dental lab orders. Includes filtering by status and role.",
             "files": [
                 "src/pages/Orders.tsx",
-                "src/services/supabase/orders.ts"
-            ],
-            "api_doc": {}
+                "src/components/orders/OrderForm.tsx",
+                "src/services/db.ts"
+            ]
         },
         {
             "name": "Doctor Management",
-            "description": "Manage doctor profiles and details",
+            "description": "Manage doctor profiles and preferences.",
             "files": [
                 "src/pages/Doctors.tsx",
-                "src/services/supabase/doctors.ts"
-            ],
-            "api_doc": {}
+                "src/components/doctors/DoctorForm.tsx"
+            ]
         },
         {
-            "name": "Finance & Accounting",
-            "description": "Manage transactions, accounts, and financial reports",
+            "name": "Financials",
+            "description": "Manage transactions, expenses, and invoices.",
             "files": [
                 "src/pages/Finance.tsx",
-                "src/pages/Accounts.tsx",
-                "src/services/supabase/transactions.ts"
-            ],
-            "api_doc": {}
+                "src/pages/Accounts.tsx"
+            ]
         },
         {
-            "name": "Staff Management",
-            "description": "Manage staff members and technicians",
+            "name": "User Management",
+            "description": "Admin interface to manage system users and roles.",
             "files": [
-                "src/pages/Staff.tsx",
-                "src/pages/Users.tsx",
-                "src/services/supabase/users.ts"
-            ],
-            "api_doc": {}
-        },
-        {
-            "name": "Settings",
-            "description": "Application settings and configuration",
-            "files": [
-                "src/pages/Settings.tsx"
-            ],
-            "api_doc": {}
+                "src/pages/Users.tsx"
+            ]
         }
     ]
 }

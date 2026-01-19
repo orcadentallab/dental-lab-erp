@@ -3,9 +3,11 @@ import { db, type Doctor } from '../services/db';
 import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcel, printTable } from '../lib/exportUtils';
+import { useTranslation } from '../translations';
 
 export default function Doctors() {
     const { user } = useAuth();
+    const { t } = useTranslation();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     // const [representatives, setRepresentatives] = useState<User[]>([]); - REMOVED
     const [showModal, setShowModal] = useState(false);
@@ -157,7 +159,7 @@ export default function Doctors() {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">قائمة الأطباء</h1>
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{t.doctors.title}</h1>
                 <div className="flex gap-2">
                     {canExport && (
                         <>
@@ -215,7 +217,7 @@ export default function Doctors() {
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 dark:shadow-none"
                     >
                         <Plus size={20} />
-                        <span>إضافة طبيب</span>
+                        <span>{t.doctors.newDoctor}</span>
                     </button>
                 </div>
             </div>

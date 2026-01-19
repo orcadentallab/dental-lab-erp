@@ -744,26 +744,26 @@ export default function Dashboard() {
             </div>
 
             {/* Quick Actions Bar */}
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {(user?.role === 'admin' || user?.role === 'representative') && (
                     <>
-                        <button onClick={() => navigate('/orders')} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm">
+                        <button onClick={() => navigate('/orders')} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm">
                             <PlusCircle size={16} />
-                            <span>أوردرات جديد</span>
+                            <span>أوردر جديد</span>
                         </button>
-                        <button onClick={() => navigate('/doctors')} className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition shadow-sm">
+                        <button onClick={() => navigate('/doctors')} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition shadow-sm">
                             <UserPlus size={16} />
-                            <span>إضافة طبيب</span>
+                            <span>طبيب جديد</span>
                         </button>
                     </>
                 )}
                 {(user?.role === 'admin' || user?.role === 'accountant') && (
                     <>
-                        <button onClick={() => navigate('/finance')} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition shadow-sm">
+                        <button onClick={() => navigate('/finance')} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition shadow-sm">
                             <Banknote size={16} />
-                            <span>مصروف</span>
+                            <span>تسجيل مصروف</span>
                         </button>
-                        <button onClick={() => navigate('/accounts')} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition shadow-sm">
+                        <button onClick={() => navigate('/accounts')} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition shadow-sm">
                             <FileText size={16} />
                             <span>كشف حساب</span>
                         </button>
@@ -773,7 +773,7 @@ export default function Dashboard() {
 
 
             {/* Stats Cards (Active Status) */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl text-white">
                     <div className="flex items-center justify-between">
                         <div>
@@ -806,6 +806,79 @@ export default function Dashboard() {
             </div>
 
             {/* --- SECTIONS --- */}
+
+            {/* ALERT: Orders Without Assigned Lab */}
+            {unassignedOrders.length > 0 && (
+                <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-2xl p-6 mb-6">
+                    <h3 className="text-orange-800 dark:text-orange-300 font-bold flex items-center gap-2 mb-4">
+                        <HelpCircle className="text-orange-600 dark:text-orange-400" />
+                        ⚠️ حالات بدون معمل (Unassigned Lab)
+                        <span className="bg-orange-600 text-white px-2.5 py-1 rounded-full text-xs font-bold mr-2">
+                            {unassignedOrders.length}
+                        </span>
+                    </h3>
+                    <p className="text-sm text-orange-700 dark:text-orange-400 mb-4">
+                        هذه الحالات تحتاج لتحديد معمل أو مصمم لها. يرجى مراجعة الأوردرات وتحديد المعمل المناسب.
+                    </p>
+                    <div className="bg-white dark:bg-gray-800 rounded-xl border border-orange-100 dark:border-orange-900/50 overflow-hidden">
+                        <table className="w-full text-right text-sm">
+                            <thead className="bg-orange-50 dark:bg-orange-900/40 text-orange-900 dark:text-orange-100 font-bold">
+                                <tr>
+                                    <th className="p-3">Case#</th>
+                                    <th className="p-3">الطبيب</th>
+                                    <th className="p-3">المريض</th>
+                                    <th className="p-3">الخدمات</th>
+                                    <th className="p-3">التسليم</th>
+                                    <th className="p-3">الإجراء</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-orange-50 dark:divide-gray-700">
+                                {unassignedOrders.slice(0, 5).map(order => (
+                                    <tr key={order.id} className="hover:bg-orange-50/50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => navigate('/orders')}>
+                                        <td className="p-3 font-bold font-mono text-gray-800 dark:text-gray-200">
+                                            #{order.caseId}
+                                            {(order.isUrgent || order.priority === 'Urgent') && <span className="ml-1 animate-pulse" title="Urgent">🔥</span>}
+                                        </td>
+                                        <td className="p-3 text-gray-700 dark:text-gray-300 text-xs">{doctorsMap[order.doctorId] || '---'}</td>
+                                        <td className="p-3 font-bold text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                        <td className="p-3">
+                                            <div className="flex flex-wrap gap-1">
+                                                {(order.items || []).slice(0, 2).map((item: any, idx: number) => (
+                                                    <span key={idx} className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-200 px-1 py-0.5 rounded text-[10px]">
+                                                        {item.serviceType}
+                                                    </span>
+                                                ))}
+                                                {(order.items || []).length > 2 && (
+                                                    <span className="text-gray-400 text-[10px]">+{order.items.length - 2}</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-3 font-bold text-orange-600 dark:text-orange-400 ltr font-mono text-xs">
+                                            {order.deliveryDate}
+                                            {order.deliveryDate < todayStr && <span className="block text-[9px] text-red-500 font-bold">متأخر</span>}
+                                        </td>
+                                        <td className="p-3">
+                                            <span className="bg-orange-600 text-white px-3 py-1 rounded-lg text-xs font-bold hover:bg-orange-700 shadow-sm">
+                                                تحديد معمل
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {unassignedOrders.length > 5 && (
+                            <div className="p-3 bg-orange-50 dark:bg-orange-900/30 border-t border-orange-100 dark:border-orange-800 text-center">
+                                <button
+                                    onClick={() => navigate('/orders')}
+                                    className="text-orange-700 dark:text-orange-300 text-sm font-bold hover:underline"
+                                >
+                                    عرض كل الحالات ({unassignedOrders.length}) ←
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* ACCOUNTANT / ADMIN: Pending Registrations (Bibocad) */}
             {(user?.role === 'admin' || user?.role === 'accountant') && (

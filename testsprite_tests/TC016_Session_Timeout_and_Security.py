@@ -2,6 +2,8 @@ import asyncio
 from playwright import async_api
 from playwright.async_api import expect
 
+from test_settings import BASE_URL
+
 async def run_test():
     pw = None
     browser = None
@@ -30,7 +32,7 @@ async def run_test():
         page = await context.new_page()
         
         # Navigate to your target URL and wait until the network request is committed
-        await page.goto("http://localhost:5173", wait_until="commit", timeout=10000)
+        await page.goto(BASE_URL, wait_until="commit", timeout=10000)
         
         # Wait for the main page to reach DOMContentLoaded state (optional for stability)
         try:

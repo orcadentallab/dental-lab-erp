@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from '../translations';
 import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase } from 'lucide-react';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -8,19 +9,20 @@ export default function Sidebar() {
     const { user, logout } = useAuth();
     const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
+    const { t } = useTranslation();
 
     const navigation = [
-        { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
-        { name: 'الاوردرات', href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
-        { name: 'الجودة', href: '/quality', icon: Award, roles: ['admin', 'representative'] },
-        { name: 'الحسابات', href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer'] },
-        { name: 'المالية', href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
-        { name: 'التحليلات', href: '/analytics', icon: BarChart3, roles: ['admin'] },
-        { name: 'الأطباء', href: '/doctors', icon: Users, roles: ['admin', 'representative'] },
-        { name: 'الموردين', href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
-        { name: 'شئون الموظفين', href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
-        { name: 'المستخدمين', href: '/users', icon: Shield, roles: ['admin'] },
-        { name: 'الإعدادات', href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
+        { name: t.nav.dashboard, href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
+        { name: t.nav.orders, href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
+        { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
+        { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer'] },
+        { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
+        { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
+        { name: t.nav.doctors, href: '/doctors', icon: Users, roles: ['admin', 'representative'] },
+        { name: t.nav.suppliers, href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
+        { name: t.nav.staff, href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
+        { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
+        { name: t.nav.settings, href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
     ];
 
     const filteredNav = navigation.filter(item => user && item.roles.includes(user.role));
@@ -98,7 +100,7 @@ export default function Sidebar() {
                             )}
                         >
                             <LogOut size={20} className="group-hover:scale-110 transition-transform" />
-                            <span className="font-medium">تسجيل الخروج</span>
+                            <span className="font-medium">{t.nav.logout}</span>
                         </button>
                         <div className="text-center mt-2 text-[10px] text-gray-300 dark:text-gray-700 font-mono">
                             v1.2 (Online)

@@ -214,7 +214,7 @@ export default function Finance() {
 
             {/* DASHBOARD */}
             {activeTab === 'dashboard' && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-xl text-white">
                         <div className="flex items-center justify-between">
                             <div>

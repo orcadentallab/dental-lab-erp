@@ -4,9 +4,10 @@ import OrderList from '../components/orders/OrderList';
 import OrderForm from '../components/orders/OrderForm';
 import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
-import { Plus, X, Search, Filter, Send, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react';
+import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcelWithHeaders, printTable } from '../lib/exportUtils';
+import { useTranslation } from '../translations';
 
 export default function Orders() {
     const { user } = useAuth();
@@ -29,6 +30,7 @@ export default function Orders() {
 
     const isDesigner = user?.role === 'designer';
     const isAccountant = user?.role === 'accountant';
+    const { t } = useTranslation();
 
     // Data State
     // Data State
@@ -43,11 +45,13 @@ export default function Orders() {
     const [doctorFilter, setDoctorFilter] = useState('');
     const [supplierFilter, setSupplierFilter] = useState('');
     const [designerFilter, setDesignerFilter] = useState('');
+    const [representativeFilter, setRepresentativeFilter] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
     // Toggle Options
     const [hideDelivered, setHideDelivered] = useState(false);
+    const [hideRejected, setHideRejected] = useState(false);
 
     // Edit State (Admin - Full Edit)
     const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
@@ -136,9 +140,13 @@ export default function Orders() {
         }
 
         // Hide Delivered/Rejected Check
-        const matchesDelivered = hideDelivered ? (order.status !== 'Delivered' && order.status !== 'Returned for Adjustments' && order.technicianStatus !== 'Rejected') : true;
+        const matchesDelivered = hideDelivered ? (order.status !== 'Delivered' && order.status !== 'Returned for Adjustments') : true;
+        const matchesRejected = hideRejected ? order.technicianStatus !== 'Rejected' : true;
 
-        return matchesSearch && matchesStatus && matchesDoctor && matchesSupplier && matchesDesigner && matchesDelivered && matchesDate;
+        // Representative Filter
+        const matchesRepresentative = representativeFilter ? order.representativeId === representativeFilter : true;
+
+        return matchesSearch && matchesStatus && matchesDoctor && matchesSupplier && matchesDesigner && matchesDelivered && matchesRejected && matchesRepresentative && matchesDate;
     });
 
     const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'createdAt'>) => {
@@ -268,223 +276,261 @@ export default function Orders() {
             <div className="flex items-center justify-center h-64">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">جاري تحميل البيانات...</p>
+                    <p className="text-gray-600">{t.common.loading}</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="space-y-4">
+            {/* === PAGE TITLE === */}
+            <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">إدارة الأوردرات</h1>
-                    <p className="text-gray-500 mt-1">إنشاء ومتابعة طلبات المعمل</p>
+                    <h1 className="text-2xl font-bold text-gray-800">{t.orders.title}</h1>
+                    <p className="text-sm text-gray-500 mt-0.5">إدارة ومتابعة جميع الطلبات والحالات</p>
                 </div>
-                {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
-                    <button
-                        onClick={() => setIsFormOpen(true)}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
-                    >
-                        <Plus size={20} />
-                        <span>أوردر جديد</span>
-                    </button>
+                {/* Export Buttons */}
+                {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
+                    <div className="flex gap-1.5">
+                        <button
+                            onClick={() => {
+                                const exportData = filteredOrders.map(order => ({
+                                    'رقم الحالة': order.caseId,
+                                    'الطبيب': doctors.find(d => d.id === order.doctorId)?.name || '-',
+                                    'المريض': order.patientName,
+                                    'الحالة': order.status,
+                                    'السعر': order.totalPrice,
+                                    'تاريخ التسليم': order.deliveryDate,
+                                    'الأولوية': order.priority === 'Urgent' ? 'عاجل' : 'عادي'
+                                }));
+                                const headers = {
+                                    'رقم الحالة': 'رقم الحالة', 'الطبيب': 'الطبيب', 'المريض': 'المريض',
+                                    'الحالة': 'الحالة', 'السعر': 'السعر', 'تاريخ التسليم': 'تاريخ التسليم', 'الأولوية': 'الأولوية'
+                                };
+                                exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
+                            }}
+                            className="p-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors border border-green-200"
+                            title="تصدير Excel"
+                        >
+                            <FileSpreadsheet size={18} />
+                        </button>
+                        <button
+                            onClick={() => {
+                                printTable(
+                                    filteredOrders.map(order => ({
+                                        caseId: order.caseId,
+                                        doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
+                                        patient: order.patientName,
+                                        status: order.status,
+                                        price: order.totalPrice,
+                                        date: order.deliveryDate
+                                    })),
+                                    [
+                                        { key: 'caseId', label: 'رقم الحالة' },
+                                        { key: 'doctor', label: 'الطبيب' },
+                                        { key: 'patient', label: 'المريض' },
+                                        { key: 'status', label: 'الحالة' },
+                                        { key: 'price', label: 'السعر' },
+                                        { key: 'date', label: 'تاريخ التسليم' }
+                                    ],
+                                    'قائمة الأوردرات'
+                                );
+                            }}
+                            className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
+                            title="طباعة"
+                        >
+                            <Printer size={18} />
+                        </button>
+                    </div>
                 )}
-                <div className="flex gap-2">
-                    {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
-                        <>
-                            <button
-                                onClick={() => {
-                                    const exportData = filteredOrders.map(order => ({
-                                        'رقم الحالة': order.caseId,
-                                        'الطبيب': doctors.find(d => d.id === order.doctorId)?.name || '-',
-                                        'المريض': order.patientName,
-                                        'الحالة': order.status,
-                                        'السعر': order.totalPrice,
-                                        'تاريخ التسليم': order.deliveryDate,
-                                        'الأولوية': order.priority === 'Urgent' ? 'عاجل' : 'عادي'
-                                    }));
-                                    const headers = {
-                                        'رقم الحالة': 'رقم الحالة',
-                                        'الطبيب': 'الطبيب',
-                                        'المريض': 'المريض',
-                                        'الحالة': 'الحالة',
-                                        'السعر': 'السعر',
-                                        'تاريخ التسليم': 'تاريخ التسليم',
-                                        'الأولوية': 'الأولوية'
-                                    };
-                                    exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
-                                }}
-                                className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-xl hover:bg-green-700 transition-colors"
-                                title="تصدير Excel"
-                            >
-                                <FileSpreadsheet size={18} />
-                                <span className="hidden sm:inline">Excel</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    printTable(
-                                        filteredOrders.map(order => ({
-                                            caseId: order.caseId,
-                                            doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
-                                            patient: order.patientName,
-                                            status: order.status,
-                                            price: order.totalPrice,
-                                            date: order.deliveryDate
-                                        })),
-                                        [
-                                            { key: 'caseId', label: 'رقم الحالة' },
-                                            { key: 'doctor', label: 'الطبيب' },
-                                            { key: 'patient', label: 'المريض' },
-                                            { key: 'status', label: 'الحالة' },
-                                            { key: 'price', label: 'السعر' },
-                                            { key: 'date', label: 'تاريخ التسليم' }
-                                        ],
-                                        'قائمة الأوردرات'
-                                    );
-                                }}
-                                className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-xl hover:bg-gray-700 transition-colors"
-                                title="طباعة"
-                            >
-                                <Printer size={18} />
-                                <span className="hidden sm:inline">طباعة</span>
-                            </button>
-                        </>
-                    )}
-                </div>
             </div>
 
-            {/* Filter Bar */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 space-y-4">
-                <div className="flex flex-wrap gap-4 items-center">
+            {/* === FILTERS PANEL === */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
 
-                    {/* Search */}
-                    <div className="flex-1 min-w-[200px]">
-                        <div className="relative">
-                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                            <input
-                                type="text"
-                                placeholder="بحث برقم الحالة أو اسم المريض..."
-                                className="w-full pl-4 pr-10 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100 placeholder:text-gray-400 text-sm"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Hide Delivered Toggle */}
-                    <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200 h-[42px]">
-                        <input
-                            type="checkbox"
-                            id="hideDelivered"
-                            checked={hideDelivered}
-                            onChange={(e) => setHideDelivered(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 rounded cursor-pointer"
-                        />
-                        <label htmlFor="hideDelivered" className="text-sm font-medium text-gray-700 cursor-pointer select-none">
-                            إخفاء المنتهية/المرفوضة
-                        </label>
-                    </div>
-
-                    {/* Status Filter - UPDATED OPTIONS */}
-                    <div className="relative">
+                {/* ROW 1: Main Filters (Full Width) */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {/* Status */}
+                    <div>
+                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">الحالة</label>
                         <select
-                            className="appearance-none pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer min-w-[160px]"
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value)}
-                            aria-label="تصفية حسب الحالة"
+                            title="تصفية حسب الحالة"
+                            className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
                         >
-                            <option value="">🧩 كل الحالات</option>
-                            <option value="New Case">✨ New Case</option>
-                            <option value="Under Design">🎨 Under Design</option>
-                            <option value="Waiting Dr Approval">⏳ Waiting Approval</option>
-                            <option value="Under Production">⚙️ Under Production</option>
-                            <option value="Try In">🦷 Try In</option>
-                            <option value="Try In Approved">✅ Try In Approved</option>
-                            <option value="Ready">📦 Ready</option>
-                            <option value="Delivered">🚚 Delivered</option>
-                            <option value="Returned for Adjustments">↩️ Returned</option>
-                            <option value="Rejected">❌ Rejected</option>
+                            <option value="">كل الحالات</option>
+                            <option value="New Case">New Case</option>
+                            <option value="Under Design">Under Design</option>
+                            <option value="Waiting Dr Approval">Waiting Approval</option>
+                            <option value="Under Production">Under Production</option>
+                            <option value="Try In">Try In</option>
+                            <option value="Try In Approved">Try In Approved</option>
+                            <option value="Ready">Ready</option>
+                            <option value="Delivered">Delivered</option>
+                            <option value="Returned for Adjustments">Returned</option>
+                            <option value="Rejected">Rejected</option>
                         </select>
-                        <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={14} />
                     </div>
 
-                    {/* Filters for Admin/Rep Only */}
+                    {/* Doctor */}
                     {canFilterByDoctorAndSupplier && (
-                        <>
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">الطبيب</label>
                             <select
-                                className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer max-w-[180px]"
                                 value={doctorFilter}
                                 onChange={(e) => setDoctorFilter(e.target.value)}
-                                aria-label="تصفية حسب الطبيب"
+                                title="تصفية حسب الطبيب"
+                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
                             >
-                                <option value="">👨‍⚕️ كل الأطباء</option>
+                                <option value="">كل الأطباء</option>
                                 {doctors.map(doc => (
                                     <option key={doc.id} value={doc.id}>{doc.name}</option>
                                 ))}
                             </select>
+                        </div>
+                    )}
 
+                    {/* Supplier/Lab */}
+                    {canFilterByDoctorAndSupplier && (
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">المعمل</label>
                             <select
-                                className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer max-w-[180px]"
                                 value={supplierFilter}
                                 onChange={(e) => setSupplierFilter(e.target.value)}
-                                aria-label="تصفية حسب المورد"
+                                title="تصفية حسب المعمل"
+                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
                             >
-                                <option value="">🏢 كل الموردين</option>
+                                <option value="">كل المعامل</option>
                                 {suppliers.map(sup => (
                                     <option key={sup.id} value={sup.id}>{sup.name}</option>
                                 ))}
                             </select>
+                        </div>
+                    )}
 
+                    {/* Designer */}
+                    {canFilterByDoctorAndSupplier && (
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">المصمم</label>
                             <select
-                                className="pl-3 pr-8 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-medium text-gray-700 outline-none hover:bg-gray-100 cursor-pointer max-w-[180px]"
                                 value={designerFilter}
                                 onChange={(e) => setDesignerFilter(e.target.value)}
-                                aria-label="تصفية حسب المصمم"
+                                title="تصفية حسب المصمم"
+                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
                             >
-                                <option value="">🎨 كل المصممين</option>
+                                <option value="">كل المصممين</option>
                                 {users.filter(u => u.role === 'designer').map(des => (
                                     <option key={des.id} value={des.id}>{des.name}</option>
                                 ))}
                             </select>
-                        </>
+                        </div>
                     )}
 
-                    {/* Date Filter */}
-                    <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                        <span className="text-sm font-medium text-gray-600">من:</span>
+                    {/* Sales Rep / Delegate */}
+                    {canFilterByDoctorAndSupplier && (
+                        <div>
+                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">المندوب</label>
+                            <select
+                                value={representativeFilter}
+                                onChange={(e) => setRepresentativeFilter(e.target.value)}
+                                title="تصفية حسب المندوب"
+                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            >
+                                <option value="">كل المناديب</option>
+                                {users.filter(u => u.role === 'representative' || u.role === 'admin').map(rep => (
+                                    <option key={rep.id} value={rep.id}>{rep.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                {/* ROW 2: Date Filters + Actions */}
+                <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100">
+                    {/* Date Filters (Horizontal) */}
+                    <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">من</label>
                         <input
                             type="date"
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
-                            aria-label="تاريخ البداية"
-                            className="bg-transparent text-sm focus:outline-none text-gray-700"
+                            title="تاريخ البداية"
+                            className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-32"
                         />
                     </div>
-
-                    <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                        <span className="text-sm font-medium text-gray-600">إلى:</span>
+                    <div className="flex items-center gap-2">
+                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">إلى</label>
                         <input
                             type="date"
                             value={endDate}
                             onChange={(e) => setEndDate(e.target.value)}
-                            aria-label="تاريخ النهاية"
-                            className="bg-transparent text-sm focus:outline-none text-gray-700"
+                            title="تاريخ النهاية"
+                            className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-32"
                         />
                     </div>
 
-                    {/* Reset Button */}
-                    {(searchQuery || statusFilter || doctorFilter || supplierFilter || designerFilter || startDate || endDate) && (
+                    {/* Divider */}
+                    <div className="hidden sm:block w-px h-6 bg-gray-200"></div>
+
+                    {/* Search Input */}
+                    <div className="relative flex-1 min-w-[200px] max-w-sm">
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                        <input
+                            type="text"
+                            placeholder="بحث بالطبيب، المريض، أو رقم الحالة..."
+                            className="w-full pl-3 pr-9 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-white"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
+
+                    {/* New Order Button */}
+                    {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
                         <button
-                            onClick={() => { setSearchQuery(''); setStatusFilter(''); setDoctorFilter(''); setSupplierFilter(''); setDesignerFilter(''); setStartDate(''); setEndDate(''); }}
-                            className="text-red-500 text-sm font-medium hover:bg-red-50 px-3 py-2 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                            onClick={() => setIsFormOpen(true)}
+                            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm whitespace-nowrap"
                         >
-                            مسح الفلتر ✕
+                            <Plus size={16} />
+                            <span>{t.orders.newOrder}</span>
+                        </button>
+                    )}
+
+                    {/* Divider */}
+                    <div className="hidden sm:block w-px h-6 bg-gray-200"></div>
+
+                    {/* Hide Closed Toggle */}
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 hover:text-gray-800 select-none whitespace-nowrap">
+                        <input
+                            type="checkbox"
+                            checked={hideDelivered}
+                            onChange={(e) => {
+                                setHideDelivered(e.target.checked);
+                                setHideRejected(e.target.checked);
+                            }}
+                            className="w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-blue-400"
+                        />
+                        إخفاء المنتهية والمرفوضة
+                    </label>
+
+                    {/* Reset Filters */}
+                    {(searchQuery || statusFilter || doctorFilter || supplierFilter || designerFilter || representativeFilter || startDate || endDate || hideDelivered) && (
+                        <button
+                            onClick={() => {
+                                setSearchQuery(''); setStatusFilter(''); setDoctorFilter(''); setSupplierFilter('');
+                                setDesignerFilter(''); setRepresentativeFilter(''); setStartDate(''); setEndDate('');
+                                setHideDelivered(false); setHideRejected(false);
+                            }}
+                            className="text-sm text-red-500 hover:text-red-600 font-medium hover:underline whitespace-nowrap"
+                        >
+                            مسح الكل
                         </button>
                     )}
                 </div>
             </div>
 
+            {/* === SECTION 3: ORDER LIST === */}
             <OrderList
                 orders={filteredOrders}
                 onStatusChange={handleStatusUpdate}
@@ -497,36 +543,45 @@ export default function Orders() {
             />
 
             {/* Create New Order Modal */}
-            {
-                isFormOpen && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl">
-                            <div className="p-6">
-                                <div className="flex justify-between items-center mb-6">
+            {isFormOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl">
+                        <div className="p-6">
+                            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+                                <div>
                                     <h2 className="text-xl font-bold text-gray-800">إنشاء أوردر جديد</h2>
-                                    <button onClick={() => setIsFormOpen(false)} className="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
-                                        <X size={24} />
-                                    </button>
+                                    <p className="text-gray-500 text-sm mt-1">أدخل بيانات الحالة الجديدة</p>
                                 </div>
-                                <OrderForm onSubmit={handleCreateOrder} onCancel={() => setIsFormOpen(false)} />
+                                <button onClick={() => setIsFormOpen(false)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500" aria-label="إغلاق">
+                                    <X size={22} />
+                                </button>
                             </div>
+                            <OrderForm onSubmit={handleCreateOrder} onCancel={() => setIsFormOpen(false)} />
                         </div>
                     </div>
-                )
-            }
+                </div>
+            )}
 
-            {/* Full Edit Modal (Admin Only) */}
+            {/* Full Edit Modal */}
             {
                 fullEditingOrder && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl">
-                            <div className="p-6">
-                                <div className="flex justify-between items-center mb-6">
-                                    <div className='flex items-center gap-2'>
-                                        <h2 className="text-xl font-bold text-gray-800">تعديل الأوردر</h2>
-                                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-sm font-mono">#{fullEditingOrder.caseId}</span>
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl animate-scale-in">
+                            <div className="p-6 md:p-8">
+                                <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4">
+                                    <div className='flex items-center gap-3'>
+                                        <div className='bg-blue-100 p-2 rounded-lg text-blue-600'>
+                                            <FileSpreadsheet size={24} />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-gray-800">تعديل الأوردر</h2>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-gray-500 text-sm">رقم الحالة:</span>
+                                                <span className="bg-gray-100 px-2 py-0.5 rounded text-sm font-mono font-bold text-gray-700">#{fullEditingOrder.caseId}</span>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <button onClick={() => setFullEditingOrder(null)} className="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+                                    <button onClick={() => setFullEditingOrder(null)} className="bg-gray-100 p-2 rounded-full text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors" aria-label="إغلاق">
                                         <X size={24} />
                                     </button>
                                 </div>
@@ -541,73 +596,96 @@ export default function Orders() {
                 )
             }
 
-            {/* Chat/History Modal */}
+            {/* Note & Chat Modal */}
             {
                 noteEditingOrder && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-in">
                             {/* Header */}
                             <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                                 <div>
                                     <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
                                         <MessageCircle size={20} className="text-blue-600" />
-                                        سجل الملاحظات
+                                        سجل الملاحظات والدردشة
                                     </h3>
-                                    <p className="text-xs text-gray-500">الحالة #{noteEditingOrder.caseId}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">الحالة #{noteEditingOrder.caseId}</p>
                                 </div>
-                                <button onClick={() => setNoteEditingOrder(null)} aria-label="إغلاق"><X className="text-gray-400 hover:text-red-500" /></button>
+                                <button onClick={() => setNoteEditingOrder(null)} className="p-1 hover:bg-gray-200 rounded-full transition-colors" aria-label="إغلاق">
+                                    <X className="text-gray-500" size={20} />
+                                </button>
                             </div>
 
                             {/* Chat Area */}
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30">
-                                {/* Original Instructions if any */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+                                {/* Instructions Box */}
                                 {noteEditingOrder.instructions && (
-                                    <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-3">
-                                        <p className="text-xs font-bold text-yellow-800 mb-1">التعليمات الأساسية:</p>
-                                        <p className="text-sm text-gray-700">{noteEditingOrder.instructions}</p>
+                                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-1 h-full bg-amber-400"></div>
+                                        <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1">
+                                            <span className="text-lg">📝</span> التعليمات الأساسية
+                                        </p>
+                                        <p className="text-sm text-gray-700 leading-relaxed font-medium">{noteEditingOrder.instructions}</p>
                                     </div>
                                 )}
 
-                                {/* Comments Log */}
+                                {/* Divider if needed */}
+                                {(noteEditingOrder.comments && noteEditingOrder.comments.length > 0) && (
+                                    <div className="relative flex py-2 items-center">
+                                        <div className="flex-grow border-t border-gray-200"></div>
+                                        <span className="flex-shrink-0 mx-4 text-gray-400 text-xs">سجل النشاط</span>
+                                        <div className="flex-grow border-t border-gray-200"></div>
+                                    </div>
+                                )}
+
+                                {/* Comments List */}
                                 {noteEditingOrder.comments && noteEditingOrder.comments.length > 0 ? (
                                     noteEditingOrder.comments.map((comment) => (
-                                        <div key={comment.id} className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-xs font-bold text-blue-600">{comment.userName}</span>
-                                                <span className="text-[10px] text-gray-400">{new Date(comment.createdAt).toLocaleDateString('ar-EG')} {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        <div key={comment.id} className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-2 px-2">
+                                                <span className="text-xs font-bold text-gray-700">{comment.userName}</span>
+                                                <span className="text-[10px] text-gray-400">{new Date(comment.createdAt).toLocaleDateString('ar-EG')} • {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                             </div>
-                                            <p className="text-sm text-gray-800 whitespace-pre-wrap">{comment.text}</p>
+                                            <div className={`p-3 rounded-2xl shadow-sm border border-gray-100 text-sm leading-relaxed ${comment.userId === user?.id ? 'bg-blue-50 text-blue-900 rounded-tr-none mr-4' : 'bg-white text-gray-800 rounded-tl-none ml-4'
+                                                }`}>
+                                                {comment.text}
+                                            </div>
                                         </div>
                                     ))
                                 ) : (
-                                    !noteEditingOrder.instructions && <p className="text-center text-gray-400 text-sm py-4">لا توجد ملاحظات سابقة</p>
+                                    !noteEditingOrder.instructions && (
+                                        <div className="flex flex-col items-center justify-center py-10 text-gray-400 opacity-60">
+                                            <MessageCircle size={48} className="mb-2" />
+                                            <p className="text-sm">لا توجد ملاحظات حتى الآن</p>
+                                        </div>
+                                    )
                                 )}
                             </div>
 
                             {/* Input Area */}
-                            <div className="p-4 border-t bg-white">
-                                <label className="block text-xs font-bold text-gray-700 mb-2">إضافة تعليق جديد</label>
-                                <div className="flex gap-2">
-                                    <textarea
-                                        className="flex-1 p-3 border border-gray-200 rounded-lg h-20 focus:ring-2 focus:ring-blue-100 outline-none resize-none text-sm"
-                                        value={newComment}
-                                        onChange={e => setNewComment(e.target.value)}
-                                        aria-label="اكتب ملاحظة"
-                                        placeholder="اكتب ملاحظاتك هنا..."
-                                        onKeyDown={e => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                handleAddComment();
-                                            }
-                                        }}
-                                    />
+                            <div className="p-4 bg-white border-t border-gray-100">
+                                <div className="flex gap-2 items-end">
+                                    <div className="flex-1 relative">
+                                        <textarea
+                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl max-h-32 min-h-[50px] focus:ring-2 focus:ring-blue-100 focus:border-blue-300 outline-none resize-none text-sm leading-relaxed"
+                                            value={newComment}
+                                            onChange={e => setNewComment(e.target.value)}
+                                            placeholder="اكتب ملاحظة جديدة..."
+                                            rows={2}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    handleAddComment();
+                                                }
+                                            }}
+                                        />
+                                    </div>
                                     <button
                                         onClick={handleAddComment}
-                                        className="px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center transition-colors"
                                         disabled={!newComment.trim()}
-                                        aria-label="إرسال الملاحظة"
+                                        className="h-[50px] w-[50px] bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-100 hover:shadow-lg"
+                                        title="إرسال"
                                     >
-                                        <Send size={20} />
+                                        <Send size={20} className={newComment.trim() ? 'ml-0.5' : ''} />
                                     </button>
                                 </div>
                             </div>
@@ -615,37 +693,46 @@ export default function Orders() {
                     </div>
                 )
             }
+
             {/* Design Link Modal */}
             {
                 designLinkOrder && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden">
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-scale-in">
                             <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-                                <h3 className="font-bold text-gray-800">إضافة رابط التصميم</h3>
-                                <button onClick={() => setDesignLinkOrder(null)} aria-label="إغلاق"><X size={20} className="text-gray-400" /></button>
+                                <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                                    🔗 إضافة رابط التصميم
+                                </h3>
+                                <button onClick={() => setDesignLinkOrder(null)} aria-label="إغلاق"><X size={20} className="text-gray-400 hover:text-red-500" /></button>
                             </div>
                             <div className="p-6">
-                                <label className="block text-sm font-bold text-gray-700 mb-2">رابط الملف (Google Drive / Dropbox)</label>
-                                <input
-                                    type="url"
-                                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm dir-ltr mb-4"
-                                    placeholder="https://..."
-                                    value={designLinkUrl}
-                                    onChange={e => setDesignLinkUrl(e.target.value)}
-                                />
-                                <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-800 mb-6">
-                                    ℹ️ عند الحفظ، سيتم تحديث حالة الأوردر تلقائياً إلى "Waiting Dr Approval" وإبلاغ الطبيب.
+                                <label className="block text-sm font-bold text-gray-700 mb-2">رابط الملف</label>
+                                <div className="relative mb-4">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🌐</span>
+                                    <input
+                                        type="url"
+                                        className="w-full pl-3 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm dir-ltr font-mono text-gray-600"
+                                        placeholder="https://drive.google.com/..."
+                                        value={designLinkUrl}
+                                        onChange={e => setDesignLinkUrl(e.target.value)}
+                                    />
                                 </div>
+
+                                <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 mb-6 flex gap-2 items-start">
+                                    <span className="text-lg">ℹ️</span>
+                                    <p className="mt-0.5">عند الحفظ، سيتم تحديث حالة الأوردر تلقائياً إلى <strong>Waiting Dr Approval</strong> وسيتم إرسال إشعار للطبيب.</p>
+                                </div>
+
                                 <div className="flex gap-3">
                                     <button
                                         onClick={handleUpdateDesignUrl}
-                                        className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-bold hover:bg-blue-700 transition"
+                                        className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100"
                                     >
                                         حفظ وإرسال
                                     </button>
                                     <button
                                         onClick={() => setDesignLinkOrder(null)}
-                                        className="flex-1 bg-gray-100 text-gray-700 py-2 rounded-lg font-bold hover:bg-gray-200 transition"
+                                        className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-200 transition"
                                     >
                                         إلغاء
                                     </button>

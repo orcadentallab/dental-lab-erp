@@ -1,13 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User } from '../services/db';
-import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle } from 'lucide-react';
 import AlertCard from '../components/dashboard/AlertCard';
 import OrderForm from '../components/orders/OrderForm';
 import DoctorForm from '../components/doctors/DoctorForm';
 import OrderListModal from '../components/dashboard/OrderListModal';
 import OrderListItem from '../components/dashboard/OrderListItem';
+import { useTranslation } from '../translations';
 
 export default function DashboardNew() {
     const { user } = useAuth();
@@ -20,6 +20,7 @@ export default function DashboardNew() {
     const [showOrderForm, setShowOrderForm] = useState(false);
     const [showDoctorForm, setShowDoctorForm] = useState(false);
     const [activeModal, setActiveModal] = useState<string | null>(null);
+    const { t } = useTranslation();
 
     useEffect(() => {
         const loadData = async () => {
@@ -85,6 +86,11 @@ export default function DashboardNew() {
 
     const unregisteredOrders = orders.filter(o => !o.isRegistered && o.status === 'Delivered');
 
+    // Orders without assigned lab
+    const unassignedLabOrders = orders.filter(o =>
+        !o.supplierId && o.status !== 'Delivered' && o.status !== 'Rejected'
+    );
+
     // Orders needing attention (PMMA or NeedDetails requested by lab/designer)
     const needsAttentionOrders = orders.filter(o =>
         o.technicianStatus === 'PMMA_First' || o.technicianStatus === 'NeedDetails'
@@ -120,7 +126,7 @@ export default function DashboardNew() {
             <div className="flex items-center justify-center h-64">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600 dark:text-gray-400">جاري تحميل البيانات...</p>
+                    <p className="text-gray-600 dark:text-gray-400">{t.common.loading}</p>
                 </div>
             </div>
         );
@@ -134,8 +140,8 @@ export default function DashboardNew() {
             {/* Header */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">لوحة التحكم</h1>
-                    <p className="text-gray-500 dark:text-gray-400">أهلاً بك، {user?.name} 👋</p>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">{t.dashboard.title}</h1>
+                    <p className="text-gray-500 dark:text-gray-400">{t.dashboard.welcome}, {user?.name} 👋</p>
                 </div>
 
                 {/* Quick Actions */}
@@ -147,14 +153,14 @@ export default function DashboardNew() {
                                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
                             >
                                 <PlusCircle size={18} />
-                                <span>أوردر جديد</span>
+                                <span>{t.dashboard.newOrder}</span>
                             </button>
                             <button
                                 onClick={() => setShowDoctorForm(true)}
                                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors"
                             >
                                 <UserPlus size={18} />
-                                <span>طبيب جديد</span>
+                                <span>{t.dashboard.newDoctor}</span>
                             </button>
                         </>
                     )}
@@ -165,14 +171,14 @@ export default function DashboardNew() {
                                 className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
                             >
                                 <TrendingUp size={18} />
-                                <span>كشف حساب</span>
+                                <span>{t.dashboard.accountStatement}</span>
                             </button>
                             <button
                                 onClick={() => window.location.href = '/finance'}
                                 className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg transition-colors"
                             >
                                 <Package size={18} />
-                                <span>تسجيل مصروف</span>
+                                <span>{t.dashboard.recordExpense}</span>
                             </button>
                         </>
                     )}
@@ -183,7 +189,7 @@ export default function DashboardNew() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">نشط حالياً</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t.dashboard.activeOrders}</p>
                         <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{activeOrdersCount}</h3>
                     </div>
                     <div className="p-3 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
@@ -193,7 +199,7 @@ export default function DashboardNew() {
 
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">أوردرات اليوم</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t.dashboard.todayOrders}</p>
                         <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{ordersTodayCount}</h3>
                     </div>
                     <div className="p-3 rounded-full bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400">
@@ -203,7 +209,7 @@ export default function DashboardNew() {
 
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
                     <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">جاهز للتسليم</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t.dashboard.readyForDelivery}</p>
                         <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{readyOrdersCount}</h3>
                     </div>
                     <div className="p-3 rounded-full bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
@@ -220,12 +226,12 @@ export default function DashboardNew() {
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <AlertTriangle size={16} />
-                            تنبيهات هامة
+                            {t.dashboard.importantAlerts}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {rejectedOrders.length > 0 && (
                                 <AlertCard
-                                    title="حالات مرفوضة/مرتجعة"
+                                    title={t.dashboard.rejectedReturned}
                                     count={rejectedOrders.length}
                                     icon={AlertTriangle}
                                     colorClass="red"
@@ -235,7 +241,7 @@ export default function DashboardNew() {
                             )}
                             {overdueOrders.length > 0 && (
                                 <AlertCard
-                                    title="حالات متأخرة"
+                                    title={t.dashboard.overdueOrders}
                                     count={overdueOrders.length}
                                     icon={AlertTriangle}
                                     colorClass="red"
@@ -245,7 +251,7 @@ export default function DashboardNew() {
                             )}
                             {needsAttentionOrders.length > 0 && (
                                 <AlertCard
-                                    title="مطلوب انتباه (PMMA/تفاصيل)"
+                                    title={t.dashboard.needsAttention}
                                     count={needsAttentionOrders.length}
                                     icon={AlertTriangle}
                                     colorClass="yellow"
@@ -258,16 +264,26 @@ export default function DashboardNew() {
                 )}
 
                 {/* 2. WORKFLOW / TRACKING (Blue/Purple) */}
-                {(pendingApprovalOrders.length > 0 || designPhaseOrders.length > 0 || tryInOrders.length > 0) && (
+                {(unassignedLabOrders.length > 0 || pendingApprovalOrders.length > 0 || designPhaseOrders.length > 0 || tryInOrders.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <Clock size={16} />
-                            متابعة سير العمل
+                            {t.dashboard.workflowTracking}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {unassignedLabOrders.length > 0 && (
+                                <AlertCard
+                                    title={t.dashboard.unassignedLab}
+                                    count={unassignedLabOrders.length}
+                                    icon={HelpCircle}
+                                    colorClass="yellow"
+                                    useModal
+                                    onExpand={() => setActiveModal('unassigned-lab')}
+                                />
+                            )}
                             {pendingApprovalOrders.length > 0 && (
                                 <AlertCard
-                                    title="حالات منتظرة موافقة المعمل/المصمم"
+                                    title={t.dashboard.pendingApproval}
                                     count={pendingApprovalOrders.length}
                                     icon={UserCheck}
                                     colorClass="purple"
@@ -277,7 +293,7 @@ export default function DashboardNew() {
                             )}
                             {designPhaseOrders.length > 0 && (
                                 <AlertCard
-                                    title="في مرحلة التصميم/الموافقة"
+                                    title={t.dashboard.designPhase}
                                     count={designPhaseOrders.length}
                                     icon={Package}
                                     colorClass="blue"
@@ -287,7 +303,7 @@ export default function DashboardNew() {
                             )}
                             {tryInOrders.length > 0 && (
                                 <AlertCard
-                                    title="Try-In منتظر رد الطبيب"
+                                    title={t.dashboard.tryInWaiting}
                                     count={tryInOrders.length}
                                     icon={Clock}
                                     colorClass="yellow"
@@ -305,11 +321,11 @@ export default function DashboardNew() {
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <TrendingUp size={16} />
-                            إجراءات مالية وإدارية
+                            {t.dashboard.financialActions}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             <AlertCard
-                                title="أوردرات غير مسجلة"
+                                title={t.dashboard.unregisteredOrders}
                                 count={unregisteredOrders.length}
                                 icon={TrendingUp}
                                 colorClass="green"
@@ -339,7 +355,7 @@ export default function DashboardNew() {
             {
                 suppliers.length > 0 && (
                     <div className="space-y-4">
-                        <h2 className="text-lg font-bold text-gray-800 dark:text-white">حمل المعامل</h2>
+                        <h2 className="text-lg font-bold text-gray-800 dark:text-white">{t.dashboard.labWorkload}</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {suppliers.map(supplier => {
                                 // Filter orders based on user role
@@ -400,10 +416,10 @@ export default function DashboardNew() {
                     <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-xl">
                         <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
                         <h3 className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">
-                            كل شيء يسير بشكل رائع!
+                            {t.dashboard.allGood}
                         </h3>
                         <p className="text-gray-500 dark:text-gray-400">
-                            لا توجد أوردرات تحتاج إلى اهتمام
+                            {t.dashboard.noOrdersNeedAttention}
                         </p>
                     </div>
                 )
@@ -416,6 +432,21 @@ export default function DashboardNew() {
                 onClose={() => setActiveModal(null)}
             >
                 {pendingApprovalOrders.map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="حالات بدون معمل"
+                isOpen={activeModal === 'unassigned-lab'}
+                onClose={() => setActiveModal(null)}
+            >
+                {unassignedLabOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}

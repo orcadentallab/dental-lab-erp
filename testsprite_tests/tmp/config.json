@@ -1,6 +1,6 @@
 {
   "status": "commited",
-  "type": "frontend",
+  "type": "backend",
   "scope": "codebase",
   "localEndpoint": "http://localhost:5173",
   "backendAuthType": "public",
@@ -8,10 +8,9 @@
     "projectName": "dental-lab-erp",
     "projectPath": "c:\\Users\\loq\\.gemini\\antigravity\\scratch\\dental-lab-erp",
     "testIds": [],
-    "additionalInstruction": "Run ALL tests. Important Context: The Backend is REMOTE (Supabase), NOT local. Do not attempt to start a backend server. Critical: Use username 'admin' and password '123456' for ANY login step required by any test case.",
+    "additionalInstruction": "Generate robust playwright tests. IMPORTANT: Ideally use a configurable BASE_URL so we can switch between localhost and production. If not possible, default to localhost but make it easy to change.",
     "envs": {
       "API_KEY": "sk-user-jfDQW5wNxTEKgHo9zL0qAX-bIDx3tpIJH_6BLAt_eEEDFQfWk5oZ3pqhd8cEJ2ljL9YW6qKydrZtgY7Tp9dD7JdFQlbO0z_epHXA_bswVgsWAyvS_Fz19iWwwIw09Wj3WQA"
     }
-  },
-  "proxy": "http://88c74015-4d6b-492f-840b-0e4844d7ee0c:aTIZv5CbwuEgYlTviYGaLbCpYon7tMik@tun.testsprite.com:8080"
+  }
 }

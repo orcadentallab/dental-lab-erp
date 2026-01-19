@@ -17,10 +17,6 @@ export default function Login() {
         }
     }, [isAuthenticated, user, navigate]);
 
-    useEffect(() => {
-        // Removed insecure localStorage credential retrieval
-    }, []);
-
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -29,10 +25,9 @@ export default function Login() {
         const { success, error: loginError } = await login(username, password);
 
         if (!success) {
-            setError(loginError || 'فشل تسجيل الدخول. يرجى التحقق من البيانات.');
+            setError(loginError || 'اسم المستخدم أو كلمة المرور غير صحيحة');
             setIsLoggingIn(false);
         }
-        // If success, the useEffect above will handle redirection once state updates.
     };
 
     return (
@@ -41,7 +36,7 @@ export default function Login() {
                 <div className="bg-white px-8 pt-8 pb-4 text-center">
                     <img src="/orca-logo.png" alt="ORCA Dental Lab" className="w-20 h-20 mx-auto mb-4 rounded-xl shadow-lg" />
                     <h1 className="text-2xl font-bold text-blue-900 mb-1" style={{ fontFamily: 'sans-serif' }}>ORCA Dental Lab</h1>
-                    <p className="text-gray-500 text-sm">Welcome Back</p>
+                    <p className="text-gray-500 text-sm">نظام إدارة معمل الأسنان</p>
                 </div>
 
                 <div className="p-8">
@@ -53,14 +48,14 @@ export default function Login() {
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم أو البريد الإلكتروني</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم</label>
                             <input
                                 type="text"
                                 required
                                 className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                placeholder="username OR email"
+                                placeholder="اسم المستخدم أو البريد"
                             />
                         </div>
 
@@ -94,3 +89,4 @@ export default function Login() {
         </div>
     );
 }
+

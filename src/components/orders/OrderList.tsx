@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Package, Star } from 'lucide-react';
-import type { Order, User } from '../../services/db';
+import type { Order } from '../../services/db';
 import { db } from '../../services/db';
 import clsx from 'clsx';
 import { generateCaseId } from '../../utils/caseId';
@@ -31,8 +31,6 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const filteredOrders = orders || []; // Define filteredOrders
 
     const [usersMap, setUsersMap] = useState<Record<string, string>>({});
-    const [representatives, setRepresentatives] = useState<User[]>([]);
-    const [selectedRepresentative, setSelectedRepresentative] = useState<string>('');
 
     useEffect(() => {
         const loadAuxData = async () => {
@@ -55,8 +53,6 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 allUsers.forEach(u => mapU[u.id] = u.name);
                 setUsersMap(mapU);
 
-                setRepresentatives(allUsers.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
-
                 // Add Designers Map logic if needed for filters inside list, though handled above
             } catch (error) {
                 console.error('Error loading auxiliary data:', error);
@@ -65,11 +61,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         loadAuxData();
     }, []);
 
-    // Filter Logic
-    const finalOrders = filteredOrders.filter(order => {
-        if (selectedRepresentative && order.representativeId !== selectedRepresentative) return false;
-        return true;
-    });
+    const finalOrders = filteredOrders;
 
     const handleTechAction = async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
@@ -180,23 +172,6 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     return (
         <div className="space-y-3">
-            {/* Filter Dropdown */}
-            {representatives.length > 0 && (
-                <div className="flex justify-end px-2">
-                    <select
-                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        aria-label="Filter orders by representative"
-                        value={selectedRepresentative}
-                        onChange={(e) => setSelectedRepresentative(e.target.value)}
-                    >
-                        <option value="">كل المناديب</option>
-                        {representatives.map(rep => (
-                            <option key={rep.id} value={rep.id}>{rep.name}</option>
-                        ))}
-                    </select>
-                </div>
-            )}
-
             {finalOrders.length === 0 ? (
                 <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700">
                     <Package className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
