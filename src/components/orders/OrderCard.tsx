@@ -328,6 +328,8 @@ export default function OrderCard({
                             {/* Status Dropdown */}
                             <div className="relative group">
                                 <select
+                                    title="Order Status"
+                                    aria-label="Change Order Status"
                                     value={order.status || 'New Case'}
                                     onChange={(e) => onStatusChange(order.id, e.target.value as Order['status'])}
                                     className={clsx(

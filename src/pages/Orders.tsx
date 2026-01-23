@@ -322,6 +322,8 @@ export default function Orders() {
                         <div>
                             <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">الحالة</label>
                             <select
+                                title="Status Filter"
+                                aria-label="Filter by Status"
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value)}
                                 className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
@@ -345,6 +347,8 @@ export default function Orders() {
                                 <div>
                                     <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">الطبيب</label>
                                     <select
+                                        title="Doctor Filter"
+                                        aria-label="Filter by Doctor"
                                         value={doctorFilter}
                                         onChange={(e) => setDoctorFilter(e.target.value)}
                                         className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
@@ -356,6 +360,8 @@ export default function Orders() {
                                 <div>
                                     <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المعمل</label>
                                     <select
+                                        title="Supplier Filter"
+                                        aria-label="Filter by Supplier"
                                         value={supplierFilter}
                                         onChange={(e) => setSupplierFilter(e.target.value)}
                                         className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
@@ -367,6 +373,8 @@ export default function Orders() {
                                 <div>
                                     <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المصمم</label>
                                     <select
+                                        title="Designer Filter"
+                                        aria-label="Filter by Designer"
                                         value={designerFilter}
                                         onChange={(e) => setDesignerFilter(e.target.value)}
                                         className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
@@ -378,6 +386,8 @@ export default function Orders() {
                                 <div>
                                     <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المندوب</label>
                                     <select
+                                        title="Representative Filter"
+                                        aria-label="Filter by Representative"
                                         value={representativeFilter}
                                         onChange={(e) => setRepresentativeFilter(e.target.value)}
                                         className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
@@ -395,11 +405,11 @@ export default function Orders() {
                         <div className="md:col-span-4 flex gap-3">
                             <div className="flex-1">
                                 <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">من</label>
-                                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
+                                <input title="Start Date" aria-label="Start Date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
                             </div>
                             <div className="flex-1">
                                 <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">إلى</label>
-                                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
+                                <input title="End Date" aria-label="End Date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
                             </div>
                         </div>
 
@@ -426,7 +436,7 @@ export default function Orders() {
                             </label>
 
                             {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
-                                <Button onClick={() => setIsFormOpen(true)} className="gap-2 shadow-lg shadow-primary-500/20 whitespace-nowrap">
+                                <Button onClick={() => setIsFormOpen(true)} className="gap-2 shadow-lg shadow-primary-500/20 whitespace-nowrap" aria-label="New Order">
                                     <Plus size={18} />
                                     <span>{t.orders.newOrder}</span>
                                 </Button>
@@ -459,7 +469,7 @@ export default function Orders() {
                                         <h2 className="text-2xl font-bold text-surface-900">إنشاء أوردر جديد</h2>
                                         <p className="text-surface-500 text-sm mt-1">أدخل بيانات الحالة الجديدة</p>
                                     </div>
-                                    <button onClick={() => setIsFormOpen(false)} className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
+                                    <button onClick={() => setIsFormOpen(false)} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
                                 </div>
                                 <OrderForm onSubmit={handleCreateOrder} onCancel={() => setIsFormOpen(false)} />
                             </div>
@@ -482,7 +492,7 @@ export default function Orders() {
                                             </div>
                                         </div>
                                     </div>
-                                    <button onClick={() => setFullEditingOrder(null)} className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
+                                    <button onClick={() => setFullEditingOrder(null)} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
                                 </div>
                                 <OrderForm onSubmit={handleUpdateOrder} onCancel={() => setFullEditingOrder(null)} initialData={fullEditingOrder} />
                             </div>
@@ -498,7 +508,7 @@ export default function Orders() {
                                     <h3 className="font-bold text-lg text-surface-900 flex items-center gap-2"><MessageCircle size={20} className="text-primary-600" /> التواصل والملاحظات</h3>
                                     <p className="text-xs text-surface-500 mt-0.5">الحالة #{noteEditingOrder.caseId}</p>
                                 </div>
-                                <button onClick={() => setNoteEditingOrder(null)} className="p-1 hover:bg-surface-200 rounded-full transition-colors"><X className="text-surface-400" size={20} /></button>
+                                <button onClick={() => setNoteEditingOrder(null)} aria-label="Close" className="p-1 hover:bg-surface-200 rounded-full transition-colors"><X className="text-surface-400" size={20} /></button>
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
                                 {noteEditingOrder.instructions && (
@@ -534,7 +544,7 @@ export default function Orders() {
                                         placeholder="اكتب ملاحظة..."
                                         rows={2}
                                     />
-                                    <Button onClick={handleAddComment} disabled={!newComment.trim()} className="h-[46px] w-[46px] rounded-xl p-0 flex items-center justify-center shadow-lg shadow-primary-500/20">
+                                    <Button onClick={handleAddComment} disabled={!newComment.trim()} aria-label="Send Comment" className="h-[46px] w-[46px] rounded-xl p-0 flex items-center justify-center shadow-lg shadow-primary-500/20">
                                         <Send size={18} className={newComment.trim() ? 'ml-0.5' : ''} />
                                     </Button>
                                 </div>
@@ -548,7 +558,7 @@ export default function Orders() {
                         <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden">
                             <div className="p-4 bg-surface-50 border-b flex justify-between items-center">
                                 <h3 className="font-bold text-surface-800 flex items-center gap-2">🔗 إضافة رابط التصميم</h3>
-                                <button onClick={() => setDesignLinkOrder(null)}><X size={20} className="text-surface-400 hover:text-red-500" /></button>
+                                <button onClick={() => setDesignLinkOrder(null)} aria-label="Close"><X size={20} className="text-surface-400 hover:text-red-500" /></button>
                             </div>
                             <div className="p-6">
                                 <Input

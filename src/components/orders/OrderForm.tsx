@@ -248,9 +248,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     {initialData ? 'تعديل بيانات الأوردر' : 'إنشاء أوردر جديد'}
                 </h2>
                 <div className="flex gap-2">
-                    <Button type="button" variant="ghost" className="text-surface-500" onClick={onCancel}>إلغاء</Button>
+                    <Button type="button" variant="ghost" className="text-surface-500" onClick={onCancel}>
+                        <span>إلغاء</span>
+                    </Button>
                     <Button type="submit" size="md" className="px-8 shadow-lg shadow-primary-500/20">
-                        {initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر'}
+                        <span>{initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر'}</span>
                     </Button>
                 </div>
             </div>
@@ -283,6 +285,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <button
                                         type="button"
                                         onClick={() => setShowDoctorModal(true)}
+                                        aria-label="Add New Doctor"
                                         className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
                                     >
                                         <Plus size={18} />
@@ -351,6 +354,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     </div>
                                     <div className="w-1/3">
                                         <select
+                                            title="Service Type"
+                                            aria-label="Select Service Type"
                                             className="w-full bg-transparent font-bold text-sm outline-none text-surface-800 cursor-pointer"
                                             value={item.serviceType}
                                             onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
@@ -368,7 +373,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                         />
                                     </div>
                                     {items.length > 1 && (
-                                        <button onClick={() => handleRemoveItem(index)} className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
+                                        <button onClick={() => handleRemoveItem(index)} aria-label="Remove Item" className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
                                     )}
                                 </div>
                             ))}
@@ -420,6 +425,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <div>
                                 <label className="text-[10px] font-bold text-surface-400 block mb-1">تاريخ استلام العمل</label>
                                 <input
+                                    title="Received Date"
+                                    aria-label="Received Date"
                                     type="date"
                                     className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm font-bold outline-none focus:ring-1 focus:ring-primary-500"
                                     value={receivedDate}
@@ -429,6 +436,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <div>
                                 <label className="text-[10px] font-bold text-surface-400 block mb-1">المندوب المستلم</label>
                                 <select
+                                    title="Representative"
+                                    aria-label="Select Representative"
                                     className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm outline-none"
                                     value={representativeId}
                                     onChange={(e) => setRepresentativeId(e.target.value)}
@@ -447,6 +456,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <Truck size={14} className="text-green-600" /> موعد التسليم
                         </h3>
                         <input
+                            title="Delivery Date"
+                            aria-label="Delivery Date"
                             type="date"
                             className="w-full p-2 mb-3 bg-white border border-green-200 rounded-lg text-sm font-bold text-surface-800 outline-none"
                             value={deliveryDate}
@@ -470,17 +481,17 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
                         {workflowType === 'split' ? (
                             <div className="space-y-2 animate-in slide-in-from-top-2 fade-in">
-                                <select className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={designerId} onChange={e => setDesignerId(e.target.value)}>
+                                <select title="Designer" aria-label="Select Designer" className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={designerId} onChange={e => setDesignerId(e.target.value)}>
                                     <option value="">اختر المصمم...</option>
                                     {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </select>
-                                <select className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
+                                <select title="Supplier (Split)" aria-label="Select Supplier for Split Workflow" className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
                                     <option value="">اختر المعمل...</option>
                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
                         ) : (
-                            <select className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
+                            <select title="Supplier (Full)" aria-label="Select Supplier for Full Lab Workflow" className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
                                 <option value="">-- معمل داخلي (أفتراضي) --</option>
                                 {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                             </select>
@@ -518,7 +529,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     <Card className="w-full max-w-md animate-in zoom-in-95">
                         <div className="p-4 border-b border-surface-100 bg-surface-50/50 flex justify-between items-center">
                             <h2 className="font-bold text-base text-surface-900">إضافة طبيب جديد</h2>
-                            <button onClick={() => setShowDoctorModal(false)}><X size={18} className="text-surface-400 hover:text-surface-600" /></button>
+                            <button onClick={() => setShowDoctorModal(false)} aria-label="Close"><X size={18} className="text-surface-400 hover:text-surface-600" /></button>
                         </div>
                         <div className="p-5 space-y-4">
                             {doctorError && (
@@ -531,7 +542,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <Input label="رقم الهاتف" required type="tel" value={newDoctor.phone} onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })} />
                                 <Input label="الكود" required placeholder="AHM" value={newDoctor.doctorCode} onChange={e => setNewDoctor({ ...newDoctor, doctorCode: e.target.value })} />
                             </div>
-                            <Button onClick={handleAddDoctorFull} className="w-full mt-2">حفظ</Button>
+                            <Button onClick={handleAddDoctorFull} className="w-full mt-2">
+                                <span>حفظ</span>
+                            </Button>
                         </div>
                     </Card>
                 </div>
