@@ -3,13 +3,16 @@ import { useState, useEffect, useRef } from 'react';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
-    Trash2, History
+    Trash2, History, Box
 } from 'lucide-react';
 import OrderHistoryModal from './OrderHistoryModal';
 import { db } from '../../services/db';
 import type { Order, OrderHistoryEntry } from '../../services/db';
 import clsx from 'clsx';
-import { getTechStatusBadge, checkIsLate } from '../../utils/orderUtils';
+import { checkIsLate } from '../../utils/orderUtils';
+import { Card } from '../ui/Card';
+import { Button } from '../ui/Button';
+import { motion } from 'framer-motion';
 
 interface OrderCardProps {
     order: Order;
@@ -24,7 +27,6 @@ interface OrderCardProps {
     onTechAction?: (id: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => void;
     onRequestRedo?: (order: Order) => void;
     onFeedback?: (order: Order) => void;
-    onRegister?: (id: string) => void;
     hideSensitiveInfo?: boolean;
     onDelete?: (order: Order) => void;
     isHighlighted?: boolean;
@@ -43,7 +45,6 @@ export default function OrderCard({
     onTechAction,
     hideSensitiveInfo,
     onDelete,
-    onRegister,
     isHighlighted = false
 }: OrderCardProps) {
 
@@ -56,7 +57,6 @@ export default function OrderCard({
         }
     }, [isHighlighted]);
 
-    // History State
     const [showHistory, setShowHistory] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyData, setHistoryData] = useState<OrderHistoryEntry[]>([]);
@@ -74,402 +74,334 @@ export default function OrderCard({
         }
     };
 
-    // Latest comment
     const latestComment = order.comments && order.comments.length > 0
         ? order.comments[order.comments.length - 1]
         : null;
 
     const isReturnedOrRejected = order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected';
+    const isDelivered = order.status === 'Delivered';
 
     return (
-        <div
+        <motion.div
             ref={cardRef}
-            className={clsx(
-                "group relative border rounded-xl shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden bg-white dark:bg-gray-800",
-                isHighlighted ? 'ring-2 ring-blue-500 shadow-lg scale-[1.01] z-10' : '',
-                order.status === 'Delivered'
-                    ? 'border-green-200/60 dark:border-green-800'
-                    : isReturnedOrRejected
-                        ? 'border-red-200/60 dark:border-red-800'
-                        : 'border-gray-200 dark:border-gray-700'
-            )}>
-            {/* Urgent Status Strip (Left Side) */}
-            {(order.isUrgent || order.priority === 'Urgent') && (
-                <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-red-500 z-10" />
-            )}
-
-            <div className="flex flex-col h-full">
-                {/* 1. Header Row: ID | Date | Status */}
-                <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-bold text-gray-700 dark:text-gray-200">
-                            #{order.caseId}
-                        </span>
-                        {(order.isUrgent || order.priority === 'Urgent') && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold bg-red-100 text-red-600 border border-red-200">
-                                Urgent
-                            </span>
-                        )}
-                        {order.status === 'Delivered' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 flex items-center gap-1">
-                                <Check size={10} strokeWidth={3} /> Delivered
-                            </span>
-                        )}
-                        {isLate && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-600 border border-rose-200 flex items-center gap-1">
-                                <Clock size={10} /> Late
-                            </span>
-                        )}
-                        {order.deliveryType && (
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${order.deliveryType === 'Final'
-                                ? 'bg-indigo-100 text-indigo-700 border-indigo-200'
-                                : 'bg-amber-100 text-amber-700 border-amber-200'
-                                }`}>
-                                {order.deliveryType === 'Final' ? '✨ Final' : '🦷 Try In'}
-                            </span>
-                        )}
-                        {order.workflowType === 'split' && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-100 text-cyan-700 border border-cyan-200 flex items-center gap-1">
-                                <Settings size={10} /> خراطة فقط
-                            </span>
-                        )}
-                    </div>
-
-                    {/* Right Side: Actions & Date */}
-                    <div className="flex items-center gap-2">
-                        {/* Header Actions - Wide & Colored */}
-                        <div className="flex items-center gap-2">
-                            {/* Designer Action: Upload/Update Link */}
-                            {onUpdateDesignUrl && (userRole === 'designer' || userRole === 'admin' || userRole === 'lab') && (
-                                <button
-                                    onClick={() => onUpdateDesignUrl(order)}
-                                    className={clsx(
-                                        "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all shadow-sm",
-                                        order.designUrl
-                                            ? "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100" // Update style
-                                            : "bg-orange-600 text-white border border-orange-700 hover:bg-orange-700 shadow-orange-100" // Upload style (Prominent)
-                                    )}
-                                    title={order.designUrl ? "تحديث رابط التصميم" : "رفع رابط التصميم"}
-                                >
-                                    <LinkIcon size={14} />
-                                    <span>{order.designUrl ? 'تحديث الرابط' : 'رفع التصميم'}</span>
-                                </button>
-                            )}
-
-                            {order.designUrl && (
-                                <a
-                                    href={order.designUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-all shadow-sm ring-1 ring-orange-500/10"
-                                    title="Download Design"
-                                >
-                                    <LinkIcon size={14} />
-                                    <span>تحميل التصميم</span>
-                                </a>
-                            )}
-
-                            {onAddNote && (
-                                <button
-                                    onClick={() => onAddNote(order)}
-                                    className={clsx(
-                                        "flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold transition-all relative",
-                                        order.comments && order.comments.length > 0
-                                            ? "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
-                                            : "bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-blue-600"
-                                    )}
-                                    title="Notes"
-                                >
-                                    <MessageCircle size={14} />
-                                    <span>ملاحظات</span>
-                                    {(order.comments && order.comments.length > 0) && (
-                                        <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow-sm ring-1 ring-white">
-                                            {order.comments.length}
-                                        </span>
-                                    )}
-                                </button>
-                            )}
-
-                            {order.stlUrl && (
-                                <a
-                                    href={order.stlUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-all"
-                                    title="Download STL"
-                                >
-                                    <LinkIcon size={14} />
-                                    <span>STL</span>
-                                </a>
-                            )}
-
-                            {order.imagesUrl && (
-                                <a
-                                    href={order.imagesUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-all"
-                                    title="View Images"
-                                >
-                                    <ImageIcon size={14} />
-                                    <span>صور</span>
-                                </a>
-                            )}
-
-                            <button
-                                onClick={handleShowHistory}
-                                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 transition-all"
-                                title="سجل النشاط"
-                            >
-                                <History size={14} />
-                            </button>
-
-                            {userRole === 'admin' && onEdit && (
-                                <button
-                                    onClick={() => onEdit(order)}
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition-all"
-                                    title="Edit Order"
-                                >
-                                    <Settings size={14} />
-                                </button>
-                            )}
-
-                            {userRole === 'admin' && onDelete && (
-                                <button
-                                    onClick={() => {
-                                        if (confirm(`⚠️ هل أنت متأكد من حذف هذا الأوردر (${order.caseId}) نهائياً؟`)) {
-                                            onDelete(order);
-                                        }
-                                    }}
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all"
-                                    title="Delete Order"
-                                >
-                                    <Trash2 size={14} />
-                                </button>
-                            )}
-
-                            {/* Registration Button - Admin/Accountant only, for delivered unregistered orders */}
-                            {(userRole === 'admin' || userRole === 'accountant') && onRegister && order.status === 'Delivered' && !order.isRegistered && (
-                                <button
-                                    onClick={() => onRegister(order.id)}
-                                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-[10px] font-bold bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 transition-all"
-                                    title="تسجيل في النظام الداخلي"
-                                >
-                                    <Check size={14} /> تسجيل
-                                </button>
-                            )}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+        >
+            <Card
+                variant={isHighlighted ? 'glass' : 'default'}
+                className={clsx(
+                    "relative overflow-hidden transition-all duration-200 border-l-4",
+                    isHighlighted ? 'ring-2 ring-primary-500 shadow-lg scale-[1.01] z-10' : 'hover:shadow-md',
+                    isDelivered
+                        ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
+                        : isReturnedOrRejected
+                            ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
+                            : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
+                )}
+            >
+                {/* Urgent Strip */}
+                {(order.isUrgent || order.priority === 'Urgent') && (
+                    <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none overflow-hidden">
+                        <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-500 text-white text-[9px] font-bold py-1 w-24 text-center shadow-sm">
+                            عاجل 🔥
                         </div>
-
-                        <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
-
-                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1" dir="ltr">
-                            <Calendar size={12} className="text-gray-400" />
-                            {order.deliveryDate}
-                        </span>
-                    </div>
-                </div>
-
-                {/* 2. Main Content Grid */}
-                <div className="p-3 grid grid-cols-12 gap-3 items-center">
-                    {/* Right Block (Patient & Doctor) - 5 Cols */}
-                    <div className="col-span-12 md:col-span-5 flex flex-col gap-1.5 border-l-0 md:border-l border-gray-100 dark:border-gray-700 pl-0 md:pl-3">
-                        {/* Patient */}
-                        <div className="flex items-center gap-2">
-                            <div className="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shrink-0">
-                                <User size={16} />
-                            </div>
-                            <div className="flex flex-col overflow-hidden">
-                                <span className="font-bold text-base text-gray-900 dark:text-gray-100 truncate leading-tight">
-                                    {order.patientName}
-                                </span>
-                                <span className="text-[10px] text-gray-400 dark:text-gray-500">المريض</span>
-                            </div>
-                        </div>
-
-                        {/* Doctor */}
-                        {!hideSensitiveInfo && (
-                            <div className="flex items-center gap-2 mt-0.5">
-                                <div className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 shrink-0">
-                                    <User size={14} />
-                                </div>
-                                <div className="flex flex-col overflow-hidden">
-                                    <span className="font-bold text-sm text-gray-700 dark:text-gray-300 truncate leading-tight">
-                                        d. {doctors[order.doctorId] || 'غير معروف'}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400 dark:text-gray-500">الطبيب</span>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Middle Block (Services & Lab) - 7 Cols */}
-                    <div className="col-span-12 md:col-span-7 flex flex-col gap-2">
-                        {/* Services List */}
-                        <div>
-                            <span className="text-[10px] font-bold text-gray-400 mb-1 block">الخدمات المطلوبة</span>
-                            <div className="flex flex-wrap gap-1.5">
-                                {(order.items || []).map((item, idx) => (
-                                    <span key={idx} className="inline-flex flex-col px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50">
-                                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">{item.serviceType}</span>
-                                        {item.teethNumbers && (
-                                            <span className="text-[10px] text-indigo-500 dark:text-indigo-400 font-mono tracking-wide">
-                                                Tooth: {Array.isArray(item.teethNumbers) ? item.teethNumbers.join(',') : item.teethNumbers}
-                                            </span>
-                                        )}
-                                    </span>
-                                ))}
-                                {order.shade && (
-                                    <span className="inline-flex flex-col justify-center px-2 py-1 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50">
-                                        <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-bold uppercase tracking-wider">Shade</span>
-                                        <span className="text-xs font-bold text-yellow-800 dark:text-yellow-300">{order.shade}</span>
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Lab / Supplier */}
-                        {order.supplierId && suppliers[order.supplierId] && (
-                            <div className="flex items-center gap-2 mt-1">
-                                <Building2 size={14} className="text-purple-500" />
-                                <span className="text-xs font-bold text-purple-700 dark:text-purple-400">
-                                    معمل: {suppliers[order.supplierId]}
-                                </span>
-                            </div>
-                        )}
-
-                        <div className="flex items-center gap-4 mt-1">
-                            {/* Representative */}
-                            {order.representativeId && users[order.representativeId] && (
-                                <div className="flex items-center gap-1.5">
-                                    <User size={12} className="text-blue-500" />
-                                    <span className="text-[10px] text-gray-500">مندوب:</span>
-                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                                        {users[order.representativeId]}
-                                    </span>
-                                </div>
-                            )}
-
-                            {/* Designer (if Split) */}
-                            {order.workflowType === 'split' && order.designerId && users[order.designerId] && (
-                                <div className="flex items-center gap-1.5">
-                                    <Settings size={12} className="text-orange-500" />
-                                    <span className="text-[10px] text-gray-500">تصميم:</span>
-                                    <span className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                                        {users[order.designerId]}
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* 3. Instructions & Comments Area (Full Width, Distinct Background) */}
-                {(order.instructions || latestComment) && (
-                    <div className="px-3 py-2 bg-yellow-50/50 dark:bg-yellow-900/5 border-t border-dashed border-gray-100 dark:border-gray-700 flex flex-col gap-2">
-                        {order.instructions && (
-                            <div className="flex items-start gap-2">
-                                <StickyNote size={14} className="text-yellow-600 mt-0.5 shrink-0" />
-                                <p className="text-xs text-gray-700 dark:text-gray-300 leading-snug">
-                                    <span className="font-bold text-yellow-700 ml-1">تعليمات:</span>
-                                    {order.instructions}
-                                </p>
-                            </div>
-                        )}
-                        {latestComment && (
-                            <div className="flex items-start gap-2">
-                                <MessageCircle size={14} className="text-blue-500 mt-0.5 shrink-0" />
-                                <p className="text-xs text-gray-700 dark:text-gray-300 leading-snug w-full">
-                                    <span className="font-bold text-blue-600 ml-1">{latestComment.userName}:</span>
-                                    "{latestComment.text}"
-                                </p>
-                            </div>
-                        )}
                     </div>
                 )}
 
-                {/* 4. Footer Actions (Robust Size) */}
-                <div className="mt-auto px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-3">
+                <div className="flex flex-col h-full">
+                    {/* Header */}
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-3 py-2 bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
+                        <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded-md border border-primary-100 dark:border-primary-800">
+                                #{order.caseId}
+                            </span>
 
-                    {/* Left Side: Status & Tech Actions */}
-                    <div className="flex flex-wrap items-center gap-2 mr-auto w-full">
-                        {/* Status Select (First on Left) */}
-                        <div className="relative">
-                            <select
-                                value={order.status || 'New Case'}
-                                onChange={(e) => onStatusChange(order.id, e.target.value as Order['status'])}
-                                className={clsx(
-                                    "appearance-none pl-2 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none focus:ring-1 transition-all w-[140px]",
-                                    order.status === 'Delivered'
-                                        ? 'bg-green-100 text-green-800 border-green-200 ring-green-200'
-                                        : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300'
-                                )}
-                                disabled={userRole === 'lab' && order.status === 'Delivered'}
-                                aria-label="تغيير حالة الطلب"
-                            >
-                                <option value="New Case">✨ New Case</option>
-                                <option value="Under Design">🎨 Under Design</option>
-                                <option value="Waiting Dr Approval">⏳ Waiting Approval</option>
-                                <option value="Under Production">⚙️ Under Production</option>
-                                <option value="Try In">🦷 Try In</option>
-                                <option value="Try In Approved">✅ Try In Approved</option>
-                                <option value="Ready">📦 Ready</option>
-                                <option value="Delivered">🚚 Delivered</option>
-                                <option value="Returned for Adjustments">↩️ Returned</option>
-                                <option value="Rejected">❌ Rejected</option>
-                            </select>
-                            <div className="absolute inset-y-0 right-2 flex items-center pointer-events-none text-gray-400">
-                                <ChevronRight size={14} className="rotate-90" />
-                            </div>
+                            {isDelivered && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800 flex items-center gap-1">
+                                    <Check size={9} strokeWidth={3} /> تم التسليم
+                                </span>
+                            )}
+                            {isLate && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800 flex items-center gap-1 animate-pulse">
+                                    <Clock size={9} /> متأخر
+                                </span>
+                            )}
+                            {order.deliveryType && (
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold border flex items-center gap-1 ${order.deliveryType === 'Final'
+                                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border-indigo-800'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
+                                    }`}>
+                                    {order.deliveryType === 'Final' ? '✨ Final' : '🦷 Try In'}
+                                </span>
+                            )}
+                            {order.workflowType === 'split' && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-800 flex items-center gap-1">
+                                    <Settings size={9} /> خراطة
+                                </span>
+                            )}
                         </div>
 
-                        {/* Tech Actions */}
-                        {onTechAction && (userRole === 'technician' || userRole === 'admin' || userRole === 'representative' || userRole === 'lab' || userRole === 'designer') && (
-                            <div className="flex flex-wrap gap-2 items-center">
-                                <button
-                                    onClick={() => onTechAction(order.id, 'Approved')}
-                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'Approved'
-                                        ? 'bg-green-100 text-green-800 border-green-400 ring-2 ring-green-500/20'
-                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-green-50 hover:text-green-600 hover:border-green-200'
-                                        }`}
+                        {/* Actions */}
+                        <div className="flex items-center gap-1.5">
+                            {/* Designer Action */}
+                            {onUpdateDesignUrl && (userRole === 'designer' || userRole === 'admin' || userRole === 'lab') && (
+                                <Button
+                                    size="sm"
+                                    variant={order.designUrl ? 'outline' : 'primary'}
+                                    className={clsx(
+                                        "h-6 px-2 text-xs",
+                                        !order.designUrl ? "bg-orange-600 hover:bg-orange-700 text-white border-orange-600" : "text-blue-600 border-blue-200 hover:bg-blue-50"
+                                    )}
+                                    onClick={() => onUpdateDesignUrl(order)}
+                                    title={order.designUrl ? "تحديث رابط التصميم" : "رفع رابط التصميم"}
                                 >
-                                    <Check size={12} strokeWidth={3} /> قبول
-                                </button>
-                                <button
-                                    onClick={() => onTechAction(order.id, 'NeedDetails')}
-                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'NeedDetails'
-                                        ? 'bg-orange-100 text-orange-800 border-orange-400 ring-2 ring-orange-500/20'
-                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200'
-                                        }`}
-                                >
-                                    <MessageCircle size={12} strokeWidth={3} /> تفاصيل
-                                </button>
-                                <button
-                                    onClick={() => onTechAction(order.id, 'PMMA_First')}
-                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'PMMA_First'
-                                        ? 'bg-blue-100 text-blue-800 border-blue-400 ring-2 ring-blue-500/20'
-                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'
-                                        }`}
-                                >
-                                    <Clock size={12} strokeWidth={3} /> PMMA
-                                </button>
-                                <button
-                                    onClick={() => onTechAction(order.id, 'Rejected')}
-                                    className={`px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all flex items-center gap-1.5 shadow-sm ${order.technicianStatus === 'Rejected'
-                                        ? 'bg-red-100 text-red-800 border-red-400 ring-2 ring-red-500/20'
-                                        : 'bg-white text-gray-500 border-gray-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200'
-                                        }`}
-                                >
-                                    <AlertTriangle size={12} strokeWidth={3} /> رفض
-                                </button>
-                            </div>
-                        )}
+                                    <LinkIcon size={12} />
+                                    <span className="hidden sm:inline ml-1">{order.designUrl ? 'تحديث' : 'رفع تصميم'}</span>
+                                </Button>
+                            )}
 
-                        <div className="mr-auto">
-                            {getTechStatusBadge(order.technicianStatus)}
+                            {order.designUrl && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(order.designUrl, '_blank')}
+                                    className="h-6 px-2 text-xs text-orange-600 border-orange-200 hover:bg-orange-50 bg-white"
+                                    title="تحميل التصميم"
+                                >
+                                    <LinkIcon size={12} />
+                                    <span className="hidden sm:inline ml-1">تحميل</span>
+                                </Button>
+                            )}
+
+                            {order.stlUrl && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(order.stlUrl, '_blank')}
+                                    className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 bg-white"
+                                    title="STL File"
+                                >
+                                    <Box size={12} />
+                                    <span className="hidden sm:inline ml-1">STL</span>
+                                </Button>
+                            )}
+
+                            {order.imagesUrl && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => window.open(order.imagesUrl, '_blank')}
+                                    className="h-6 px-2 text-xs text-purple-600 border-purple-200 hover:bg-purple-50 bg-white"
+                                    title="Images"
+                                >
+                                    <ImageIcon size={12} />
+                                    <span className="hidden sm:inline ml-1">IMG</span>
+                                </Button>
+                            )}
+
+                            {onAddNote && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => onAddNote(order)}
+                                    className="h-6 w-6 p-0 relative text-surface-600 border-surface-200 hover:bg-surface-50 bg-white"
+                                    title="ملاحظات"
+                                >
+                                    <MessageCircle size={12} />
+                                    {(order.comments && order.comments.length > 0) && (
+                                        <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white ring-1 ring-white">
+                                            {order.comments.length}
+                                        </span>
+                                    )}
+                                </Button>
+                            )}
+
+                            <div className="h-4 w-px bg-surface-200 dark:bg-surface-700/50 mx-1"></div>
+
+                            <span className="text-[10px] font-semibold text-surface-500 flex items-center gap-1 font-mono tracking-tight">
+                                <Calendar size={11} className="text-surface-400" />
+                                {order.deliveryDate}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-3">
+                        {/* Patient Info */}
+                        <div className="md:col-span-4 flex flex-col gap-2 border-l-0 md:border-l border-surface-100 dark:border-surface-700 pl-0 md:pl-3">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 shrink-0">
+                                    <User size={16} />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-lg text-surface-900 dark:text-surface-100 leading-tight">{order.patientName}</p>
+                                    <p className="text-xs text-surface-500">اسم المريض</p>
+                                </div>
+                            </div>
+
+                            {!hideSensitiveInfo && (
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-500 shrink-0">
+                                        <User size={14} />
+                                    </div>
+                                    <div>
+                                        <p className="font-semibold text-base text-surface-700 dark:text-surface-300 leading-tight">d. {doctors[order.doctorId] || 'غير معروف'}</p>
+                                        <p className="text-xs text-surface-400">الطبيب المعالج</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Order Details */}
+                        <div className="md:col-span-8 flex flex-col gap-2">
+                            <div>
+                                <span className="text-[9px] font-bold text-surface-400 uppercase tracking-wider mb-1 block">الخدمات المطلوبة</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(order.items || []).map((item, idx) => (
+                                        <div key={idx} className="flex flex-col bg-surface-50 dark:bg-surface-800 border border-surface-200 dark:border-surface-700 px-2 py-1 rounded-md max-w-[140px]">
+                                            <span className="text-xs font-bold text-primary-700 dark:text-primary-300 truncate" title={item.serviceType}>{item.serviceType}</span>
+                                            {item.teethNumbers && (
+                                                <span className="text-[9px] text-surface-500 font-mono mt-0.5 truncate">
+                                                    Tooth: {Array.isArray(item.teethNumbers) ? item.teethNumbers.join(',') : item.teethNumbers}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {order.shade && (
+                                        <div className="flex flex-col bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 px-2 py-1 rounded-md items-center justify-center min-w-[50px]">
+                                            <span className="text-[8px] font-bold text-amber-600 uppercase">Shade</span>
+                                            <span className="text-xs font-black text-amber-800 dark:text-amber-400">{order.shade}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Context Info (Supplier/Designer) */}
+                            <div className="flex flex-wrap gap-2 mt-0.5 opacity-80 scale-95 origin-right">
+                                {order.supplierId && suppliers[order.supplierId] && (
+                                    <div className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/10 px-1.5 py-0.5 rounded text-xs border border-purple-100 dark:border-purple-800/30">
+                                        <Building2 size={12} className="text-purple-600" />
+                                        <span className="font-semibold text-purple-800 dark:text-purple-300">{suppliers[order.supplierId]}</span>
+                                    </div>
+                                )}
+                                {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
+                                    <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
+                                        <User size={12} className="text-blue-600" />
+                                        <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Notes & Instructions */}
+                    {(order.instructions || latestComment) && (
+                        <div className="px-3 py-1.5 bg-yellow-50/40 dark:bg-yellow-900/5 border-t border-dashed border-surface-200 dark:border-surface-700">
+                            {order.instructions && (
+                                <div className="flex items-start gap-1.5 mb-0.5">
+                                    <StickyNote size={12} className="text-yellow-600 mt-0.5 shrink-0" />
+                                    <p className="text-[10px] text-surface-700 dark:text-surface-300 leading-relaxed font-medium">
+                                        <span className="text-yellow-700 font-bold ml-1">تعليمات:</span>
+                                        {order.instructions}
+                                    </p>
+                                </div>
+                            )}
+                            {latestComment && (
+                                <div className="flex items-start gap-1.5">
+                                    <MessageCircle size={12} className="text-primary-500 mt-0.5 shrink-0" />
+                                    <p className="text-[10px] text-surface-600 dark:text-surface-400 leading-relaxed">
+                                        <span className="text-primary-700 font-bold ml-1">{latestComment.userName}:</span>
+                                        "{latestComment.text}"
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Footer Actions */}
+                    <div className="bg-black/5 dark:bg-white/5 px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-wrap justify-between items-center gap-2">
+                        {/* Left: Quick Actions */}
+                        <div className="flex items-center gap-2">
+                            {/* Status Dropdown */}
+                            <div className="relative group">
+                                <select
+                                    value={order.status || 'New Case'}
+                                    onChange={(e) => onStatusChange(order.id, e.target.value as Order['status'])}
+                                    className={clsx(
+                                        "appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-[150px] focus:ring-2",
+                                        order.status === 'Delivered'
+                                            ? 'bg-green-100 text-green-800 border-green-300 ring-green-200'
+                                            : 'bg-white text-surface-700 border-surface-200 hover:border-primary-300 focus:ring-primary-100'
+                                    )}
+                                    disabled={userRole === 'lab' && order.status === 'Delivered'}
+                                >
+                                    <option value="New Case">✨ New Case</option>
+                                    <option value="Under Design">🎨 Under Design</option>
+                                    <option value="Waiting Dr Approval">⏳ Waiting Approval</option>
+                                    <option value="Under Production">⚙️ Under Production</option>
+                                    <option value="Try In">🦷 Try In</option>
+                                    <option value="Try In Approved">✅ Try In Approved</option>
+                                    <option value="Ready">📦 Ready</option>
+                                    <option value="Delivered">🚚 Delivered</option>
+                                    <option value="Returned for Adjustments">↩️ Returned</option>
+                                    <option value="Rejected">❌ Rejected</option>
+                                </select>
+                                <ChevronRight size={14} className="absolute inset-y-0 right-2 my-auto text-surface-400 pointer-events-none rotate-90" />
+                            </div>
+
+                            {/* Tech Actions */}
+                            {onTechAction && (userRole === 'technician' || userRole === 'admin' || userRole === 'representative' || userRole === 'lab' || userRole === 'designer') && (
+                                <>
+                                    <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
+                                    <div className="flex bg-white rounded-lg border border-surface-200 p-0.5 shadow-sm">
+                                        <button
+                                            onClick={() => onTechAction(order.id, 'Approved')}
+                                            className={`p-1.5 rounded hover:bg-green-50 text-surface-400 hover:text-green-600 transition-colors ${order.technicianStatus === 'Approved' ? 'bg-green-100 text-green-700' : ''}`}
+                                            title="قبول"
+                                        >
+                                            <Check size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => onTechAction(order.id, 'NeedDetails')}
+                                            className={`p-1.5 rounded hover:bg-orange-50 text-surface-400 hover:text-orange-600 transition-colors ${order.technicianStatus === 'NeedDetails' ? 'bg-orange-100 text-orange-700' : ''}`}
+                                            title="تفاصيل"
+                                        >
+                                            <MessageCircle size={14} />
+                                        </button>
+                                        <button
+                                            onClick={() => onTechAction(order.id, 'Rejected')}
+                                            className={`p-1.5 rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors ${order.technicianStatus === 'Rejected' ? 'bg-red-100 text-red-700' : ''}`}
+                                            title="رفض"
+                                        >
+                                            <AlertTriangle size={14} />
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Right: Admin Tools */}
+                        <div className="flex items-center gap-2">
+                            {userRole === 'admin' && onEdit && (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(order)} title="تعديل">
+                                    <Settings size={14} />
+                                </Button>
+                            )}
+                            {userRole === 'admin' && onDelete && (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { if (confirm('حذف؟')) onDelete(order); }} title="حذف">
+                                    <Trash2 size={14} />
+                                </Button>
+                            )}
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary-500" onClick={handleShowHistory} title="سجل">
+                                <History size={14} />
+                            </Button>
                         </div>
                     </div>
                 </div>
-            </div>
+            </Card>
 
             <OrderHistoryModal
                 isOpen={showHistory}
@@ -477,6 +409,6 @@ export default function OrderCard({
                 history={historyData}
                 isLoading={historyLoading}
             />
-        </div>
+        </motion.div>
     );
 }

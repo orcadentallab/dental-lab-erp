@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateCaseId } from '../../utils/caseId';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Truck, Settings, User as UserIcon } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Truck, Settings, User as UserIcon, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { motion, AnimatePresence } from 'framer-motion';
+import clsx from 'clsx';
 
 interface OrderFormProps {
     onCancel: () => void;
@@ -10,7 +15,6 @@ interface OrderFormProps {
     initialData?: Order;
 }
 
-// Local interface for Form State (teethNumbers is string for input)
 interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
     teethNumbers: string;
 }
@@ -20,12 +24,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<Service[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    // const [representatives, setRepresentatives] = useState<User[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
     const [existingOrders, setExistingOrders] = useState<Order[]>([]);
 
-    // Doctor Search State
     const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
     const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
     const [doctorId, setDoctorId] = useState(initialData?.doctorId || '');
@@ -37,33 +39,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
-    const [newDoctor, setNewDoctor] = useState({
-        name: '',
-        phone: '',
-        phone2: '',
-        address: '',
-        doctorCode: '',
-        representativeName: '',
-        representativeId: '' // Track ID
-    });
+    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
     const [doctorError, setDoctorError] = useState<string | null>(null);
 
-    const normalizeText = (text: string) => {
-        if (!text) return '';
-        return text
-            .toString()
-            .trim()
-            .toLowerCase()
-            .replace(/[أإآ]/g, 'ا') // Normalize Alefs
-            .replace(/ة/g, 'ه')     // Normalize Ta Marbuta
-            .replace(/ى/g, 'ي');    // Normalize Ya
-    };
+    const normalizeText = (text: string) => text ? text.toString().trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي') : '';
 
     const handleAddDoctorFull = async () => {
         setDoctorError(null);
-
         try {
-            // Validation: Duplicate Check
             const normalizedName = normalizeText(newDoctor.name);
             const normalizedCode = newDoctor.doctorCode.trim().toUpperCase();
 
@@ -72,29 +55,19 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 return;
             }
 
-            // Create
-            const doc = await db.addDoctor({
-                ...newDoctor,
-                name: newDoctor.name.trim(),
-                doctorCode: normalizedCode
-            });
-
+            const doc = await db.addDoctor({ ...newDoctor, name: newDoctor.name.trim(), doctorCode: normalizedCode });
             const updatedDoctors = await db.getDoctors();
             setDoctors(updatedDoctors);
             setDoctorId(doc.id);
+            setDoctorSearchTerm(doc.name);
             setShowDoctorModal(false);
             setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
-
-        } catch (err: unknown) {
+        } catch (err) {
             console.error('Add Doctor Error:', err);
             setDoctorError('حدث خطأ غير متوقع أثناء الحفظ.');
         }
     };
 
-    // Header Info
-    // Header Info
-
-    // Helper for default date (Today + 3 Days)
     const getDefaultDate = () => {
         const d = new Date();
         d.setDate(d.getDate() + 3);
@@ -102,58 +75,48 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     };
 
     const [deliveryDate, setDeliveryDate] = useState(initialData?.deliveryDate || getDefaultDate());
-
     const [instructions, setInstructions] = useState(initialData?.instructions || '');
     const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || '');
     const [representativeId, setRepresentativeId] = useState(initialData?.representativeId || '');
 
-    // Split Workflow State
     const [workflowType, setWorkflowType] = useState<'full' | 'split'>(initialData?.workflowType || 'full');
     const [designerId, setDesignerId] = useState(initialData?.designerId || '');
 
-    // New Fields
     const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(initialData?.deliveryType || 'Final');
-    const [needsDesignReview, setNeedsDesignReview] = useState(initialData?.needsDesignReview || false);
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
-
-    // Backdating Support
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
-    // Items
-    const [items, setItems] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
+    const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
         serviceType: i.serviceType,
         teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers.join(',') : i.teethNumbers,
         price: i.price
-    })) : [
-        { serviceType: '', teethNumbers: '', price: 0 }
-    ]);
+    })) : [{ serviceType: '', teethNumbers: '', price: 0 }]);
 
-
+    const setItems = (newItems: FormOrderItem[]) => itemsSet(newItems);
 
     useEffect(() => {
         const loadData = async () => {
             try {
                 const [doctorsData, servicesData, suppliersData, usersData, ordersData] = await Promise.all([
                     db.getDoctors(),
-                    Promise.resolve(db.getServices()),
-                    Promise.resolve(db.getSuppliers()),
-                    Promise.resolve(db.getUsers()),
+                    db.getServices(),
+                    db.getSuppliers(),
+                    db.getUsers(),
                     db.getOrders()
                 ]);
                 setDoctors(doctorsData);
-                // Sort services Z-A (descending) as requested
-                setServices(servicesData.sort((a, b) => b.name.localeCompare(a.name)));
+                const sortedServices = servicesData.sort((a, b) => b.name.localeCompare(a.name));
+                setServices(sortedServices);
 
-                // Default Service Logic: Use the first sorted service for the initial empty item
                 if (!initialData && servicesData.length > 0) {
-                    const defaultService = servicesData[0].name;
-                    setItems(prevItems => prevItems.map(item =>
-                        item.serviceType === '' ? { ...item, serviceType: defaultService } : item
-                    ));
+                    setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: sortedServices[0].name } : i));
                 }
 
-                setSuppliers(suppliersData);
-                // setRepresentatives(usersData.filter(u => u.role === 'representative'));
+                if (initialData && initialData.doctorId) {
+                    const doc = doctorsData.find(d => d.id === initialData.doctorId);
+                    if (doc) setDoctorSearchTerm(doc.name);
+                }
+
                 setSuppliers(suppliersData);
                 setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
                 setDesigners(usersData.filter(u => u.role === 'designer'));
@@ -164,6 +127,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         };
         loadData();
     }, [initialData]);
+
     const handleRemoveItem = (index: number) => {
         if (items.length > 1) {
             const newItems = [...items];
@@ -180,20 +144,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         }
     };
 
-    const updateItem = (index: number, field: keyof FormOrderItem, value: FormOrderItem[keyof FormOrderItem]) => {
+    const updateItem = (index: number, field: keyof FormOrderItem, value: any) => {
         const newItems = [...items];
-        const currentItem = { ...newItems[index], [field]: value };
-        newItems[index] = currentItem;
+        newItems[index] = { ...newItems[index], [field]: value };
         setItems(newItems);
     };
 
-    // Calculate Total
     const subTotal = items.reduce((sum, item) => {
         const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
         const svc = services.find(s => s.name === item.serviceType);
-        const unitPrice = svc ? svc.sellingPrice : 0;
-        const lineTotal = count * unitPrice;
-        return sum + lineTotal;
+        return sum + (count * (svc ? svc.sellingPrice : 0));
     }, 0);
 
     const total = subTotal - discount;
@@ -205,67 +165,40 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             return;
         }
 
-        // Validate Items
-        const invalidItems = items.filter(i => {
-            const validTeeth = i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0);
-            return validTeeth.length === 0;
-        });
-
+        const invalidItems = items.filter(i => i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0).length === 0);
         if (invalidItems.length > 0) {
-            alert('يرجى إدخال أرقام الأسنان بشكل صحيح لكل البنود (مثال: 11, 21)');
+            alert('يرجى إدخال أرقام الأسنان بشكل صحيح');
             return;
         }
 
         const doc = doctors.find(d => d.id === doctorId);
 
-
-
-        // Calculate Cost based on Workflow
         let calculatedCost = 0;
         if (workflowType === 'full') {
-            // Full Outsource (Supplier) or Internal (Default Cost)
             calculatedCost = items.reduce((sum, item) => {
                 const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
                 const svc = services.find(s => s.name === item.serviceType);
-
                 let unitCost = svc ? svc.costPrice : 0;
-                // If Outsource, check if Supplier has custom price
                 if (selectedSupplier) {
                     const sup = suppliers.find(s => s.id === selectedSupplier);
-                    if (sup && sup.customPrices && sup.customPrices[item.serviceType]) {
-                        unitCost = sup.customPrices[item.serviceType];
-                    }
+                    if (sup?.customPrices?.[item.serviceType]) unitCost = sup.customPrices[item.serviceType];
                 }
                 return sum + (unitCost * count);
             }, 0);
         } else {
-            // Split Workflow: Designer Cost + Milling Cost
             const designer = designers.find(d => d.id === designerId);
-            const designerRate = designer?.unitRate || 0;
-
             const sup = suppliers.find(s => s.id === selectedSupplier);
-
             calculatedCost = items.reduce((sum, item) => {
                 const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
                 const svc = services.find(s => s.name === item.serviceType);
-
-                // Designer Cost
-                const dCost = designerRate * count;
-
-                // Milling Cost
+                const dCost = (designer?.unitRate || 0) * count;
                 let mCost = 0;
-                if (sup && sup.millingPrices && sup.millingPrices[item.serviceType]) {
-                    mCost = sup.millingPrices[item.serviceType] * count;
-                } else if (svc) {
-                    // Fallback to default cost if no milling price set (approximate)
-                    mCost = (svc.costPrice * 0.5) * count;
-                }
-
+                if (sup?.millingPrices?.[item.serviceType]) mCost = sup.millingPrices[item.serviceType] * count;
+                else if (svc) mCost = (svc.costPrice * 0.5) * count;
                 return sum + dCost + mCost;
             }, 0);
         }
 
-        // Calculate Design Price separately for tracking
         let totalDesignPrice = 0;
         if (workflowType === 'split') {
             const designer = designers.find(d => d.id === designerId);
@@ -280,10 +213,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode, existingOrders) : 'UNKNOWN'),
             doctorId,
             patientName,
-            items: items.map(i => ({
-                ...i,
-                teethNumbers: i.teethNumbers.split(',').map(s => s.trim()).filter(Boolean)
-            })),
+            items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers.split(',').map(s => s.trim()).filter(Boolean) })),
             shade,
             instructions: instructions || undefined,
             stlUrl: stlUrl || undefined,
@@ -292,7 +222,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             technicianStatus: initialData?.technicianStatus || 'Pending',
             deliveryDate,
             createdAt: new Date(receivedDate).toISOString(),
-
             totalPrice: total,
             cost: calculatedCost,
             workflowType,
@@ -302,98 +231,45 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             discount,
             priority: isUrgent ? 'Urgent' : 'Normal',
             deliveryType,
-            needsDesignReview,
+            needsDesignReview: initialData?.needsDesignReview || false,
             isUrgent,
             supplierId: selectedSupplier || undefined,
-
             representativeId: representativeId || undefined,
             comments: initialData?.comments || []
         });
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-6">
-
-            {/* 1. TOP BAR: Date & Urgency */}
-            <div className={`p-4 rounded-2xl border transition-all ${isUrgent ? 'bg-red-50 border-red-200 shadow-red-100' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100 shadow-blue-100'} shadow-sm`}>
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm ${isUrgent ? 'bg-red-600 text-white' : 'bg-white text-blue-600'}`}>
-                            {isUrgent ? <AlertTriangle size={24} className="animate-pulse" /> : (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                </svg>
-                            )}
-                        </div>
-                        <div>
-                            <label className={`block text-sm font-bold ${isUrgent ? 'text-red-900' : 'text-blue-900'}`}>تاريخ استلام الطلب</label>
-                            <input
-                                type="date"
-                                required
-                                aria-label="تاريخ الاستلام"
-                                className={`bg-transparent font-mono font-bold text-lg outline-none ${isUrgent ? 'text-red-700' : 'text-blue-700'}`}
-                                value={receivedDate}
-                                onChange={(e) => setReceivedDate(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Urgent Toggle */}
-                    <div className="flex items-center gap-2">
-                        {/* Representative Dropdown (Moved Here) */}
-                        <div className="relative">
-                            <select
-                                className="appearance-none bg-white border border-blue-200 text-blue-800 text-sm font-bold py-2.5 px-4 pr-8 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-sm hover:border-blue-300"
-                                aria-label="المندوب"
-                                value={representativeId}
-                                onChange={(e) => setRepresentativeId(e.target.value)}
-                                disabled={user?.role === 'representative'}
-                            >
-                                <option value="">-- المندوب --</option>
-                                {representatives.map(rep => (
-                                    <option key={rep.id} value={rep.id}>{rep.name}</option>
-                                ))}
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-blue-500">
-                                <UserIcon size={14} />
-                            </div>
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={() => setIsUrgent(!isUrgent)}
-                            className={`cursor-pointer px-4 py-2.5 rounded-xl border-2 transition-all flex items-center gap-2 ${isUrgent ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-200 scale-105' : 'bg-white border-gray-200 text-gray-500 hover:border-red-300'}`}
-                        >
-                            <AlertTriangle size={20} className={isUrgent ? 'animate-bounce' : ''} />
-                            <span className="font-bold hidden sm:inline">{isUrgent ? 'مستعجل جداً' : 'مستعجل'}</span>
-                        </button>
-                    </div>
+        <form onSubmit={handleSubmit} className="space-y-4 text-right font-sans max-w-7xl mx-auto">
+            {/* Header / Top Actions */}
+            <div className="flex items-center justify-between gap-4">
+                <h2 className="text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
+                    <Box className="text-primary-600" />
+                    {initialData ? 'تعديل بيانات الأوردر' : 'إنشاء أوردر جديد'}
+                </h2>
+                <div className="flex gap-2">
+                    <Button type="button" variant="ghost" className="text-surface-500" onClick={onCancel}>إلغاء</Button>
+                    <Button type="submit" size="md" className="px-8 shadow-lg shadow-primary-500/20">
+                        {initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر'}
+                    </Button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-                {/* 2. Patient & Doctor Info (Left Column) */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Patient Card */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative">
-                        <div className="absolute top-0 right-0 w-1 h-full bg-blue-500"></div>
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            <UserIcon size={20} className="text-blue-500" />
-                            بيانات المريض والطبيب
-                        </h3>
+                {/* LEFT COLUMN: Main Inputs (8) */}
+                <div className="lg:col-span-8 space-y-4">
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* Doctor Select */}
-                            <div className="relative z-20">
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">الطبيب المعالج</label>
+                    {/* 1. Patient & Doctor Info (Horizontal Dense) */}
+                    <Card className="p-4 bg-white dark:bg-surface-800">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                            {/* Doctor (5 cols) */}
+                            <div className="md:col-span-5 relative">
+                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">الطبيب المعالج</label>
                                 <div className="relative">
-                                    <input
-                                        type="text"
-                                        required
-                                        aria-label="بحث عن طبيب"
-                                        placeholder="ابحث باسم الطبيب أو الكود..."
-                                        className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-semibold"
+                                    <Input
+                                        className="py-2 text-sm"
+                                        placeholder="بحث باسم الطبيب أو الكود..."
                                         value={doctorSearchTerm}
                                         onChange={(e) => {
                                             setDoctorSearchTerm(e.target.value);
@@ -402,445 +278,264 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                         }}
                                         onFocus={() => setIsDoctorDropdownOpen(true)}
                                         disabled={!!initialData}
+                                        icon={<UserIcon size={16} />}
                                     />
-                                    <Plus
-                                        size={18}
-                                        className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 cursor-pointer hover:bg-blue-100 rounded p-0.5"
+                                    <button
+                                        type="button"
                                         onClick={() => setShowDoctorModal(true)}
-                                    />
-
-                                    {/* Dropdown */}
-                                    {isDoctorDropdownOpen && !initialData && (
-                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-100 rounded-xl shadow-xl max-h-60 overflow-y-auto z-50">
-                                            {doctors.filter(doc =>
-                                                doc.name.toLowerCase().includes(doctorSearchTerm.toLowerCase()) ||
-                                                doc.doctorCode.toLowerCase().includes(doctorSearchTerm.toLowerCase())
-                                            ).length > 0 ? (
-                                                doctors.filter(doc =>
-                                                    doc.name.toLowerCase().includes(doctorSearchTerm.toLowerCase()) ||
-                                                    doc.doctorCode.toLowerCase().includes(doctorSearchTerm.toLowerCase())
-                                                ).map(doc => (
-                                                    <div
-                                                        key={doc.id}
-                                                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
-                                                        onClick={() => {
-                                                            setDoctorId(doc.id);
-                                                            setDoctorSearchTerm(doc.name);
-                                                            setIsDoctorDropdownOpen(false);
-                                                        }}
-                                                    >
-                                                        <div className="font-bold text-gray-800">{doc.name}</div>
-                                                        <div className="text-xs text-gray-500 flex justify-between mt-1">
-                                                            <span className="bg-gray-100 px-1.5 rounded">{doc.doctorCode}</span>
-                                                            <span>{doc.phone}</span>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="p-4 text-center">
-                                                    <p className="text-sm text-gray-500 mb-2">طبيب غير موجود</p>
-                                                    <button type="button" onClick={() => setShowDoctorModal(true)} className="text-blue-600 text-sm font-bold hover:underline">إضافة طبيب جديد</button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
+                                        className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                                    >
+                                        <Plus size={18} />
+                                    </button>
                                 </div>
+                                <AnimatePresence>
+                                    {isDoctorDropdownOpen && !initialData && (
+                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-full right-0 left-0 mt-1 bg-white border border-surface-100 rounded-xl shadow-xl max-h-48 overflow-y-auto z-50">
+                                            {doctors.filter(d => d.name.toLowerCase().includes(doctorSearchTerm.toLowerCase()) || d.doctorCode.toLowerCase().includes(doctorSearchTerm.toLowerCase())).map(doc => (
+                                                <div key={doc.id} className="px-3 py-2 hover:bg-surface-50 cursor-pointer border-b border-surface-50 flex justify-between items-center" onClick={() => {
+                                                    setDoctorId(doc.id);
+                                                    setDoctorSearchTerm(doc.name);
+                                                    setIsDoctorDropdownOpen(false);
+                                                }}>
+                                                    <span className="font-bold text-sm text-surface-700">{doc.name}</span>
+                                                    <span className="text-xs font-mono bg-surface-100 px-1.5 rounded text-surface-500">{doc.doctorCode}</span>
+                                                </div>
+                                            ))}
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
 
-                            {/* Patient Name */}
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">اسم المريض</label>
-                                <input
-                                    type="text"
-                                    required
-                                    aria-label="اسم المريض"
-                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-semibold"
+                            {/* Patient (5 cols) */}
+                            <div className="md:col-span-4">
+                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">اسم المريض</label>
+                                <Input
+                                    className="py-2 text-sm font-bold"
+                                    placeholder="اسم المريض..."
                                     value={patientName}
                                     onChange={(e) => setPatientName(e.target.value)}
-                                    placeholder="الاسم الثلاثي"
+                                />
+                            </div>
+
+                            {/* Shade (2 cols) */}
+                            <div className="md:col-span-3">
+                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">اللون (Shade)</label>
+                                <Input
+                                    className="py-2 text-sm text-center font-bold"
+                                    placeholder="A1"
+                                    value={shade}
+                                    onChange={(e) => setShade(e.target.value)}
                                 />
                             </div>
                         </div>
-                    </div>
+                    </Card>
 
-                    {/* Case Details Card */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative overflow-hidden">
+                    {/* 2. Items List */}
+                    <Card className="p-4 min-h-[14rem] relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-1 h-full bg-indigo-500"></div>
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                <span className="bg-indigo-100 p-1 rounded-lg text-indigo-600"><CheckCircle size={18} /></span>
-                                تفاصيل التركيبة (Items)
+                        <div className="flex justify-between items-center mb-3">
+                            <h3 className="font-bold text-surface-700 flex items-center gap-2 text-sm">
+                                <span className="p-1 bg-indigo-50 text-indigo-600 rounded-lg"><Box size={16} /></span>
+                                قائمة الأصناف المطلوبة
                             </h3>
-                            <button
-                                type="button"
-                                onClick={handleAddItem}
-                                className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 transition-colors flex items-center gap-1"
-                            >
+                            <Button size="sm" variant="secondary" onClick={handleAddItem} className="h-8 text-xs gap-1">
                                 <Plus size={14} /> إضافة صنف
-                            </button>
+                            </Button>
                         </div>
 
-                        {/* Items Table-like Grid */}
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             {items.map((item, index) => (
-                                <div key={index} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group hover:border-indigo-200 transition-colors">
-                                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center font-bold text-gray-400 text-xs shadow-sm border border-gray-100">
+                                <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
+                                    <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">
                                         {index + 1}
                                     </div>
-
-                                    <div className="flex-1 w-full sm:w-auto">
+                                    <div className="w-1/3">
                                         <select
-                                            className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            className="w-full bg-transparent font-bold text-sm outline-none text-surface-800 cursor-pointer"
                                             value={item.serviceType}
                                             onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
-                                            aria-label="نوع الخدمة"
                                         >
-                                            {services.map(s => (
-                                                <option key={s.id} value={s.name}>{s.name}</option>
-                                            ))}
+                                            {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                         </select>
                                     </div>
-
-                                    <div className="flex-[2] w-full sm:w-auto">
+                                    <div className="flex-1 border-r border-surface-200 pr-2">
                                         <input
                                             type="text"
-                                            className="w-full p-2 bg-white border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 outline-none placeholder:text-gray-400 text-left ltr"
-                                            placeholder="Teeth Numbers (e.g. 11, 21)"
+                                            className="w-full bg-transparent outline-none text-sm font-mono text-left ltr placeholder:text-surface-300"
+                                            placeholder="e.g. 11, 21"
                                             value={item.teethNumbers}
                                             onChange={(e) => updateItem(index, 'teethNumbers', e.target.value)}
                                         />
                                     </div>
-
                                     {items.length > 1 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemoveItem(index)}
-                                            className="text-gray-400 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            aria-label="حذف"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
+                                        <button onClick={() => handleRemoveItem(index)} className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
                                     )}
                                 </div>
                             ))}
                         </div>
+                    </Card>
 
-                        {/* Shade & Instructions */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">اللون (Shade)</label>
-                                <input
-                                    type="text"
-                                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
-                                    value={shade}
-                                    onChange={(e) => setShade(e.target.value)}
-                                    placeholder="A1, A2..."
-                                />
+                    {/* 3. Notes & STL */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Card className="p-4 bg-surface-50 border-dashed border-surface-200">
+                            <label className="block text-xs font-bold text-surface-500 mb-2 flex items-center gap-1"><LinkIcon size={12} /> رابط ملف STL</label>
+                            <div className="relative">
+                                <Input value={stlUrl} onChange={(e) => setStlUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" />
+                                <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
                             </div>
-                            <div className="sm:col-span-2">
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">رابط الديجيتال (STL URL)</label>
-                                <input
-                                    type="url"
-                                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none ltr text-left text-sm text-blue-600 underline"
-                                    placeholder="https://..."
-                                    value={stlUrl}
-                                    onChange={(e) => setStlUrl(e.target.value)}
-                                />
+                            <label className="block text-xs font-bold text-surface-500 my-2 flex items-center gap-1"><Image size={12} /> رابط الصور</label>
+                            <div className="relative">
+                                <Input value={imagesUrl} onChange={(e) => setImagesUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" />
+                                <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
                             </div>
-                        </div>
-
-                        {/* Images Link */}
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">رابط صور الحالة (اختياري)</label>
-                            <input
-                                type="url"
-                                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none ltr text-left text-sm text-green-600 underline"
-                                placeholder="https://drive.google.com/... أو أي رابط صور"
-                                value={imagesUrl}
-                                onChange={(e) => setImagesUrl(e.target.value)}
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">ملاحظات فنية</label>
+                        </Card>
+                        <Card className="p-0 overflow-hidden">
                             <textarea
-                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none h-20 resize-none text-sm"
-                                placeholder="تعليمات هامة للمعمل..."
-                                aria-label="ملاحظات فنية"
+                                className="w-full h-full p-3 bg-white text-sm outline-none resize-none min-h-[5rem]"
+                                placeholder="ملاحظات فنية إضافية للمعمل..."
                                 value={instructions}
                                 onChange={(e) => setInstructions(e.target.value)}
                             />
-                        </div>
+                        </Card>
                     </div>
                 </div>
 
-                {/* 3. Delivery & Workflow (Right Column) */}
-                <div className="space-y-6">
-                    {/* Delivery Info */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-1 h-full bg-green-500"></div>
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            <span className="bg-green-100 p-1 rounded-lg text-green-600"><Truck size={18} /></span>
-                            معلومات التسليم
-                        </h3>
+                {/* RIGHT COLUMN: Sidebar (4) */}
+                <div className="lg:col-span-4 space-y-4">
 
-                        <div className="space-y-4">
+                    {/* Urgency & Receive Date */}
+                    <Card className={clsx("p-4 border-2 transition-colors", isUrgent ? "border-red-100 bg-red-50/30" : "border-surface-100 bg-white")}>
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", isUrgent ? "bg-red-500 border-red-500 text-white" : "bg-white border-surface-300")}>
+                                    {isUrgent && <CheckCircle size={12} />}
+                                </div>
+                                <input type="checkbox" className="hidden" checked={isUrgent} onChange={() => setIsUrgent(!isUrgent)} />
+                                <span className={clsx("text-sm font-bold", isUrgent ? "text-red-700" : "text-surface-600")}>طلب مستعجل</span>
+                            </label>
+                            {isUrgent && <AlertTriangle size={18} className="text-red-500 animate-pulse" />}
+                        </div>
+
+                        <div className="space-y-2">
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">تاريخ التسليم المتوقع</label>
+                                <label className="text-[10px] font-bold text-surface-400 block mb-1">تاريخ استلام العمل</label>
                                 <input
                                     type="date"
-                                    required
-                                    aria-label="تاريخ التسليم"
-                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-bold text-gray-700"
-                                    value={deliveryDate}
-                                    onChange={(e) => setDeliveryDate(e.target.value)}
+                                    className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm font-bold outline-none focus:ring-1 focus:ring-primary-500"
+                                    value={receivedDate}
+                                    onChange={(e) => setReceivedDate(e.target.value)}
                                 />
                             </div>
-
                             <div>
-                                <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase">نوع التسليم</label>
-                                <div className="grid grid-cols-2 gap-2 bg-gray-50 p-1 rounded-xl">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDeliveryType('Final')}
-                                        className={`py-2 rounded-lg text-sm font-bold transition-all ${deliveryType === 'Final' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                    >
-                                        Final
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDeliveryType('TryIn')}
-                                        className={`py-2 rounded-lg text-sm font-bold transition-all ${deliveryType === 'TryIn' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                    >
-                                        Try-In
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Design Review Checkbox */}
-                            <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${needsDesignReview ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-transparent hover:bg-gray-100'}`}>
-                                <input
-                                    type="checkbox"
-                                    className="mt-1 w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
-                                    checked={needsDesignReview}
-                                    onChange={(e) => setNeedsDesignReview(e.target.checked)}
-                                />
-                                <div>
-                                    <span className={`block text-sm font-bold ${needsDesignReview ? 'text-orange-800' : 'text-gray-600'}`}>مراجعة التصميم</span>
-                                    <span className="text-xs text-gray-400">إرسال صور التصميم قبل التنفيذ</span>
-                                </div>
-                            </label>
-                        </div>
-                    </div>
-
-                    {/* Workflow Settings */}
-                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-1 h-full bg-purple-500"></div>
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            <span className="bg-purple-100 p-1 rounded-lg text-purple-600"><Settings size={18} /></span>
-                            نظام العمل (Workflow)
-                        </h3>
-
-                        <div className="space-y-3">
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setWorkflowType('full')}
-                                    className={`flex-1 py-2 px-3 rounded-xl border text-sm font-bold transition-all ${workflowType === 'full' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-gray-200 text-gray-500'}`}
-                                >
-                                    شغل كامل
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setWorkflowType('split')}
-                                    className={`flex-1 py-2 px-3 rounded-xl border text-sm font-bold transition-all ${workflowType === 'split' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-white border-gray-200 text-gray-500'}`}
-                                >
-                                    تجزئة (Split)
-                                </button>
-                            </div>
-
-                            {workflowType === 'split' && (
-                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                                    <select
-                                        className="w-full p-2 bg-purple-50/50 border border-purple-100 rounded-lg text-sm"
-                                        value={designerId}
-                                        aria-label="اختر المصمم"
-                                        onChange={e => setDesignerId(e.target.value)}
-                                    >
-                                        <option value="">اختر المصمم...</option>
-                                        {designers.map(d => (
-                                            <option key={d.id} value={d.id}>{d.name}</option>
-                                        ))}
-                                    </select>
-                                    <select
-                                        className="w-full p-2 bg-purple-50/50 border border-purple-100 rounded-lg text-sm"
-                                        value={selectedSupplier}
-                                        aria-label="اختر المعمل"
-                                        onChange={e => setSelectedSupplier(e.target.value)}
-                                    >
-                                        <option value="">اختر معمل الخراطة...</option>
-                                        {suppliers.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-
-                            {workflowType === 'full' && (
+                                <label className="text-[10px] font-bold text-surface-400 block mb-1">المندوب المستلم</label>
                                 <select
-                                    className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm"
-                                    value={selectedSupplier}
-                                    aria-label="اختر المعمل الخارجي"
-                                    onChange={(e) => setSelectedSupplier(e.target.value)}
+                                    className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm outline-none"
+                                    value={representativeId}
+                                    onChange={(e) => setRepresentativeId(e.target.value)}
+                                    disabled={user?.role === 'representative'}
                                 >
-                                    <option value="">-- معمل داخلي / Outsource --</option>
-                                    {suppliers.map(sup => (
-                                        <option key={sup.id} value={sup.id}>{sup.name}</option>
-                                    ))}
+                                    <option value="">-- اختر المندوب --</option>
+                                    {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                                 </select>
-                            )}
+                            </div>
                         </div>
-                    </div>
-                </div>
-            </div>
+                    </Card>
 
-            {/* 4. Representative (REMOVED - Moved to Top) */}
-
-            {/* Footer Info & Actions */}
-            <div className="flex items-center justify-between pt-6 border-t mt-8">
-                <div>
-                    <span className="block text-xs text-gray-500 font-bold uppercase mb-1">الإجمالي التقديري</span>
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl font-bold text-blue-600">{total.toLocaleString()} <span className="text-sm text-gray-400">ج.م</span></span>
-
-                        {/* Discount Field */}
-                        <div className="flex flex-col">
-                            <label className="text-[10px] text-gray-400 font-bold uppercase">خصم</label>
-                            <input
-                                type="number"
-                                min="0"
-                                className="w-20 p-1 border border-gray-200 rounded text-sm text-center focus:ring-1 focus:ring-blue-500 outline-none"
-                                value={discount}
-                                onChange={(e) => setDiscount(Number(e.target.value))}
-                                placeholder="0"
-                            />
+                    {/* Delivery Settings */}
+                    <Card className="p-4 bg-green-50/20 border-green-100">
+                        <h3 className="font-bold text-surface-700 text-xs mb-3 flex items-center gap-2">
+                            <Truck size={14} className="text-green-600" /> موعد التسليم
+                        </h3>
+                        <input
+                            type="date"
+                            className="w-full p-2 mb-3 bg-white border border-green-200 rounded-lg text-sm font-bold text-surface-800 outline-none"
+                            value={deliveryDate}
+                            onChange={(e) => setDeliveryDate(e.target.value)}
+                        />
+                        <div className="flex bg-white rounded-lg border border-green-200 p-0.5">
+                            <button type="button" onClick={() => setDeliveryType('Final')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${deliveryType === 'Final' ? 'bg-green-100 text-green-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Final</button>
+                            <button type="button" onClick={() => setDeliveryType('TryIn')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${deliveryType === 'TryIn' ? 'bg-orange-100 text-orange-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Try-In</button>
                         </div>
-                    </div>
-                </div>
+                    </Card>
 
-                <div className="flex gap-3">
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="px-6 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-xl transition-colors"
-                    >
-                        إلغاء
-                    </button>
-                    <button
-                        type="submit"
-                        className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 hover:shadow-blue-300 transform hover:-translate-y-1"
-                    >
-                        {initialData ? 'حفظ التعديلات' : 'إنشاء الأوردر'}
-                    </button>
+                    {/* Workflow */}
+                    <Card className="p-4 bg-purple-50/20 border-purple-100">
+                        <h3 className="font-bold text-surface-700 text-xs mb-3 flex items-center gap-2">
+                            <Settings size={14} className="text-purple-600" /> تنفيذ العمل
+                        </h3>
+                        <div className="flex bg-white rounded-lg border border-purple-200 p-0.5 mb-3">
+                            <button type="button" onClick={() => setWorkflowType('full')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'full' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Full Lab</button>
+                            <button type="button" onClick={() => setWorkflowType('split')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'split' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Split</button>
+                        </div>
+
+                        {workflowType === 'split' ? (
+                            <div className="space-y-2 animate-in slide-in-from-top-2 fade-in">
+                                <select className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={designerId} onChange={e => setDesignerId(e.target.value)}>
+                                    <option value="">اختر المصمم...</option>
+                                    {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                </select>
+                                <select className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
+                                    <option value="">اختر المعمل...</option>
+                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                            </div>
+                        ) : (
+                            <select className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
+                                <option value="">-- معمل داخلي (أفتراضي) --</option>
+                                {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                            </select>
+                        )}
+                    </Card>
+
+                    {/* Summary */}
+                    <Card className="p-4 bg-surface-900 text-white border-none shadow-xl shadow-surface-900/10">
+                        <div className="flex justify-between items-center mb-3 pb-3 border-b border-surface-700">
+                            <span className="text-xs font-bold text-surface-400">الإجمالي النهائي</span>
+                            <span className="text-2xl font-black tracking-tight">{total.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-surface-400">خصم خاص</span>
+                            <div className="flex items-center gap-1 bg-surface-800 px-2 py-1 rounded-lg border border-surface-700 w-24">
+                                <DollarSign size={12} className="text-surface-500" />
+                                <input
+                                    type="number"
+                                    min="0"
+                                    className="w-full bg-transparent text-right text-sm font-bold outline-none text-white placeholder-surface-600"
+                                    value={discount}
+                                    onChange={(e) => setDiscount(Number(e.target.value))}
+                                    placeholder="0"
+                                />
+                            </div>
+                        </div>
+                    </Card>
+
                 </div>
             </div>
 
             {/* Doctor Modal */}
-            {
-                showDoctorModal && (
-                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                <h2 className="text-xl font-bold text-gray-800">إضافة طبيب جديد</h2>
-                                <button onClick={() => setShowDoctorModal(false)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-200 transition-colors">✕</button>
-                            </div>
-
-                            <div className="p-6 space-y-4">
-                                {doctorError && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2">
-                                        <AlertTriangle size={18} />
-                                        {doctorError}
-                                    </div>
-                                )}
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">اسم الطبيب</label>
-                                    <input
-                                        required
-                                        type="text"
-                                        aria-label="اسم الطبيب"
-                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={newDoctor.name}
-                                        onChange={e => {
-                                            setNewDoctor({ ...newDoctor, name: e.target.value });
-                                            setDoctorError(null);
-                                        }}
-                                        placeholder="د. ..."
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
-                                        <input
-                                            required
-                                            type="tel"
-                                            aria-label="رقم الهاتف"
-                                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                            value={newDoctor.phone}
-                                            onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">كود الطبيب</label>
-                                        <input
-                                            required
-                                            placeholder="مثال: AHM"
-                                            type="text"
-                                            aria-label="كود الطبيب"
-                                            className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none uppercase font-mono"
-                                            value={newDoctor.doctorCode}
-                                            onChange={e => {
-                                                setNewDoctor({ ...newDoctor, doctorCode: e.target.value.toUpperCase() });
-                                                setDoctorError(null);
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">العنوان</label>
-                                    <input
-                                        required
-                                        type="text"
-                                        aria-label="العنوان"
-                                        className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                                        value={newDoctor.address}
-                                        onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}
-                                    />
-                                </div>
-
-                                <div className="pt-4 flex gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDoctorModal(false)}
-                                        className="flex-1 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 bg-white text-gray-700 font-bold"
-                                    >
-                                        إلغاء
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={handleAddDoctorFull}
-                                        className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold shadow-lg shadow-blue-200"
-                                    >
-                                        حفظ الطبيب
-                                    </button>
-                                </div>
-                            </div>
+            {showDoctorModal && (
+                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Card className="w-full max-w-md animate-in zoom-in-95">
+                        <div className="p-4 border-b border-surface-100 bg-surface-50/50 flex justify-between items-center">
+                            <h2 className="font-bold text-base text-surface-900">إضافة طبيب جديد</h2>
+                            <button onClick={() => setShowDoctorModal(false)}><X size={18} className="text-surface-400 hover:text-surface-600" /></button>
                         </div>
-                    </div>
-                )
-            }
-        </form >
+                        <div className="p-5 space-y-4">
+                            {doctorError && (
+                                <div className="bg-red-50 text-red-600 text-xs font-bold p-2 rounded flex items-center gap-2">
+                                    <AlertTriangle size={14} /> {doctorError}
+                                </div>
+                            )}
+                            <Input label="اسم الطبيب" required placeholder="د. ..." value={newDoctor.name} onChange={e => setNewDoctor({ ...newDoctor, name: e.target.value })} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input label="رقم الهاتف" required type="tel" value={newDoctor.phone} onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })} />
+                                <Input label="الكود" required placeholder="AHM" value={newDoctor.doctorCode} onChange={e => setNewDoctor({ ...newDoctor, doctorCode: e.target.value })} />
+                            </div>
+                            <Button onClick={handleAddDoctorFull} className="w-full mt-2">حفظ</Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
+        </form>
     );
 }

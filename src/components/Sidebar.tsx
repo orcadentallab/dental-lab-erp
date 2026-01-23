@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
 import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase } from 'lucide-react';
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
 export default function Sidebar() {
@@ -32,79 +33,106 @@ export default function Sidebar() {
             {/* Mobile Menu Button - Hidden in Print */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="md:hidden fixed top-4 right-4 z-50 p-2 bg-white rounded-lg shadow-lg text-gray-600 print:hidden"
+                className="md:hidden fixed top-4 right-4 z-50 p-2.5 bg-white/80 backdrop-blur-md border border-surface-200 rounded-xl shadow-lg text-surface-600 print:hidden"
             >
                 {isOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
 
             {/* Overlay */}
-            {isOpen && (
-                <div
-                    className="fixed inset-0 bg-black/50 z-40 md:hidden print:hidden"
-                    onClick={() => setIsOpen(false)}
-                />
-            )}
+            <AnimatePresence>
+                {isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/50 z-40 md:hidden print:hidden backdrop-blur-sm"
+                        onClick={() => setIsOpen(false)}
+                    />
+                )}
+            </AnimatePresence>
 
             {/* Sidebar - Hidden in Print */}
             <div className={clsx(
-                "fixed inset-y-0 right-0 z-40 w-64 bg-white dark:bg-gray-800 shadow-xl transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:h-screen md:shadow-none print:hidden border-l border-gray-100 dark:border-gray-700",
+                "fixed inset-y-0 right-0 z-40 w-72 bg-white/80 dark:bg-surface-900/90 backdrop-blur-xl border-l border-surface-200/50 dark:border-surface-700 shadow-2xl md:shadow-none transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:h-screen print:hidden",
                 isOpen ? "translate-x-0" : "translate-x-full"
             )}>
-                <div className="flex flex-col h-full border-l border-gray-100 dark:border-gray-700">
-                    <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
-                        <img src="/orca-logo.png" alt="ORCA Dental Lab" className="w-10 h-10 rounded-lg shadow-sm" />
+                <div className="flex flex-col h-full">
+
+                    {/* Header */}
+                    <div className="p-8 border-b border-surface-200/50 dark:border-surface-700/50 flex items-center gap-4">
+                        <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ duration: 0.5 }}
+                            className="relative"
+                        >
+                            <div className="absolute inset-0 bg-primary-500/20 blur-lg rounded-full"></div>
+                            <img src="/orca-logo.png" alt="ORCA Dental Lab" className="relative w-12 h-12 rounded-xl shadow-sm object-cover" />
+                        </motion.div>
                         <div>
-                            <h1 className="text-xl font-bold text-blue-900 dark:text-blue-400 tracking-tight" style={{ fontFamily: 'sans-serif' }}>ORCA Dental Lab</h1>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Professional Lab Management</p>
+                            <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500 dark:from-primary-400 dark:to-primary-200 tracking-tight">
+                                ORCA Lab
+                            </h1>
+                            <p className="text-xs text-surface-500 dark:text-surface-400 font-medium tracking-wide">Professional ERP</p>
                         </div>
                     </div>
 
-                    <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+                    {/* Navigation */}
+                    <nav className="flex-1 p-4 space-y-1 overflow-y-auto scrollbar-hide">
                         {filteredNav.map((item) => {
                             const Icon = item.icon;
                             const isActive = location.pathname === item.href;
+
                             return (
                                 <Link
                                     key={item.href}
                                     to={item.href}
                                     onClick={() => setIsOpen(false)}
-                                    className={clsx(
-                                        "flex items-center gap-3 px-4 py-3 rounded-xl transition-colors",
-                                        isActive
-                                            ? "bg-blue-50 dark:bg-gray-700 text-blue-600 dark:text-blue-400 font-bold"
-                                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-200"
-                                    )}
+                                    className="block relative group"
                                 >
-                                    <Icon size={20} />
-                                    <span>{item.name}</span>
+                                    {isActive && (
+                                        <motion.div
+                                            layoutId="activeNav"
+                                            className="absolute inset-0 bg-primary-50 dark:bg-primary-500/20 rounded-xl"
+                                            initial={false}
+                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                        />
+                                    )}
+                                    <div className={clsx(
+                                        "relative flex items-center gap-3.5 px-4 py-3.5 rounded-xl transition-all duration-200",
+                                        isActive
+                                            ? "text-primary-700 dark:text-primary-300 transform scale-[0.98]"
+                                            : "text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-200 hover:bg-surface-50/50 dark:hover:bg-surface-800/50"
+                                    )}>
+                                        <Icon size={20} className={clsx("transition-colors", isActive && "text-primary-600 dark:text-primary-400")} />
+                                        <span className="font-medium">{item.name}</span>
+                                    </div>
                                 </Link>
                             );
                         })}
                     </nav>
 
-                    <div className="p-4 border-t border-gray-100 dark:border-gray-700">
-                        <div className="flex items-center gap-3 px-4 py-3 text-gray-500 dark:text-gray-400 mb-2">
-                            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center font-bold text-xs uppercase">
+                    {/* Footer */}
+                    <div className="p-4 border-t border-surface-200/50 dark:border-surface-700/50 bg-gradient-to-t from-surface-50/50 to-transparent">
+                        <div className="flex items-center gap-3 px-4 py-3 bg-white/50 dark:bg-surface-800/50 rounded-2xl mb-3 border border-surface-100 dark:border-surface-700 shadow-sm backdrop-blur-sm">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 dark:from-primary-900 dark:to-primary-800 flex items-center justify-center font-bold text-sm text-primary-700 dark:text-primary-300 uppercase shadow-inner">
                                 {(user?.role || 'user').substring(0, 2).toUpperCase()}
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 dark:text-gray-200 truncate">{user?.name || user?.username}</p>
-                                <p className="text-xs text-gray-400 capitalize">{user?.role}</p>
+                                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100 truncate">{user?.name || user?.username}</p>
+                                <p className="text-xs text-surface-500 capitalize bg-surface-100 dark:bg-surface-700 px-2 py-0.5 rounded-full inline-block mt-0.5">{user?.role}</p>
                             </div>
                         </div>
                         <button
                             onClick={() => logout()}
                             className={clsx(
-                                "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
-                                "text-gray-500 hover:bg-red-50 hover:text-red-600 dark:text-gray-400 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                                "w-full flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl transition-all duration-200",
+                                "text-surface-500 hover:bg-red-50 hover:text-red-600 dark:text-surface-400 dark:hover:bg-red-900/20 dark:hover:text-red-400 hover:shadow-lg hover:shadow-red-500/10"
                             )}
                         >
-                            <LogOut size={20} className="group-hover:scale-110 transition-transform" />
-                            <span className="font-medium">{t.nav.logout}</span>
+                            <LogOut size={18} />
+                            <span className="font-medium text-sm">{t.nav.logout}</span>
                         </button>
-                        <div className="text-center mt-2 text-[10px] text-gray-300 dark:text-gray-700 font-mono">
-                            v1.1 (Online)
-                        </div>
                     </div>
                 </div>
             </div>

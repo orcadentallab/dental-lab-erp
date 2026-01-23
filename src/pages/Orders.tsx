@@ -8,6 +8,10 @@ import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer } from '
 import { useAuth } from '../context/AuthContext';
 import { exportToExcelWithHeaders, printTable } from '../lib/exportUtils';
 import { useTranslation } from '../translations';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { Input } from '../components/ui/Input';
 
 export default function Orders() {
     const { user } = useAuth();
@@ -15,10 +19,8 @@ export default function Orders() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
-    // Highlighted order from dashboard navigation
     const highlightedOrderId = searchParams.get('highlight');
 
-    // Clear highlight after 5 seconds
     useEffect(() => {
         if (highlightedOrderId) {
             const timer = setTimeout(() => {
@@ -32,14 +34,11 @@ export default function Orders() {
     const isAccountant = user?.role === 'accountant';
     const { t } = useTranslation();
 
-    // Data State
-    // Data State
     const [orders, setOrders] = useState<Order[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [users, setUsers] = useState<User[]>([]); // For Designer Filter
+    const [users, setUsers] = useState<User[]>([]);
 
-    // Filter State
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
@@ -49,18 +48,13 @@ export default function Orders() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    // Toggle Options
     const [hideDelivered, setHideDelivered] = useState(false);
     const [hideRejected, setHideRejected] = useState(false);
 
-    // Edit State (Admin - Full Edit)
     const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
-
-    // Note State (Chat Log)
     const [noteEditingOrder, setNoteEditingOrder] = useState<Order | null>(null);
     const [newComment, setNewComment] = useState('');
 
-    // Design Link Modal State
     const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
     const [designLinkUrl, setDesignLinkUrl] = useState('');
 
@@ -88,22 +82,17 @@ export default function Orders() {
         refreshOrders();
     }, []);
 
-    // Filter Logic
     const rbacFilteredOrders = orders.filter(order => {
         if (user?.role === 'lab') {
-            // Prevent Lab from seeing Split orders until 'Under Production' ONLY IF a designer is assigned
-            // If it's a split order but NO designer is assigned (yet), they should see it to potentially flag it or just be aware.
             const isSplitWithDesigner = order.workflowType === 'split' && order.designerId;
             if (isSplitWithDesigner && !['Under Production', 'Try In', 'Try In Approved', 'Ready', 'Ready for Delivery', 'Delivered', 'Returned for Adjustments'].includes(order.status)) {
                 return false;
             }
             return user.entityId && order.supplierId === user.entityId;
         }
-
         if (isDesigner) {
             return order.workflowType === 'split' && order.designerId === user.id;
         }
-
         return true;
     });
 
@@ -112,18 +101,14 @@ export default function Orders() {
             (order.caseId && order.caseId.toLowerCase().includes(searchQuery.toLowerCase())) ||
             (order.patientName && order.patientName.toLowerCase().includes(searchQuery.toLowerCase()));
 
-        // STRICT MATCH for Status
         const matchesStatus = statusFilter ? order.status === statusFilter : true;
-
         const matchesDoctor = doctorFilter ? order.doctorId === doctorFilter : true;
         const matchesSupplier = supplierFilter ? order.supplierId === supplierFilter : true;
         const matchesDesigner = designerFilter ? order.designerId === designerFilter : true;
 
-        // Date Logic
         let matchesDate = true;
         if (startDate || endDate) {
             const orderDate = new Date(order.createdAt);
-            // Reset times for accurate date-only comparison
             orderDate.setHours(0, 0, 0, 0);
 
             if (startDate) {
@@ -139,11 +124,8 @@ export default function Orders() {
             }
         }
 
-        // Hide Delivered/Rejected Check
         const matchesDelivered = hideDelivered ? (order.status !== 'Delivered' && order.status !== 'Returned for Adjustments') : true;
         const matchesRejected = hideRejected ? order.technicianStatus !== 'Rejected' : true;
-
-        // Representative Filter
         const matchesRepresentative = representativeFilter ? order.representativeId === representativeFilter : true;
 
         return matchesSearch && matchesStatus && matchesDoctor && matchesSupplier && matchesDesigner && matchesDelivered && matchesRejected && matchesRepresentative && matchesDate;
@@ -180,7 +162,6 @@ export default function Orders() {
             await refreshOrders();
             await refreshOrders();
         } catch (error) {
-            console.error('Error updating status:', error);
             alert(`فشل تحديث الحالة: ${error instanceof Error ? error.message : 'حدث خطأ غير متوقع'}`);
         }
     };
@@ -188,27 +169,21 @@ export default function Orders() {
     const handleDeleteOrder = async (order: Order) => {
         try {
             await db.deleteOrder(order.id);
-            // alert('Order deleted successfully');
             await refreshOrders();
         } catch (error) {
-            console.error('Error deleting order:', error);
             alert('Failed to delete order');
         }
     };
 
-    const openFullEdit = (order: Order) => {
-        setFullEditingOrder(order);
-    };
+    const openFullEdit = (order: Order) => setFullEditingOrder(order);
 
     const openAddNote = (order: Order) => {
         setNoteEditingOrder(order);
         setNewComment('');
     };
 
-    // Add Comment
     const handleAddComment = async () => {
         if (!noteEditingOrder || !newComment.trim()) return;
-
         const timestamp = new Date().toISOString();
         const commentObj = {
             id: Math.random().toString(36).substr(2, 9),
@@ -217,9 +192,7 @@ export default function Orders() {
             userName: user?.name || user?.role || 'مستخدم',
             createdAt: timestamp
         };
-
         const updatedComments = [...(noteEditingOrder.comments || []), commentObj];
-
         try {
             await db.updateOrder(noteEditingOrder.id, { comments: updatedComments });
             setNoteEditingOrder((prev) => prev ? ({ ...prev, comments: updatedComments }) : null);
@@ -230,7 +203,6 @@ export default function Orders() {
         }
     };
 
-    // Design Link Update Logic
     const openDesignLinkModal = (order: Order) => {
         setDesignLinkOrder(order);
         setDesignLinkUrl(order.designUrl || '');
@@ -238,15 +210,12 @@ export default function Orders() {
 
     const handleUpdateDesignUrl = async () => {
         if (!designLinkOrder) return;
-
         try {
             await db.updateOrder(designLinkOrder.id, {
                 designUrl: designLinkUrl,
-                status: 'Waiting Dr Approval', // Auto-transition
-                designStatus: 'waiting_approval' // Update internal design status too
+                status: 'Waiting Dr Approval',
+                designStatus: 'waiting_approval'
             });
-
-            // Add System Comment with the link
             const timestamp = new Date().toISOString();
             const commentObj = {
                 id: Math.random().toString(36).substr(2, 9),
@@ -257,43 +226,43 @@ export default function Orders() {
             };
             const updatedComments = [...(designLinkOrder.comments || []), commentObj];
             await db.updateOrder(designLinkOrder.id, { comments: updatedComments });
-
             setDesignLinkOrder(null);
             setDesignLinkUrl('');
             await refreshOrders();
-            // alert('Design link updated and status set to Waiting Approval');
         } catch (error) {
-            console.error('Error updating design link:', error);
             alert('Failed to update design link');
         }
     };
 
-    // Helpers
     const canFilterByDoctorAndSupplier = user?.role === 'admin' || user?.role === 'representative';
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-64">
+            <div className="flex items-center justify-center h-screen w-full">
                 <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">{t.common.loading}</p>
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                    <p className="text-surface-600 animate-pulse">{t.common.loading}</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-4">
-            {/* === PAGE TITLE === */}
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+        >
+            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">{t.orders.title}</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">إدارة ومتابعة جميع الطلبات والحالات</p>
+                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500">{t.orders.title}</h1>
+                    <p className="text-sm text-surface-500 mt-1">إدارة ومتابعة جميع الطلبات والحالات</p>
                 </div>
-                {/* Export Buttons */}
                 {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
-                    <div className="flex gap-1.5">
-                        <button
+                    <div className="flex gap-2">
+                        <Button
+                            variant="outline"
                             onClick={() => {
                                 const exportData = filteredOrders.map(order => ({
                                     'رقم الحالة': order.caseId,
@@ -310,12 +279,12 @@ export default function Orders() {
                                 };
                                 exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
                             }}
-                            className="p-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors border border-green-200"
-                            title="تصدير Excel"
+                            className="text-green-600 border-green-200 hover:bg-green-50"
                         >
                             <FileSpreadsheet size={18} />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            variant="outline"
                             onClick={() => {
                                 printTable(
                                     filteredOrders.map(order => ({
@@ -337,200 +306,137 @@ export default function Orders() {
                                     'قائمة الأوردرات'
                                 );
                             }}
-                            className="p-2 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors border border-gray-200"
-                            title="طباعة"
+                            className="text-surface-600 border-surface-200 hover:bg-surface-50"
                         >
                             <Printer size={18} />
-                        </button>
+                        </Button>
                     </div>
                 )}
             </div>
 
-            {/* === FILTERS PANEL === */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
+            {/* Filters */}
+            <Card className="border-surface-200 shadow-sm">
+                <div className="flex flex-col gap-4">
+                    {/* Top Row */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div>
+                            <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">الحالة</label>
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
+                            >
+                                <option value="">كل الحالات</option>
+                                <option value="New Case">New Case</option>
+                                <option value="Under Design">Under Design</option>
+                                <option value="Waiting Dr Approval">Waiting Approval</option>
+                                <option value="Under Production">Under Production</option>
+                                <option value="Try In">Try In</option>
+                                <option value="Try In Approved">Try In Approved</option>
+                                <option value="Ready">Ready</option>
+                                <option value="Delivered">Delivered</option>
+                                <option value="Returned for Adjustments">Returned</option>
+                                <option value="Rejected">Rejected</option>
+                            </select>
+                        </div>
 
-                {/* ROW 1: Main Filters (Full Width) */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {/* Status */}
-                    <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">الحالة</label>
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            title="تصفية حسب الحالة"
-                            className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
-                        >
-                            <option value="">كل الحالات</option>
-                            <option value="New Case">New Case</option>
-                            <option value="Under Design">Under Design</option>
-                            <option value="Waiting Dr Approval">Waiting Approval</option>
-                            <option value="Under Production">Under Production</option>
-                            <option value="Try In">Try In</option>
-                            <option value="Try In Approved">Try In Approved</option>
-                            <option value="Ready">Ready</option>
-                            <option value="Delivered">Delivered</option>
-                            <option value="Returned for Adjustments">Returned</option>
-                            <option value="Rejected">Rejected</option>
-                        </select>
+                        {canFilterByDoctorAndSupplier && (
+                            <>
+                                <div>
+                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">الطبيب</label>
+                                    <select
+                                        value={doctorFilter}
+                                        onChange={(e) => setDoctorFilter(e.target.value)}
+                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
+                                    >
+                                        <option value="">كل الأطباء</option>
+                                        {doctors.map(doc => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المعمل</label>
+                                    <select
+                                        value={supplierFilter}
+                                        onChange={(e) => setSupplierFilter(e.target.value)}
+                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
+                                    >
+                                        <option value="">كل المعامل</option>
+                                        {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المصمم</label>
+                                    <select
+                                        value={designerFilter}
+                                        onChange={(e) => setDesignerFilter(e.target.value)}
+                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
+                                    >
+                                        <option value="">كل المصممين</option>
+                                        {users.filter(u => u.role === 'designer').map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المندوب</label>
+                                    <select
+                                        value={representativeFilter}
+                                        onChange={(e) => setRepresentativeFilter(e.target.value)}
+                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
+                                    >
+                                        <option value="">كل المناديب</option>
+                                        {users.filter(u => u.role === 'representative' || u.role === 'admin').map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                                    </select>
+                                </div>
+                            </>
+                        )}
                     </div>
 
-                    {/* Doctor */}
-                    {canFilterByDoctorAndSupplier && (
-                        <div>
-                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">الطبيب</label>
-                            <select
-                                value={doctorFilter}
-                                onChange={(e) => setDoctorFilter(e.target.value)}
-                                title="تصفية حسب الطبيب"
-                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            >
-                                <option value="">كل الأطباء</option>
-                                {doctors.map(doc => (
-                                    <option key={doc.id} value={doc.id}>{doc.name}</option>
-                                ))}
-                            </select>
+                    {/* Bottom Row */}
+                    <div className="pt-4 border-t border-surface-100 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                        <div className="md:col-span-4 flex gap-3">
+                            <div className="flex-1">
+                                <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">من</label>
+                                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">إلى</label>
+                                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
+                            </div>
                         </div>
-                    )}
 
-                    {/* Supplier/Lab */}
-                    {canFilterByDoctorAndSupplier && (
-                        <div>
-                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">المعمل</label>
-                            <select
-                                value={supplierFilter}
-                                onChange={(e) => setSupplierFilter(e.target.value)}
-                                title="تصفية حسب المعمل"
-                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            >
-                                <option value="">كل المعامل</option>
-                                {suppliers.map(sup => (
-                                    <option key={sup.id} value={sup.id}>{sup.name}</option>
-                                ))}
-                            </select>
+                        <div className="md:col-span-4 relative">
+                            <Search className="absolute right-3 top-2.5 text-surface-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="بحث..."
+                                className="w-full pl-3 pr-10 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
                         </div>
-                    )}
 
-                    {/* Designer */}
-                    {canFilterByDoctorAndSupplier && (
-                        <div>
-                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">المصمم</label>
-                            <select
-                                value={designerFilter}
-                                onChange={(e) => setDesignerFilter(e.target.value)}
-                                title="تصفية حسب المصمم"
-                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            >
-                                <option value="">كل المصممين</option>
-                                {users.filter(u => u.role === 'designer').map(des => (
-                                    <option key={des.id} value={des.id}>{des.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
+                        <div className="md:col-span-4 flex items-center justify-between gap-3">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm text-surface-600 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={hideDelivered}
+                                    onChange={(e) => { setHideDelivered(e.target.checked); setHideRejected(e.target.checked); }}
+                                    className="w-4 h-4 text-primary-600 rounded border-surface-300 focus:ring-primary-500"
+                                />
+                                إخفاء المنتهية
+                            </label>
 
-                    {/* Sales Rep / Delegate */}
-                    {canFilterByDoctorAndSupplier && (
-                        <div>
-                            <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 block">المندوب</label>
-                            <select
-                                value={representativeFilter}
-                                onChange={(e) => setRepresentativeFilter(e.target.value)}
-                                title="تصفية حسب المندوب"
-                                className="w-full px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            >
-                                <option value="">كل المناديب</option>
-                                {users.filter(u => u.role === 'representative' || u.role === 'admin').map(rep => (
-                                    <option key={rep.id} value={rep.id}>{rep.name}</option>
-                                ))}
-                            </select>
+                            {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
+                                <Button onClick={() => setIsFormOpen(true)} className="gap-2 shadow-lg shadow-primary-500/20 whitespace-nowrap">
+                                    <Plus size={18} />
+                                    <span>{t.orders.newOrder}</span>
+                                </Button>
+                            )}
                         </div>
-                    )}
+                    </div>
                 </div>
+            </Card>
 
-                {/* ROW 2: Date Filters + Actions */}
-                <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-gray-100">
-                    {/* Date Filters (Horizontal) */}
-                    <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">من</label>
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            title="تاريخ البداية"
-                            className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-32"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">إلى</label>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            title="تاريخ النهاية"
-                            className="px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-32"
-                        />
-                    </div>
-
-                    {/* Divider */}
-                    <div className="hidden sm:block w-px h-6 bg-gray-200"></div>
-
-                    {/* Search Input */}
-                    <div className="relative flex-1 min-w-[200px] max-w-sm">
-                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="بحث بالطبيب، المريض، أو رقم الحالة..."
-                            className="w-full pl-3 pr-9 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 focus:bg-white"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                    </div>
-
-                    {/* New Order Button */}
-                    {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
-                        <button
-                            onClick={() => setIsFormOpen(true)}
-                            className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm whitespace-nowrap"
-                        >
-                            <Plus size={16} />
-                            <span>{t.orders.newOrder}</span>
-                        </button>
-                    )}
-
-                    {/* Divider */}
-                    <div className="hidden sm:block w-px h-6 bg-gray-200"></div>
-
-                    {/* Hide Closed Toggle */}
-                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-600 hover:text-gray-800 select-none whitespace-nowrap">
-                        <input
-                            type="checkbox"
-                            checked={hideDelivered}
-                            onChange={(e) => {
-                                setHideDelivered(e.target.checked);
-                                setHideRejected(e.target.checked);
-                            }}
-                            className="w-4 h-4 text-blue-500 rounded border-gray-300 focus:ring-blue-400"
-                        />
-                        إخفاء المنتهية والمرفوضة
-                    </label>
-
-                    {/* Reset Filters */}
-                    {(searchQuery || statusFilter || doctorFilter || supplierFilter || designerFilter || representativeFilter || startDate || endDate || hideDelivered) && (
-                        <button
-                            onClick={() => {
-                                setSearchQuery(''); setStatusFilter(''); setDoctorFilter(''); setSupplierFilter('');
-                                setDesignerFilter(''); setRepresentativeFilter(''); setStartDate(''); setEndDate('');
-                                setHideDelivered(false); setHideRejected(false);
-                            }}
-                            className="text-sm text-red-500 hover:text-red-600 font-medium hover:underline whitespace-nowrap"
-                        >
-                            مسح الكل
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* === SECTION 3: ORDER LIST === */}
+            {/* Order List */}
             <OrderList
                 orders={filteredOrders}
                 onStatusChange={handleStatusUpdate}
@@ -542,206 +448,129 @@ export default function Orders() {
                 highlightedOrderId={highlightedOrderId}
             />
 
-            {/* Create New Order Modal */}
-            {isFormOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl">
-                        <div className="p-6">
-                            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-                                <div>
-                                    <h2 className="text-xl font-bold text-gray-800">إنشاء أوردر جديد</h2>
-                                    <p className="text-gray-500 text-sm mt-1">أدخل بيانات الحالة الجديدة</p>
+            {/* Modals - Wrapped with AnimatePresence for transitions */}
+            <AnimatePresence>
+                {isFormOpen && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
+                            <div className="p-6">
+                                <div className="flex justify-between items-center mb-6 pb-4 border-b border-surface-100">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-surface-900">إنشاء أوردر جديد</h2>
+                                        <p className="text-surface-500 text-sm mt-1">أدخل بيانات الحالة الجديدة</p>
+                                    </div>
+                                    <button onClick={() => setIsFormOpen(false)} className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
                                 </div>
-                                <button onClick={() => setIsFormOpen(false)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500" aria-label="إغلاق">
-                                    <X size={22} />
-                                </button>
+                                <OrderForm onSubmit={handleCreateOrder} onCancel={() => setIsFormOpen(false)} />
                             </div>
-                            <OrderForm onSubmit={handleCreateOrder} onCancel={() => setIsFormOpen(false)} />
-                        </div>
-                    </div>
-                </div>
-            )}
+                        </motion.div>
+                    </motion.div>
+                )}
 
-            {/* Full Edit Modal */}
-            {
-                fullEditingOrder && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl animate-scale-in">
-                            <div className="p-6 md:p-8">
-                                <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-4">
-                                    <div className='flex items-center gap-3'>
-                                        <div className='bg-blue-100 p-2 rounded-lg text-blue-600'>
-                                            <FileSpreadsheet size={24} />
-                                        </div>
+                {fullEditingOrder && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
+                            <div className="p-8">
+                                <div className="flex justify-between items-center mb-8 border-b border-surface-100 pb-4">
+                                    <div className='flex items-center gap-4'>
+                                        <div className='bg-primary-100 p-3 rounded-xl text-primary-600'><FileSpreadsheet size={24} /></div>
                                         <div>
-                                            <h2 className="text-2xl font-bold text-gray-800">تعديل الأوردر</h2>
+                                            <h2 className="text-2xl font-bold text-surface-900">تعديل الأوردر</h2>
                                             <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-gray-500 text-sm">رقم الحالة:</span>
-                                                <span className="bg-gray-100 px-2 py-0.5 rounded text-sm font-mono font-bold text-gray-700">#{fullEditingOrder.caseId}</span>
+                                                <span className="text-surface-500 text-sm">رقم الحالة:</span>
+                                                <span className="bg-surface-100 px-2 py-0.5 rounded text-sm font-mono font-bold text-surface-700">#{fullEditingOrder.caseId}</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <button onClick={() => setFullEditingOrder(null)} className="bg-gray-100 p-2 rounded-full text-gray-500 hover:bg-red-50 hover:text-red-500 transition-colors" aria-label="إغلاق">
-                                        <X size={24} />
-                                    </button>
+                                    <button onClick={() => setFullEditingOrder(null)} className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
                                 </div>
-                                <OrderForm
-                                    onSubmit={handleUpdateOrder}
-                                    onCancel={() => setFullEditingOrder(null)}
-                                    initialData={fullEditingOrder}
-                                />
+                                <OrderForm onSubmit={handleUpdateOrder} onCancel={() => setFullEditingOrder(null)} initialData={fullEditingOrder} />
                             </div>
-                        </div>
-                    </div>
-                )
-            }
+                        </motion.div>
+                    </motion.div>
+                )}
 
-            {/* Note & Chat Modal */}
-            {
-                noteEditingOrder && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-scale-in">
-                            {/* Header */}
-                            <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+                {noteEditingOrder && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                            <div className="p-4 border-b flex justify-between items-center bg-surface-50">
                                 <div>
-                                    <h3 className="font-bold text-lg text-gray-800 flex items-center gap-2">
-                                        <MessageCircle size={20} className="text-blue-600" />
-                                        سجل الملاحظات والدردشة
-                                    </h3>
-                                    <p className="text-xs text-gray-500 mt-0.5">الحالة #{noteEditingOrder.caseId}</p>
+                                    <h3 className="font-bold text-lg text-surface-900 flex items-center gap-2"><MessageCircle size={20} className="text-primary-600" /> التواصل والملاحظات</h3>
+                                    <p className="text-xs text-surface-500 mt-0.5">الحالة #{noteEditingOrder.caseId}</p>
                                 </div>
-                                <button onClick={() => setNoteEditingOrder(null)} className="p-1 hover:bg-gray-200 rounded-full transition-colors" aria-label="إغلاق">
-                                    <X className="text-gray-500" size={20} />
-                                </button>
+                                <button onClick={() => setNoteEditingOrder(null)} className="p-1 hover:bg-surface-200 rounded-full transition-colors"><X className="text-surface-400" size={20} /></button>
                             </div>
-
-                            {/* Chat Area */}
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-                                {/* Instructions Box */}
+                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
                                 {noteEditingOrder.instructions && (
-                                    <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 w-1 h-full bg-amber-400"></div>
-                                        <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1">
-                                            <span className="text-lg">📝</span> التعليمات الأساسية
-                                        </p>
-                                        <p className="text-sm text-gray-700 leading-relaxed font-medium">{noteEditingOrder.instructions}</p>
+                                    <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-400"></div>
+                                        <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1"><span className="text-lg">📝</span> التعليمات الأساسية</p>
+                                        <p className="text-sm text-surface-800 leading-relaxed font-medium">{noteEditingOrder.instructions}</p>
                                     </div>
                                 )}
-
-                                {/* Divider if needed */}
-                                {(noteEditingOrder.comments && noteEditingOrder.comments.length > 0) && (
-                                    <div className="relative flex py-2 items-center">
-                                        <div className="flex-grow border-t border-gray-200"></div>
-                                        <span className="flex-shrink-0 mx-4 text-gray-400 text-xs">سجل النشاط</span>
-                                        <div className="flex-grow border-t border-gray-200"></div>
-                                    </div>
-                                )}
-
-                                {/* Comments List */}
-                                {noteEditingOrder.comments && noteEditingOrder.comments.length > 0 ? (
-                                    noteEditingOrder.comments.map((comment) => (
-                                        <div key={comment.id} className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2 px-2">
-                                                <span className="text-xs font-bold text-gray-700">{comment.userName}</span>
-                                                <span className="text-[10px] text-gray-400">{new Date(comment.createdAt).toLocaleDateString('ar-EG')} • {new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <div className="space-y-3">
+                                    {noteEditingOrder.comments?.map((comment) => (
+                                        <div key={comment.id} className={`flex flex-col ${comment.userId === user?.id ? 'items-start' : 'items-end'}`}>
+                                            <div className="flex items-center gap-2 mb-1 px-1">
+                                                <span className="text-xs font-bold text-surface-700">{comment.userName}</span>
+                                                <span className="text-[10px] text-surface-400">{new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                             </div>
-                                            <div className={`p-3 rounded-2xl shadow-sm border border-gray-100 text-sm leading-relaxed ${comment.userId === user?.id ? 'bg-blue-50 text-blue-900 rounded-tr-none mr-4' : 'bg-white text-gray-800 rounded-tl-none ml-4'
+                                            <div className={`p-3 max-w-[85%] rounded-2xl text-sm leading-relaxed shadow-sm ${comment.userId === user?.id
+                                                ? 'bg-primary-50 text-primary-900 rounded-tr-none'
+                                                : 'bg-surface-100 text-surface-900 rounded-tl-none'
                                                 }`}>
                                                 {comment.text}
                                             </div>
                                         </div>
-                                    ))
-                                ) : (
-                                    !noteEditingOrder.instructions && (
-                                        <div className="flex flex-col items-center justify-center py-10 text-gray-400 opacity-60">
-                                            <MessageCircle size={48} className="mb-2" />
-                                            <p className="text-sm">لا توجد ملاحظات حتى الآن</p>
-                                        </div>
-                                    )
-                                )}
-                            </div>
-
-                            {/* Input Area */}
-                            <div className="p-4 bg-white border-t border-gray-100">
-                                <div className="flex gap-2 items-end">
-                                    <div className="flex-1 relative">
-                                        <textarea
-                                            className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl max-h-32 min-h-[50px] focus:ring-2 focus:ring-blue-100 focus:border-blue-300 outline-none resize-none text-sm leading-relaxed"
-                                            value={newComment}
-                                            onChange={e => setNewComment(e.target.value)}
-                                            placeholder="اكتب ملاحظة جديدة..."
-                                            rows={2}
-                                            onKeyDown={e => {
-                                                if (e.key === 'Enter' && !e.shiftKey) {
-                                                    e.preventDefault();
-                                                    handleAddComment();
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={handleAddComment}
-                                        disabled={!newComment.trim()}
-                                        className="h-[50px] w-[50px] bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-blue-100 hover:shadow-lg"
-                                        title="إرسال"
-                                    >
-                                        <Send size={20} className={newComment.trim() ? 'ml-0.5' : ''} />
-                                    </button>
+                                    ))}
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                )
-            }
+                            <div className="p-4 bg-white border-t border-surface-100">
+                                <div className="flex gap-2 items-end">
+                                    <textarea
+                                        className="flex-1 p-3 bg-surface-50 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary-100 focus:border-primary-400 outline-none resize-none text-sm transition-all"
+                                        value={newComment}
+                                        onChange={e => setNewComment(e.target.value)}
+                                        placeholder="اكتب ملاحظة..."
+                                        rows={2}
+                                    />
+                                    <Button onClick={handleAddComment} disabled={!newComment.trim()} className="h-[46px] w-[46px] rounded-xl p-0 flex items-center justify-center shadow-lg shadow-primary-500/20">
+                                        <Send size={18} className={newComment.trim() ? 'ml-0.5' : ''} />
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
 
-            {/* Design Link Modal */}
-            {
-                designLinkOrder && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-white w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-scale-in">
-                            <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-                                <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                                    🔗 إضافة رابط التصميم
-                                </h3>
-                                <button onClick={() => setDesignLinkOrder(null)} aria-label="إغلاق"><X size={20} className="text-gray-400 hover:text-red-500" /></button>
+                {designLinkOrder && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden">
+                            <div className="p-4 bg-surface-50 border-b flex justify-between items-center">
+                                <h3 className="font-bold text-surface-800 flex items-center gap-2">🔗 إضافة رابط التصميم</h3>
+                                <button onClick={() => setDesignLinkOrder(null)}><X size={20} className="text-surface-400 hover:text-red-500" /></button>
                             </div>
                             <div className="p-6">
-                                <label className="block text-sm font-bold text-gray-700 mb-2">رابط الملف</label>
-                                <div className="relative mb-4">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🌐</span>
-                                    <input
-                                        type="url"
-                                        className="w-full pl-3 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none text-sm dir-ltr font-mono text-gray-600"
-                                        placeholder="https://drive.google.com/..."
-                                        value={designLinkUrl}
-                                        onChange={e => setDesignLinkUrl(e.target.value)}
-                                    />
-                                </div>
-
-                                <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 mb-6 flex gap-2 items-start">
+                                <Input
+                                    label="رابط الملف"
+                                    placeholder="https://drive.google.com/..."
+                                    value={designLinkUrl}
+                                    onChange={e => setDesignLinkUrl(e.target.value)}
+                                    className="font-mono text-sm"
+                                />
+                                <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 mb-6 mt-4 flex gap-2">
                                     <span className="text-lg">ℹ️</span>
-                                    <p className="mt-0.5">عند الحفظ، سيتم تحديث حالة الأوردر تلقائياً إلى <strong>Waiting Dr Approval</strong> وسيتم إرسال إشعار للطبيب.</p>
+                                    <p className="mt-0.5 leading-relaxed">عند الحفظ، سيتم تحديث حالة الأوردر تلقائياً إلى <strong>Waiting Dr Approval</strong>.</p>
                                 </div>
-
                                 <div className="flex gap-3">
-                                    <button
-                                        onClick={handleUpdateDesignUrl}
-                                        className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100"
-                                    >
-                                        حفظ وإرسال
-                                    </button>
-                                    <button
-                                        onClick={() => setDesignLinkOrder(null)}
-                                        className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-200 transition"
-                                    >
-                                        إلغاء
-                                    </button>
+                                    <Button onClick={handleUpdateDesignUrl} className="flex-1 shadow-lg shadow-primary-500/20">حفظ وإرسال</Button>
+                                    <Button variant="secondary" onClick={() => setDesignLinkOrder(null)} className="flex-1">إلغاء</Button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                )
-            }
-        </div >
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
     );
 }
