@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
-import { Printer, ArrowRight, Search, FileSpreadsheet } from 'lucide-react';
+import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel } from '../lib/exportUtils';
 
@@ -23,6 +23,7 @@ interface EntitySummary {
     totalCredit: number;   // Money paid
     balance: number;
     code?: string; // Doctor Code
+    lastTransaction?: string;
 }
 
 export default function Accounts() {
@@ -36,8 +37,7 @@ export default function Accounts() {
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
     // Options
-
-    const [showAllOrders, setShowAllOrders] = useState(false);
+    const [showAllOrders] = useState(false);
     const [hideZeroBalance, setHideZeroBalance] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -47,9 +47,6 @@ export default function Accounts() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
-
-    // Summary Data
-
 
     useEffect(() => {
         const loadData = async () => {
@@ -84,36 +81,37 @@ export default function Accounts() {
             setActiveTab('designers');
             setSelectedEntityId(user.id);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isLab, isDesigner, user]);
 
-    // Helper: Calculate Summary for ALL
+    // Helper: Calculate Summary
     const summaryData = useMemo(() => {
         if (viewMode !== 'summary') return [];
 
         const allOrders = orders;
         const allTransactions = transactions;
-
         let summaries: EntitySummary[] = [];
 
         if (activeTab === 'doctors') {
             summaries = doctors.map(doc => {
-                // Doctor Orders (Debit) - Show all if showAllOrders is enabled
                 const docOrders = allOrders.filter(o =>
                     o.doctorId === doc.id &&
-                    (showAllOrders || o.status !== 'Rejected') && // Soft filter rejected
+                    (showAllOrders || o.status !== 'Rejected') &&
                     (showAllOrders || ['Delivered', 'Completed', 'Ready'].includes(o.status))
                 );
                 const totalDebit = docOrders.reduce((sum, o) => {
-                    if (o.status === 'Rejected') return sum; // Rejected = 0 value
+                    if (o.status === 'Rejected') return sum;
                     return sum + o.totalPrice;
                 }, 0);
 
-                // Doctor Payments (Credit)
                 const docTx = allTransactions.filter(t =>
                     t.entityType === 'doctor' && t.entityId === doc.id && t.type === 'income'
                 );
                 const totalCredit = docTx.reduce((sum, t) => sum + t.amount, 0);
+
+                // Get last transaction date
+                const lastOrderDate = docOrders.length > 0 ? docOrders[docOrders.length - 1].createdAt : '';
+                const lastTxDate = docTx.length > 0 ? docTx[docTx.length - 1].date : '';
+                const lastTransaction = lastOrderDate > lastTxDate ? lastOrderDate : lastTxDate;
 
                 return {
                     id: doc.id,
@@ -121,24 +119,20 @@ export default function Accounts() {
                     totalOrders: docOrders.length,
                     totalDebit,
                     totalCredit,
-                    balance: totalDebit - totalCredit, // Positive = He owes us
-                    code: doc.doctorCode
+                    balance: totalDebit - totalCredit,
+                    code: doc.doctorCode,
+                    lastTransaction
                 };
             });
         } else if (activeTab === 'suppliers') {
             summaries = suppliers.map(sup => {
-                // Supplier Orders (Credit - We owe them) - Only count Delivered orders unless showAllOrders
                 const supOrders = allOrders.filter(o => o.supplierId === sup.id && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
-                // Fix: Subtract designer price if split workflow
                 const totalCredit = supOrders.reduce((sum, o) => {
                     let cost = o.cost || 0;
-                    if (o.workflowType === 'split' && o.designPrice) {
-                        cost -= o.designPrice;
-                    }
+                    if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
                     return sum + cost;
                 }, 0);
 
-                // Supplier Payments (Debit - We paid them)
                 const supTx = allTransactions.filter(t =>
                     t.entityType === 'supplier' && t.entityId === sup.id && t.type === 'expense'
                 );
@@ -148,21 +142,17 @@ export default function Accounts() {
                     id: sup.id,
                     name: sup.name,
                     totalOrders: supOrders.length,
-                    totalDebit, // We paid
-                    totalCredit, // We owe check
-                    balance: totalCredit - totalDebit // Positive = We owe them
+                    totalDebit,
+                    totalCredit,
+                    balance: totalCredit - totalDebit,
+                    lastTransaction: ''
                 };
             });
         } else if (activeTab === 'designers') {
-            // Fetch all designers (users with role designer)
-            const allDesigners = designers;
-
-            summaries = allDesigners.map(des => {
-                // Designer Orders (Credit - We owe them) - Only count Delivered orders unless showAllOrders
+            summaries = designers.map(des => {
                 const desOrders = allOrders.filter(o => o.designerId === des.id && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
                 const totalCredit = desOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
 
-                // Designer Payments (Debit - We paid them)
                 const desTx = allTransactions.filter(t =>
                     t.entityType === 'designer' && t.entityId === des.id && t.type === 'expense'
                 );
@@ -172,9 +162,10 @@ export default function Accounts() {
                     id: des.id,
                     name: des.name,
                     totalOrders: desOrders.length,
-                    totalDebit, // We paid
-                    totalCredit, // We owe
-                    balance: totalCredit - totalDebit // Positive = We owe them
+                    totalDebit,
+                    totalCredit,
+                    balance: totalCredit - totalDebit,
+                    lastTransaction: ''
                 };
             });
         }
@@ -192,12 +183,7 @@ export default function Accounts() {
         if (activeTab === 'doctors') {
             const docOrders = allOrders.filter(o => {
                 if (o.doctorId !== selectedEntityId) return false;
-                // Allow rejected to show (Soft Filter) so list isn't empty, relying on Amount=0 for finance.
-                // We only filter by Progress/Completed logic now.
-
-                if (o.status === 'Rejected') return true; // Always show Rejected (processed as 0 value)
-
-                // Show all if requested, otherwise only finished
+                if (o.status === 'Rejected') return true;
                 if (showAllOrders) return true;
                 return ['Delivered', 'Completed', 'Ready'].includes(o.status);
             });
@@ -206,10 +192,9 @@ export default function Accounts() {
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 details: o.items.map((i: any) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
-                amount: o.status === 'Rejected' ? 0 : o.totalPrice, // Zero amount for rejected
+                amount: o.status === 'Rejected' ? 0 : o.totalPrice,
                 status: o.status
             }));
 
@@ -222,7 +207,6 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'suppliers') {
-            // Only count Delivered orders for suppliers unless showAll is checked (and not rejected)
             const supOrders = allOrders.filter(o => o.supplierId === selectedEntityId && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
             items = supOrders.map(o => {
                 let cost = o.cost || 0;
@@ -245,7 +229,6 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'designers') {
-            // Only count Delivered orders for designers unless showAll is checked
             const desOrders = allOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
             items = desOrders.map(o => ({
                 id: o.id,
@@ -280,339 +263,293 @@ export default function Accounts() {
 
     const handlePrint = () => window.print();
 
-    // VIEW 1: SUMMARY TABLE
-    if (viewMode === 'summary') {
-        const filteredSummary = summaryData
-            .filter(item => {
-                if (hideZeroBalance && item.balance === 0) return false;
-                if (searchQuery) {
-                    const q = searchQuery.toLowerCase();
-                    const matchesName = item.name.toLowerCase().includes(q);
-                    const matchesCode = item.code?.toLowerCase().includes(q);
-                    if (!matchesName && !matchesCode) return false;
-                }
-                return true;
-            });
+    // -- RENDER HELPERS --
 
+    const filteredSummary = summaryData.filter(item => {
+        if (hideZeroBalance && item.balance === 0) return false;
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            return item.name.toLowerCase().includes(q) || item.code?.toLowerCase().includes(q);
+        }
+        return true;
+    });
+
+    const totalEquity = filteredSummary.reduce((sum, item) => sum + item.balance, 0);
+
+    // -- VIEW: SUMMARY GRID --
+    if (viewMode === 'summary') {
         return (
             <div className="space-y-6">
-                <div className="print:hidden flex flex-col gap-4 bg-white p-4 rounded-xl border border-gray-200">
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h1 className="text-xl font-bold text-gray-800">إجمالي الحسابات</h1>
-                            <p className="text-sm text-gray-500">ملخص أرصدة {activeTab === 'doctors' ? 'العملاء' : (activeTab === 'suppliers' ? 'الموردين' : 'المصممين')}</p>
-                        </div>
-                        <div className="flex gap-2">
-                            {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
-                                <>
-                                    <button
-                                        onClick={() => {
-                                            exportToExcel(
-                                                filteredSummary.map(item => ({
-                                                    'الاسم': item.name,
-                                                    'عدد الطلبات': item.totalOrders,
-                                                    'إجمالي المستحق': item.totalDebit,
-                                                    'إجمالي المدفوع': item.totalCredit,
-                                                    'الرصيد': item.balance
-                                                })),
-                                                `accounts_${activeTab}_${new Date().toISOString().split('T')[0]}`,
-                                                activeTab === 'doctors' ? 'العملاء' : 'الموردين'
-                                            );
-                                        }}
-                                        className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 text-sm font-medium"
-                                    >
-                                        <FileSpreadsheet size={16} />
-                                        <span>Excel</span>
-                                    </button>
-                                    <button onClick={handlePrint} className="flex items-center gap-1.5 bg-gray-800 text-white px-3 py-1.5 rounded-lg hover:bg-gray-900 text-sm font-medium">
-                                        <Printer size={16} /> <span>طباعة</span>
-                                    </button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-4 mt-4 border-t pt-4 border-gray-50">
-                        {/* Filters */}
-                        <div className="flex items-center gap-4">
-                            <div className="flex bg-gray-100 p-1 rounded-lg">
-                                <button onClick={() => setActiveTab('doctors')} className={clsx("px-4 py-2 rounded-md text-sm font-bold transition-all", activeTab === 'doctors' ? 'bg-white shadow text-blue-600' : 'text-gray-500')}>العملاء</button>
-                                <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-2 rounded-md text-sm font-bold transition-all", activeTab === 'suppliers' ? 'bg-white shadow text-purple-600' : 'text-gray-500')}>الموردين</button>
-                                <button onClick={() => setActiveTab('designers')} className={clsx("px-4 py-2 rounded-md text-sm font-bold transition-all", activeTab === 'designers' ? 'bg-white shadow text-pink-600' : 'text-gray-500')}>المصممين</button>
-                            </div>
-
-                            <label className="flex items-center gap-2 cursor-pointer bg-gray-50 px-3 py-2 rounded-lg border hover:bg-gray-100 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={hideZeroBalance}
-                                    onChange={e => setHideZeroBalance(e.target.checked)}
-                                    className="w-4 h-4 text-blue-600 rounded"
-                                />
-                                <span className="text-sm font-bold text-gray-700">إخفاء الأرصدة الصفرية (0)</span>
-                            </label>
-
-                            {/* Show All Orders Option - For All Tabs */}
-                            <label className="flex items-center gap-2 cursor-pointer bg-purple-50 px-3 py-2 rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
-                                <input
-                                    type="checkbox"
-                                    checked={showAllOrders}
-                                    onChange={e => setShowAllOrders(e.target.checked)}
-                                    className="w-4 h-4 text-purple-600 rounded"
-                                />
-                                <span className="text-sm font-bold text-purple-700">عرض كل الحالات</span>
-                            </label>
-                        </div>
-
-                        {/* Search / Statement Lookup */}
-                        <div className="flex items-center gap-2 w-full md:w-auto">
-                            <div className="relative">
-                                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                <input
-                                    type="text"
-                                    placeholder="بحث تصفية..."
-                                    value={searchQuery}
-                                    onChange={e => setSearchQuery(e.target.value)}
-                                    className="pr-10 pl-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-100 outline-none w-64"
-                                />
-                            </div>
-                            <div className="h-8 w-px bg-gray-300 mx-2"></div>
-
-                            {/* Quick Jump */}
-                            <select
-                                aria-label="Quick jump to entity"
-                                onChange={(e) => {
-                                    if (e.target.value) {
-                                        setSelectedEntityId(e.target.value);
-                                        setViewMode('detail');
-                                        e.target.value = ''; // Reset
-                                    }
-                                }}
-                                className="p-2 border border-blue-200 bg-blue-50 text-blue-800 rounded-lg text-sm font-bold focus:ring-2 focus:ring-blue-100 outline-none min-w-[200px]"
+                {/* Modern Pill Navigation */}
+                <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <nav className="flex bg-gray-100/50 p-1.5 rounded-xl w-full md:w-auto overflow-x-auto">
+                        {[
+                            { id: 'doctors', label: 'العملاء', icon: UserIcon },
+                            { id: 'suppliers', label: 'الموردين', icon: Truck },
+                            { id: 'designers', label: 'المصممين', icon: Building2 },
+                        ].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={clsx(
+                                    "px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap",
+                                    activeTab === tab.id
+                                        ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5 scale-[1.02]"
+                                        : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                                )}
                             >
-                                <option value="">📄 هات كشف حساب لـ...</option>
-                                {activeTab === 'doctors' && doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                {activeTab === 'suppliers' && suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                {activeTab === 'designers' && designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                            </select>
+                                <tab.icon size={18} />
+                                {tab.label}
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="relative flex-1 md:flex-initial">
+                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                                type="text"
+                                placeholder="بحث..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-blue-100 text-sm font-medium"
+                            />
                         </div>
+                        <button
+                            onClick={() => setHideZeroBalance(!hideZeroBalance)}
+                            className={clsx(
+                                "p-2.5 rounded-xl border transition-all",
+                                hideZeroBalance ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-white border-gray-200 text-gray-400 hover:bg-gray-50"
+                            )}
+                            title="إخفاء الرصيد الصفري"
+                            aria-label="Toggle zero balance visibility"
+                        >
+                            <Filter size={20} />
+                        </button>
+                        {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
+                            <button
+                                onClick={() => {
+                                    exportToExcel(
+                                        filteredSummary.map(item => ({ 'الاسم': item.name, 'الرصيد': item.balance })),
+                                        `accounts_${activeTab}`,
+                                        activeTab
+                                    );
+                                }}
+                                className="p-2.5 bg-green-50 text-green-600 border border-green-100 rounded-xl hover:bg-green-100 transition-colors"
+                                title="تصدير إلى Excel"
+                                aria-label="Export to Excel"
+                            >
+                                <FileSpreadsheet size={20} />
+                            </button>
+                        )}
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl shadow-lg min-h-[500px]">
-                    {/* Print Header */}
-                    <div className="hidden print:block text-center border-b pb-4 mb-6">
-                        <img src="/orca-logo.png" alt="ORCA Lab" className="h-16 mx-auto mb-2" />
-                        <h1 className="text-2xl font-bold mb-1">تقرير أرصدة {activeTab === 'doctors' ? 'العملاء والمستحقات' : (activeTab === 'suppliers' ? 'الموردين والمطالبات' : 'المصممين والمستحقات')}</h1>
-                        <p className="text-gray-500 text-sm">التاريخ: {new Date().toLocaleDateString('ar-EG')}</p>
+                {/* Dashboard Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl text-white shadow-lg">
+                        <p className="text-slate-400 text-sm font-medium mb-1">إجمالي الأرصدة ({activeTab === 'doctors' ? 'لنا' : 'علينا'})</p>
+                        <h3 className="text-3xl font-bold tracking-tight">{Math.abs(totalEquity).toLocaleString()} <span className="text-sm font-normal text-slate-400">ج.م</span></h3>
+                        <div className="mt-4 flex gap-2">
+                            <span className={clsx("text-xs px-2 py-1 rounded-lg", totalEquity > 0 ? "bg-red-500/20 text-red-300" : "bg-emerald-500/20 text-emerald-300")}>
+                                {totalEquity > 0 ? (activeTab === 'doctors' ? 'مستحقات لنا' : 'ديون علينا') : 'رصيد إيجابي'}
+                            </span>
+                        </div>
                     </div>
+                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                        <p className="text-gray-500 text-sm font-medium mb-1">عدد الحسابات النشطة</p>
+                        <h3 className="text-3xl font-bold text-gray-800">{filteredSummary.filter(s => s.balance !== 0).length}</h3>
+                    </div>
+                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                        <p className="text-gray-500 text-sm font-medium mb-1">إجمالي الحركات</p>
+                        <h3 className="text-3xl font-bold text-gray-800">{filteredSummary.reduce((sum, item) => sum + item.totalOrders, 0)}</h3>
+                    </div>
+                </div>
 
+                {/* Modern Table View (Requested by User) */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     <table className="w-full text-right">
-                        <thead className="bg-gray-50 text-gray-600 font-bold">
+                        <thead className="bg-gray-50/50 text-gray-500 font-medium text-xs uppercase tracking-wider border-b border-gray-100">
                             <tr>
-                                <th className="p-4 rounded-r-lg">الاسم</th>
-                                <th className="p-4">عدد الحالات</th>
-                                <th className="p-4">{activeTab === 'doctors' ? 'إجمالي الشغل (Debit)' : 'إجمالي الشغل (Credit)'}</th>
-                                <th className="p-4">{activeTab === 'doctors' ? 'إجمالي المدفوع (Credit)' : 'إجمالي المسدد (Debit)'}</th>
-                                <th className="p-4 rounded-l-lg">الرصيد الحالي</th>
-                                <th className="p-4 print:hidden">إجراءات</th>
+                                <th className="p-4 w-16">#</th>
+                                <th className="p-4">الاسم</th>
+                                <th className="p-4">كود</th>
+                                <th className="p-4">آخر نشاط</th>
+                                <th className="p-4">إجمالي الحركات</th>
+                                <th className="p-4">الرصيد الحالي</th>
+                                <th className="p-4">الحالة</th>
+                                <th className="p-4"></th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {filteredSummary.map(item => (
-                                <tr key={item.id} className="hover:bg-blue-50 transition-colors group">
-                                    <td className="p-4 font-bold text-gray-800">{item.name}</td>
-                                    <td className="p-4 text-gray-600">{item.totalOrders}</td>
-                                    <td className="p-4 font-medium">{activeTab === 'doctors' ? item.totalDebit.toLocaleString() : item.totalCredit.toLocaleString()}</td>
-                                    <td className="p-4 font-medium">{activeTab === 'doctors' ? item.totalCredit.toLocaleString() : item.totalDebit.toLocaleString()}</td>
-                                    <td className={clsx("p-4 font-bold dir-ltr", item.balance > 0 ? "text-red-600" : "text-green-600")}>
-                                        {Math.abs(item.balance).toLocaleString()}
-                                        <span className="text-xs font-normal text-gray-400 mr-1">
-                                            {item.balance > 0
-                                                ? (activeTab === 'doctors' ? '(عليه)' : '(له)')
-                                                : (activeTab === 'doctors' ? '(له)' : '(عليه)')}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 print:hidden">
-                                        <button
-                                            onClick={() => { setSelectedEntityId(item.id); setViewMode('detail'); }}
-                                            className="text-blue-600 hover:text-blue-800 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            عرض التفاصيل &larr;
-                                        </button>
-                                    </td>
+                        <tbody className="divide-y divide-gray-50">
+                            {filteredSummary.length === 0 ? (
+                                <tr>
+                                    <td colSpan={8} className="p-8 text-center text-gray-400">لا توجد حسابات مطابقة للبحث</td>
                                 </tr>
-                            ))}
+                            ) : (
+                                filteredSummary.map((item, idx) => (
+                                    <tr
+                                        key={item.id}
+                                        onClick={() => { setSelectedEntityId(item.id); setViewMode('detail'); }}
+                                        className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                                    >
+                                        <td className="p-4 text-gray-400 font-mono text-sm">{idx + 1}</td>
+                                        <td className="p-4 font-bold text-gray-800 flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                                                {item.name.charAt(0)}
+                                            </div>
+                                            {item.name}
+                                        </td>
+                                        <td className="p-4 text-gray-500 text-sm font-mono">{item.code || '-'}</td>
+                                        <td className="p-4 text-gray-500 text-sm">
+                                            {item.lastTransaction ? new Date(item.lastTransaction).toLocaleDateString('en-GB') : '-'}
+                                        </td>
+                                        <td className="p-4 text-gray-600 font-medium">{item.totalOrders}</td>
+                                        <td className="p-4">
+                                            <span className={clsx("font-bold font-mono tracking-tight", item.balance > 0 ? "text-rose-600" : (item.balance < 0 ? "text-emerald-600" : "text-gray-400"))}>
+                                                {Math.abs(item.balance).toLocaleString()}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={clsx("text-xs font-bold px-2 py-1 rounded-md", item.balance > 0 ? "bg-rose-50 text-rose-600" : (item.balance < 0 ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"))}>
+                                                {item.balance === 0 ? 'خالص' : (item.balance > 0 ? (activeTab === 'doctors' ? 'مدين' : 'مستحق') : (activeTab === 'doctors' ? 'دائن' : 'مدفوع'))}
+                                            </span>
+                                        </td>
+                                        <td className="p-4 text-left">
+                                            <button className="text-gray-400 group-hover:text-blue-600 transition-colors" aria-label="View Details" title="عرض التفاصيل">
+                                                <ArrowRight size={18} className="rtl:rotate-180" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
                         </tbody>
-                        <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-100">
-                            <tr>
-                                <td className="p-4">الإجمالي الكلي</td>
-                                <td className="p-4">{filteredSummary.reduce((s, i) => s + i.totalOrders, 0)}</td>
-                                <td className="p-4">{filteredSummary.reduce((s, i) => s + (activeTab === 'doctors' ? i.totalDebit : i.totalCredit), 0).toLocaleString()}</td>
-                                <td className="p-4">{filteredSummary.reduce((s, i) => s + (activeTab === 'doctors' ? i.totalCredit : i.totalDebit), 0).toLocaleString()}</td>
-                                <td className={clsx("p-4 text-lg font-bold dir-ltr", filteredSummary.reduce((s, i) => s + i.balance, 0) > 0 ? "text-red-700" : "text-green-700")}>
-                                    {Math.abs(filteredSummary.reduce((s, i) => s + i.balance, 0)).toLocaleString()} <span className="text-xs font-normal text-gray-500">
-                                        {activeTab === 'doctors' ? 'إجمالي مستحقات المعمل' : 'إجمالي ديون المعمل'}
-                                    </span>
-                                </td>
-                                <td className="print:hidden"></td>
-                            </tr>
-                        </tfoot>
                     </table>
                 </div>
             </div>
         );
     }
 
-    // VIEW 2: INDIVIDUAL DETAIL (Existing UI wrapped)
+    // -- VIEW: DETAIL STATEMENT --
     return (
-        <div className="space-y-6">
-            {/* Header Controls */}
-            <div className="flex flex-col gap-6 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        {!isLab && !isDesigner && (
-                            <button onClick={() => setViewMode('summary')} className="p-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-2 text-gray-600" title="عودة للقائمة">
-                                <ArrowRight /> <span className="text-sm font-bold">عودة للملخص</span>
-                            </button>
-                        )}
-
-                        <div>
-                            <h1 className="text-2xl font-bold text-gray-800">كشف حساب تفصيلي</h1>
-                            <p className="text-gray-500">
-                                {activeTab === 'doctors'
-                                    ? (doctors.find(d => d.id === selectedEntityId)?.name || 'غير معروف')
-                                    : (activeTab === 'suppliers'
-                                        ? (suppliers.find(s => s.id === selectedEntityId)?.name || 'غير معروف')
-                                        : (designers.find(u => u.id === selectedEntityId)?.name || 'غير معروف'))
-                                }
-                            </p>
-                        </div>
-                    </div>
-                    {/* Print Button valid for authorized roles */}
-                    <button onClick={handlePrint} className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800">
-                        <Printer size={18} /> <span>طباعة الكشف</span>
+        <div className="space-y-6 max-w-5xl mx-auto">
+            {/* Action Header */}
+            <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 print:hidden">
+                <button onClick={() => setViewMode('summary')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+                    <ArrowRight size={20} />
+                    <span>عودة للحسابات</span>
+                </button>
+                <div className="flex gap-2">
+                    {/* Date Filters */}
+                    <input
+                        type="date"
+                        value={dateRange.start}
+                        onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                        className="bg-gray-50 border-none rounded-xl text-sm"
+                        aria-label="Start Date"
+                        title="تاريخ البداية"
+                    />
+                    <input
+                        type="date"
+                        value={dateRange.end}
+                        onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                        className="bg-gray-50 border-none rounded-xl text-sm"
+                        aria-label="End Date"
+                        title="تاريخ النهاية"
+                    />
+                    <button onClick={handlePrint} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 shadow-lg shadow-slate-200">
+                        <Printer size={18} /> الطباعة
                     </button>
-                </div>
-
-                <div className="flex flex-wrap gap-4 items-end border-t border-gray-50 pt-4">
-                    {/* Date Range */}
-                    <div className="flex gap-2">
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">من</label>
-                            <input type="date" aria-label="Start Date" className="p-2 border border-gray-200 rounded-lg text-sm" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-500 mb-1">إلى</label>
-                            <input type="date" aria-label="End Date" className="p-2 border border-gray-200 rounded-lg text-sm" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
-                        </div>
-                    </div>
-
-                    {/* Filter Options for Orders */}
-                    {/* Filter Options for Orders */}
-                    <div className="flex items-center gap-4">
-
-
-                        {/* Show All Orders Option */}
-                        <label className="flex items-center gap-2 cursor-pointer bg-purple-50 px-3 py-2 rounded-lg border border-purple-100 hover:bg-purple-100 transition-colors">
-                            <input
-                                type="checkbox"
-                                checked={showAllOrders}
-                                onChange={e => setShowAllOrders(e.target.checked)}
-                                className="w-4 h-4 text-purple-600 rounded"
-                            />
-                            <span className="text-sm font-bold text-purple-700">عرض كل الحالات</span>
-                        </label>
-                    </div>
                 </div>
             </div>
 
-            {/* Statement Preview */}
-            <div className="bg-white p-8 rounded-xl shadow-lg print:shadow-none print:p-0 min-h-[500px]">
-                {/* Print Header */}
-                <div className="hidden print:block text-center border-b pb-4 mb-6">
-                    <img src="/orca-logo.png" alt="ORCA Lab" className="h-16 mx-auto mb-2" />
-                    <h1 className="text-2xl font-bold mb-1">كشف حساب / Statement</h1>
-                    <p className="text-gray-500 text-sm">تاريخ الطباعة: {new Date().toLocaleDateString('ar-EG')}</p>
-
-                    {/* Date Range Display */}
-                    {(dateRange.start || dateRange.end) && (
-                        <p className="text-gray-800 font-bold mt-1 border border-gray-300 inline-block px-3 py-1 rounded bg-gray-50">
-                            الفترة من: <span dir="ltr">{dateRange.start || 'البداية'}</span> إلى: <span dir="ltr">{dateRange.end || 'الآن'}</span>
-                        </p>
-                    )}
-
-                    <h2 className="text-xl font-bold mt-2">
-                        {activeTab === 'doctors'
-                            ? doctors.find(d => d.id === selectedEntityId)?.name
-                            : (activeTab === 'suppliers'
-                                ? suppliers.find(s => s.id === selectedEntityId)?.name
-                                : designers.find(u => u.id === selectedEntityId)?.name)
-                        }
-                    </h2>
-                </div>
-
-                <div className="flex justify-between items-start mb-8 print:hidden">
+            {/* Invoice/Statement Paper */}
+            <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-100 min-h-[800px] print:shadow-none print:border-none print:p-0">
+                {/* Letterhead */}
+                <div className="flex justify-between items-start border-b-2 border-slate-100 pb-8 mb-8">
                     <div>
-                        <h2 className="text-sm text-gray-500">الاسم</h2>
-                        <h3 className="text-2xl font-bold text-gray-900">
+                        <img src="/orca-logo.png" alt="ORCA" className="h-16 mb-4" />
+                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">كشف حساب</h1>
+                        <p className="text-slate-500 mt-1 font-medium bg-slate-50 inline-block px-3 py-1 rounded-lg">رقم مرجعي: #{selectedEntityId.slice(0, 8)}</p>
+                    </div>
+                    <div className="text-left space-y-1">
+                        <h2 className="text-xl font-bold text-slate-800">
                             {activeTab === 'doctors'
                                 ? doctors.find(d => d.id === selectedEntityId)?.name
                                 : (activeTab === 'suppliers'
                                     ? suppliers.find(s => s.id === selectedEntityId)?.name
                                     : designers.find(u => u.id === selectedEntityId)?.name)
                             }
-                        </h3>
-                    </div>
-                    <div className="text-left bg-gray-50 p-4 rounded-lg">
-                        <h2 className="text-sm text-gray-500 mb-1">الرصيد الحالي</h2>
-                        <div className={clsx("text-3xl font-bold dir-ltr", individualStatement.totals.balance > 0 ? 'text-red-600' : 'text-green-600')}>
-                            {Math.abs(individualStatement.totals.balance || 0).toLocaleString()} <span className="text-base font-normal text-gray-500">ج.م</span>
-                            <span className="block text-xs font-normal mt-1 text-gray-400">
-                                {individualStatement.totals.balance > 0
-                                    ? (activeTab === 'doctors' ? ' (عليه - مطلوب سداده)' : ' (مستحق له)')
-                                    : ' (خالص / مقدم)'}
-                            </span>
+                        </h2>
+                        <p className="text-slate-500 text-sm">
+                            {activeTab === 'doctors' ? 'عميل (طبيب)' : (activeTab === 'suppliers' ? 'مورد خارجي' : 'مصمم')}
+                        </p>
+                        <div className="pt-4">
+                            <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">تاريخ التقرير</p>
+                            <p className="font-mono font-bold text-slate-700">{new Date().toLocaleDateString('ar-EG')}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Individual Table */}
-                <div className="overflow-hidden border border-gray-200 rounded-lg">
-                    <table className="w-full text-sm text-right">
-                        <thead className="bg-gray-50 text-gray-600 font-medium">
-                            <tr>
-                                <th className="p-3 border-b">التاريخ</th>
-                                <th className="p-3 border-b w-1/2">البيان</th>
-                                <th className="p-3 border-b">مدين</th>
-                                <th className="p-3 border-b">دائن</th>
+                {/* Balance Hero */}
+                <div className="bg-slate-50 rounded-2xl p-6 mb-8 flex justify-between items-center border border-slate-100">
+                    <div>
+                        <p className="text-slate-500 font-medium mb-1">الرصيد الحالي المستحق</p>
+                        <p className="text-xs text-slate-400">حتى تاريخ اليوم</p>
+                    </div>
+                    <div className="text-right">
+                        <h2 className={clsx("text-4xl font-black tracking-tight dir-ltr", individualStatement.totals.balance > 0 ? "text-rose-600" : "text-emerald-600")}>
+                            {Math.abs(individualStatement.totals.balance).toLocaleString()} <span className="text-lg text-slate-400 font-normal">EGP</span>
+                        </h2>
+                        <p className="text-sm font-bold text-slate-500 mt-1">
+                            {individualStatement.totals.balance > 0
+                                ? (activeTab === 'doctors' ? 'مطلوب سداده' : 'مستحق له')
+                                : (activeTab === 'doctors' ? 'دفعة مقدمة / له' : 'مدفوع مقدم')}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Statement Table */}
+                <table className="w-full text-right">
+                    <thead className="bg-slate-900 text-white">
+                        <tr>
+                            <th className="p-4 rounded-tr-xl font-bold">المعاملة</th>
+                            <th className="p-4 font-bold">التاريخ</th>
+                            <th className="p-4 font-bold">مدين (Debit)</th>
+                            <th className="p-4 rounded-tl-xl font-bold">دائن (Credit)</th>
+                        </tr>
+                    </thead>
+                    <tbody className="text-sm">
+                        {individualStatement.items.map((item, idx) => (
+                            <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                                <td className="p-4 max-w-md">
+                                    <div className="font-bold text-slate-800">{item.description}</div>
+                                    {item.details && <div className="text-slate-500 text-xs mt-1 truncate">{item.details}</div>}
+                                    {item.status === 'Rejected' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 mt-1">مرفوض</span>}
+                                </td>
+                                <td className="p-4 font-mono text-slate-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
+                                <td className="p-4 font-mono font-bold text-slate-700">
+                                    {item.type === 'debit' ? item.amount.toLocaleString() : '-'}
+                                </td>
+                                <td className="p-4 font-mono font-bold text-slate-700">
+                                    {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {individualStatement.items.length === 0 ? (
-                                <tr><td colSpan={4} className="p-8 text-center text-gray-400">لا توجد حركات</td></tr>
-                            ) : (
-                                individualStatement.items.map((item, idx) => (
-                                    <tr key={idx} className={clsx("hover:bg-gray-50", item.status === 'Rejected' && "bg-red-50 opacity-75")}>
-                                        <td className="p-3 whitespace-nowrap text-gray-500">{item.date}</td>
-                                        <td className="p-3">
-                                            <div className={clsx("font-medium", item.status === 'Rejected' ? "text-red-700 line-through" : "text-gray-900")}>{item.description}</div>
-                                            {item.details && <div className={clsx("text-xs mt-1", item.status === 'Rejected' ? "text-red-500" : "text-blue-600")}>{item.details}</div>}
-                                            {item.status && showAllOrders && <span className="text-[10px] bg-gray-100 px-1.5 rounded text-gray-500 mr-2">{item.status}</span>}
-                                        </td>
-                                        <td className="p-3 font-medium text-gray-700">{item.type === 'debit' ? item.amount.toLocaleString() : '-'}</td>
-                                        <td className="p-3 font-medium text-gray-700">{item.type === 'credit' ? item.amount.toLocaleString() : '-'}</td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                        <tfoot className="bg-gray-50 font-bold text-gray-800">
-                            <tr>
-                                <td colSpan={2} className="p-3 text-left pl-8">الإجمالي</td>
-                                <td className="p-3 text-red-600">{(individualStatement.totals.totalDebit || 0).toLocaleString()}</td>
-                                <td className="p-3 text-green-600">{(individualStatement.totals.totalCredit || 0).toLocaleString()}</td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                        ))}
+                    </tbody>
+                    <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200">
+                        <tr>
+                            <td colSpan={2} className="p-4 text-slate-600">الإجماليات</td>
+                            <td className="p-4 text-rose-600">{individualStatement.totals.totalDebit.toLocaleString()}</td>
+                            <td className="p-4 text-emerald-600">{individualStatement.totals.totalCredit.toLocaleString()}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                {/* Footer */}
+                <div className="mt-12 text-center text-slate-400 text-xs border-t border-slate-100 pt-8">
+                    <p>تم إنشاء هذا التقرير تلقائياً بواسطة نظام ORCA Dental Lab ERP</p>
+                    <p className="mt-1">في حالة وجود استفسارات يرجى التواصل مع الإدارة المالية</p>
                 </div>
             </div>
         </div>

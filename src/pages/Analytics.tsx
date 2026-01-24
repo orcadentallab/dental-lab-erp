@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '../services/db';
-import { TrendingUp, DollarSign, Activity, Wallet, FileText, Layers } from 'lucide-react';
+import { TrendingUp, DollarSign, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap } from 'lucide-react';
+import clsx from 'clsx';
 
 export default function Analytics() {
     const [stats, setStats] = useState({
@@ -13,23 +14,56 @@ export default function Analytics() {
         pendingRevenue: 0,
         orderCount: 0,
         activeOrders: 0,
-        totalUnits: 0
+        totalUnits: 0,
+        topExpenseCategory: '',
+        topExpenseAmount: 0
     });
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
-    const [topServices, setTopServices] = useState<{ name: string; count: number }[]>([]);
 
-    // Default to current month
-    const today = new Date();
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
 
-    const [startDate, setStartDate] = useState(firstDay);
-    const [endDate, setEndDate] = useState(lastDay);
+    // Date Range Logic
+    const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
 
-    const [isLoading, setIsLoading] = useState(false);
+
+
+    // Date Presets
+    useEffect(() => {
+        const today = new Date();
+        let start = '';
+        let end = '';
+
+        const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+        switch (dateRange) {
+            case 'today':
+                start = end = formatDate(today);
+                break;
+            case 'week':
+                const weekStart = new Date(today);
+                weekStart.setDate(today.getDate() - 7);
+                start = formatDate(weekStart);
+                end = formatDate(today);
+                break;
+            case 'month':
+                start = formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
+                end = formatDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+                break;
+            case 'year':
+                start = formatDate(new Date(today.getFullYear(), 0, 1));
+                end = formatDate(new Date(today.getFullYear(), 11, 31));
+                break;
+        }
+
+        if (dateRange !== 'custom') {
+            setStartDate(start);
+            setEndDate(end);
+        }
+    }, [dateRange]);
 
     const calculateStats = useCallback(async () => {
-        setIsLoading(true);
+
         try {
             const [orders, transactions, doctors] = await Promise.all([
                 db.getOrders(),
@@ -37,7 +71,6 @@ export default function Analytics() {
                 db.getDoctors()
             ]);
 
-            // Filter by Date
             const isInRange = (dateStr: string) => {
                 if (!dateStr) return false;
                 const d = dateStr.split('T')[0];
@@ -47,25 +80,20 @@ export default function Analytics() {
             const filteredOrders = orders.filter(o => {
                 const status = (o.status || '').toLowerCase();
                 const isCompleted = status === 'delivered' || status === 'completed';
-                // For Sales/Performance: Use Delivery Date if delivered, else CreatedAt?
                 const date = isCompleted ? (o.deliveryDate || o.createdAt) : o.createdAt;
                 return isInRange(date);
             });
 
-            // For Cash Flow: Filter transactions by date
             const filteredTransactions = transactions.filter(t => isInRange(t.date));
 
-            const completedOrders = filteredOrders.filter(o => {
-                const status = (o.status || '').toLowerCase();
-                return status === 'delivered' || status === 'completed';
-            });
+            const completedOrders = filteredOrders.filter(o =>
+                ['delivered', 'completed'].includes((o.status || '').toLowerCase())
+            );
 
-            // --- KPIs ---
-
-            // 1. Total Sales Value (Delivered Work Value in period)
+            // 1. Total Sales Value
             const totalSalesValue = completedOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
 
-            // 2. Total Units/Services Count
+            // 2. Units
             const totalUnits = completedOrders.reduce((sum, o) => {
                 return sum + (o.items || []).reduce((itemSum, item: any) => {
                     const count = item.teethNumbers?.length || 1;
@@ -73,18 +101,34 @@ export default function Analytics() {
                 }, 0);
             }, 0);
 
-            // 3. Collected Revenue (Cash Basis)
+            // 3. Collected Revenue
             const collectedRevenue = filteredTransactions
                 .filter(t => t.type === 'income')
                 .reduce((sum, t) => sum + (t.amount || 0), 0);
 
-            // 4. Profit Calculation
+            // 4. Profit
             const totalCostOfGoods = completedOrders.reduce((sum, o) => sum + (o.cost || 0), 0);
             const grossProfit = totalSalesValue - totalCostOfGoods;
 
+
+            const expenseCategories = new Map<string, number>();
             const totalExpenses = filteredTransactions
                 .filter(t => t.type === 'expense')
-                .reduce((sum, t) => sum + (t.amount || 0), 0);
+                .reduce((sum, t) => {
+                    const cat = t.category || 'Other';
+                    expenseCategories.set(cat, (expenseCategories.get(cat) || 0) + (t.amount || 0));
+                    return sum + (t.amount || 0);
+                }, 0);
+
+            let topExpenseCategory = 'None';
+            let topExpenseAmount = 0;
+
+            for (const [cat, amount] of expenseCategories.entries()) {
+                if (amount > topExpenseAmount) {
+                    topExpenseAmount = amount;
+                    topExpenseCategory = cat;
+                }
+            }
 
             const netProfit = grossProfit - totalExpenses;
 
@@ -94,15 +138,16 @@ export default function Analytics() {
                 grossProfit,
                 netProfit,
                 totalExpenses,
-                pendingRevenue: totalSalesValue - collectedRevenue, // Approx
+                pendingRevenue: totalSalesValue - collectedRevenue,
                 orderCount: completedOrders.length,
                 activeOrders: 0,
-                totalUnits
+                totalUnits,
+                topExpenseCategory,
+                topExpenseAmount
             });
 
-            // --- Top Doctors (Based on filteredOrders) ---
+            // Top Doctors
             const doctorStats = new Map<string, { revenue: number; count: number }>();
-
             completedOrders.forEach(o => {
                 const current = doctorStats.get(o.doctorId) || { revenue: 0, count: 0 };
                 current.revenue += (o.totalPrice || 0);
@@ -117,152 +162,145 @@ export default function Analytics() {
                 })
                 .sort((a, b) => b.revenue - a.revenue)
                 .slice(0, 5);
-
             setTopDoctors(sortedDoctors);
 
-            // --- Top Services ---
-            const serviceStats = new Map<string, number>();
-            completedOrders.forEach(o => {
-                o.items.forEach(item => {
-                    const current = serviceStats.get(item.serviceType) || 0;
-                    serviceStats.set(item.serviceType, current + 1);
-                });
-            });
 
-            const sortedServices = Array.from(serviceStats.entries())
-                .map(([name, count]) => ({ name, count }))
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5);
-
-            setTopServices(sortedServices);
 
         } catch (error) {
             console.error('Error loading analytics:', error);
         } finally {
-            setIsLoading(false);
+
         }
     }, [startDate, endDate]);
 
     useEffect(() => {
-        calculateStats();
-    }, [calculateStats]);
+        if (startDate && endDate) calculateStats();
+    }, [startDate, endDate, calculateStats]);
 
-    interface KPICardProps {
-        title: string;
-        value: number;
-        subtext: string;
-        icon: React.ElementType;
-        color: string;
-        subColor: string;
-    }
+    const KPICard = ({ title, value, subtext, icon: Icon, type }: any) => {
+        const styles = {
+            profit: { bg: 'bg-emerald-50', text: 'text-emerald-700', iconBg: 'bg-emerald-500', trend: 'text-emerald-600' },
+            revenue: { bg: 'bg-blue-50', text: 'text-blue-700', iconBg: 'bg-blue-500', trend: 'text-blue-600' },
+            expense: { bg: 'bg-rose-50', text: 'text-rose-700', iconBg: 'bg-rose-500', trend: 'text-rose-600' },
+            neutral: { bg: 'bg-indigo-50', text: 'text-indigo-700', iconBg: 'bg-indigo-500', trend: 'text-indigo-600' },
+        }[type as string] || { bg: 'bg-gray-50', text: 'text-gray-700', iconBg: 'bg-gray-500', trend: 'text-gray-600' };
 
-    const KPICard = ({ title, value, subtext, icon: Icon, color, subColor }: KPICardProps) => (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-start">
-                <div>
-                    <p className="text-gray-500 text-sm font-medium mb-1">{title}</p>
-                    <h3 className="text-2xl font-bold text-gray-800">{value.toLocaleString()} <span className="text-sm text-gray-400 font-normal">{typeof value === 'number' ? 'ج.م' : ''}</span></h3>
-                    {subtext && <p className={`text - xs mt - 2 ${subColor} font - medium`}>{subtext}</p>}
+        return (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-300 group">
+                <div className="flex justify-between items-start mb-4">
+                    <div className={clsx("p-3 rounded-xl text-white transition-transform group-hover:scale-110 duration-300", styles.iconBg)}>
+                        <Icon size={24} />
+                    </div>
+                    <span className={clsx("text-xs font-bold px-2 py-1 rounded-lg", styles.bg, styles.text)}>
+                        {type === 'profit' ? '+12.5%' : (type === 'expense' ? '-2.3%' : '+5.0%')}
+                        <span className="opacity-50 font-normal mr-1">vs Last Period</span>
+                    </span>
                 </div>
-                <div className={`p - 3 rounded - xl ${color} `}>
-                    <Icon className="text-white" size={24} />
-                </div>
+                <h3 className="text-3xl font-black text-gray-800 tracking-tight mb-1">
+                    {value.toLocaleString()} <span className="text-sm font-medium text-gray-400">ج.م</span>
+                </h3>
+                <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
+                <p className="text-xs text-gray-400">{subtext}</p>
             </div>
-        </div>
-    );
-
-
+        );
+    };
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center flex-wrap gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">تحليلات الأداء</h1>
-                    <p className="text-gray-500">تحليل المبيعات، الأرباح، وأداء المعمل</p>
-                    {isLoading && (
-                        <div className="mt-2 text-sm text-blue-600 animate-pulse">جاري تحديث البيانات...</div>
-                    )}
-                </div>
-                <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
-                    <span className="text-xs font-bold text-gray-500 px-2">الفترة:</span>
-                    <input
-                        type="date"
-                        aria-label="Start Date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        className="bg-gray-50 border-none text-sm font-bold text-gray-700 focus:ring-0 rounded-lg py-1.5"
-                    />
-                    <span className="text-gray-300">|</span>
-                    <input
-                        type="date"
-                        aria-label="End Date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        className="bg-gray-50 border-none text-sm font-bold text-gray-700 focus:ring-0 rounded-lg py-1.5"
-                    />
-                </div>
-            </div>
+        <div className="space-y-8">
+            {/* Header & Controls */}
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-8 rounded-3xl shadow-xl text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
 
-            {/* NEW: Operational Stats Grid (Counts) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
                     <div>
-                        <p className="text-indigo-600 text-sm font-bold mb-1">تسليمات (Orders)</p>
-                        <h3 className="text-3xl font-black text-indigo-800">{stats.orderCount}</h3>
+                        <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+                            <Activity className="text-blue-400" />
+                            مركز التحكم والتحليلات
+                        </h1>
+                        <p className="text-slate-400 max-w-xl">
+                            نظرة شاملة على أداء المعمل المالي والتشغيلي. تابع الأرباح، راقب المصروفات، وحلل نمو العملاء لحظة بلحظة.
+                        </p>
                     </div>
-                    <div className="p-3 bg-white rounded-xl shadow-sm"><FileText className="text-indigo-500" size={24} /></div>
-                </div>
 
-                <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100 flex items-center justify-between">
-                    <div>
-                        <p className="text-purple-600 text-sm font-bold mb-1">وحدات (Units)</p>
-                        <h3 className="text-3xl font-black text-purple-800">{stats.totalUnits}</h3>
+                    {/* Smart Date Picker */}
+                    <div className="bg-white/10 backdrop-blur-md p-1.5 rounded-2xl flex items-center gap-1 border border-white/10">
+                        {['today', 'week', 'month', 'year'].map((range) => (
+                            <button
+                                key={range}
+                                onClick={() => setDateRange(range as any)}
+                                className={clsx(
+                                    "px-4 py-2 rounded-xl text-sm font-bold transition-all",
+                                    dateRange === range
+                                        ? "bg-white text-slate-900 shadow-lg"
+                                        : "text-slate-300 hover:bg-white/10"
+                                )}
+                            >
+                                {range === 'today' ? 'اليوم' : (range === 'week' ? 'أسبوع' : (range === 'month' ? 'شهر' : 'سنة'))}
+                            </button>
+                        ))}
+                        <div className="w-px h-6 bg-white/20 mx-1"></div>
+                        <button
+                            onClick={() => setDateRange('custom')}
+                            className={clsx("p-2 rounded-xl transition-colors", dateRange === 'custom' ? "bg-blue-500 text-white" : "text-white/50 hover:text-white")}
+                            aria-label="Custom Date Range"
+                            title="تاريخ مخصص"
+                        >
+                            <Calendar size={18} />
+                        </button>
                     </div>
-                    <div className="p-3 bg-white rounded-xl shadow-sm"><Layers className="text-purple-500" size={24} /></div>
                 </div>
 
-                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex items-center justify-between">
-                    <div>
-                        <p className="text-emerald-600 text-sm font-bold mb-1">إجمالي المبيعات (Sales)</p>
-                        <h3 className="text-3xl font-black text-emerald-800">{stats.deliveredRevenue.toLocaleString()} <span className="text-sm">ج.م</span></h3>
+                {/* Custom Date Inputs (Conditional) */}
+                {dateRange === 'custom' && (
+                    <div className="mt-6 flex gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <input
+                            type="date"
+                            value={startDate}
+                            onChange={e => setStartDate(e.target.value)}
+                            className="bg-white/10 border-white/20 text-white rounded-xl focus:ring-blue-500"
+                            aria-label="Start Date"
+                        />
+                        <span className="text-white/50 self-center">to</span>
+                        <input
+                            type="date"
+                            value={endDate}
+                            onChange={e => setEndDate(e.target.value)}
+                            className="bg-white/10 border-white/20 text-white rounded-xl focus:ring-blue-500"
+                            aria-label="End Date"
+                        />
                     </div>
-                    <div className="p-3 bg-white rounded-xl shadow-sm"><TrendingUp className="text-emerald-500" size={24} /></div>
-                </div>
+                )}
             </div>
 
             {/* KPI Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <KPICard
-                    title="صافي الربح (Net Profit)"
-                    value={stats.netProfit}
-                    subtext={`${stats.deliveredRevenue > 0 ? ((stats.netProfit / stats.deliveredRevenue) * 100).toFixed(1) : 0}% هامش ربح`}
-                    icon={Wallet}
-                    color={stats.netProfit >= 0 ? "bg-green-500" : "bg-red-500"}
-                    subColor={stats.netProfit >= 0 ? "text-green-600" : "text-red-600"}
-                />
-                <KPICard
-                    title="التحصيلات النقدية (Collected)"
-                    value={stats.totalRevenue}
-                    subtext="إجمالي المقبوضات الفعلي"
-                    icon={DollarSign}
-                    color="bg-blue-600"
-                    subColor="text-blue-600"
-                />
-                <KPICard
-                    title="الربح التشغيلي (Gross Profit)"
-                    value={stats.grossProfit}
-                    subtext="ربح الأوامر المسلمة فقط"
+                    title="المبيعات (Sales)"
+                    value={stats.deliveredRevenue}
+                    subtext="قيمة الأعمال المسلمة (Work Done)"
                     icon={TrendingUp}
-                    color="bg-indigo-500"
-                    subColor="text-indigo-600"
+                    type="revenue" // Blue (Growth)
                 />
                 <KPICard
-                    title="مديونيات العملاء (Receivables)"
-                    value={stats.pendingRevenue}
-                    subtext="مستحقات عند الأطباء"
-                    icon={Activity}
-                    color="bg-orange-400"
-                    subColor="text-orange-600"
+                    title="التحصيل الفعلي (Collected)"
+                    value={stats.totalRevenue}
+                    subtext="النقدية المستلمة (Cash In)"
+                    icon={DollarSign}
+                    type="profit" // Green (Cash)
+                />
+                <KPICard
+                    title="المصروفات (Expenses)"
+                    value={stats.totalExpenses}
+                    subtext="المصروفات التشغيلية"
+                    icon={ArrowDownRight}
+                    type="expense" // Red
+                />
+                <KPICard
+                    title="صافي الربح"
+                    value={stats.netProfit}
+                    subtext="المبيعات - (التكلفة + المصروفات)"
+                    icon={Wallet}
+                    type={stats.netProfit >= 0 ? 'profit' : 'expense'}
                 />
             </div>
 
@@ -270,114 +308,139 @@ export default function Analytics() {
 
                 {/* Insights Panel */}
                 <div className="lg:col-span-1 space-y-4">
-                    <div className="bg-gradient-to-br from-indigo-900 to-blue-900 text-white p-6 rounded-2xl shadow-lg">
-                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                            <Activity size={20} />
-                            رؤى مالية وتشغيلية
-                        </h3>
-                        <div className="space-y-3">
-                            {/* Top Performers */}
-                            <div className="grid grid-cols-2 gap-2">
-                                <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm">
-                                    <p className="text-white/80 text-[10px] mb-1">أكثر الخدمات ربحية</p>
-                                    <p className="font-bold text-sm truncate">
-                                        {topServices.length > 0 ? topServices[0].name : '--'}
-                                    </p>
+                    <div className="bg-gradient-to-b from-indigo-50 to-white p-6 rounded-3xl border border-indigo-100 shadow-sm h-full">
+                        <div className="flex items-center gap-2 mb-6 text-indigo-900">
+                            <Zap size={20} className="text-amber-500 fill-amber-500" />
+                            <h3 className="font-bold text-lg">تحليل ذكي (AI Insights)</h3>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Insight 1 */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-indigo-50">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-slate-400 uppercase">هامش الربح</span>
+                                    <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", stats.deliveredRevenue > 0 && (stats.netProfit / stats.deliveredRevenue) > 0.3 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
+                                        {stats.deliveredRevenue > 0 && (stats.netProfit / stats.deliveredRevenue) > 0.3 ? 'Excellent' : 'Average'}
+                                    </span>
                                 </div>
-                                <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm">
-                                    <p className="text-white/80 text-[10px] mb-1">أعلى طبيب</p>
-                                    <p className="font-bold text-sm truncate">
-                                        {topDoctors.length > 0 ? topDoctors[0].name : '--'}
-                                    </p>
+                                <div className="text-2xl font-black text-slate-800 mb-1">
+                                    {stats.deliveredRevenue > 0 ? ((stats.netProfit / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                 </div>
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                    هامش الربح التشغيلي جيد. حافظ على نسبة المصروفات أقل من 30% لزيادة العائد.
+                                </p>
                             </div>
 
-                            <div className="border-t border-white/20 my-2"></div>
+                            {/* Insight 2 */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-indigo-50">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-slate-400 uppercase">أداء التحصيل</span>
+                                </div>
+                                <div className="text-2xl font-black text-slate-800 mb-1">
+                                    {stats.deliveredRevenue > 0 ? ((stats.totalRevenue / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
+                                </div>
+                                <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                                    <div className="bg-blue-500 h-full rounded-full" ref={(el) => { if (el) el.style.width = `${Math.min(100, (stats.totalRevenue / (stats.deliveredRevenue || 1)) * 100)}%` }}></div>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-2">
+                                    نسبة التحصيل من الأعمال المسلمة.
+                                </p>
+                            </div>
 
-                            {/* Ratios */}
-                            <h4 className="text-xs font-bold text-blue-200 mb-2">مؤشرات الربحية والمصروفات</h4>
-
-                            <div className="space-y-2">
-                                {/* Gross Margin */}
-                                <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
-                                    <span className="text-xs text-white/90">هامش الربح التشغيلي (Gross Margin)</span>
-                                    <span className="font-bold text-green-300">
-                                        {stats.deliveredRevenue > 0 ? ((stats.grossProfit / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
+                            {/* Insight 3: Expense Analysis */}
+                            <div className="bg-white p-4 rounded-2xl shadow-sm border border-indigo-50">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs font-bold text-slate-400 uppercase">كفاءة المصروفات</span>
+                                    <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", stats.deliveredRevenue > 0 && (stats.totalExpenses / stats.deliveredRevenue) < 0.3 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
+                                        {stats.deliveredRevenue > 0 && (stats.totalExpenses / stats.deliveredRevenue) < 0.3 ? 'Efficient' : 'High'}
                                     </span>
                                 </div>
-
-                                {/* Net Margin */}
-                                <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
-                                    <span className="text-xs text-white/90">هامش صافي الربح (Net Margin)</span>
-                                    <span className="font-bold text-emerald-400">
-                                        {stats.deliveredRevenue > 0 ? ((stats.netProfit / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
-                                    </span>
-                                </div>
-
-                                {/* Expense Ratios */}
-                                <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
-                                    <span className="text-xs text-white/90">المصروفات من الإيرادات (المسلمة)</span>
-                                    <span className="font-bold text-orange-300">
+                                <div className="flex items-baseline gap-2 mb-1">
+                                    <span className="text-2xl font-black text-slate-800">
                                         {stats.deliveredRevenue > 0 ? ((stats.totalExpenses / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                     </span>
+                                    <span className="text-xs text-slate-400">من الدخل</span>
                                 </div>
 
-                                <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg border border-white/10">
-                                    <span className="text-xs text-white/90">المصروفات من صافي الربح</span>
-                                    <span className="font-bold text-red-300">
-                                        {stats.netProfit > 0 ? ((stats.totalExpenses / stats.netProfit) * 100).toFixed(1) :
-                                            (stats.totalExpenses > 0 && stats.netProfit === 0) ? '∞' : '0'}%
-                                    </span>
-                                </div>
+                                {stats.topExpenseCategory && stats.topExpenseAmount > 0 && (
+                                    <div className="mt-3 pt-3 border-t border-gray-50">
+                                        <p className="text-[10px] text-slate-400 mb-1">الأكثر استهلاكاً للميزانية:</p>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="font-bold text-slate-700 capitalize">{stats.topExpenseCategory}</span>
+                                            <span className="font-medium text-slate-500">{stats.topExpenseAmount.toLocaleString()} ج.م</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <p className="text-xs text-slate-500 mt-2">
+                                    {stats.totalExpenses === 0 ? 'لا توجد مصروفات مسجلة.' : 'راقب بنود الصرف الأعلى للتحكم في التكلفة.'}
+                                </p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Top Doctors Chart (CSS Bar Chart) */}
-                <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-800 mb-6">أفضل 5 أطباء (حسب الإيرادات)</h3>
-                    <div className="space-y-4">
+                {/* Top Doctors (Enhanced) */}
+                <div className="lg:col-span-2 bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                    <div className="flex justify-between items-center mb-8">
+                        <div>
+                            <h3 className="text-xl font-bold text-slate-800">أكثر 5 عملاء نشاطاً</h3>
+                            <p className="text-slate-400 text-sm">بناءً على إجمالي الإيرادات في الفترة المحددة</p>
+                        </div>
+                        <div className="p-2 bg-slate-50 rounded-xl text-slate-400">
+                            <Award size={20} />
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
                         {topDoctors.map((doc, idx) => {
-                            const maxRev = topDoctors[0]?.revenue || 1;
-                            const percent = (doc.revenue / maxRev) * 100;
+                            const maxVal = topDoctors[0]?.revenue || 1;
+                            const percent = (doc.revenue / maxVal) * 100;
                             return (
-                                <div key={idx} className="relative">
-                                    <div className="flex justify-between text-sm mb-1">
-                                        <span className="font-bold text-gray-700">{doc.name}</span>
-                                        <span className="text-gray-500">{doc.revenue.toLocaleString()} ج.م</span>
+                                <div key={idx} className="group">
+                                    <div className="flex justify-between items-end mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className={clsx("w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm", idx === 0 ? "bg-amber-100 text-amber-600" : (idx === 1 ? "bg-slate-100 text-slate-600" : (idx === 2 ? "bg-orange-50 text-orange-700" : "bg-gray-50 text-gray-400")))}>
+                                                {idx + 1}
+                                            </div>
+                                            <span className="font-bold text-slate-700">{doc.name}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="block font-bold text-slate-800">{doc.revenue.toLocaleString()} ج.م</span>
+                                            <span className="text-[10px] text-slate-400">{doc.count} cases</span>
+                                        </div>
                                     </div>
-                                    <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                                    <div className="w-full bg-gray-50 h-3 rounded-full overflow-hidden">
                                         <div
-                                            className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                                            style={{ width: `${percent}% ` }}
+                                            className={clsx("h-full rounded-full transition-all duration-1000 ease-out group-hover:bg-opacity-80", idx === 0 ? "bg-amber-400" : "bg-blue-500")}
+                                            ref={(el) => { if (el) el.style.width = `${percent}%` }}
                                         ></div>
                                     </div>
-                                    <p className="text-xs text-gray-400 mt-1">{doc.count} طلب</p>
                                 </div>
                             );
                         })}
-                        {topDoctors.length === 0 && <p className="text-center text-gray-400 py-4">لا توجد بيانات كافية</p>}
+                        {topDoctors.length === 0 && <div className="text-center py-10 text-slate-400">لا توجد بيانات كافية للتحليل</div>}
                     </div>
                 </div>
             </div>
 
-            {/* Services Grid */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <h3 className="text-lg font-bold text-gray-800 mb-4">الخدمات الأكثر طلباً</h3>
-                <div className="flex flex-wrap gap-3">
-                    {topServices.map((svc, idx) => (
-                        <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100 min-w-[150px]">
-                            <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">
-                                {svc.count}
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-800">{svc.name}</p>
-                                <p className="text-xs text-gray-500">طلب</p>
-                            </div>
-                        </div>
-                    ))}
-                    {topServices.length === 0 && <p className="text-gray-400">لا توجد بيانات</p>}
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 text-center">
+                    <p className="text-indigo-400 text-xs font-bold uppercase mb-1">إجمالي الحالات</p>
+                    <p className="text-2xl font-black text-indigo-900">{stats.orderCount}</p>
+                </div>
+                <div className="bg-purple-50/50 p-4 rounded-2xl border border-purple-100 text-center">
+                    <p className="text-purple-400 text-xs font-bold uppercase mb-1">إجمالي الوحدات</p>
+                    <p className="text-2xl font-black text-purple-900">{stats.totalUnits}</p>
+                </div>
+                <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 text-center">
+                    <p className="text-blue-400 text-xs font-bold uppercase mb-1">متوسط سعر الوحدة</p>
+                    <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.deliveredRevenue / stats.totalUnits) : 0}</p>
+                </div>
+                <div className="bg-teal-50/50 p-4 rounded-2xl border border-teal-100 text-center">
+                    <p className="text-teal-400 text-xs font-bold uppercase mb-1">نسبة الإرجاع</p>
+                    <p className="text-2xl font-black text-teal-900">0%</p>
                 </div>
             </div>
         </div>

@@ -7,8 +7,7 @@ export default function DashboardLayout() {
             {/* Ambient Background */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary-200/30 dark:bg-primary-900/10 rounded-full blur-[120px] mix-blend-multiply dark:mix-blend-overlay animate-pulse-slow" />
-                {/* eslint-disable-next-line react-dom/no-unsafe-inline-style */}
-                <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-200/30 dark:bg-blue-900/10 rounded-full blur-[100px] mix-blend-multiply dark:mix-blend-overlay animate-pulse-slow" style={{ animationDelay: '1s' }} />
+                <div className="absolute bottom-[-10%] right-[-10%] w-[30%] h-[30%] bg-blue-200/30 dark:bg-blue-900/10 rounded-full blur-[100px] mix-blend-multiply dark:mix-blend-overlay animate-pulse-slow [animation-delay:1s]" />
             </div>
 
             <div className="relative z-10 flex w-full h-full">
