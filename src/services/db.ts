@@ -198,9 +198,33 @@ class MockDB {
     }
 
     // --- ORDERS ---
-    async getOrders(): Promise<Order[]> {
+    async getOrders(
+        page: number = 1,
+        limit: number = 50,
+        filters: {
+            status?: string;
+            startDate?: string;
+            endDate?: string;
+            doctorId?: string;
+            representativeId?: string;
+            supplierId?: string;
+            designerId?: string;
+            search?: string;
+            hideDelivered?: boolean;
+            hideRejected?: boolean;
+        } = {}
+    ): Promise<{ data: Order[]; count: number }> {
         const { getOrders } = await import('./supabase/orders');
-        return getOrders();
+        return getOrders(page, limit, filters);
+    }
+
+    /**
+     * @deprecated Use getOrders() with pagination instead.
+     * Only use for exports or legacy code that needs all orders.
+     */
+    async getAllOrdersUnpaginated(): Promise<Order[]> {
+        const { getAllOrdersUnpaginated } = await import('./supabase/orders');
+        return getAllOrdersUnpaginated();
     }
 
     async addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
@@ -211,6 +235,32 @@ class MockDB {
     async updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
         const { updateOrder } = await import('./supabase/orders');
         return updateOrder(id, updates);
+    }
+
+    /**
+     * CENTRALIZED STATUS UPDATE - Use this for all status changes.
+     * Ensures status/designStatus synchronization for Split Workflows.
+     */
+    async updateOrderStatus(
+        orderId: string,
+        newStatus: Order['status'],
+        context?: { designUrl?: string; comment?: string; userId?: string; userName?: string }
+    ): Promise<Order | null> {
+        const { updateOrderStatus } = await import('./supabase/orders');
+        return updateOrderStatus(orderId, newStatus, context);
+    }
+
+    /**
+     * Designer convenience function for submitting designs.
+     */
+    async submitDesignForApproval(
+        orderId: string,
+        designUrl: string,
+        userId: string,
+        userName: string
+    ): Promise<Order | null> {
+        const { submitDesignForApproval } = await import('./supabase/orders');
+        return submitDesignForApproval(orderId, designUrl, userId, userName);
     }
 
     async deleteOrder(id: string): Promise<void> {

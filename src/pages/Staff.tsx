@@ -54,7 +54,7 @@ export default function Staff() {
         try {
             const [allUsers, allOrders, allTransactions] = await Promise.all([
                 db.getUsers(),
-                db.getOrders(),
+                db.getAllOrdersUnpaginated(),
                 db.getTransactions()
             ]);
 

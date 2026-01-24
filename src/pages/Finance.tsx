@@ -50,7 +50,7 @@ export default function Finance() {
                     db.getDoctors(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    db.getOrders()
+                    db.getAllOrdersUnpaginated()
                 ]);
                 setServices(servicesData);
                 setTransactions(transactionsData);

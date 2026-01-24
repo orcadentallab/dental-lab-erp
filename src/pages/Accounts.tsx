@@ -54,7 +54,7 @@ export default function Accounts() {
                 const [docs, sups, ords, txs, users] = await Promise.all([
                     db.getDoctors(),
                     db.getSuppliers(),
-                    db.getOrders(),
+                    db.getAllOrdersUnpaginated(),
                     db.getTransactions(),
                     db.getUsers()
                 ]);

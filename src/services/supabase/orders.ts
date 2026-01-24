@@ -83,14 +83,118 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
     };
 }
 
-export async function getOrders(): Promise<Order[]> {
+// Filter options for getOrders
+export interface OrderFilters {
+    status?: string;
+    startDate?: string; // YYYY-MM-DD
+    endDate?: string;   // YYYY-MM-DD
+    doctorId?: string;
+    representativeId?: string;
+    supplierId?: string;
+    designerId?: string;
+    search?: string; // Searches case_id, patient_name
+    hideDelivered?: boolean;
+    hideRejected?: boolean;
+}
+
+export interface PaginatedOrdersResult {
+    data: Order[];
+    count: number;
+}
+
+const DEFAULT_PAGE_SIZE = 50;
+
+/**
+ * Fetches orders with mandatory pagination and server-side filtering.
+ * NO unbounded queries allowed.
+ */
+export async function getOrders(
+    page: number = 1,
+    limit: number = DEFAULT_PAGE_SIZE,
+    filters: OrderFilters = {}
+): Promise<PaginatedOrdersResult> {
+    // Calculate range for pagination
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    // Start building query with count
+    let query = supabase
+        .from('orders')
+        .select('*', { count: 'exact' });
+
+    // Apply filters
+    if (filters.status) {
+        query = query.eq('status', filters.status);
+    }
+
+    if (filters.startDate) {
+        query = query.gte('created_at', `${filters.startDate}T00:00:00`);
+    }
+
+    if (filters.endDate) {
+        query = query.lte('created_at', `${filters.endDate}T23:59:59`);
+    }
+
+    if (filters.doctorId) {
+        query = query.eq('doctor_id', filters.doctorId);
+    }
+
+    if (filters.representativeId) {
+        query = query.eq('representative_id', filters.representativeId);
+    }
+
+    if (filters.supplierId) {
+        query = query.eq('supplier_id', filters.supplierId);
+    }
+
+    if (filters.designerId) {
+        query = query.eq('designer_id', filters.designerId);
+    }
+
+    if (filters.hideDelivered) {
+        query = query.not('status', 'in', '("Delivered","Returned for Adjustments")');
+    }
+
+    if (filters.hideRejected) {
+        query = query.neq('technician_status', 'Rejected');
+    }
+
+    // Search filter: case_id OR patient_name (using ilike for case-insensitive)
+    if (filters.search && filters.search.trim()) {
+        const searchTerm = `%${filters.search.trim()}%`;
+        query = query.or(`case_id.ilike.${searchTerm},patient_name.ilike.${searchTerm}`);
+    }
+
+    // Apply ordering and pagination
+    query = query
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'getOrders');
+    }
+
+    return {
+        data: (data || []).map(dbToOrder),
+        count: count || 0
+    };
+}
+
+/**
+ * @deprecated Use getOrders(page, limit, filters) instead.
+ * This function fetches ALL orders and should only be used for exports or legacy code.
+ */
+export async function getAllOrdersUnpaginated(): Promise<Order[]> {
+    console.warn('getAllOrdersUnpaginated: This function fetches all orders. Use getOrders() with pagination for normal use.');
     const { data, error } = await supabase
         .from('orders')
         .select('*')
         .order('created_at', { ascending: false });
 
     if (error) {
-        throw ErrorHandler.handle(error, 'getOrders');
+        throw ErrorHandler.handle(error, 'getAllOrdersUnpaginated');
     }
 
     return (data || []).map(dbToOrder);
@@ -297,3 +401,110 @@ export async function getOrderHistory(orderId: string): Promise<OrderHistoryEntr
     }
     return data || [];
 }
+
+// ============================================================================
+// CENTRALIZED STATUS UPDATE FUNCTION
+// All status changes MUST go through this function to ensure consistency.
+// ============================================================================
+
+export interface StatusUpdateContext {
+    designUrl?: string;      // When designer uploads a design
+    comment?: string;        // Optional comment to add
+    userId?: string;         // User making the change
+    userName?: string;       // User name for comment attribution
+}
+
+/**
+ * STATUS SYNCHRONIZATION MAP
+ * Defines which designStatus should accompany each main status for Split Workflows.
+ */
+const STATUS_TO_DESIGN_STATUS: Record<string, Order['designStatus'] | undefined> = {
+    'New Case': 'pending',
+    'Under Design': 'in_progress',
+    'Waiting Dr Approval': 'waiting_approval',
+    'Under Production': 'completed',
+    'Try In': 'completed',
+    'Try In Approved': 'completed',
+    'Ready': 'completed',
+    'Delivered': 'completed',
+    'Returned for Adjustments': 'returned',
+    'Rejected': undefined, // Designer not involved
+};
+
+/**
+ * Centralized function for updating order status.
+ * ENFORCES:
+ * - Status/designStatus synchronization for Split Workflows
+ * - Status history tracking
+ * - Optional side-effects (design URL, comments)
+ * 
+ * UI MUST NOT update status or designStatus directly. Use this function only.
+ */
+export async function updateOrderStatus(
+    orderId: string,
+    newStatus: Order['status'],
+    context: StatusUpdateContext = {}
+): Promise<Order | null> {
+    // Validate UUID
+    if (!orderId || typeof orderId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+        throw new ValidationError('معرف الطلب غير صحيح');
+    }
+
+    // Fetch current order to determine if it's a Split Workflow
+    const currentOrder = await getOrder(orderId);
+    if (!currentOrder) {
+        throw new ValidationError('الطلب غير موجود');
+    }
+
+    // Build updates object
+    const updates: Partial<Order> = {
+        status: newStatus,
+    };
+
+    // CRITICAL: Sync designStatus for Split Workflows
+    if (currentOrder.workflowType === 'split') {
+        const syncedDesignStatus = STATUS_TO_DESIGN_STATUS[newStatus];
+        if (syncedDesignStatus !== undefined) {
+            updates.designStatus = syncedDesignStatus;
+        }
+    }
+
+    // Handle design URL if provided
+    if (context.designUrl) {
+        updates.designUrl = context.designUrl;
+    }
+
+    // Handle comments if provided
+    if (context.comment && context.userId && context.userName) {
+        const newComment = {
+            id: Math.random().toString(36).substr(2, 9),
+            text: context.comment,
+            userId: context.userId,
+            userName: context.userName,
+            createdAt: new Date().toISOString()
+        };
+        updates.comments = [...(currentOrder.comments || []), newComment];
+    }
+
+    // Use existing updateOrder for the actual update (handles history tracking)
+    return updateOrder(orderId, updates);
+}
+
+/**
+ * Convenience function for designers uploading design links.
+ * Updates status to 'Waiting Dr Approval' and adds a system comment.
+ */
+export async function submitDesignForApproval(
+    orderId: string,
+    designUrl: string,
+    userId: string,
+    userName: string
+): Promise<Order | null> {
+    return updateOrderStatus(orderId, 'Waiting Dr Approval', {
+        designUrl,
+        comment: `🔗 تم إضافة/تحديث رابط التصميم:\n${designUrl}`,
+        userId,
+        userName
+    });
+}
+

@@ -27,7 +27,7 @@ export default function DashboardNew() {
             setIsLoading(true);
             try {
                 const [ordersData, suppliersData, usersData] = await Promise.all([
-                    db.getOrders(),
+                    db.getAllOrdersUnpaginated(),
                     db.getSuppliers(),
                     db.getUsers()
                 ]);

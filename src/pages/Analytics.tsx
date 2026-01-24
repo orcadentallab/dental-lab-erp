@@ -66,7 +66,7 @@ export default function Analytics() {
 
         try {
             const [orders, transactions, doctors] = await Promise.all([
-                db.getOrders(),
+                db.getAllOrdersUnpaginated(),
                 db.getTransactions(),
                 db.getDoctors()
             ]);

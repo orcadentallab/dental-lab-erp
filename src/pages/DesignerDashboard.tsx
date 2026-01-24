@@ -31,7 +31,7 @@ export default function DesignerDashboard() {
         setIsLoading(true);
         try {
             const promises: Promise<any>[] = [
-                db.getOrders(),
+                db.getAllOrdersUnpaginated(),
                 db.getDoctors(),
             ];
 

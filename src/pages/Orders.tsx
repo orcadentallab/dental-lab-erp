@@ -30,15 +30,23 @@ export default function Orders() {
         }
     }, [highlightedOrderId, setSearchParams]);
 
-    const isDesigner = user?.role === 'designer';
+    // Note: isDesigner check removed - RLS handles role-based filtering at DB level
     const isAccountant = user?.role === 'accountant';
     const { t } = useTranslation();
 
+    // Data state
     const [orders, setOrders] = useState<Order[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [users, setUsers] = useState<User[]>([]);
 
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const PAGE_SIZE = 50;
+    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+    // Filter state (server-side)
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
@@ -47,27 +55,58 @@ export default function Orders() {
     const [representativeFilter, setRepresentativeFilter] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-
     const [hideDelivered, setHideDelivered] = useState(false);
     const [hideRejected, setHideRejected] = useState(false);
 
+    // Modal state
     const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
     const [noteEditingOrder, setNoteEditingOrder] = useState<Order | null>(null);
     const [newComment, setNewComment] = useState('');
-
     const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
     const [designLinkUrl, setDesignLinkUrl] = useState('');
 
-    const refreshOrders = async () => {
+    // Build filters object for server-side query
+    const buildFilters = () => {
+        const filters: {
+            status?: string;
+            startDate?: string;
+            endDate?: string;
+            doctorId?: string;
+            representativeId?: string;
+            supplierId?: string;
+            designerId?: string;
+            search?: string;
+            hideDelivered?: boolean;
+            hideRejected?: boolean;
+        } = {};
+
+        if (statusFilter) filters.status = statusFilter;
+        if (startDate) filters.startDate = startDate;
+        if (endDate) filters.endDate = endDate;
+        if (doctorFilter) filters.doctorId = doctorFilter;
+        if (representativeFilter) filters.representativeId = representativeFilter;
+        if (supplierFilter) filters.supplierId = supplierFilter;
+        if (designerFilter) filters.designerId = designerFilter;
+        if (searchQuery.trim()) filters.search = searchQuery.trim();
+        if (hideDelivered) filters.hideDelivered = true;
+        if (hideRejected) filters.hideRejected = true;
+
+        return filters;
+    };
+
+    // Fetch orders with server-side pagination and filtering
+    const refreshOrders = async (page: number = currentPage) => {
         setIsLoading(true);
         try {
-            const [ordersData, doctorsData, suppliersData, usersData] = await Promise.all([
-                db.getOrders(),
+            const filters = buildFilters();
+            const [ordersResult, doctorsData, suppliersData, usersData] = await Promise.all([
+                db.getOrders(page, PAGE_SIZE, filters),
                 db.getDoctors(),
                 db.getSuppliers(),
                 db.getUsers()
             ]);
-            setOrders(ordersData);
+            setOrders(ordersResult.data);
+            setTotalCount(ordersResult.count);
             setDoctors(doctorsData);
             setSuppliers(suppliersData);
             setUsers(usersData);
@@ -78,58 +117,38 @@ export default function Orders() {
         }
     };
 
+    // Initial load
     useEffect(() => {
-        refreshOrders();
+        refreshOrders(1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const rbacFilteredOrders = orders.filter(order => {
-        if (user?.role === 'lab') {
-            const isSplitWithDesigner = order.workflowType === 'split' && order.designerId;
-            if (isSplitWithDesigner && !['Under Production', 'Try In', 'Try In Approved', 'Ready', 'Ready for Delivery', 'Delivered', 'Returned for Adjustments'].includes(order.status)) {
-                return false;
-            }
-            return user.entityId && order.supplierId === user.entityId;
-        }
-        if (isDesigner) {
-            return order.workflowType === 'split' && order.designerId === user.id;
-        }
-        return true;
-    });
+    // Refetch when filters change (reset to page 1)
+    useEffect(() => {
+        setCurrentPage(1);
+        refreshOrders(1);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, hideRejected]);
 
-    const filteredOrders = rbacFilteredOrders.filter(order => {
-        const matchesSearch =
-            (order.caseId && order.caseId.toLowerCase().includes(searchQuery.toLowerCase())) ||
-            (order.patientName && order.patientName.toLowerCase().includes(searchQuery.toLowerCase()));
+    // Debounced search
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setCurrentPage(1);
+            refreshOrders(1);
+        }, 300);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQuery]);
 
-        const matchesStatus = statusFilter ? order.status === statusFilter : true;
-        const matchesDoctor = doctorFilter ? order.doctorId === doctorFilter : true;
-        const matchesSupplier = supplierFilter ? order.supplierId === supplierFilter : true;
-        const matchesDesigner = designerFilter ? order.designerId === designerFilter : true;
+    // Page change handler
+    const handlePageChange = (page: number) => {
+        setCurrentPage(page);
+        refreshOrders(page);
+    };
 
-        let matchesDate = true;
-        if (startDate || endDate) {
-            const orderDate = new Date(order.createdAt);
-            orderDate.setHours(0, 0, 0, 0);
-
-            if (startDate) {
-                const start = new Date(startDate);
-                start.setHours(0, 0, 0, 0);
-                if (orderDate < start) matchesDate = false;
-            }
-
-            if (endDate) {
-                const end = new Date(endDate);
-                end.setHours(0, 0, 0, 0);
-                if (orderDate > end) matchesDate = false;
-            }
-        }
-
-        const matchesDelivered = hideDelivered ? (order.status !== 'Delivered' && order.status !== 'Returned for Adjustments') : true;
-        const matchesRejected = hideRejected ? order.technicianStatus !== 'Rejected' : true;
-        const matchesRepresentative = representativeFilter ? order.representativeId === representativeFilter : true;
-
-        return matchesSearch && matchesStatus && matchesDoctor && matchesSupplier && matchesDesigner && matchesDelivered && matchesRejected && matchesRepresentative && matchesDate;
-    });
+    // NOTE: Client-side filtering REMOVED - all filtering now happens server-side
+    // RLS handles role-based filtering at the database level
+    // The 'orders' array already contains only filtered records from the server
 
     const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'createdAt'>) => {
         try {
@@ -152,14 +171,15 @@ export default function Orders() {
         }
     };
 
+    // CENTRALIZED STATUS UPDATE - ensures status/designStatus sync for Split Workflows
     const handleStatusUpdate = async (id: string, status: Order['status'] | 'same') => {
         if (status === 'same') {
             await refreshOrders();
             return;
         }
         try {
-            await db.updateOrder(id, { status });
-            await refreshOrders();
+            // Use centralized status update to ensure designStatus sync
+            await db.updateOrderStatus(id, status);
             await refreshOrders();
         } catch (error) {
             alert(`فشل تحديث الحالة: ${error instanceof Error ? error.message : 'حدث خطأ غير متوقع'}`);
@@ -208,24 +228,17 @@ export default function Orders() {
         setDesignLinkUrl(order.designUrl || '');
     };
 
+    // USES CENTRALIZED STATUS UPDATE - handles status/designStatus sync and comment automatically
     const handleUpdateDesignUrl = async () => {
         if (!designLinkOrder) return;
         try {
-            await db.updateOrder(designLinkOrder.id, {
-                designUrl: designLinkUrl,
-                status: 'Waiting Dr Approval',
-                designStatus: 'waiting_approval'
-            });
-            const timestamp = new Date().toISOString();
-            const commentObj = {
-                id: Math.random().toString(36).substr(2, 9),
-                text: `🔗 تم إضافة/تحديث رابط التصميم:\n${designLinkUrl}`,
-                userId: user?.id || 'system',
-                userName: user?.name || 'System',
-                createdAt: timestamp
-            };
-            const updatedComments = [...(designLinkOrder.comments || []), commentObj];
-            await db.updateOrder(designLinkOrder.id, { comments: updatedComments });
+            // Use centralized function that handles all side-effects
+            await db.submitDesignForApproval(
+                designLinkOrder.id,
+                designLinkUrl,
+                user?.id || 'system',
+                user?.name || 'System'
+            );
             setDesignLinkOrder(null);
             setDesignLinkUrl('');
             await refreshOrders();
@@ -264,7 +277,7 @@ export default function Orders() {
                         <Button
                             variant="outline"
                             onClick={() => {
-                                const exportData = filteredOrders.map(order => ({
+                                const exportData = orders.map((order: Order) => ({
                                     'رقم الحالة': order.caseId,
                                     'الطبيب': doctors.find(d => d.id === order.doctorId)?.name || '-',
                                     'المريض': order.patientName,
@@ -287,7 +300,7 @@ export default function Orders() {
                             variant="outline"
                             onClick={() => {
                                 printTable(
-                                    filteredOrders.map(order => ({
+                                    orders.map((order: Order) => ({
                                         caseId: order.caseId,
                                         doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
                                         patient: order.patientName,
@@ -448,7 +461,7 @@ export default function Orders() {
 
             {/* Order List */}
             <OrderList
-                orders={filteredOrders}
+                orders={orders}
                 onStatusChange={handleStatusUpdate}
                 userRole={user?.role}
                 onEdit={openFullEdit}
@@ -457,6 +470,55 @@ export default function Orders() {
                 onUpdateDesignUrl={openDesignLinkModal}
                 highlightedOrderId={highlightedOrderId}
             />
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-2 mt-6">
+                    <Button
+                        variant="outline"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage <= 1}
+                        className="px-3 py-1.5 text-sm"
+                    >
+                        السابق
+                    </Button>
+                    <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 5) {
+                                pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                                pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                                pageNum = totalPages - 4 + i;
+                            } else {
+                                pageNum = currentPage - 2 + i;
+                            }
+                            return (
+                                <Button
+                                    key={pageNum}
+                                    variant={currentPage === pageNum ? 'primary' : 'outline'}
+                                    onClick={() => handlePageChange(pageNum)}
+                                    className="px-3 py-1.5 text-sm min-w-[40px]"
+                                >
+                                    {pageNum}
+                                </Button>
+                            );
+                        })}
+                    </div>
+                    <Button
+                        variant="outline"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                        className="px-3 py-1.5 text-sm"
+                    >
+                        التالي
+                    </Button>
+                    <span className="text-sm text-surface-500 mr-4">
+                        {totalCount} طلب
+                    </span>
+                </div>
+            )}
 
             {/* Modals - Wrapped with AnimatePresence for transitions */}
             <AnimatePresence>

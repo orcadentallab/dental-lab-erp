@@ -15,7 +15,7 @@ export default function QualityDashboard() {
             setIsLoading(true);
             try {
                 const [ordersData, suppliersData, doctorsData] = await Promise.all([
-                    db.getOrders(),
+                    db.getAllOrdersUnpaginated(),
                     db.getSuppliers(),
                     db.getDoctors()
                 ]);
@@ -128,7 +128,7 @@ export default function QualityDashboard() {
         try {
             await db.updateOrder(selectedOrder.id, { feedback }); // Sync update
             // Refresh to get latest state or just update local
-            const updatedOrders = await db.getOrders();
+            const updatedOrders = await db.getAllOrdersUnpaginated();
             setOrders(updatedOrders);
             setFeedbackModalOpen(false);
         } catch (error) {

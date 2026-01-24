@@ -20,7 +20,7 @@ export default function Dashboard() {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const ordersPromise = db.getOrders();
+                const ordersPromise = db.getAllOrdersUnpaginated();
                 const doctorsPromise = db.getDoctors();
                 const suppliersPromise = db.getSuppliers();
 

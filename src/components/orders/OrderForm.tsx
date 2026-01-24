@@ -102,7 +102,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     db.getServices(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    db.getOrders()
+                    db.getAllOrdersUnpaginated()
                 ]);
                 setDoctors(doctorsData);
                 const sortedServices = servicesData.sort((a, b) => b.name.localeCompare(a.name));
