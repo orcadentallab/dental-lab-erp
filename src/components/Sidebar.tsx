@@ -78,7 +78,7 @@ export default function Sidebar() {
                             <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500 dark:from-primary-400 dark:to-primary-200 tracking-tight">
                                 ORCA Lab
                             </h1>
-                            <p className="text-xs text-surface-500 dark:text-surface-400 font-medium tracking-wide">Professional ERP</p>
+                            <p className="text-xs text-surface-500 dark:text-surface-400 font-medium tracking-wide">Professional ERP v1.1</p>
                         </div>
                     </div>
 
