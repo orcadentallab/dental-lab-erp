@@ -165,7 +165,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const subTotal = items.reduce((sum, item) => {
         const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
         const svc = services.find(s => s.name === item.serviceType);
-        return sum + (count * (svc ? svc.sellingPrice : 0));
+        // Use service price if found (fresh data), otherwise fallback to stored item price (legacy/custom)
+        const unitPrice = svc ? svc.sellingPrice : (item.price || 0);
+        return sum + (count * unitPrice);
     }, 0);
 
     const total = subTotal - discount;
