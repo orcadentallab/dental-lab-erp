@@ -192,10 +192,28 @@ export async function getOrders(
         query = query.neq('technician_status', 'Rejected');
     }
 
-    // Search filter: case_id OR patient_name (using ilike for case-insensitive)
+    // Search filter: case_id OR patient_name OR doctor_name OR doctor_code
     if (filters.search && filters.search.trim()) {
         const searchTerm = `%${filters.search.trim()}%`;
-        query = query.or(`case_id.ilike.${searchTerm},patient_name.ilike.${searchTerm}`);
+
+        // 1. Find matching doctors first
+        const { data: matchingDoctors } = await supabase
+            .from('doctors')
+            .select('id')
+            .or(`name.ilike.${searchTerm},doctor_code.ilike.${searchTerm}`);
+
+        const doctorIds = matchingDoctors?.map(d => d.id) || [];
+
+        // 2. Build OR query
+        let orQuery = `case_id.ilike.${searchTerm},patient_name.ilike.${searchTerm}`;
+
+        if (doctorIds.length > 0) {
+            // Postgres syntax for IN in OR filter is a bit tricky with Supabase JS
+            // Simpler: doctor_id.in.(${id1,id2})
+            orQuery += `,doctor_id.in.(${doctorIds.join(',')})`;
+        }
+
+        query = query.or(orQuery);
     }
 
     // Apply ordering and pagination

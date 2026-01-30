@@ -129,7 +129,7 @@ export default function Orders() {
         }, 150); // Shorter debounce for filter changes, still prevents rapid calls
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, hideRejected, searchQuery]);
+    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, hideRejected]); // Removed searchQuery from here
 
     // Page change handler
     const handlePageChange = (page: number) => {
@@ -140,6 +140,17 @@ export default function Orders() {
     // NOTE: Client-side filtering REMOVED - all filtering now happens server-side
     // RLS handles role-based filtering at the database level
     // The 'orders' array already contains only filtered records from the server
+
+    const handleSearch = () => {
+        setCurrentPage(1);
+        refreshOrders(1);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSearch();
+        }
+    };
 
     const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'createdAt'>) => {
         try {
@@ -500,8 +511,13 @@ export default function Orders() {
                                 className="w-full pl-3 pr-10 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleKeyDown}
                             />
                         </div>
+
+                        <Button variant="secondary" onClick={handleSearch} className="px-4">
+                            {t.common.search}
+                        </Button>
 
                         <div className="md:col-span-4 flex items-center justify-between gap-3">
                             <label className="flex items-center gap-2 cursor-pointer text-sm text-surface-600 select-none">

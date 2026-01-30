@@ -458,9 +458,47 @@ export default function Accounts() {
                         aria-label="End Date"
                         title="تاريخ النهاية"
                     />
+                    <button
+                        onClick={() => {
+                            const fileName = `statement_${activeTab}_${selectedEntityId}_${new Date().toISOString().split('T')[0]}`;
+                            exportToExcelWithHeaders(
+                                individualStatement.items.map(i => ({
+                                    date: i.date,
+                                    description: i.description,
+                                    debit: i.type === 'debit' ? i.amount : 0,
+                                    credit: i.type === 'credit' ? i.amount : 0,
+                                    details: i.details || ''
+                                })),
+                                {
+                                    date: 'التاريخ',
+                                    description: 'البيان',
+                                    debit: 'مدين',
+                                    credit: 'دائن',
+                                    details: 'التفاصيل'
+                                },
+                                fileName
+                            );
+                        }}
+                        className="bg-green-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 shadow-lg shadow-green-200"
+                    >
+                        <FileSpreadsheet size={18} /> تصدير
+                    </button>
                     <button onClick={handlePrint} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 shadow-lg shadow-slate-200">
                         <Printer size={18} /> الطباعة
                     </button>
+
+                    {/* Print Styles Fix */}
+                    <style>{`
+                        @media print {
+                            @page { size: auto; margin: 10mm; }
+                            body, html, #root { 
+                                height: auto !important; 
+                                overflow: visible !important; 
+                            }
+                            /* Hide sidebar and other non-print elements globally if not handled */
+                            body > *:not(#root) { display: none; }
+                        }
+                    `}</style>
                 </div>
             </div>
 

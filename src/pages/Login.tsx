@@ -39,7 +39,7 @@ export default function Login() {
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
                 <div className="bg-white px-8 pt-8 pb-4 text-center">
                     <img src="/orca-logo.png" alt="ORCA Dental Lab" className="w-20 h-20 mx-auto mb-4 rounded-xl shadow-lg" />
-                    <h1 className="text-2xl font-bold text-blue-900 mb-1" style={{ fontFamily: 'sans-serif' }}>ORCA Dental Lab</h1>
+                    <h1 className="text-2xl font-bold text-blue-900 mb-1 font-sans">ORCA Dental Lab</h1>
                     <p className="text-gray-500 text-sm">نظام إدارة معمل الأسنان</p>
                 </div>
 
