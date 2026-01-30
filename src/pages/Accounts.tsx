@@ -31,9 +31,21 @@ export default function Accounts() {
     const isLab = user?.role === 'lab';
     const isDesigner = user?.role === 'designer';
 
-    const [viewMode, setViewMode] = useState<'summary' | 'detail'>('summary');
-    const [activeTab, setActiveTab] = useState<'doctors' | 'suppliers' | 'designers'>('doctors');
-    const [selectedEntityId, setSelectedEntityId] = useState<string>('');
+    const [viewMode, setViewMode] = useState<'summary' | 'detail'>(() => {
+        if (isLab && user?.entityId) return 'detail';
+        if (isDesigner && user?.id) return 'detail';
+        return 'summary';
+    });
+    const [activeTab, setActiveTab] = useState<'doctors' | 'suppliers' | 'designers'>(() => {
+        if (isLab && user?.entityId) return 'suppliers';
+        if (isDesigner && user?.id) return 'designers';
+        return 'doctors';
+    });
+    const [selectedEntityId, setSelectedEntityId] = useState<string>(() => {
+        if (isLab && user?.entityId) return user.entityId;
+        if (isDesigner && user?.id) return user.id;
+        return '';
+    });
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
     // Options
@@ -70,18 +82,7 @@ export default function Accounts() {
         loadData();
     }, []);
 
-    // Enforce Role Views on mount
-    useEffect(() => {
-        if (isLab && user?.entityId) {
-            setViewMode('detail');
-            setActiveTab('suppliers');
-            setSelectedEntityId(user.entityId);
-        } else if (isDesigner && user?.id) {
-            setViewMode('detail');
-            setActiveTab('designers');
-            setSelectedEntityId(user.id);
-        }
-    }, [isLab, isDesigner, user]);
+
 
     // Helper: Calculate Summary
     const summaryData = useMemo(() => {
@@ -192,7 +193,7 @@ export default function Accounts() {
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
-                details: o.items.map((i: any) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
+                details: o.items.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
                 amount: o.status === 'Rejected' ? 0 : o.totalPrice,
                 status: o.status
@@ -283,14 +284,14 @@ export default function Accounts() {
                 {/* Modern Pill Navigation */}
                 <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                     <nav className="flex bg-gray-100/50 p-1.5 rounded-xl w-full md:w-auto overflow-x-auto">
-                        {[
+                        {([
                             { id: 'doctors', label: 'العملاء', icon: UserIcon },
                             { id: 'suppliers', label: 'الموردين', icon: Truck },
                             { id: 'designers', label: 'المصممين', icon: Building2 },
-                        ].map((tab) => (
+                        ] as const).map((tab) => (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id as any)}
+                                onClick={() => setActiveTab(tab.id)}
                                 className={clsx(
                                     "px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap",
                                     activeTab === tab.id

@@ -210,7 +210,7 @@ export default function Finance() {
             {/* Modern Navigation Tabs */}
             <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
                 <div className="flex gap-1 min-w-max">
-                    {[
+                    {([
                         { id: 'dashboard', label: 'نظرة عامة', color: 'blue' },
                         { id: 'expenses', label: 'المصروفات', color: 'red' },
                         { id: 'revenue', label: 'الإيرادات', color: 'green' },
@@ -218,10 +218,10 @@ export default function Finance() {
                         { id: 'suppliers', label: 'حسابات الموردين', color: 'purple' },
                         { id: 'designers', label: 'حسابات المصممين', color: 'pink' },
                         { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
-                    ].map((tab) => (
+                    ] as const).map((tab) => (
                         <button
                             key={tab.id}
-                            onClick={() => setActiveTab(tab.id as any)}
+                            onClick={() => setActiveTab(tab.id)}
                             className={clsx(
                                 "px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200",
                                 activeTab === tab.id

@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -19,6 +19,7 @@ export default function Sidebar() {
         { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer'] },
         { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
         { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
+        { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
         { name: t.nav.doctors, href: '/doctors', icon: Users, roles: ['admin', 'representative'] },
         { name: t.nav.suppliers, href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
         { name: t.nav.staff, href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },

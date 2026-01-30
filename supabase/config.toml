@@ -1,0 +1,14 @@
+# Supabase local config
+
+[api]
+enabled = true
+
+[functions]
+# Disable JWT verification for AI functions
+# These functions handle their own auth internally
+
+[functions.gemini-analyze]
+verify_jwt = false
+
+[functions.gemini-chat]
+verify_jwt = false

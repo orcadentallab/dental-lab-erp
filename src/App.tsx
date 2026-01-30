@@ -11,6 +11,7 @@ import Accounts from './pages/Accounts';
 import UsersPage from './pages/Users';
 import Settings from './pages/Settings';
 import QualityDashboard from './pages/Quality';
+import AIAnalytics from './pages/AIAnalytics';
 import Staff from './pages/Staff'; // New Import
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -78,6 +79,7 @@ function App() {
                 <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                   <Route element={<DashboardLayout />}>
                     <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/ai-analytics" element={<AIAnalytics />} />
                     <Route path="/users" element={<UsersPage />} />
 
                   </Route>

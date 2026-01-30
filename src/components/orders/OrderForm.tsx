@@ -126,6 +126,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             }
         };
         loadData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- items is intentionally excluded to prevent re-fetching on each item change
     }, [initialData]);
 
     const handleRemoveItem = (index: number) => {
@@ -144,7 +145,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         }
     };
 
-    const updateItem = (index: number, field: keyof FormOrderItem, value: any) => {
+    const updateItem = (index: number, field: keyof FormOrderItem, value: string | number) => {
         const newItems = [...items];
         newItems[index] = { ...newItems[index], [field]: value };
         setItems(newItems);

@@ -16,6 +16,7 @@ interface AuthContextType {
     login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
     logout: () => Promise<void>;
     isLoading: boolean;
+    hasPermission: (permissionKey: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,7 +54,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
                 auth_id: session.user.id,
                 entityId: profile.entity_id || undefined,
                 baseSalary: profile.base_salary || undefined,
-                unitRate: profile.unit_rate || undefined
+                unitRate: profile.unit_rate || undefined,
+                customPermissions: profile.custom_permissions || undefined
             };
             setUser(newUser);
         } catch (e) {
@@ -140,8 +142,33 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setIsLoading(false);
     };
 
+    // Permission checking helper
+    // Returns true if user has the permission (either via role or custom override)
+    const hasPermission = (permissionKey: string): boolean => {
+        if (!user) return false;
+
+        // Super admin has all permissions
+        if (user.username === 'admin') return true;
+
+        // Check custom permissions first (overrides role-based)
+        if (user.customPermissions && permissionKey in user.customPermissions) {
+            return user.customPermissions[permissionKey];
+        }
+
+        // Default role-based permissions
+        const rolePermissions: Record<string, string[]> = {
+            admin: ['view_finance', 'view_doctors', 'view_analytics', 'view_staff', 'view_suppliers', 'manage_orders', 'manage_users', 'view_accounts'],
+            accountant: ['view_finance', 'view_suppliers', 'view_accounts', 'view_staff'],
+            representative: ['view_doctors', 'manage_orders', 'view_accounts'],
+            lab: ['manage_orders'],
+            designer: ['manage_orders', 'view_accounts']
+        };
+
+        return rolePermissions[user.role]?.includes(permissionKey) || false;
+    };
+
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, isLoading }}>
+        <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, isLoading, hasPermission }}>
             {children}
         </AuthContext.Provider>
     );

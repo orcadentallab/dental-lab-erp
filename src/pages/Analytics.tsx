@@ -1,8 +1,39 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState, useCallback } from 'react';
+
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
 import { TrendingUp, DollarSign, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap } from 'lucide-react';
 import clsx from 'clsx';
+import React from 'react';
+
+// KPICard component defined outside of Analytics to avoid recreation on each render
+const KPICard = ({ title, value, subtext, icon: Icon, type }: { title: string; value: number; subtext: string; icon: React.ComponentType<{ size: number }>; type: string }) => {
+    const styleMap: Record<string, { bg: string; text: string; iconBg: string; trend: string }> = {
+        profit: { bg: 'bg-emerald-50', text: 'text-emerald-700', iconBg: 'bg-emerald-500', trend: 'text-emerald-600' },
+        revenue: { bg: 'bg-blue-50', text: 'text-blue-700', iconBg: 'bg-blue-500', trend: 'text-blue-600' },
+        expense: { bg: 'bg-rose-50', text: 'text-rose-700', iconBg: 'bg-rose-500', trend: 'text-rose-600' },
+        neutral: { bg: 'bg-indigo-50', text: 'text-indigo-700', iconBg: 'bg-indigo-500', trend: 'text-indigo-600' },
+    };
+    const styles = styleMap[type] || { bg: 'bg-gray-50', text: 'text-gray-700', iconBg: 'bg-gray-500', trend: 'text-gray-600' };
+
+    return (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-300 group">
+            <div className="flex justify-between items-start mb-4">
+                <div className={clsx("p-3 rounded-xl text-white transition-transform group-hover:scale-110 duration-300", styles.iconBg)}>
+                    <Icon size={24} />
+                </div>
+                <span className={clsx("text-xs font-bold px-2 py-1 rounded-lg", styles.bg, styles.text)}>
+                    {type === 'profit' ? '+12.5%' : (type === 'expense' ? '-2.3%' : '+5.0%')}
+                    <span className="opacity-50 font-normal mr-1">vs Last Period</span>
+                </span>
+            </div>
+            <h3 className="text-3xl font-black text-gray-800 tracking-tight mb-1">
+                {value.toLocaleString()} <span className="text-sm font-medium text-gray-400">ج.م</span>
+            </h3>
+            <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
+            <p className="text-xs text-gray-400">{subtext}</p>
+        </div>
+    );
+};
 
 export default function Analytics() {
     const [stats, setStats] = useState({
@@ -20,47 +51,40 @@ export default function Analytics() {
     });
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
 
-
-    // Date Range Logic
+    // Date Range Logic - use useMemo instead of useEffect to derive dates
     const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
+    const [customStartDate, setCustomStartDate] = useState('');
+    const [customEndDate, setCustomEndDate] = useState('');
 
+    const { startDate, endDate } = useMemo(() => {
+        if (dateRange === 'custom') {
+            return { startDate: customStartDate, endDate: customEndDate };
+        }
 
-
-    // Date Presets
-    useEffect(() => {
         const today = new Date();
-        let start = '';
-        let end = '';
-
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
         switch (dateRange) {
             case 'today':
-                start = end = formatDate(today);
-                break;
-            case 'week':
+                return { startDate: formatDate(today), endDate: formatDate(today) };
+            case 'week': {
                 const weekStart = new Date(today);
                 weekStart.setDate(today.getDate() - 7);
-                start = formatDate(weekStart);
-                end = formatDate(today);
-                break;
+                return { startDate: formatDate(weekStart), endDate: formatDate(today) };
+            }
             case 'month':
-                start = formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
-                end = formatDate(new Date(today.getFullYear(), today.getMonth() + 1, 0));
-                break;
+                return {
+                    startDate: formatDate(new Date(today.getFullYear(), today.getMonth(), 1)),
+                    endDate: formatDate(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+                };
             case 'year':
-                start = formatDate(new Date(today.getFullYear(), 0, 1));
-                end = formatDate(new Date(today.getFullYear(), 11, 31));
-                break;
+                return {
+                    startDate: formatDate(new Date(today.getFullYear(), 0, 1)),
+                    endDate: formatDate(new Date(today.getFullYear(), 11, 31))
+                };
         }
+    }, [dateRange, customStartDate, customEndDate]);
 
-        if (dateRange !== 'custom') {
-            setStartDate(start);
-            setEndDate(end);
-        }
-    }, [dateRange]);
 
     const calculateStats = useCallback(async () => {
 
@@ -95,7 +119,7 @@ export default function Analytics() {
 
             // 2. Units
             const totalUnits = completedOrders.reduce((sum, o) => {
-                return sum + (o.items || []).reduce((itemSum, item: any) => {
+                return sum + (o.items || []).reduce((itemSum, item: { teethNumbers?: string[] }) => {
                     const count = item.teethNumbers?.length || 1;
                     return itemSum + count;
                 }, 0);
@@ -168,42 +192,13 @@ export default function Analytics() {
 
         } catch (error) {
             console.error('Error loading analytics:', error);
-        } finally {
-
         }
     }, [startDate, endDate]);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Data fetching requires setting state after async operations
         if (startDate && endDate) calculateStats();
     }, [startDate, endDate, calculateStats]);
-
-    const KPICard = ({ title, value, subtext, icon: Icon, type }: any) => {
-        const styles = {
-            profit: { bg: 'bg-emerald-50', text: 'text-emerald-700', iconBg: 'bg-emerald-500', trend: 'text-emerald-600' },
-            revenue: { bg: 'bg-blue-50', text: 'text-blue-700', iconBg: 'bg-blue-500', trend: 'text-blue-600' },
-            expense: { bg: 'bg-rose-50', text: 'text-rose-700', iconBg: 'bg-rose-500', trend: 'text-rose-600' },
-            neutral: { bg: 'bg-indigo-50', text: 'text-indigo-700', iconBg: 'bg-indigo-500', trend: 'text-indigo-600' },
-        }[type as string] || { bg: 'bg-gray-50', text: 'text-gray-700', iconBg: 'bg-gray-500', trend: 'text-gray-600' };
-
-        return (
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-all duration-300 group">
-                <div className="flex justify-between items-start mb-4">
-                    <div className={clsx("p-3 rounded-xl text-white transition-transform group-hover:scale-110 duration-300", styles.iconBg)}>
-                        <Icon size={24} />
-                    </div>
-                    <span className={clsx("text-xs font-bold px-2 py-1 rounded-lg", styles.bg, styles.text)}>
-                        {type === 'profit' ? '+12.5%' : (type === 'expense' ? '-2.3%' : '+5.0%')}
-                        <span className="opacity-50 font-normal mr-1">vs Last Period</span>
-                    </span>
-                </div>
-                <h3 className="text-3xl font-black text-gray-800 tracking-tight mb-1">
-                    {value.toLocaleString()} <span className="text-sm font-medium text-gray-400">ج.م</span>
-                </h3>
-                <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-                <p className="text-xs text-gray-400">{subtext}</p>
-            </div>
-        );
-    };
 
     return (
         <div className="space-y-8">
@@ -224,10 +219,10 @@ export default function Analytics() {
 
                     {/* Smart Date Picker */}
                     <div className="bg-white/10 backdrop-blur-md p-1.5 rounded-2xl flex items-center gap-1 border border-white/10">
-                        {['today', 'week', 'month', 'year'].map((range) => (
+                        {(['today', 'week', 'month', 'year'] as const).map((range) => (
                             <button
                                 key={range}
-                                onClick={() => setDateRange(range as any)}
+                                onClick={() => setDateRange(range)}
                                 className={clsx(
                                     "px-4 py-2 rounded-xl text-sm font-bold transition-all",
                                     dateRange === range
@@ -256,7 +251,7 @@ export default function Analytics() {
                         <input
                             type="date"
                             value={startDate}
-                            onChange={e => setStartDate(e.target.value)}
+                            onChange={e => setCustomStartDate(e.target.value)}
                             className="bg-white/10 border-white/20 text-white rounded-xl focus:ring-blue-500"
                             aria-label="Start Date"
                         />
@@ -264,7 +259,7 @@ export default function Analytics() {
                         <input
                             type="date"
                             value={endDate}
-                            onChange={e => setEndDate(e.target.value)}
+                            onChange={e => setCustomEndDate(e.target.value)}
                             className="bg-white/10 border-white/20 text-white rounded-xl focus:ring-blue-500"
                             aria-label="End Date"
                         />

@@ -55,6 +55,8 @@ export interface User {
     unitRate?: number;
     // Link to Supabase Auth (required)
     auth_id?: string;
+    // Custom permissions override (set by Super Admin)
+    customPermissions?: Record<string, boolean>;
 }
 
 export interface Expense {

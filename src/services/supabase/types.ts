@@ -138,6 +138,7 @@ export interface DbUser {
     entity_id?: string | null;
     base_salary?: number | null;
     unit_rate?: number | null;
+    custom_permissions?: Record<string, boolean> | null; // JSONB
     created_at: string;
     updated_at: string;
 }

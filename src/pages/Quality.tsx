@@ -32,7 +32,11 @@ export default function QualityDashboard() {
     }, []);
 
     // --- Metrics Calculations ---
-    const completedOrders = orders.filter(o => o.status === 'Delivered' || o.status === 'Completed');
+    // Filter out historical data (before Feb 1, 2026)
+    const HISTORICAL_CUTOFF = new Date('2026-02-01');
+    const activeOrders = orders.filter(o => new Date(o.createdAt) >= HISTORICAL_CUTOFF);
+
+    const completedOrders = activeOrders.filter(o => o.status === 'Delivered' || o.status === 'Completed');
 
     // 1. On-Time Delivery Rate
     const lateOrders = completedOrders.filter(o => {
@@ -49,10 +53,10 @@ export default function QualityDashboard() {
         ? (ratedOrders.reduce((sum, o) => sum + o.feedback!.rating, 0) / ratedOrders.length).toFixed(1)
         : '---';
 
-    // 3. Redo Rate
-    const redoOrders = orders.filter(o => o.isRedo);
-    const redoRate = orders.length > 0
-        ? ((redoOrders.length / orders.length) * 100).toFixed(1)
+    // 3. Redo Rate (using active orders only)
+    const redoOrders = activeOrders.filter(o => o.isRedo);
+    const redoRate = activeOrders.length > 0
+        ? ((redoOrders.length / activeOrders.length) * 100).toFixed(1)
         : '0';
 
     // 4. Supplier Performance
@@ -86,8 +90,8 @@ export default function QualityDashboard() {
         .sort((a, b) => b.count - a.count);
 
 
-    // 6. Pending Feedback
-    const pendingFeedback = orders.filter(o => o.status === 'Delivered' && !o.feedback);
+    // 6. Pending Feedback (using active orders only)
+    const pendingFeedback = activeOrders.filter(o => o.status === 'Delivered' && !o.feedback);
 
     // Modal State
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -353,6 +357,8 @@ export default function QualityDashboard() {
                                     <button
                                         key={star}
                                         onClick={() => setFeedbackData(p => ({ ...p, rating: star }))}
+                                        title={`تقييم ${star} نجوم`}
+                                        aria-label={`تقييم ${star} نجوم`}
                                         className="transition-transform hover:scale-110 active:scale-90"
                                     >
                                         <Star

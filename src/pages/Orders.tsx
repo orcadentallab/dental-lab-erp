@@ -190,7 +190,7 @@ export default function Orders() {
         try {
             await db.deleteOrder(order.id);
             await refreshOrders();
-        } catch (error) {
+        } catch {
             alert('Failed to delete order');
         }
     };
@@ -242,7 +242,7 @@ export default function Orders() {
             setDesignLinkOrder(null);
             setDesignLinkUrl('');
             await refreshOrders();
-        } catch (error) {
+        } catch {
             alert('Failed to update design link');
         }
     };

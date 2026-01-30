@@ -37,7 +37,7 @@ export function AccountInfoPanel({
     let totalWork = 0;
     let totalPaid = 0;
     let balance = 0;
-    let currencyLabel = 'ج.م';
+    const currencyLabel = 'ج.م';
 
     // Filter Transactions for this entity
     const entityTransactions = transactions.filter(

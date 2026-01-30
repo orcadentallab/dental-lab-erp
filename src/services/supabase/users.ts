@@ -15,7 +15,8 @@ function dbToUser(dbUser: DbUser): User {
         name: dbUser.name,
         entityId: dbUser.entity_id || undefined,
         baseSalary: dbUser.base_salary || undefined,
-        unitRate: dbUser.unit_rate || undefined
+        unitRate: dbUser.unit_rate || undefined,
+        customPermissions: dbUser.custom_permissions || undefined
     };
 }
 
@@ -29,7 +30,8 @@ function userToDb(user: Omit<User, 'id'>): DbUserInsert {
         name: user.name,
         entity_id: user.entityId || null,
         base_salary: user.baseSalary || null,
-        unit_rate: user.unitRate || null
+        unit_rate: user.unitRate || null,
+        custom_permissions: user.customPermissions || null
     };
 }
 
