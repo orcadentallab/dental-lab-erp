@@ -29,11 +29,11 @@ export const DoctorSchema = z.object({
     id: z.string().uuid().optional(),
     name: z.string().min(2).max(200),
     phone: z.string().min(8).max(20).regex(/^[0-9+\-\s()]+$/, 'رقم الهاتف غير صحيح'),
-    phone2: z.string().min(8).max(20).regex(/^[0-9+\-\s()]+$/).optional().nullable(),
+    phone2: z.union([z.string().min(8).max(20).regex(/^[0-9+\-\s()]+$/), z.literal('')]).optional().nullable(),
     address: z.string().min(5).max(500),
     doctorCode: z.string().min(1).max(20).regex(/^[A-Z0-9]+$/, 'كود الطبيب يجب أن يحتوي على حروف كبيرة وأرقام فقط'),
     representativeName: z.string().min(2).max(200),
-    representativeId: z.string().uuid().optional().nullable()
+    representativeId: z.union([z.string().uuid(), z.literal('')]).optional().nullable()
 });
 
 export const DoctorCreateSchema = DoctorSchema;
