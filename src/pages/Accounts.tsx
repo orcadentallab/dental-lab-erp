@@ -59,6 +59,7 @@ export default function Accounts() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         const loadData = async () => {
@@ -72,8 +73,9 @@ export default function Accounts() {
                 setDoctors(docs);
                 setSuppliers(sups);
                 setDesigners(users.filter(u => u.role === 'designer'));
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error loading entities:', error);
+                setError(`فشل تحميل البيانات الأساسية: ${error.message || 'خطأ غير معروف'}`);
             }
 
             // 2. Load Financial Data (Heavy)
@@ -84,9 +86,9 @@ export default function Accounts() {
                 ]);
                 setOrders(ords);
                 setTransactions(txs);
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Error loading financial data:', error);
-                // Can set an error state here specifically for balances
+                setError(`فشل تحميل البيانات المالية: ${error.message || 'خطأ غير معروف'}`);
             }
         };
         loadData();
@@ -291,6 +293,12 @@ export default function Accounts() {
     if (viewMode === 'summary') {
         return (
             <div className="space-y-6">
+                {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                        <strong className="font-bold">تنبيه! </strong>
+                        <span className="block sm:inline">{error}</span>
+                    </div>
+                )}
                 {/* Modern Pill Navigation */}
                 <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
                     <nav className="flex bg-gray-100/50 p-1.5 rounded-xl w-full md:w-auto overflow-x-auto">
