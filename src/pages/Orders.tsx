@@ -4,7 +4,7 @@ import OrderList from '../components/orders/OrderList';
 import OrderForm from '../components/orders/OrderForm';
 import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
-import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User, ChevronDown } from 'lucide-react';
+import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User as UserIcon, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcelWithHeaders, printTable } from '../lib/exportUtils';
 import { useTranslation } from '../translations';
@@ -416,7 +416,7 @@ export default function Orders() {
                                 </div>
                                 <input
                                     type="text"
-                                    placeholder={t.dashboard.searchPlaceholder}
+                                    placeholder={t.common.search}
                                     className="block w-full pl-10 pr-20 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/50 transition-all shadow-sm group-hover:ring-surface-300"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -449,7 +449,7 @@ export default function Orders() {
                                     onChange={(e) => setStatusFilter(e.target.value)}
                                     className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
                                 >
-                                    <option value="">{t.common.allStatus}</option>
+                                    <option value="">{t.common.status}</option>
                                     <option value="New Case">New Case</option>
                                     <option value="Under Design">Under Design</option>
                                     <option value="Waiting Dr Approval">Wait Approval</option>
@@ -476,7 +476,7 @@ export default function Orders() {
                                         <option value="">كل الأطباء</option>
                                         {doctors.map(doc => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
                                     </select>
-                                    <User className="absolute left-2.5 top-2 h-3.5 w-3.5 text-surface-400" />
+                                    <UserIcon className="absolute left-2.5 top-2 h-3.5 w-3.5 text-surface-400" />
                                     <ChevronDown className="absolute right-2.5 top-2.5 h-3 w-3 text-surface-400 pointer-events-none" />
                                 </div>
                             )}
