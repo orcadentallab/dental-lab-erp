@@ -274,6 +274,59 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
     return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
 }
 
+/**
+ * Heavy-duty fetch for Exports. Range up to 20,000.
+ */
+export async function fetchAllOrdersForExport(): Promise<Order[]> {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*), order_comments(*)')
+        .order('created_at', { ascending: false })
+        .range(0, 19999);
+
+    if (error) throw ErrorHandler.handle(error, 'fetchAllOrdersForExport');
+    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+}
+
+/**
+ * Fetch all data for a single entity statement.
+ */
+export async function fetchFullEntityStatement(
+    entityId: string,
+    entityType: 'doctor' | 'supplier' | 'designer'
+): Promise<{ orders: Order[], transactions: Transaction[] }> {
+
+    // 1. Fetch Orders for this Entity
+    let orderQuery = supabase
+        .from('orders')
+        .select('*, order_items(*), order_comments(*)')
+        .order('created_at', { ascending: false });
+
+    if (entityType === 'doctor') orderQuery = orderQuery.eq('doctor_id', entityId);
+    else if (entityType === 'supplier') orderQuery = orderQuery.eq('supplier_id', entityId);
+    else if (entityType === 'designer') orderQuery = orderQuery.eq('designer_id', entityId);
+
+    // Fetch up to 10,000 orders for a single entity (plenty)
+    const { data: ordersData, error: orderError } = await orderQuery.range(0, 9999);
+    if (orderError) throw ErrorHandler.handle(orderError, 'fetchFullEntityStatement_Orders');
+
+    // 2. Fetch Transactions for this Entity
+    let txQuery = supabase
+        .from('transactions')
+        .select('*')
+        .eq('entity_id', entityId)
+        .eq('entity_type', entityType)
+        .order('date', { ascending: false });
+
+    const { data: txData, error: txError } = await txQuery.range(0, 4999);
+    if (txError) throw ErrorHandler.handle(txError, 'fetchFullEntityStatement_Tx');
+
+    return {
+        orders: (ordersData || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations)),
+        transactions: (txData as any[]) || []
+    };
+}
+
 export async function getOrder(id: string): Promise<Order | null> {
     // Validate UUID
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {

@@ -233,9 +233,31 @@ class MockDB {
      * @deprecated Use getOrders() with pagination instead.
      * Only use for exports or legacy code that needs all orders.
      */
+    /**
+     * @deprecated Use getOrders() with pagination instead.
+     * Only use for exports or legacy code that needs all orders.
+     */
     async getAllOrdersUnpaginated(): Promise<Order[]> {
         const { getAllOrdersUnpaginated } = await import('./supabase/orders');
         return getAllOrdersUnpaginated();
+    }
+
+    /**
+     * Dedicated heavy fetch for Full Exports.
+     * Fetches virtually unlimited orders (up to 20,000 safety limit).
+     */
+    async fetchAllOrdersForExport(): Promise<Order[]> {
+        const { fetchAllOrdersForExport } = await import('./supabase/orders');
+        return fetchAllOrdersForExport();
+    }
+
+    /**
+     * Dedicated fetch for Individual Account Statements.
+     * Fetches all orders for a specific entity ID without truncation.
+     */
+    async fetchFullEntityStatement(entityId: string, entityType: 'doctor' | 'supplier' | 'designer'): Promise<{ orders: Order[], transactions: Transaction[] }> {
+        const { fetchFullEntityStatement } = await import('./supabase/orders');
+        return fetchFullEntityStatement(entityId, entityType);
     }
 
     async getDashboardActiveOrders(): Promise<Order[]> {

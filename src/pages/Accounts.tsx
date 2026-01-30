@@ -221,20 +221,47 @@ export default function Accounts() {
 
     }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, showAllOrders]);
 
-    // Helper: Logic for Individual Statement
+    // -- FETCH FULL DETAIL DATA ON SELECTION --
+    // This ensures that when we print/view a statement, we have EVERYTHING, not just the truncated list.
+    const [detailOrders, setDetailOrders] = useState<Order[]>([]);
+    const [detailTransactions, setDetailTransactions] = useState<Transaction[]>([]);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+
+    useEffect(() => {
+        if (viewMode === 'detail' && selectedEntityId) {
+            setLoadingDetails(true);
+            const typeMap: Record<string, 'doctor' | 'supplier' | 'designer'> = {
+                doctors: 'doctor',
+                suppliers: 'supplier',
+                designers: 'designer'
+            };
+
+            db.fetchFullEntityStatement(selectedEntityId, typeMap[activeTab])
+                .then(({ orders, transactions }) => {
+                    setDetailOrders(orders);
+                    setDetailTransactions(transactions);
+                })
+                .catch(err => console.error("Failed to load full statement:", err))
+                .finally(() => setLoadingDetails(false));
+        }
+    }, [viewMode, selectedEntityId, activeTab]);
+
+    // Helper: Logic for Individual Statement (Uses detail state if available, else falls back to global)
     const individualStatement = useMemo(() => {
         if (viewMode !== 'detail' || !selectedEntityId) return { items: [], totals: { totalDebit: 0, totalCredit: 0, balance: 0 } };
 
-        const allOrders = orders;
-        const allTransactions = transactions;
+        // Use the dedicated Detail arrays if loaded, otherwise fallback to the global truncated list (temporary display)
+        const relevantOrders = detailOrders.length > 0 ? detailOrders : orders;
+        const relevantTransactions = detailTransactions.length > 0 ? detailTransactions : transactions;
+
         let items: StatementItem[] = [];
 
         if (activeTab === 'doctors') {
-            const docOrders = allOrders.filter(o => {
+            const docOrders = relevantOrders.filter(o => {
                 if (o.doctorId !== selectedEntityId) return false;
                 if (o.status === 'Rejected') return true;
                 if (showAllOrders) return true;
-                return ['Delivered', 'Completed', 'Ready'].includes(o.status);
+                return ['Delivered', 'Completed', 'Ready'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
             });
 
             items = docOrders.map(o => ({
@@ -247,7 +274,7 @@ export default function Accounts() {
                 status: o.status
             }));
 
-            const docTx = allTransactions.filter(t => t.entityType === 'doctor' && t.entityId === selectedEntityId && t.type === 'income');
+            const docTx = relevantTransactions.filter(t => t.entityType === 'doctor' && t.entityId === selectedEntityId && t.type === 'income');
             items = [...items, ...docTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
@@ -256,7 +283,7 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'suppliers') {
-            const supOrders = allOrders.filter(o => o.supplierId === selectedEntityId && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
+            const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
             items = supOrders.map(o => {
                 let cost = o.cost || 0;
                 if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
@@ -269,7 +296,7 @@ export default function Accounts() {
                 };
             });
 
-            const supTx = allTransactions.filter(t => t.entityType === 'supplier' && t.entityId === selectedEntityId && t.type === 'expense');
+            const supTx = relevantTransactions.filter(t => t.entityType === 'supplier' && t.entityId === selectedEntityId && t.type === 'expense');
             items = [...items, ...supTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
@@ -278,7 +305,7 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = allOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
+            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
             items = desOrders.map(o => ({
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
@@ -287,7 +314,7 @@ export default function Accounts() {
                 amount: o.designPrice || 0
             }));
 
-            const desTx = allTransactions.filter(t => t.entityType === 'designer' && t.entityId === selectedEntityId && t.type === 'expense');
+            const desTx = relevantTransactions.filter(t => t.entityType === 'designer' && t.entityId === selectedEntityId && t.type === 'expense');
             items = [...items, ...desTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
@@ -307,7 +334,7 @@ export default function Accounts() {
         const balance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
 
         return { items, totals: { totalDebit, totalCredit, balance } };
-    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions]);
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, detailOrders, detailTransactions]);
 
 
     const handlePrint = () => window.print();
