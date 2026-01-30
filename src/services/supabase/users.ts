@@ -66,8 +66,14 @@ export async function addUser(user: User & { password?: string }): Promise<void>
         try {
             // Removed sensitive console.log
             authId = await createAuthUser(user.email, user.password);
-        } catch (e: unknown) {
-            // Removed sensitive console.error
+        } catch (e: any) {
+            // Check for duplicate user error
+            if (e.message?.includes('User already registered') || e.code === '422') {
+                throw new ValidationError(
+                    'هذا البريد الإلكتروني مسجل بالفعل. بما أن العملية السابقة فشلت، يرجى حذف المستخدم من لوحة تحكم Supabase (Authentication) ثم المحاولة مرة أخرى.',
+                    'هذا البريد الإلكتروني مسجل بالفعل. يرجى حذف المستخدم من قائمة Authentication في Supabase ثم المحاولة.'
+                );
+            }
             // Auth creation failed - throw error to inform admin
             throw ErrorHandler.handle(e, 'addUser - createAuthUser');
         }

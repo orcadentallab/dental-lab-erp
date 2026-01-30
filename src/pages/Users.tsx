@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
-import { db, type User, type Supplier } from '../services/db';
+import { db, type User, type Supplier, type Doctor } from '../services/db';
 import { Plus, Trash2, Edit2, User as UserIcon, Shield, Settings } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ErrorHandler } from '../lib/errorHandler';
@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 export default function Users() {
     const [users, setUsers] = useState<User[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +26,7 @@ export default function Users() {
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState(''); // Only for creating new users
-    const [role, setRole] = useState<'admin' | 'lab' | 'representative' | 'accountant' | 'designer'>('lab');
+    const [role, setRole] = useState<'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor'>('lab');
     const [entityId, setEntityId] = useState(''); // For linking to Supplier
     const [baseSalary, setBaseSalary] = useState(''); // New State for Payroll
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
@@ -53,7 +54,8 @@ export default function Users() {
         accountant: ['view_finance', 'view_suppliers', 'view_accounts', 'view_staff'],
         representative: ['view_doctors', 'manage_orders', 'view_accounts'],
         lab: ['manage_orders'],
-        designer: ['manage_orders', 'view_accounts']
+        designer: ['manage_orders', 'view_accounts'],
+        doctor: ['view_orders']
     };
 
     // Get effective permission state (custom override or role default)
@@ -71,12 +73,14 @@ export default function Users() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [usersData, suppliersData] = await Promise.all([
+            const [usersData, suppliersData, doctorsData] = await Promise.all([
                 db.getUsers(),
-                db.getSuppliers()
+                db.getSuppliers(),
+                db.getDoctors()
             ]);
             setUsers(usersData);
             setSuppliers(suppliersData);
+            setDoctors(doctorsData);
         } catch (error) {
             console.error(error);
         } finally {
@@ -125,7 +129,7 @@ export default function Users() {
                 username,
                 ...(editingUser ? {} : { password }), // Only include password for new users
                 role,
-                entityId: role === 'lab' ? entityId : undefined,
+                entityId: (role === 'lab' || role === 'doctor') ? entityId : undefined,
                 baseSalary: (role === 'representative' || role === 'admin') ? parseFloat(baseSalary) || 0 : undefined,
                 unitRate: role === 'designer' ? parseFloat(unitRate) || 0 : undefined,
                 auth_id: editingUser?.auth_id
@@ -225,14 +229,16 @@ export default function Users() {
             lab: 'bg-blue-100 text-blue-700',
             representative: 'bg-green-100 text-green-700',
             accountant: 'bg-purple-100 text-purple-700',
-            designer: 'bg-amber-100 text-amber-700'
+            designer: 'bg-amber-100 text-amber-700',
+            doctor: 'bg-cyan-100 text-cyan-700'
         };
         const labels: Record<string, string> = {
             admin: 'مدير نظام (Admin)',
             lab: 'معمل خارجي (Lab)',
             representative: 'مندوب (Rep)',
             accountant: 'محاسب (Accountant)',
-            designer: 'مصمم (Designer)'
+            designer: 'مصمم (Designer)',
+            doctor: 'طبيب (Doctor)'
         };
         return <span className={`px-2 py-1 rounded text-xs font-bold ${styles[role] || 'bg-gray-100'}`}>{labels[role] || role}</span>;
     };
@@ -290,6 +296,11 @@ export default function Users() {
                                         <span className="text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
                                     ) : user.role === 'designer' ? (
                                         <span className="text-amber-600 font-bold">{user.unitRate?.toLocaleString()} ج.م / Unit</span>
+                                    ) : user.role === 'doctor' ? (
+                                        <span className="flex items-center gap-1 text-cyan-600">
+                                            <Shield size={14} />
+                                            {doctors.find(d => d.id === user.entityId)?.name || 'غير معروف'}
+                                        </span>
                                     ) : '---'}
                                 </td>
                                 <td className="p-4 flex gap-2">
@@ -353,6 +364,7 @@ export default function Users() {
                                     <option value="representative">مندوب (Representative)</option>
                                     <option value="accountant">محاسب (Accountant)</option>
                                     <option value="designer">مصمم (Designer)</option>
+                                    <option value="doctor">طبيب (Doctor)</option>
                                 </select>
                             </div>
 
@@ -373,6 +385,25 @@ export default function Users() {
                                         ))}
                                     </select>
                                     <p className="text-xs text-blue-600 mt-1">هذا المستخدم سيشاهد فقط الحالات الخاصة بهذا المعمل.</p>
+                                </div>
+                            )}
+
+                            {role === 'doctor' && (
+                                <div className="bg-cyan-50 p-3 rounded-lg border border-cyan-100">
+                                    <label className="block text-sm font-bold text-cyan-800 mb-1">ربط بطبيب (Profile)</label>
+                                    <select
+                                        required
+                                        className="w-full p-2 border rounded-lg"
+                                        aria-label="الطبيب"
+                                        value={entityId}
+                                        onChange={e => setEntityId(e.target.value)}
+                                    >
+                                        <option value="">-- اختر الطبيب --</option>
+                                        {doctors.map(d => (
+                                            <option key={d.id} value={d.id}>{d.name} ({d.doctorCode})</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-cyan-600 mt-1">هذا المستخدم سيشاهد فقط بيانات هذا الطبيب.</p>
                                 </div>
                             )}
 

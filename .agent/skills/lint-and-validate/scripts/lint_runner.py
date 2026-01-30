@@ -76,9 +76,24 @@ def run_linter(linter: dict, cwd: Path) -> dict:
         "error": ""
     }
     
+    cmd = linter["cmd"]
+    
+    # Resolve executable on Windows (e.g., npm -> npm.cmd)
+    import shutil
+    if sys.platform == "win32":
+        executable = shutil.which(cmd[0])
+        if executable:
+            cmd[0] = executable
+        else:
+            # Fallback: try appending .cmd if not present
+            if not cmd[0].lower().endswith(".cmd") and not cmd[0].lower().endswith(".exe"):
+                candidate = shutil.which(f"{cmd[0]}.cmd")
+                if candidate:
+                    cmd[0] = candidate
+    
     try:
         proc = subprocess.run(
-            linter["cmd"],
+            cmd,
             cwd=str(cwd),
             capture_output=True,
             text=True,
@@ -92,7 +107,7 @@ def run_linter(linter: dict, cwd: Path) -> dict:
         result["passed"] = proc.returncode == 0
         
     except FileNotFoundError:
-        result["error"] = f"Command not found: {linter['cmd'][0]}"
+        result["error"] = f"Command not found: {cmd[0]}"
     except subprocess.TimeoutExpired:
         result["error"] = "Timeout after 120s"
     except Exception as e:
@@ -144,6 +159,8 @@ def main():
             print(f"  [FAIL] {linter['name']}")
             if result["error"]:
                 print(f"  Error: {result['error'][:200]}")
+            if result["output"]:
+                print(f"  Output: {result['output'][:500]}...")
             all_passed = False
     
     # Summary

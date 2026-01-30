@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateCaseId } from '../../utils/caseId';
-import { Plus, Trash2, AlertTriangle, Truck, Settings, User as UserIcon, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
 interface OrderFormProps {
@@ -19,8 +19,11 @@ interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
     teethNumbers: string;
 }
 
+import { DoctorSelect } from './DoctorSelect';
+
 export default function OrderForm({ onCancel, onSubmit, initialData }: OrderFormProps) {
     const { user } = useAuth();
+    const { error: toastError } = useToast();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<Service[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -28,8 +31,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [designers, setDesigners] = useState<User[]>([]);
     const [existingOrders, setExistingOrders] = useState<Order[]>([]);
 
-    const [doctorSearchTerm, setDoctorSearchTerm] = useState('');
-    const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false);
+    // const [doctorSearchTerm, setDoctorSearchTerm] = useState(''); // REPLACED BY DOCTOR SELECT
+    // const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false); // REPLACED BY DOCTOR SELECT
     const [doctorId, setDoctorId] = useState(initialData?.doctorId || '');
     const [patientName, setPatientName] = useState(initialData?.patientName || '');
     const [shade, setShade] = useState(initialData?.shade || '');
@@ -59,7 +62,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             const updatedDoctors = await db.getDoctors();
             setDoctors(updatedDoctors);
             setDoctorId(doc.id);
-            setDoctorSearchTerm(doc.name);
+            // setDoctorSearchTerm(doc.name); removed
             setShowDoctorModal(false);
             setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
         } catch (err) {
@@ -113,8 +116,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 }
 
                 if (initialData && initialData.doctorId) {
-                    const doc = doctorsData.find(d => d.id === initialData.doctorId);
-                    if (doc) setDoctorSearchTerm(doc.name);
+                    // const doc = doctorsData.find(d => d.id === initialData.doctorId);
+                    // if (doc) setDoctorSearchTerm(doc.name);
                 }
 
                 setSuppliers(suppliersData);
@@ -170,13 +173,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!doctorId) {
-            alert('يرجى اختيار الطبيب');
+            toastError('يرجى اختيار الطبيب');
             return;
         }
 
         const invalidItems = items.filter(i => i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0).length === 0);
         if (invalidItems.length > 0) {
-            alert('يرجى إدخال أرقام الأسنان بشكل صحيح');
+            toastError('يرجى إدخال أرقام الأسنان بشكل صحيح');
             return;
         }
 
@@ -277,45 +280,23 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             {/* Doctor (5 cols) */}
                             <div className="md:col-span-5 relative">
                                 <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">الطبيب المعالج</label>
-                                <div className="relative">
-                                    <Input
-                                        className="py-2 text-sm"
-                                        placeholder="بحث باسم الطبيب أو الكود..."
-                                        value={doctorSearchTerm}
-                                        onChange={(e) => {
-                                            setDoctorSearchTerm(e.target.value);
-                                            setIsDoctorDropdownOpen(true);
-                                            if (!e.target.value) setDoctorId('');
-                                        }}
-                                        onFocus={() => setIsDoctorDropdownOpen(true)}
-                                        disabled={!!initialData}
-                                        icon={<UserIcon size={16} />}
-                                    />
+                                <div className="flex gap-1">
+                                    <div className="flex-1">
+                                        <DoctorSelect
+                                            value={doctorId}
+                                            onChange={(id) => setDoctorId(id)}
+                                            error={!doctorId ? 'مطلوب' : undefined}
+                                        />
+                                    </div>
                                     <button
                                         type="button"
                                         onClick={() => setShowDoctorModal(true)}
                                         aria-label="Add New Doctor"
-                                        className="absolute left-1 top-1/2 -translate-y-1/2 p-1 text-primary-600 hover:bg-primary-50 rounded transition-colors"
+                                        className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors"
                                     >
-                                        <Plus size={18} />
+                                        <Plus size={20} />
                                     </button>
                                 </div>
-                                <AnimatePresence>
-                                    {isDoctorDropdownOpen && !initialData && (
-                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute top-full right-0 left-0 mt-1 bg-white border border-surface-100 rounded-xl shadow-xl max-h-48 overflow-y-auto z-50">
-                                            {doctors.filter(d => d.name.toLowerCase().includes(doctorSearchTerm.toLowerCase()) || d.doctorCode.toLowerCase().includes(doctorSearchTerm.toLowerCase())).map(doc => (
-                                                <div key={doc.id} className="px-3 py-2 hover:bg-surface-50 cursor-pointer border-b border-surface-50 flex justify-between items-center" onClick={() => {
-                                                    setDoctorId(doc.id);
-                                                    setDoctorSearchTerm(doc.name);
-                                                    setIsDoctorDropdownOpen(false);
-                                                }}>
-                                                    <span className="font-bold text-sm text-surface-700">{doc.name}</span>
-                                                    <span className="text-xs font-mono bg-surface-100 px-1.5 rounded text-surface-500">{doc.doctorCode}</span>
-                                                </div>
-                                            ))}
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
                             </div>
 
                             {/* Patient (5 cols) */}
@@ -450,7 +431,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm outline-none"
                                     value={representativeId}
                                     onChange={(e) => setRepresentativeId(e.target.value)}
-                                    disabled={user?.role === 'representative'}
                                 >
                                     <option value="">-- اختر المندوب --</option>
                                     {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}

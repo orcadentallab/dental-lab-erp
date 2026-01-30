@@ -12,6 +12,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import AcceptOrderModal from '../components/orders/AcceptOrderModal';
+
 
 export default function Orders() {
     const { user } = useAuth();
@@ -64,6 +66,7 @@ export default function Orders() {
     const [newComment, setNewComment] = useState('');
     const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
     const [designLinkUrl, setDesignLinkUrl] = useState('');
+    const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
 
     // Build filters object for server-side query
     const buildFilters = () => {
@@ -216,7 +219,6 @@ export default function Orders() {
         setDesignLinkUrl(order.designUrl || '');
     };
 
-    // USES CENTRALIZED STATUS UPDATE - handles status/designStatus sync and comment automatically
     const handleUpdateDesignUrl = async () => {
         if (!designLinkOrder) return;
         try {
@@ -232,6 +234,81 @@ export default function Orders() {
             await refreshOrders();
         } catch {
             alert('Failed to update design link');
+        }
+    };
+
+    const handleAcceptOrder = async (data: {
+        caseId: string;
+        workflowType: 'full' | 'split';
+        supplierId: string;
+        designerId?: string;
+        receivedDate: string;
+        deliveryDate: string;
+    }) => {
+        if (!acceptingOrder) return;
+
+        try {
+            // 1. Update Order with new details
+            const orderUpdate = {
+                caseId: data.caseId,
+                workflowType: data.workflowType,
+                supplierId: data.supplierId,
+                designerId: data.workflowType === 'split' ? (data.designerId || undefined) : undefined,
+                receivedDate: data.receivedDate,
+                deliveryDate: data.deliveryDate,
+                // Status mapping:
+                // Full Lab -> New Case (Waiting for Lab)
+                // Split -> New Case (Waiting for Designer)
+                // Actually unified status: 'New Case' is fine start. 
+                // BUT logic says:
+                // Split -> status='New Case', designStatus='Pending'
+                // Full -> status='New Case', technicianStatus='Pending'
+                status: 'New Case' as Order['status'], // Explicit cast
+                designStatus: (data.workflowType === 'split' ? 'pending' : undefined) as Order['designStatus'],
+                technicianStatus: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First',
+            };
+
+            await db.updateOrder(acceptingOrder.id, orderUpdate);
+
+            // 2. Add System Comment
+            const supplierName = suppliers.find(s => s.id === data.supplierId)?.name;
+            const designerName = users.find(u => u.id === data.designerId)?.name;
+
+            let commentText = `Starting ${data.workflowType === 'full' ? 'Full Lab' : 'Split'} Workflow.`;
+            commentText += `\nLab: ${supplierName}`;
+            if (data.workflowType === 'split') commentText += `\nDesigner: ${designerName}`;
+
+            // Create system comment object
+            const systemComment = {
+                id: Math.random().toString(36).substr(2, 9),
+                text: commentText,
+                userId: user?.id || 'system',
+                userName: user?.name || 'System',
+                createdAt: new Date().toISOString()
+            };
+
+            // Use updateOrder to append comment
+            // We need to fetch current comments first to append, but updateOrder handles full replacement.
+            // Ideally we'd use a specific updateComments method or db.updateOrder support.
+            // Since we just updated order above, we can assume we need to fetch fresh or just append.
+            // Actually, updateOrder in db.ts supports partial updates.
+            // Let's refetch or just push.
+            // Better yet, use the centralized status update function which SUPPORTS comments!
+            // Wait, we need to update multiple fields (status, designStatus, dates, supplier etc).
+            // db.updateOrder is best here.
+
+            // To be safe, let's fetch the latest order state to append comments correctly
+            const freshOrder = await db.getOrder(acceptingOrder.id);
+            if (freshOrder) {
+                const updatedComments = [...(freshOrder.comments || []), systemComment];
+                await db.updateOrder(acceptingOrder.id, { comments: updatedComments });
+            }
+
+            setAcceptingOrder(null);
+            await refreshOrders(); // Refresh dashboard
+        } catch (error) {
+            console.error('Failed to accept order:', error);
+            alert('Failed to accept order. Please try again.');
         }
     };
 
@@ -330,6 +407,7 @@ export default function Orders() {
                                 className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
                             >
                                 <option value="">كل الحالات</option>
+                                <option value="Pending Review">Pending Request (New)</option>
                                 <option value="New Case">New Case</option>
                                 <option value="Under Design">Under Design</option>
                                 <option value="Waiting Dr Approval">Waiting Approval</option>
@@ -466,6 +544,7 @@ export default function Orders() {
                 onDelete={handleDeleteOrder}
                 onUpdateDesignUrl={openDesignLinkModal}
                 highlightedOrderId={highlightedOrderId}
+                onAccept={(order) => setAcceptingOrder(order)}
             />
 
             {/* Pagination */}
@@ -638,6 +717,17 @@ export default function Orders() {
                             </div>
                         </motion.div>
                     </motion.div>
+                )}
+                {acceptingOrder && (
+                    <AcceptOrderModal
+                        order={acceptingOrder}
+                        doctors={doctors}
+                        suppliers={suppliers}
+                        designers={users.filter(u => u.role === 'designer')}
+                        existingOrders={orders}
+                        onClose={() => setAcceptingOrder(null)}
+                        onConfirm={handleAcceptOrder}
+                    />
                 )}
             </AnimatePresence>
         </motion.div>

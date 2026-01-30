@@ -108,8 +108,14 @@ const InsightCard = React.memo(function InsightCard({
     const [isRating, setIsRating] = useState(false);
 
     // Determine styling: prefer severity (new format), fall back to type (legacy)
-    const resolvedSeverity = severity || (type === 'action' ? 'neutral' : type) || 'neutral';
-    const styles = severityStyles[resolvedSeverity as keyof typeof severityStyles] || severityStyles.neutral;
+    let resolvedSeverity: keyof typeof severityStyles = 'neutral';
+    if (severity) {
+        resolvedSeverity = severity;
+    } else if (type && type !== 'action') {
+        resolvedSeverity = type;
+    }
+
+    const styles = severityStyles[resolvedSeverity];
 
     // Determine icon: prefer category-based (new format), fall back to emoji icon (legacy)
     const IconComponent = category ? (categoryIcons[category] || Lightbulb) : (iconMap[icon] || Lightbulb);

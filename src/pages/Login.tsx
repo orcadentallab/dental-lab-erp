@@ -13,7 +13,11 @@ export default function Login() {
 
     useEffect(() => {
         if (isAuthenticated && user) {
-            navigate('/', { replace: true });
+            if (user.role === 'doctor') {
+                navigate('/doctor/my-orders', { replace: true });
+            } else {
+                navigate('/', { replace: true });
+            }
         }
     }, [isAuthenticated, user, navigate]);
 

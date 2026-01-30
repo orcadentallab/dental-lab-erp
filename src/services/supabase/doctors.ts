@@ -31,11 +31,22 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
     };
 }
 
-export async function getDoctors(): Promise<Doctor[]> {
-    const { data, error } = await supabase
+export async function getDoctors(search?: string): Promise<Doctor[]> {
+    let query = supabase
         .from('doctors')
         .select('*')
         .order('name', { ascending: true });
+
+    if (search) {
+        query = query.ilike('name', `%${search}%`);
+    }
+
+    // Limit results if searching to avoid huge payloads
+    if (search) {
+        query = query.limit(20);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
         throw ErrorHandler.handle(error, 'getDoctors');

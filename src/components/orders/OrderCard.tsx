@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { useToast } from '../../context/ToastContext';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
@@ -21,6 +23,8 @@ interface OrderCardProps {
     users: Record<string, string>;
     userRole?: string;
     onStatusChange: (id: string, status: Order['status'] | 'same') => void;
+    onUpdate?: () => void;
+    showFinancials?: boolean;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
     onUpdateDesignUrl?: (order: Order) => void;
@@ -30,9 +34,10 @@ interface OrderCardProps {
     hideSensitiveInfo?: boolean;
     onDelete?: (order: Order) => void;
     isHighlighted?: boolean;
+    onAccept?: (order: Order) => void;
 }
 
-const OrderCard = React.memo(function OrderCard({
+export default function OrderCard({
     order,
     doctors,
     suppliers,
@@ -45,8 +50,75 @@ const OrderCard = React.memo(function OrderCard({
     onTechAction,
     hideSensitiveInfo,
     onDelete,
-    isHighlighted = false
+    isHighlighted = false,
+    onAccept
 }: OrderCardProps) {
+    const { success } = useToast();
+
+    // Confirmation State
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingStatus, setPendingStatus] = useState<Order['status'] | null>(null);
+    const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; variant: 'danger' | 'warning' | 'info' }>({ title: '', message: '', variant: 'warning' });
+
+    const newStatusTranslations: Record<string, string> = {
+        'Delivered': 'تم التسليم',
+        'Rejected': 'مرفوض',
+        'Cancelled': 'ملغي',
+        'Returned for Adjustments': 'إعادة تعديل',
+        'Pending Review': 'قيد المراجعة'
+    };
+
+    const handleStatusChangeClick = (newStatus: Order['status']) => {
+        if (newStatus === order.status) return;
+
+        // Risky statuses requiring confirmation
+        const riskyStatuses = ['Delivered', 'Rejected', 'Cancelled', 'Returned for Adjustments'];
+
+        if (riskyStatuses.includes(newStatus)) {
+            setPendingStatus(newStatus);
+            let message = '';
+            let variant: 'danger' | 'warning' = 'warning';
+
+            switch (newStatus) {
+                case 'Delivered':
+                    message = 'هل أنت متأكد من تسليم هذا الأوردر؟ سيتم نقله إلى الأرشيف ولن يظهر في القائمة النشطة.';
+                    variant = 'warning'; // Greenish warning usually, but warning works
+                    break;
+                case 'Rejected':
+                    message = 'هل أنت متأكد من رفض الأوردر؟ هذا الإجراء قد يرسل إشعاراً للطبيب.';
+                    variant = 'danger';
+                    break;
+                case 'Cancelled':
+                    message = 'هل أنت متأكد من إلغاء الأوردر؟';
+                    variant = 'danger';
+                    break;
+                case 'Returned for Adjustments':
+                    message = 'هل أنت متأكد من إرجاع الأوردر للتعديل؟';
+                    variant = 'warning';
+                    break;
+            }
+
+            setConfirmAction({
+                title: `تغيير الحالة إلى ${newStatusTranslations[newStatus] || newStatus}`,
+                message,
+                variant
+            });
+            setConfirmOpen(true);
+        } else {
+            // Safe status change (e.g., In Progress)
+            onStatusChange(order.id, newStatus);
+            success('تم تحديث الحالة بنجاح');
+        }
+    };
+
+    const confirmStatusChange = () => {
+        if (pendingStatus) {
+            onStatusChange(order.id, pendingStatus);
+            success(`تم تغيير الحالة إلى ${newStatusTranslations[pendingStatus]}`);
+            setConfirmOpen(false);
+            setPendingStatus(null);
+        }
+    };
 
     const isLate = checkIsLate(order);
     const cardRef = useRef<HTMLDivElement>(null);
@@ -186,6 +258,19 @@ const OrderCard = React.memo(function OrderCard({
                                 >
                                     <Box size={12} />
                                     <span className="hidden sm:inline ml-1">STL</span>
+                                </Button>
+                            )}
+
+                            {/* Accept Order Action (for Pending Review) */}
+                            {onAccept && order.status === 'Pending Review' && (
+                                <Button
+                                    size="sm"
+                                    onClick={() => onAccept(order)}
+                                    className="h-6 px-3 text-xs bg-purple-600 hover:bg-purple-700 text-white border-purple-600 shadow-sm shadow-purple-200 animate-pulse"
+                                    title="Accept Order"
+                                >
+                                    <Check size={12} strokeWidth={3} />
+                                    <span className="ml-1 font-bold">قبول الحالة</span>
                                 </Button>
                             )}
 
@@ -331,7 +416,7 @@ const OrderCard = React.memo(function OrderCard({
                                     title="Order Status"
                                     aria-label="Change Order Status"
                                     value={order.status || 'New Case'}
-                                    onChange={(e) => onStatusChange(order.id, e.target.value as Order['status'])}
+                                    onChange={(e) => handleStatusChangeClick(e.target.value as Order['status'])}
                                     className={clsx(
                                         "appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-[150px] focus:ring-2",
                                         order.status === 'Delivered'
@@ -340,6 +425,7 @@ const OrderCard = React.memo(function OrderCard({
                                     )}
                                     disabled={userRole === 'lab' && order.status === 'Delivered'}
                                 >
+                                    <option value="Pending Review">📝 Pending Review</option>
                                     <option value="New Case">✨ New Case</option>
                                     <option value="Under Design">🎨 Under Design</option>
                                     <option value="Waiting Dr Approval">⏳ Waiting Approval</option>
@@ -411,8 +497,21 @@ const OrderCard = React.memo(function OrderCard({
                 history={historyData}
                 isLoading={historyLoading}
             />
+
+            {/* Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={confirmOpen}
+                title={confirmAction.title}
+                message={confirmAction.message}
+                variant={confirmAction.variant}
+                confirmLabel="نعم، متأكد"
+                cancelLabel="تراجع"
+                onConfirm={confirmStatusChange}
+                onCancel={() => {
+                    setConfirmOpen(false);
+                    setPendingStatus(null);
+                }}
+            />
         </motion.div>
     );
-});
-
-export default OrderCard;
+};

@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -25,6 +25,10 @@ export default function Sidebar() {
         { name: t.nav.staff, href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
         { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
         { name: t.nav.settings, href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
+        // Doctor Portal
+        { name: 'طلب جديد', href: '/doctor/new-request', icon: Plus, roles: ['doctor'] },
+        { name: 'أوردراتي', href: '/doctor/my-orders', icon: ShoppingBag, roles: ['doctor'] },
+        { name: 'حسابي', href: '/doctor/account', icon: DollarSign, roles: ['doctor'] },
     ];
 
     const filteredNav = navigation.filter(item => user && item.roles.includes(user.role));

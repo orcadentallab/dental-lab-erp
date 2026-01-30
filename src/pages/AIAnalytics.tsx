@@ -15,15 +15,23 @@ import {
     saveInsight,
     type AnalyzeContext,
     type ChatContext,
-    type Insight
+    type Insight,
+    type InsightReport
 } from '../services/gemini';
 
+// Interface for UI-ready insights (including createdAt for components)
+interface UIInsight extends Insight {
+    createdAt?: string;
+    type?: 'positive' | 'negative' | 'neutral' | 'action'; // Legacy support
+    icon?: string; // Legacy support
+}
+
 export default function AIAnalytics() {
-    const [reports, setReports] = useState<any[]>([]);
+    const [reports, setReports] = useState<InsightReport[]>([]);
     const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
-    const [insights, setInsights] = useState<Insight[]>([]);
+    const [insights, setInsights] = useState<UIInsight[]>([]);
     const [executiveSummary, setExecutiveSummary] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -173,9 +181,9 @@ export default function AIAnalytics() {
     };
 
     // Helper to parse content - handles both new (v2.0) and legacy formats
-    const parseAndSetInsights = (report: any) => {
+    const parseAndSetInsights = (report: InsightReport) => {
         try {
-            let finalInsights: Insight[] = [];
+            let finalInsights: UIInsight[] = [];
             let summary: string | null = null;
 
             // Handle string content (standard) vs already parsed (rare)
@@ -193,14 +201,14 @@ export default function AIAnalytics() {
                     content: insight.content,
                     category: insight.category || 'performance',
                     severity: insight.severity || 'neutral',
-                    created_at: content.generated_at || report.created_at
+                    createdAt: content.generated_at || report.created_at
                 }));
             } else if (Array.isArray(content)) {
                 // Legacy format: direct array of insights
                 finalInsights = content.map((i: any) => ({
                     ...i,
                     id: report.id,
-                    created_at: report.created_at,
+                    createdAt: report.created_at,
                     // Map legacy 'type' to 'severity' for compatibility
                     severity: i.severity || (i.type === 'action' ? 'neutral' : i.type) || 'neutral',
                     category: i.category || 'performance'
@@ -210,20 +218,21 @@ export default function AIAnalytics() {
                 finalInsights = content.insights.map((i: any) => ({
                     ...i,
                     id: report.id,
-                    created_at: report.created_at,
+                    createdAt: report.created_at,
                     severity: i.severity || (i.type === 'action' ? 'neutral' : i.type) || 'neutral',
                     category: i.category || 'performance'
                 }));
             } else {
                 // Unknown format - treat as single insight
-                finalInsights = [{
+                const fallback: UIInsight = {
                     id: report.id,
                     title: 'تحليل نصي',
                     content: typeof report.content === 'string' ? report.content : JSON.stringify(report.content),
                     category: 'operations',
                     severity: 'neutral',
-                    created_at: report.created_at
-                } as Insight];
+                    createdAt: report.created_at
+                };
+                finalInsights = [fallback];
             }
 
             setExecutiveSummary(summary);
@@ -232,13 +241,15 @@ export default function AIAnalytics() {
             console.error('Error parsing report:', e);
             // Fallback: try to display raw content
             setExecutiveSummary(null);
-            setInsights([{
+            const fallback: UIInsight = {
                 id: report.id || 'fallback',
                 title: 'تحليل',
                 content: String(report.content || '').substring(0, 500),
                 category: 'operations',
-                severity: 'neutral'
-            } as Insight]);
+                severity: 'neutral',
+                createdAt: report.created_at
+            };
+            setInsights([fallback]);
         }
     };
 
@@ -249,7 +260,7 @@ export default function AIAnalytics() {
     }, [loadDataContext]);
 
     // Handle Report Selection
-    const handleReportSelect = (report: any) => {
+    const handleReportSelect = (report: InsightReport) => {
         setSelectedReportId(report.id);
         parseAndSetInsights(report);
         setIsHistoryOpen(false);
@@ -296,12 +307,14 @@ export default function AIAnalytics() {
             }
 
             // New format v2.0 response - use savedId if available
-            const newReport = {
+            const newReport: InsightReport = {
                 id: savedId || response.analysis_id,
                 created_at: response.generated_at,
                 content: JSON.stringify(response),
                 insight_type: response.analysis_scope,
-                model_version: response.model_version
+                model_version: response.model_version || 'gemini-1.5-flash',
+                prompt_version: response.prompt_version || 'v2.0',
+                rating: null
             };
 
             // Set executive summary directly from response

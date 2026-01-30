@@ -8,6 +8,7 @@ interface OrderListItemProps {
     designerName?: string;
     onRegister?: (orderId: string) => void;
     showRegister?: boolean;
+    onAccept?: (order: Order) => void;
 }
 
 const OrderListItem = React.memo(function OrderListItem({
@@ -15,7 +16,8 @@ const OrderListItem = React.memo(function OrderListItem({
     labName,
     designerName,
     onRegister,
-    showRegister = false
+    showRegister = false,
+    onAccept
 }: OrderListItemProps) {
     const navigate = useNavigate();
 
@@ -83,6 +85,14 @@ const OrderListItem = React.memo(function OrderListItem({
                         className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded transition-colors"
                     >
                         تسجيل
+                    </button>
+                )}
+                {onAccept && (
+                    <button
+                        onClick={() => onAccept(order)}
+                        className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded transition-colors font-bold shadow-sm shadow-purple-200"
+                    >
+                        قبول الحالة
                     </button>
                 )}
             </div>

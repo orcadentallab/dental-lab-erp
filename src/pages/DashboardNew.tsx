@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type Supplier, type User } from '../services/db';
-import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle } from 'lucide-react';
+import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
+import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer } from 'lucide-react';
 import AlertCard from '../components/dashboard/AlertCard';
 import OrderForm from '../components/orders/OrderForm';
 import DoctorForm from '../components/doctors/DoctorForm';
 import OrderListModal from '../components/dashboard/OrderListModal';
 import OrderListItem from '../components/dashboard/OrderListItem';
+import DailySummaryPrint from '../components/dashboard/DailySummaryPrint';
+import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import { useTranslation } from '../translations';
 
 export default function DashboardNew() {
@@ -15,21 +17,25 @@ export default function DashboardNew() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
 
     // Modal states
     const [showOrderForm, setShowOrderForm] = useState(false);
     const [showDoctorForm, setShowDoctorForm] = useState(false);
+    const [showDailySummary, setShowDailySummary] = useState(false);
     const [activeModal, setActiveModal] = useState<string | null>(null);
+    const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
     const { t } = useTranslation();
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [ordersData, suppliersData, usersData] = await Promise.all([
-                    db.getAllOrdersUnpaginated(),
+                const [ordersData, suppliersData, usersData, doctorsData] = await Promise.all([
+                    db.getDashboardActiveOrders(),
                     db.getSuppliers(),
-                    db.getUsers()
+                    db.getUsers(),
+                    db.getDoctors()
                 ]);
 
                 // Apply role-based filtering
@@ -51,6 +57,7 @@ export default function DashboardNew() {
                 setOrders(filteredOrders);
                 setSuppliers(suppliersData);
                 setUsers(usersData);
+                setDoctors(doctorsData);
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             } finally {
@@ -96,6 +103,9 @@ export default function DashboardNew() {
         o.technicianStatus === 'PMMA_First' || o.technicianStatus === 'NeedDetails'
     );
 
+    // Orders from Doctors needing review
+    const doctorRequests = orders.filter(o => o.status === 'Pending Review');
+
     // --- Statistics Data ---
     const activeOrdersCount = orders.filter(o => !['Delivered', 'Cancelled', 'Rejected', 'Returned for Adjustments'].includes(o.status)).length;
     const ordersTodayCount = orders.filter(o => o.createdAt.startsWith(today)).length;
@@ -104,6 +114,13 @@ export default function DashboardNew() {
 
 
     // Helper functions
+    const doctorsMap = useMemo(() => {
+        return doctors.reduce((acc, doc) => {
+            acc[doc.id] = doc.name;
+            return acc;
+        }, {} as Record<string, string>);
+    }, [doctors]);
+
     const getLabName = (supplierId?: string) => {
         return suppliers.find(s => s.id === supplierId)?.name;
     };
@@ -118,6 +135,36 @@ export default function DashboardNew() {
             setOrders(prev => prev.map(o => o.id === orderId ? { ...o, isRegistered: true } : o));
         } catch (error) {
             console.error('Error registering order:', error);
+        }
+    };
+
+    const handleAcceptOrder = async (data: {
+        caseId: string;
+        workflowType: 'full' | 'split';
+        supplierId: string;
+        designerId?: string;
+        receivedDate: string;
+        deliveryDate: string;
+    }) => {
+        if (!acceptingOrder) return;
+
+        try {
+            await db.updateOrder(acceptingOrder.id, {
+                status: 'New Case', // Or 'Under Design' if split? Usually 'New Case' starts the flow.
+                ...data,
+                // If Full Lab -> TechnicianStatus might need set? Default 'Pending' is fine.
+                // If Split -> DesignStatus='pending' is handled by Modal 'data' spread? No, Modal returns type/ids.
+                designStatus: data.workflowType === 'split' ? 'pending' : undefined,
+                technicianStatus: 'Pending',
+                isRegistered: true, // Auto register? Maybe.
+            });
+
+            // Optimistic update or reload
+            window.location.reload();
+        } catch (error) {
+            console.error('Error accepting order:', error);
+        } finally {
+            setAcceptingOrder(null);
         }
     };
 
@@ -207,14 +254,25 @@ export default function DashboardNew() {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
-                    <div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t.dashboard.readyForDelivery}</p>
-                        <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{readyOrdersCount}</h3>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                        <div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t.dashboard.readyForDelivery}</p>
+                            <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{readyOrdersCount}</h3>
+                        </div>
+                        <div className="p-3 rounded-full bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
+                            <CheckCircle size={24} />
+                        </div>
                     </div>
-                    <div className="p-3 rounded-full bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400">
-                        <CheckCircle size={24} />
-                    </div>
+                    {readyOrdersCount > 0 && (
+                        <button
+                            onClick={() => setShowDailySummary(true)}
+                            className="w-full mt-2 flex items-center justify-center gap-2 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 py-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                        >
+                            <Printer size={14} />
+                            طباعة كشف
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -222,13 +280,23 @@ export default function DashboardNew() {
             <div className="space-y-6">
 
                 {/* 1. URGENT / ATTENTION (Red/Orange) */}
-                {(rejectedOrders.length > 0 || overdueOrders.length > 0 || needsAttentionOrders.length > 0) && (
+                {(rejectedOrders.length > 0 || overdueOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <AlertTriangle size={16} />
                             {t.dashboard.importantAlerts}
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {doctorRequests.length > 0 && (
+                                <AlertCard
+                                    title="طلبات دكاترة جديدة"
+                                    count={doctorRequests.length}
+                                    icon={UserPlus}
+                                    colorClass="purple"
+                                    useModal
+                                    onExpand={() => setActiveModal('doctor-requests')}
+                                />
+                            )}
                             {rejectedOrders.length > 0 && (
                                 <AlertCard
                                     title={t.dashboard.rejectedReturned}
@@ -648,6 +716,50 @@ export default function DashboardNew() {
                     </div>
                 )
             }
+
+            {/* Daily Summary Print Modal */}
+            {showDailySummary && (
+                <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto print:p-0 print:bg-white p-4">
+                    <DailySummaryPrint
+                        orders={orders.filter(o => o.status === 'Ready')}
+                        doctors={doctorsMap}
+                        onClose={() => setShowDailySummary(false)}
+                    />
+                </div>
+            )}
+
+            {/* Doctor Requests Modal */}
+            <OrderListModal
+                title="طلبات دكاترة جديدة"
+                isOpen={activeModal === 'doctor-requests'}
+                onClose={() => setActiveModal(null)}
+            >
+                {doctorRequests.map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                        onAccept={(o) => {
+                            setActiveModal(null); // Close list modal
+                            setAcceptingOrder(o); // Open accept modal
+                        }}
+                    />
+                ))}
+            </OrderListModal>
+
+            {/* Accept Order Workflow Modal */}
+            {acceptingOrder && (
+                <AcceptOrderModal
+                    order={acceptingOrder}
+                    doctors={doctors}
+                    suppliers={suppliers}
+                    designers={users.filter(u => u.role === 'designer')}
+                    existingOrders={orders}
+                    onClose={() => setAcceptingOrder(null)}
+                    onConfirm={handleAcceptOrder}
+                />
+            )}
         </div >
     );
 }

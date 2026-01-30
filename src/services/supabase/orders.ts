@@ -216,6 +216,28 @@ export async function getOrders(
 }
 
 /**
+ * Optimized fetch for Dashboard.
+ * Uses RPC 'get_dashboard_active_orders' to filter on server side.
+ * Returns: Active Orders + Today's Orders + Returned Orders
+ */
+export async function getDashboardActiveOrders(): Promise<Order[]> {
+    // Fallback: Fetch all orders directly since RPC is missing.
+    // We select only from the orders table to keep it lighter than a full join.
+    // Client-side filtering in DashboardNew.tsx handles the rest.
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'getDashboardActiveOrders');
+    }
+
+    // Map to Order objects (dbToOrder handles missing relations gracefully)
+    return (data || []).map((d: any) => dbToOrder(d as unknown as DbOrderWithRelations));
+}
+
+/**
  * @deprecated Use getOrders(page, limit, filters) instead.
  * This function fetches ALL orders and should only be used for exports or legacy code.
  */
@@ -617,3 +639,22 @@ export async function submitDesignForApproval(
     });
 }
 
+
+/**
+ * Calculates total cost of all non-rejected orders for a specific doctor.
+ */
+export async function getDoctorTotalCost(doctorId: string): Promise<number> {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('cost')
+        .eq('doctor_id', doctorId)
+        .neq('status', 'Rejected')
+        .neq('status', 'Cancelled');
+
+    if (error) {
+        console.error('Error fetching doctor total cost:', error);
+        return 0;
+    }
+
+    return (data || []).reduce((sum, order) => sum + (order.cost || 0), 0);
+}

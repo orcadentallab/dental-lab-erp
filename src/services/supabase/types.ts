@@ -46,7 +46,7 @@ export interface DbOrder {
     discount: number;
     total_price: number;
     shade: string;
-    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected';
+    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Cancelled' | 'Pending Review';
     delivery_date: string;
     cost: number;
     stl_url?: string | null;
@@ -133,7 +133,7 @@ export interface DbUser {
     username: string;
     email: string | null;
     // password removed - using Supabase Auth only
-    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer';
+    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor';
     name: string;
     entity_id?: string | null;
     base_salary?: number | null;

@@ -46,7 +46,7 @@ export interface User {
     username: string;
     email?: string;
     // password removed - using Supabase Auth only
-    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer';
+    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor';
     name: string;
     entityId?: string;
     // Payroll Info (for Representatives)
@@ -87,7 +87,7 @@ export interface Order {
     discount: number;
     totalPrice: number;
     shade: string;
-    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected';
+    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Cancelled' | 'Pending Review';
     deliveryDate: string;
     cost: number;
     stlUrl?: string; // stlUrl / scanUrl
@@ -188,9 +188,14 @@ class MockDB {
     }
 
     // --- DOCTORS ---
-    async getDoctors(): Promise<Doctor[]> {
+    async getDoctors(search?: string): Promise<Doctor[]> {
         const { getDoctors } = await import('./supabase/doctors');
-        return getDoctors();
+        return getDoctors(search);
+    }
+
+    async getDoctor(id: string): Promise<Doctor | null> {
+        const { getDoctor } = await import('./supabase/doctors');
+        return getDoctor(id);
     }
 
     async addDoctor(doc: Omit<Doctor, 'id'>): Promise<Doctor> {
@@ -231,6 +236,16 @@ class MockDB {
     async getAllOrdersUnpaginated(): Promise<Order[]> {
         const { getAllOrdersUnpaginated } = await import('./supabase/orders');
         return getAllOrdersUnpaginated();
+    }
+
+    async getDashboardActiveOrders(): Promise<Order[]> {
+        const { getDashboardActiveOrders } = await import('./supabase/orders');
+        return getDashboardActiveOrders();
+    }
+
+    async getOrder(id: string): Promise<Order | null> {
+        const { getOrder } = await import('./supabase/orders');
+        return getOrder(id);
     }
 
     async addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
@@ -331,6 +346,11 @@ class MockDB {
     async bulkUpsertServices(services: Service[]): Promise<number> {
         const { bulkUpsertServices } = await import('./supabase/services');
         return bulkUpsertServices(services);
+    }
+
+    async getDoctorTotalCost(doctorId: string): Promise<number> {
+        const { getDoctorTotalCost } = await import('./supabase/orders');
+        return getDoctorTotalCost(doctorId);
     }
 
     // --- SUPPLIERS ---

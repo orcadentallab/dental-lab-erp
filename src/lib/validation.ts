@@ -8,7 +8,7 @@ export const UserSchema = z.object({
     email: z.string().email('البريد الإلكتروني غير صحيح').min(5).max(255),
     password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل')
         .optional(), // Optional for updates
-    role: z.enum(['admin', 'lab', 'representative', 'accountant', 'designer']),
+    role: z.enum(['admin', 'lab', 'representative', 'accountant', 'designer', 'doctor']),
     name: z.string().min(2).max(200),
     entityId: z.string().uuid().optional().nullable(),
     baseSalary: z.number().min(0).optional().nullable(),
@@ -58,7 +58,7 @@ export const OrderSchema = z.object({
     discount: z.number().min(0).max(100),
     totalPrice: z.number().min(0),
     shade: z.string().max(50).optional().nullable(),
-    status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments', 'Rejected']),
+    status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments', 'Rejected', 'Pending Review']),
     isUrgent: z.boolean().optional(),
     deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صحيح'),
     cost: z.number().min(0),

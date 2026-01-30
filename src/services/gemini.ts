@@ -77,6 +77,16 @@ export interface AnalyzeResponse {
     prompt_version?: string;
 }
 
+export interface InsightReport {
+    id: string;
+    insight_type: string;
+    content: string;
+    rating: string | null;
+    created_at: string;
+    model_version: string;
+    prompt_version: string;
+}
+
 /**
  * Send a chat message to the AI
  */
@@ -207,15 +217,7 @@ export async function rateInsight(
 export async function getInsights(
     type?: 'weekly_auto' | 'on_demand',
     limit: number = 10
-): Promise<{
-    id: string;
-    insight_type: string;
-    content: string;
-    rating: string | null;
-    created_at: string;
-    model_version: string;
-    prompt_version: string;
-}[]> {
+): Promise<InsightReport[]> {
     console.log('[getInsights] Loading insights from database...');
     console.log('[getInsights] Type filter:', type || 'all');
 

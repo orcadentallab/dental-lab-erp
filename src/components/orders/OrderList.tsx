@@ -16,9 +16,10 @@ interface OrderListProps {
     onUpdateDesignUrl?: (order: Order) => void; // Update Design URL (Designer/Admin)
     onDelete?: (order: Order) => void;
     highlightedOrderId?: string | null; // Order ID to highlight and scroll to
+    onAccept?: (order: Order) => void;
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
 
@@ -188,6 +189,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         hideSensitiveInfo={hideSensitiveInfo}
                         onDelete={onDelete}
                         isHighlighted={highlightedOrderId === order.id}
+                        onAccept={onAccept}
                     />
                 ))
             )}
