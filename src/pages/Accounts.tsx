@@ -97,7 +97,7 @@ export default function Accounts() {
                 const docOrders = allOrders.filter(o =>
                     o.doctorId === doc.id &&
                     (showAllOrders || o.status !== 'Rejected') &&
-                    (showAllOrders || ['Delivered', 'Completed', 'Ready'].includes(o.status))
+                    (showAllOrders || ['Delivered', 'Completed', 'Ready'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase()))
                 );
                 const totalDebit = docOrders.reduce((sum, o) => {
                     if (o.status === 'Rejected') return sum;

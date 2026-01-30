@@ -264,7 +264,8 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
     const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(0, 9999); // Fetch up to 10000 orders to avoid default 1000 limit
 
     if (error) {
         throw ErrorHandler.handle(error, 'getAllOrdersUnpaginated');
