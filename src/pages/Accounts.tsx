@@ -288,7 +288,7 @@ export default function Accounts() {
                             { id: 'doctors', label: 'العملاء', icon: UserIcon },
                             { id: 'suppliers', label: 'الموردين', icon: Truck },
                             { id: 'designers', label: 'المصممين', icon: Building2 },
-                        ] as const).map((tab) => (
+                        ] as const).filter(t => !(['suppliers', 'designers'].includes(t.id) && user?.role === 'representative')).map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}

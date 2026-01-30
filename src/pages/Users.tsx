@@ -131,8 +131,20 @@ export default function Users() {
                 auth_id: editingUser?.auth_id
             };
 
+
             if (editingUser) {
                 await db.updateUser(userData);
+
+                // Handle Password Reset
+                if (password && password.length >= 8) {
+                    try {
+                        await db.resetUserPassword(editingUser.id, password);
+                        alert('تم تحديث كلمة المرور بنجاح');
+                    } catch (pwError: unknown) {
+                        console.error('Password reset failed:', pwError);
+                        alert('تم تحديث البيانات ولكن فشل تغيير كلمة المرور: ' + ErrorHandler.getUserMessage(pwError));
+                    }
+                }
             } else {
                 await db.addUser(userData);
             }
@@ -317,26 +329,22 @@ export default function Users() {
                                 <label className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم (للدخول)</label>
                                 <input required type="text" aria-label="اسم المستخدم" className="w-full p-2 border rounded-lg" value={username} onChange={e => setUsername(e.target.value)} />
                             </div>
-                            {!editingUser && (
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">كلمة المرور</label>
-                                    <input
-                                        required={!editingUser}
-                                        type="password"
-                                        className="w-full p-2 border rounded-lg"
-                                        value={password}
-                                        onChange={e => setPassword(e.target.value)}
-                                        placeholder="8 أحرف على الأقل"
-                                        minLength={8}
-                                    />
-                                    <p className="text-xs text-gray-400 mt-1">يتم إنشاء حساب المستخدم تلقائياً في Supabase Auth</p>
-                                </div>
-                            )}
-                            {editingUser && (
-                                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                                    <p className="text-xs text-yellow-800">لا يمكن تغيير كلمة المرور من هنا. يجب تغييرها عبر Supabase Auth مباشرة.</p>
-                                </div>
-                            )}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {editingUser ? 'تغيير كلمة المرور' : 'كلمة المرور'}
+                                </label>
+                                <input
+                                    required={!editingUser}
+                                    type="password"
+                                    className={`w-full p-2 border rounded-lg ${editingUser ? 'border-yellow-300 bg-yellow-50' : ''}`}
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    placeholder={editingUser ? 'أدخل كلمة مرور جديدة للتغيير' : '8 أحرف على الأقل'}
+                                    minLength={8}
+                                />
+                                {!editingUser && <p className="text-xs text-gray-400 mt-1">يتم إنشاء حساب المستخدم تلقائياً في Supabase Auth</p>}
+                                {editingUser && <p className="text-xs text-yellow-600 mt-1">اترك الحقل فارغاً إذا كنت لا تريد تغيير كلمة المرور.</p>}
+                            </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">الدور (Role)</label>
                                 <select className="w-full p-2 border rounded-lg" aria-label="الدور الوظيفي" value={role} onChange={e => setRole(e.target.value as User['role'])}>
@@ -453,10 +461,10 @@ export default function Users() {
                                         key={perm.key}
                                         onClick={() => handlePermissionToggle(perm.key)}
                                         className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${isCustomized
-                                                ? isEffectivelyGranted
-                                                    ? 'bg-green-50 border-green-300'
-                                                    : 'bg-red-50 border-red-300'
-                                                : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                                            ? isEffectivelyGranted
+                                                ? 'bg-green-50 border-green-300'
+                                                : 'bg-red-50 border-red-300'
+                                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                                             }`}
                                     >
                                         <div className="flex items-center gap-3">
@@ -472,8 +480,8 @@ export default function Users() {
                                             </div>
                                         </div>
                                         <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center ${isEffectivelyGranted
-                                                ? 'bg-green-500 border-green-500 text-white'
-                                                : 'bg-white border-gray-300'
+                                            ? 'bg-green-500 border-green-500 text-white'
+                                            : 'bg-white border-gray-300'
                                             }`}>
                                             {isEffectivelyGranted && <span className="text-sm">✓</span>}
                                         </div>

@@ -4,7 +4,7 @@
  * Supports both new (category/severity) and legacy (type/icon) formats
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { ThumbsUp, ThumbsDown, TrendingUp, TrendingDown, Lightbulb, AlertTriangle, CheckCircle, Target, DollarSign, Settings, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import { rateInsight } from '../../services/gemini';
@@ -92,7 +92,7 @@ function getRelativeTime(dateString: string): string {
     return date.toLocaleDateString('ar-EG');
 }
 
-export default function InsightCard({
+const InsightCard = React.memo(function InsightCard({
     id,
     title,
     content,
@@ -211,7 +211,9 @@ export default function InsightCard({
             </div>
         </div>
     );
-}
+});
+
+export default InsightCard;
 
 /**
  * InsightCardSkeleton - Loading state for InsightCard

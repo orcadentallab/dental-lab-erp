@@ -149,6 +149,17 @@ export async function deleteUser(id: string): Promise<void> {
     // This is typically handled server-side or via Supabase dashboard
 }
 
+export async function resetUserPassword(userId: string, newPassword: string): Promise<void> {
+    const { error } = await supabase.rpc('admin_reset_password', {
+        target_user_id: userId,
+        new_password: newPassword
+    });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'resetUserPassword');
+    }
+}
+
 // Helper to create Auth User without logging out the admin
 // Uses a temporary client with memory storage
 import { createClient } from '@supabase/supabase-js';

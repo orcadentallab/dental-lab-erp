@@ -107,7 +107,35 @@ export class ErrorHandler {
             return appError;
         }
 
-        // Unknown error type
+        // Handle Supabase/Postgrest errors (which are objects, not Error instances)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof error === 'object' && error !== null && 'message' in error) {
+            const msg = (error as { message: string }).message;
+
+            // Re-use logic for specific messages
+            if (msg.includes('JWT') || msg.includes('token')) {
+                const authError = new AuthError(msg, 'انتهت صلاحية الجلسة، يرجى تسجيل الدخول مرة أخرى');
+                this.logError(authError, context);
+                return authError;
+            }
+            if (msg.includes('row-level security') || msg.includes('permission denied')) {
+                const authError = new AuthError(msg, 'غير مصرح لك بهذا الإجراء');
+                this.logError(authError, context);
+                return authError;
+            }
+            // Handle custom RPC exceptions (e.g. Unauthorized or User not found)
+            if (msg.includes('Unauthorized') || msg.includes('User not found')) {
+                // Pass the backend message directly or map it
+                const appError = new AppError(msg, 'RPC_ERROR', 400, msg === 'Unauthorized: Only admins can reset passwords.' ? 'غير مصرح: فقط المشرفين يمكنهم تغيير كلمات المرور' : msg);
+                this.logError(appError, context);
+                return appError;
+            }
+
+            // Default fallback for other object errors
+            const appError = new AppError(msg, 'API_ERROR', 500, msg);
+            this.logError(appError, context);
+            return appError;
+        }
         const unknownError = new AppError(
             'An unknown error occurred',
             'UNKNOWN_ERROR',

@@ -149,5 +149,29 @@ export type DbServiceUpdate = Partial<Omit<DbService, 'id' | 'created_at' | 'upd
 export type DbSupplierInsert = Omit<DbSupplier, 'id' | 'created_at' | 'updated_at'>;
 export type DbSupplierUpdate = Partial<Omit<DbSupplier, 'id' | 'created_at' | 'updated_at'>>;
 
+// Normalized Tables
+export interface DbOrderItemRow {
+    id: string;
+    order_id: string;
+    product_type: string;
+    teeth_numbers: string[]; // JSONB in DB, auto-converted to array by Supabase if defined right, else we handle it
+    shade?: string | null;
+    price: number;
+    count: number;
+    created_at: string;
+}
+
+export interface DbOrderCommentRow {
+    id: string;
+    order_id: string;
+    user_id?: string | null;
+    user_name?: string | null;
+    content: string;
+    created_at: string;
+}
+
+export type DbOrderItemRowInsert = Omit<DbOrderItemRow, 'id' | 'created_at'>;
+export type DbOrderCommentRowInsert = Omit<DbOrderCommentRow, 'id' | 'created_at'>;
+
 export type DbUserInsert = Omit<DbUser, 'id' | 'created_at' | 'updated_at'>;
 export type DbUserUpdate = Partial<Omit<DbUser, 'id' | 'created_at' | 'updated_at'>>;

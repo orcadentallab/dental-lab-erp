@@ -120,6 +120,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 setSuppliers(suppliersData);
                 setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
                 setDesigners(usersData.filter(u => u.role === 'designer'));
+
+                // Auto-set representativeId for representatives creating new orders
+                if (!initialData && user?.role === 'representative') {
+                    const currentRep = usersData.find(u => u.id === user.id);
+                    if (currentRep) {
+                        setRepresentativeId(currentRep.id);
+                    }
+                }
                 setExistingOrders(ordersData);
             } catch (error) {
                 console.error('Error loading form data:', error);

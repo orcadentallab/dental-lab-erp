@@ -16,7 +16,7 @@ export default function Sidebar() {
         { name: t.nav.dashboard, href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
         { name: t.nav.orders, href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
         { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
-        { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer'] },
+        { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer', 'representative'] },
         { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
         { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
         { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },

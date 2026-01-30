@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
@@ -32,7 +32,7 @@ interface OrderCardProps {
     isHighlighted?: boolean;
 }
 
-export default function OrderCard({
+const OrderCard = React.memo(function OrderCard({
     order,
     doctors,
     suppliers,
@@ -413,4 +413,6 @@ export default function OrderCard({
             />
         </motion.div>
     );
-}
+});
+
+export default OrderCard;

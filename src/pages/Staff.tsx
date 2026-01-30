@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
 import type { User, Transaction } from '../services/db';
 import { useAuth } from '../context/AuthContext';
@@ -268,6 +269,22 @@ export default function Staff() {
     const isAdmin = currentUser?.role === 'admin';
     const isRep = currentUser?.role === 'representative' || (currentUser?.role === 'admin' && currentUser?.username !== 'admin');
 
+    // Memoize expensive filtering operations
+    const pendingExpenses = useMemo(() =>
+        expenses.filter(e => !e.isRegistered).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        [expenses]
+    );
+
+    const myExpenses = useMemo(() =>
+        expenses.filter(e => e.entityId === currentUser?.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        [expenses, currentUser?.id]
+    );
+
+    const myStat = useMemo(() =>
+        stats.find(s => s.user.id === currentUser?.id),
+        [stats, currentUser?.id]
+    );
+
     if (!currentUser) return null;
 
     return (
@@ -406,76 +423,73 @@ export default function Staff() {
                             </h2>
                         </div>
                         <div className="divide-y divide-gray-100">
-                            {expenses.filter(e => !e.isRegistered).length === 0 ? (
+                            {pendingExpenses.length === 0 ? (
                                 <p className="p-8 text-center text-gray-400">لا يوجد مصاريف معلقة أو غير مسواة</p>
                             ) : (
-                                expenses
-                                    .filter(e => !e.isRegistered)
-                                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                    .map(expense => {
-                                        const cat = expenseCategories.find(c => c.label === expense.category);
-                                        const Icon = cat?.icon || Banknote;
-                                        const isPending = !expense.isApproved;
-                                        const isApproved = expense.isApproved && !expense.isRegistered;
+                                pendingExpenses.map(expense => {
+                                    const cat = expenseCategories.find(c => c.label === expense.category);
+                                    const Icon = cat?.icon || Banknote;
+                                    const isPending = !expense.isApproved;
+                                    const isApproved = expense.isApproved && !expense.isRegistered;
 
-                                        return (
-                                            <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                                                <div className="flex items-center gap-4">
-                                                    <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isPending ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600")}>
-                                                        <Icon size={20} />
-                                                    </div>
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
-                                                        </div>
-                                                        <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
-                                                    </div>
+                                    return (
+                                        <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                                            <div className="flex items-center gap-4">
+                                                <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isPending ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600")}>
+                                                    <Icon size={20} />
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="font-bold text-lg">{expense.amount} ج.م</span>
-
-                                                    {/* Status Badge */}
-                                                    {isPending && (
-                                                        <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
-                                                    )}
-                                                    {isApproved && (
-                                                        <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
-                                                    )}
-
-                                                    {/* Action Buttons */}
-                                                    {isPending && (
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                onClick={() => handleApproveExpense(expense)}
-                                                                className="p-1.5 text-green-600 hover:bg-green-50 rounded"
-                                                                title="اعتماد المصروف"
-                                                            >
-                                                                <CheckCircle size={18} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleRejectExpense(expense)}
-                                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                                title="رفض وحذف المصروف"
-                                                            >
-                                                                <XCircle size={18} />
-                                                            </button>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Admin Delete Button for Approved Expenses */}
-                                                    {isApproved && isAdmin && (
-                                                        <button
-                                                            onClick={() => handleDeleteTransaction(expense)}
-                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                            title="حذف المصروف"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    )}
+                                                <div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
                                                 </div>
                                             </div>
-                                        );
-                                    })
+                                            <div className="flex items-center gap-3">
+                                                <span className="font-bold text-lg">{expense.amount} ج.م</span>
+
+                                                {/* Status Badge */}
+                                                {isPending && (
+                                                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
+                                                )}
+                                                {isApproved && (
+                                                    <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
+                                                )}
+
+                                                {/* Action Buttons */}
+                                                {isPending && (
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={() => handleApproveExpense(expense)}
+                                                            className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                                                            title="اعتماد المصروف"
+                                                        >
+                                                            <CheckCircle size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRejectExpense(expense)}
+                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                            title="رفض وحذف المصروف"
+                                                        >
+                                                            <XCircle size={18} />
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {/* Admin Delete Button for Approved Expenses */}
+                                                {isApproved && isAdmin && (
+                                                    <button
+                                                        onClick={() => handleDeleteTransaction(expense)}
+                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                        title="حذف المصروف"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })
                             )}
                         </div>
                     </div>
@@ -486,32 +500,32 @@ export default function Staff() {
             {isRep && (
                 <div className="space-y-6">
                     {/* My Stats Cards */}
-                    {stats.filter(s => s.user.id === currentUser.id).map(stat => (
+                    {myStat && (
                         <div key="my-stats" className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                                 <p className="text-sm text-gray-500 mb-1">صافي الراتب (الحالي)</p>
-                                <p className="text-2xl font-bold text-blue-600">{stat.netPayout.toFixed(0)} ج.م</p>
-                                <p className="text-xs text-blue-400 mt-1">بانتظار الصرف: {stat.approvedExpenses} ج.م مصاريف</p>
+                                <p className="text-2xl font-bold text-blue-600">{myStat.netPayout.toFixed(0)} ج.م</p>
+                                <p className="text-xs text-blue-400 mt-1">بانتظار الصرف: {myStat.approvedExpenses} ج.م مصاريف</p>
                             </div>
                             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                                 <p className="text-sm text-gray-500 mb-1">إجمالي المبيعات</p>
-                                <p className="text-2xl font-bold text-gray-900">{stat.totalSales.toLocaleString()} ج.م</p>
+                                <p className="text-2xl font-bold text-gray-900">{myStat.totalSales.toLocaleString()} ج.م</p>
                             </div>
                             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                                 <p className="text-sm text-gray-500 mb-1">العمولة الحالية</p>
                                 <div className="flex items-baseline gap-2">
-                                    <p className="text-2xl font-bold text-green-600">{stat.commissionAmount.toFixed(0)}</p>
+                                    <p className="text-2xl font-bold text-green-600">{myStat.commissionAmount.toFixed(0)}</p>
                                     <span className="text-xs text-green-500 bg-green-50 px-2 py-0.5 rounded-full">
-                                        {(stat.commissionRate * 100).toFixed(0)}%
+                                        {(myStat.commissionRate * 100).toFixed(0)}%
                                     </span>
                                 </div>
                             </div>
                             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                                 <p className="text-sm text-gray-500 mb-1">تقييم الأداء (KPI)</p>
-                                <p className="text-2xl font-bold text-purple-600">{stat.kpiPercent}%</p>
+                                <p className="text-2xl font-bold text-purple-600">{myStat.kpiPercent}%</p>
                             </div>
                         </div>
-                    ))}
+                    )}
 
                     {/* My Expenses List */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
@@ -519,30 +533,27 @@ export default function Staff() {
                             <h2 className="font-bold text-gray-700">سجل المصاريف</h2>
                         </div>
                         <div className="divide-y divide-gray-100">
-                            {expenses
-                                .filter(e => e.entityId === currentUser.id)
-                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                .map(expense => (
-                                    <div key={expense.id} className="p-4 flex items-center justify-between">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <p className="font-medium text-gray-900">{expense.description}</p>
-                                                <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">{expense.category}</span>
-                                            </div>
-                                            <p className="text-xs text-gray-500">{new Date(expense.date).toLocaleDateString('ar-EG')}</p>
+                            {myExpenses.map(expense => (
+                                <div key={expense.id} className="p-4 flex items-center justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-medium text-gray-900">{expense.description}</p>
+                                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full">{expense.category}</span>
                                         </div>
-                                        <div className="text-left">
-                                            <p className="font-bold">{expense.amount} ج.م</p>
-                                            <span className={clsx(
-                                                "text-xs px-2 py-0.5 rounded-full",
-                                                expense.isRegistered ? "bg-blue-100 text-blue-700" :
-                                                    "bg-green-100 text-green-700"
-                                            )}>
-                                                {expense.isRegistered ? 'تم الصرف (Settled)' : 'بانتظار الصرف'}
-                                            </span>
-                                        </div>
+                                        <p className="text-xs text-gray-500">{new Date(expense.date).toLocaleDateString('ar-EG')}</p>
                                     </div>
-                                ))
+                                    <div className="text-left">
+                                        <p className="font-bold">{expense.amount} ج.م</p>
+                                        <span className={clsx(
+                                            "text-xs px-2 py-0.5 rounded-full",
+                                            expense.isRegistered ? "bg-blue-100 text-blue-700" :
+                                                "bg-green-100 text-green-700"
+                                        )}>
+                                            {expense.isRegistered ? 'تم الصرف (Settled)' : 'بانتظار الصرف'}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))
                             }
                         </div>
                     </div>

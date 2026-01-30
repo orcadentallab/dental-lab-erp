@@ -176,6 +176,10 @@ class MockDB {
         const { deleteUser } = await import('./supabase/users');
         return deleteUser(id);
     }
+    async resetUserPassword(userId: string, newPassword: string): Promise<void> {
+        const { resetUserPassword } = await import('./supabase/users');
+        return resetUserPassword(userId, newPassword);
+    }
 
     // --- HISTORY ---
     async getOrderHistory(orderId: string): Promise<OrderHistoryEntry[]> {

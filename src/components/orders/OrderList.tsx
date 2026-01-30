@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Package, Star } from 'lucide-react';
 import type { Order } from '../../services/db';
 import { db } from '../../services/db';
@@ -63,7 +63,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     const finalOrders = filteredOrders;
 
-    const handleTechAction = async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
+    const handleTechAction = useCallback(async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
             await db.updateOrder(orderId, { technicianStatus: action });
 
@@ -84,11 +84,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         } catch (error) {
             console.error('Error updating technician status:', error);
         }
-    };
+    }, [orders, onStatusChange]);
 
     // --- Quality Assurance Logic ---
 
-    const handleRequestRedo = async (order: Order) => {
+    const handleRequestRedo = useCallback(async (order: Order) => {
         if (!confirm('⚠️ هل أنت متأكد من طلب إعادة تصنيع (Redo)؟\nسيتم إنشاء أوردر جديد بسعر "صفر" للدكتور، وسيتم احتساب التكلفة بناءً على نسبة تحمل المعمل.')) return;
 
         // 1. Calculate Redo Cost
@@ -97,9 +97,6 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
             const suppliersList = await db.getSuppliers();
             const supplier = suppliersList.find(s => s.id === order.supplierId);
             if (supplier && supplier.redoCostPercentage !== undefined) {
-                // If redoCostPercentage is 25, we pay 25%. Meaning cost is 25% of original.
-                // Wait, logic check: "Percentage of cost covered by us"
-                // If 25%, we pay 25%.
                 redoCost = order.cost * (supplier.redoCostPercentage / 100);
             }
         }
@@ -108,16 +105,16 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         const newOrder: Order = {
             ...order,
             id: Math.random().toString(36).substr(2, 9),
-            caseId: generateCaseId(order.caseId.split('-')[0] || 'REDO'), // Simplified ID gen
+            caseId: generateCaseId(order.caseId.split('-')[0] || 'REDO'),
             status: 'New Case',
             technicianStatus: 'Pending',
             createdAt: new Date().toISOString(),
-            deliveryDate: new Date().toISOString().split('T')[0], // Reset Date to Today (needs update)
+            deliveryDate: new Date().toISOString().split('T')[0],
             actualDeliveryDate: undefined,
             feedback: undefined,
             isRedo: true,
             originalOrderId: order.id,
-            totalPrice: 0, // FREE for Doctor (Warranty)
+            totalPrice: 0,
             cost: redoCost,
             comments: []
         };
@@ -125,11 +122,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         try {
             await db.addOrder(newOrder);
             alert(`✅ تم إنشاء طلب إعادة برقم ${newOrder.caseId}`);
-            onStatusChange(order.id, 'same'); // Refresh
+            onStatusChange(order.id, 'same');
         } catch (error) {
             console.error('Error creating redo order:', error);
         }
-    };
+    }, [onStatusChange]);
 
     const handleSubmitFeedback = async () => {
         if (!feedbackOrder) return;

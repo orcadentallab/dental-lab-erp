@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
 import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, FileSpreadsheet, Trash2, Edit2, Printer } from 'lucide-react'; // Fixed imports
 import { db, type Service, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
 import clsx from 'clsx';
@@ -68,18 +68,45 @@ export default function Finance() {
         loadData();
     }, []); // Only load once on mount, or we could reload on tab change but data is shared
 
-    // Financial Metrics - exclude unsettled staff expenses from calculations
-    const totalExpenses = transactions
-        .filter(t => {
-            if (t.type !== 'expense') return false;
-            // If it's a rep expense and not settled, don't count it
-            const isRepExpense = representatives.some(r => r.id === t.entityId);
-            if (isRepExpense && !t.isRegistered) return false;
-            return true;
-        })
-        .reduce((sum, t) => sum + t.amount, 0);
-    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-    const currentBalance = totalIncome - totalExpenses;
+    // Financial Metrics - memoized to prevent recalculation
+    const { totalExpenses, totalIncome, currentBalance } = useMemo(() => {
+        const expenses = transactions
+            .filter(t => {
+                if (t.type !== 'expense') return false;
+                const isRepExpense = representatives.some(r => r.id === t.entityId);
+                if (isRepExpense && !t.isRegistered) return false;
+                return true;
+            })
+            .reduce((sum, t) => sum + t.amount, 0);
+        const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+        return { totalExpenses: expenses, totalIncome: income, currentBalance: income - expenses };
+    }, [transactions, representatives]);
+
+    // Memoized filtered transactions for different tabs
+    const generalExpenses = useMemo(() =>
+        transactions.filter(t => t.type === 'expense' && t.entityType === 'general'),
+        [transactions]
+    );
+
+    const generalIncome = useMemo(() =>
+        transactions.filter(t => t.type === 'income' && t.entityType === 'general'),
+        [transactions]
+    );
+
+    const doctorPayments = useMemo(() =>
+        transactions.filter(t => t.type === 'income' && t.entityType === 'doctor'),
+        [transactions]
+    );
+
+    const supplierPayments = useMemo(() =>
+        transactions.filter(t => t.type === 'expense' && t.entityType === 'supplier'),
+        [transactions]
+    );
+
+    const designerPayments = useMemo(() =>
+        transactions.filter(t => t.type === 'expense' && t.entityType === 'designer'),
+        [transactions]
+    );
 
     const handleResetForm = () => {
         setAmount(0);
@@ -327,7 +354,7 @@ export default function Finance() {
                                 <table className="w-full text-sm text-right">
                                     <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                     <tbody className="divide-y divide-gray-50">
-                                        {transactions.filter(t => t.type === 'expense' && t.entityType === 'general').map(t => (
+                                        {generalExpenses.map(t => (
                                             <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                                 <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                                 <td className="p-4 font-bold text-gray-800">{t.category}</td>
@@ -389,7 +416,7 @@ export default function Finance() {
                             <table className="w-full text-sm text-right">
                                 <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {transactions.filter(t => t.type === 'income' && t.entityType === 'general').map(t => (
+                                    {generalIncome.map(t => (
                                         <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                             <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                             <td className="p-4 text-gray-800">{t.description}</td>
@@ -468,7 +495,7 @@ export default function Finance() {
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
-                                {transactions.filter(t => t.type === 'income' && t.entityType === 'doctor').map(t => (
+                                {doctorPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                         <td className="p-4 font-bold text-blue-700">{doctors.find(d => d.id === t.entityId)?.name || 'غير معروف'}</td>
@@ -543,7 +570,7 @@ export default function Finance() {
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
-                                {transactions.filter(t => t.type === 'expense' && t.entityType === 'supplier').map(t => (
+                                {supplierPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                         <td className="p-4 font-bold text-purple-700">{suppliers.find(s => s.id === t.entityId)?.name || 'غير معروف'}</td>
@@ -618,7 +645,7 @@ export default function Finance() {
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
-                                {transactions.filter(t => t.type === 'expense' && t.entityType === 'designer').map(t => (
+                                {designerPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                         <td className="p-4 font-bold text-pink-700">{designers.find(d => d.id === t.entityId)?.name || 'غير معروف'}</td>

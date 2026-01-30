@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db, type Order, type Supplier, type Doctor } from '../services/db';
 import { AlertCircle, Clock, Star, CheckCircle, Building2 } from 'lucide-react';
 
@@ -31,36 +31,46 @@ export default function QualityDashboard() {
         loadData();
     }, []);
 
-    // --- Metrics Calculations ---
-    // Filter out historical data (before Feb 1, 2026)
-    const HISTORICAL_CUTOFF = new Date('2026-02-01');
-    const activeOrders = orders.filter(o => new Date(o.createdAt) >= HISTORICAL_CUTOFF);
+    // --- Metrics Calculations (Memoized) ---
+    const { completedOrders, onTimeRate, ratedOrders, avgRating, redoRate, pendingFeedback } = useMemo(() => {
+        const HISTORICAL_CUTOFF = new Date('2026-02-01');
+        const active = orders.filter(o => new Date(o.createdAt) >= HISTORICAL_CUTOFF);
+        const completed = active.filter(o => o.status === 'Delivered' || o.status === 'Completed');
 
-    const completedOrders = activeOrders.filter(o => o.status === 'Delivered' || o.status === 'Completed');
+        const late = completed.filter(o => {
+            if (!o.deliveryDate || !o.actualDeliveryDate) return false;
+            return o.actualDeliveryDate > o.deliveryDate;
+        });
+        const onTime = completed.length > 0
+            ? Math.round(((completed.length - late.length) / completed.length) * 100)
+            : 100;
 
-    // 1. On-Time Delivery Rate
-    const lateOrders = completedOrders.filter(o => {
-        if (!o.deliveryDate || !o.actualDeliveryDate) return false;
-        return o.actualDeliveryDate > o.deliveryDate;
-    });
-    const onTimeRate = completedOrders.length > 0
-        ? Math.round(((completedOrders.length - lateOrders.length) / completedOrders.length) * 100)
-        : 100;
+        const rated = completed.filter(o => o.feedback);
+        const avg = rated.length > 0
+            ? (rated.reduce((sum, o) => sum + o.feedback!.rating, 0) / rated.length).toFixed(1)
+            : '---';
 
-    // 2. Feedback Stats
-    const ratedOrders = completedOrders.filter(o => o.feedback);
-    const avgRating = ratedOrders.length > 0
-        ? (ratedOrders.reduce((sum, o) => sum + o.feedback!.rating, 0) / ratedOrders.length).toFixed(1)
-        : '---';
+        const redo = active.filter(o => o.isRedo);
+        const redoRt = active.length > 0
+            ? ((redo.length / active.length) * 100).toFixed(1)
+            : '0';
 
-    // 3. Redo Rate (using active orders only)
-    const redoOrders = activeOrders.filter(o => o.isRedo);
-    const redoRate = activeOrders.length > 0
-        ? ((redoOrders.length / activeOrders.length) * 100).toFixed(1)
-        : '0';
+        const pending = active.filter(o => o.status === 'Delivered' && !o.feedback);
 
-    // 4. Supplier Performance
-    const supplierStats = suppliers.map(sup => {
+        return {
+            activeOrders: active,
+            completedOrders: completed,
+            lateOrders: late,
+            onTimeRate: onTime,
+            ratedOrders: rated,
+            avgRating: avg,
+            redoRate: redoRt,
+            pendingFeedback: pending
+        };
+    }, [orders]);
+
+    // Supplier Performance (Memoized)
+    const supplierStats = useMemo(() => suppliers.map(sup => {
         const supOrders = completedOrders.filter(o => o.supplierId === sup.id);
         const supRated = supOrders.filter(o => o.feedback);
         const supAvg = supRated.length > 0
@@ -76,22 +86,20 @@ export default function QualityDashboard() {
             lateCount: supLate,
             lateRate: supOrders.length > 0 ? (supLate / supOrders.length) * 100 : 0
         };
-    });
+    }), [suppliers, completedOrders]);
 
-    // 5. Issues Breakdown
-    const issuesMap: Record<string, number> = {};
-    ratedOrders.forEach(o => {
-        o.feedback!.issues.forEach(issue => {
-            issuesMap[issue] = (issuesMap[issue] || 0) + 1;
+    // Issues Breakdown (Memoized)
+    const issuesData = useMemo(() => {
+        const issuesMap: Record<string, number> = {};
+        ratedOrders.forEach(o => {
+            o.feedback!.issues.forEach(issue => {
+                issuesMap[issue] = (issuesMap[issue] || 0) + 1;
+            });
         });
-    });
-    const issuesData = Object.entries(issuesMap)
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
-
-
-    // 6. Pending Feedback (using active orders only)
-    const pendingFeedback = activeOrders.filter(o => o.status === 'Delivered' && !o.feedback);
+        return Object.entries(issuesMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count);
+    }, [ratedOrders]);
 
     // Modal State
     const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);

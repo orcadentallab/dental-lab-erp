@@ -55,7 +55,7 @@ export default function Orders() {
     const [representativeFilter, setRepresentativeFilter] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [hideDelivered, setHideDelivered] = useState(false);
+    const [hideDelivered, setHideDelivered] = useState(true);
     const [hideRejected, setHideRejected] = useState(false);
 
     // Modal state
@@ -117,28 +117,16 @@ export default function Orders() {
         }
     };
 
-    // Initial load
-    useEffect(() => {
-        refreshOrders(1);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Refetch when filters change (reset to page 1)
-    useEffect(() => {
-        setCurrentPage(1);
-        refreshOrders(1);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, hideRejected]);
-
-    // Debounced search
+    // CONSOLIDATED: Single debounced effect for all filter and search changes
+    // Debounces all filter changes to prevent multiple rapid fetches
     useEffect(() => {
         const timer = setTimeout(() => {
             setCurrentPage(1);
             refreshOrders(1);
-        }, 300);
+        }, 150); // Shorter debounce for filter changes, still prevents rapid calls
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [searchQuery]);
+    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, hideRejected, searchQuery]);
 
     // Page change handler
     const handlePageChange = (page: number) => {
@@ -406,7 +394,7 @@ export default function Orders() {
                                         className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
                                     >
                                         <option value="">كل المناديب</option>
-                                        {users.filter(u => u.role === 'representative' || u.role === 'admin').map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                                        {users.filter(u => (u.role === 'representative' || u.role === 'admin') && u.username !== 'admin').map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                                     </select>
                                 </div>
                             </>
@@ -442,10 +430,19 @@ export default function Orders() {
                                 <input
                                     type="checkbox"
                                     checked={hideDelivered}
-                                    onChange={(e) => { setHideDelivered(e.target.checked); setHideRejected(e.target.checked); }}
+                                    onChange={(e) => setHideDelivered(e.target.checked)}
                                     className="w-4 h-4 text-primary-600 rounded border-surface-300 focus:ring-primary-500"
                                 />
                                 إخفاء المنتهية
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer text-sm text-surface-600 select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={hideRejected}
+                                    onChange={(e) => setHideRejected(e.target.checked)}
+                                    className="w-4 h-4 text-red-600 rounded border-surface-300 focus:ring-red-500"
+                                />
+                                إخفاء المرفوضة
                             </label>
 
                             {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (

@@ -1,3 +1,4 @@
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Order } from '../../services/db';
 
@@ -9,7 +10,7 @@ interface OrderListItemProps {
     showRegister?: boolean;
 }
 
-export default function OrderListItem({
+const OrderListItem = React.memo(function OrderListItem({
     order,
     labName,
     designerName,
@@ -87,4 +88,6 @@ export default function OrderListItem({
             </div>
         </div>
     );
-}
+});
+
+export default OrderListItem;

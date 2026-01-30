@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
@@ -59,7 +59,7 @@ const colorClasses = {
     }
 };
 
-export default function AlertCard({
+const AlertCard = React.memo(function AlertCard({
     title,
     count,
     icon: Icon,
@@ -132,4 +132,6 @@ export default function AlertCard({
             )}
         </div>
     );
-}
+});
+
+export default AlertCard;

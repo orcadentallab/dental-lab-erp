@@ -1,17 +1,50 @@
 import { supabase } from '../../lib/supabase';
-import type { DbOrder, DbOrderInsert, DbOrderUpdate } from './types';
+import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
 import type { Order, OrderHistoryEntry } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 
+// Helper to handle joined data which isn't in DbOrder type
+interface DbOrderWithRelations extends DbOrder {
+    order_items?: DbOrderItemRow[];
+    order_comments?: DbOrderCommentRow[];
+}
+
 // Transform database record to application format
-function dbToOrder(dbOrder: DbOrder): Order {
+function dbToOrder(dbOrder: DbOrderWithRelations): Order {
+    // 1. Map Items (Prefer joined table, fallback to legacy JSON)
+    let items: Order['items'] = [];
+    if (dbOrder.order_items && dbOrder.order_items.length > 0) {
+        items = dbOrder.order_items.map(i => ({
+            serviceType: i.product_type,
+            teethNumbers: i.teeth_numbers,
+            price: i.price,
+            shade: i.shade || undefined
+        }));
+    } else if (Array.isArray(dbOrder.items) && dbOrder.items.length > 0) {
+        items = dbOrder.items;
+    }
+
+    // 2. Map Comments (Prefer joined table, fallback to legacy JSON)
+    let comments: Order['comments'] = [];
+    if (dbOrder.order_comments && dbOrder.order_comments.length > 0) {
+        comments = dbOrder.order_comments.map(c => ({
+            id: c.id,
+            text: c.content,
+            userId: c.user_id || 'system',
+            userName: c.user_name || 'System',
+            createdAt: c.created_at
+        }));
+    } else if (Array.isArray(dbOrder.comments) && dbOrder.comments.length > 0) {
+        comments = dbOrder.comments;
+    }
+
     return {
         id: dbOrder.id,
         caseId: dbOrder.case_id,
         doctorId: dbOrder.doctor_id,
         patientName: dbOrder.patient_name,
-        items: Array.isArray(dbOrder.items) ? dbOrder.items : [],
+        items: items,
         discount: dbOrder.discount,
         totalPrice: dbOrder.total_price,
         shade: dbOrder.shade,
@@ -28,7 +61,7 @@ function dbToOrder(dbOrder: DbOrder): Order {
         needsDesignReview: dbOrder.needs_design_review || undefined,
         technicianStatus: dbOrder.technician_status || undefined,
         isUrgent: dbOrder.is_urgent || false,
-        comments: dbOrder.comments || undefined,
+        comments: comments,
         representativeId: dbOrder.representative_id || undefined,
         isRegistered: dbOrder.is_registered || undefined,
         workflowType: dbOrder.workflow_type || undefined,
@@ -120,7 +153,7 @@ export async function getOrders(
     // Start building query with count
     let query = supabase
         .from('orders')
-        .select('*', { count: 'exact' });
+        .select('*, order_items(*), order_comments(*)', { count: 'exact' });
 
     // Apply filters
     if (filters.status) {
@@ -177,7 +210,7 @@ export async function getOrders(
     }
 
     return {
-        data: (data || []).map(dbToOrder),
+        data: (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations)),
         count: count || 0
     };
 }
@@ -190,14 +223,14 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
     console.warn('getAllOrdersUnpaginated: This function fetches all orders. Use getOrders() with pagination for normal use.');
     const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select('*, order_items(*), order_comments(*)')
         .order('created_at', { ascending: false });
 
     if (error) {
         throw ErrorHandler.handle(error, 'getAllOrdersUnpaginated');
     }
 
-    return (data || []).map(dbToOrder);
+    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
 }
 
 export async function getOrder(id: string): Promise<Order | null> {
@@ -208,7 +241,7 @@ export async function getOrder(id: string): Promise<Order | null> {
 
     const { data, error } = await supabase
         .from('orders')
-        .select('*')
+        .select('*, order_items(*), order_comments(*)')
         .eq('id', id)
         .single();
 
@@ -217,7 +250,7 @@ export async function getOrder(id: string): Promise<Order | null> {
         throw ErrorHandler.handle(error, 'getOrder');
     }
 
-    return data ? dbToOrder(data) : null;
+    return data ? dbToOrder(data as unknown as DbOrderWithRelations) : null;
 }
 
 export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
@@ -229,10 +262,12 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<
     }
 
     const dbOrder = orderToDb(order);
+    const { items, comments, ...orderRow } = dbOrder; // Separate items/comments
 
-    const { data, error } = await supabase
+    // 1. Insert Order
+    const { data: insertedOrder, error } = await supabase
         .from('orders')
-        .insert(dbOrder)
+        .insert(orderRow)
         .select()
         .single();
 
@@ -240,7 +275,39 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<
         throw ErrorHandler.handle(error, 'addOrder');
     }
 
-    return dbToOrder(data);
+    const newOrderId = insertedOrder.id;
+
+    // 2. Insert Items
+    if (order.items && order.items.length > 0) {
+        const itemRows = order.items.map(i => ({
+            order_id: newOrderId,
+            product_type: i.serviceType,
+            teeth_numbers: i.teethNumbers,
+            price: i.price,
+            shade: i.shade,
+            count: i.teethNumbers.length || 1
+        }));
+
+        const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
+        if (itemsError) console.error('Failed to insert items:', itemsError);
+    }
+
+    // 3. Insert Comments
+    if (order.comments && order.comments.length > 0) {
+        const commentRows = order.comments.map(c => ({
+            order_id: newOrderId,
+            content: c.text,
+            user_id: c.userId === 'system' ? null : c.userId, // Validate UUID?
+            user_name: c.userName,
+            created_at: c.createdAt
+        }));
+
+        const { error: commentsError } = await supabase.from('order_comments').insert(commentRows);
+        if (commentsError) console.error('Failed to insert comments:', commentsError);
+    }
+
+    // Re-fetch formatted order with relations
+    return getOrder(newOrderId) as Promise<Order>;
 }
 
 export async function updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
@@ -335,9 +402,13 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
         }
     }
 
-    const { data, error } = await supabase
+    // dbUpdates might contain items/comments from legacy mapping
+    // We should remove them before updating orders table
+    const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as any;
+
+    const { error } = await supabase
         .from('orders')
-        .update(dbUpdates)
+        .update(cleanUpdates)
         .eq('id', id)
         .select()
         .single();
@@ -347,7 +418,45 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
         throw ErrorHandler.handle(error, 'updateOrder');
     }
 
-    return data ? dbToOrder(data) : null;
+    // Handle Relations Updates (If provided in the Partial<Order>)
+    // CAUTION: This completely replaces items if provided
+    if (updates.items !== undefined) {
+        // Delete existing
+        await supabase.from('order_items').delete().eq('order_id', id);
+
+        // Insert new
+        if (updates.items.length > 0) {
+            const itemRows = updates.items.map(i => ({
+                order_id: id,
+                product_type: i.serviceType,
+                teeth_numbers: i.teethNumbers,
+                price: i.price,
+                shade: i.shade,
+                count: i.teethNumbers.length || 1
+            }));
+            await supabase.from('order_items').insert(itemRows);
+        }
+    }
+
+    // Handle Comments (Append/Sync?) 
+    // updateOrder usually receives the Full Updated List if it was modified.
+    // Strategy: Delete all and Insert all (Safe for consistency, less optimized)
+    if (updates.comments !== undefined) {
+        await supabase.from('order_comments').delete().eq('order_id', id);
+
+        if (updates.comments.length > 0) {
+            const commentRows = updates.comments.map(c => ({
+                order_id: id,
+                content: c.text,
+                user_id: c.userId === 'system' ? null : c.userId,
+                user_name: c.userName,
+                created_at: c.createdAt
+            }));
+            await supabase.from('order_comments').insert(commentRows);
+        }
+    }
+
+    return getOrder(id);
 }
 
 export async function deleteOrder(id: string): Promise<void> {
