@@ -37,9 +37,7 @@ export async function getDoctors(search?: string): Promise<Doctor[]> {
         .select('*')
         .order('name', { ascending: true });
 
-    if (search) {
-        query = query.ilike('name', `%${search}%`);
-    }
+    query = query.or(`name.ilike.%${search}%,doctor_code.ilike.%${search}%`);
 
     // Limit results if searching to avoid huge payloads
     if (search) {

@@ -55,7 +55,7 @@ export const OrderSchema = z.object({
     doctorId: z.string().uuid(),
     patientName: z.string().min(2).max(200),
     items: z.array(OrderItemSchema).min(1, 'يجب إضافة عنصر واحد على الأقل'),
-    discount: z.number().min(0).max(100),
+    discount: z.number().min(0),
     totalPrice: z.number().min(0),
     shade: z.string().max(50).optional().nullable(),
     status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments', 'Rejected', 'Pending Review']),

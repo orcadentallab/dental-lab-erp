@@ -84,7 +84,7 @@ export function DoctorSelect({ value, onChange, error }: DoctorSelectProps) {
                 <div className="flex items-center gap-2 overflow-hidden">
                     <User size={16} className="text-gray-400 shrink-0" />
                     <span className="truncate">
-                        {selectedDoctor ? selectedDoctor.name : "اختر طبيب..."}
+                        {selectedDoctor ? `${selectedDoctor.name} ${selectedDoctor.doctorCode ? `(${selectedDoctor.doctorCode})` : ''}` : "اختر طبيب..."}
                     </span>
                 </div>
                 <ChevronsUpDown size={14} className="text-gray-400 shrink-0 opacity-50" />
@@ -131,7 +131,7 @@ export function DoctorSelect({ value, onChange, error }: DoctorSelectProps) {
                                             : "hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
                                     )}
                                 >
-                                    <span>{doctor.name}</span>
+                                    <span>{doctor.name} <span className="text-gray-400 text-xs">({doctor.doctorCode || 'بدون كود'})</span></span>
                                     {value === doctor.id && <Check size={14} className="text-blue-600" />}
                                 </button>
                             ))

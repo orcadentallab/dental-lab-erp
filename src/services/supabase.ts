@@ -1,11 +1,8 @@
 
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 
-// These would normally be in .env
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://xyz.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'abc';
-
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Re-export the singleton instance to prevent multiple client instances
+export { supabase };
 
 // Mock Auth Service for initial development without keys
 interface MockUser {

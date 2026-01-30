@@ -260,7 +260,7 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
  * This function fetches ALL orders and should only be used for exports or legacy code.
  */
 export async function getAllOrdersUnpaginated(): Promise<Order[]> {
-    console.warn('getAllOrdersUnpaginated: This function fetches all orders. Use getOrders() with pagination for normal use.');
+    // console.warn('getAllOrdersUnpaginated: This function fetches all orders. Use getOrders() with pagination for normal use.');
     const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
