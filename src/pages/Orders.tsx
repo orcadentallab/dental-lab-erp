@@ -445,6 +445,8 @@ export default function Orders() {
                             {/* Status */}
                             <div className="col-span-1 md:col-span-1 relative group">
                                 <select
+                                    title="Status Filter"
+                                    aria-label="Filter by Status"
                                     value={statusFilter}
                                     onChange={(e) => setStatusFilter(e.target.value)}
                                     className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
@@ -469,6 +471,8 @@ export default function Orders() {
                             {canFilterByDoctorAndSupplier && (
                                 <div className="col-span-1 md:col-span-1 relative group">
                                     <select
+                                        title="Doctor Filter"
+                                        aria-label="Filter by Doctor"
                                         value={doctorFilter}
                                         onChange={(e) => setDoctorFilter(e.target.value)}
                                         className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
@@ -506,6 +510,8 @@ export default function Orders() {
                                 <>
                                     <div className="col-span-1 relative group">
                                         <select
+                                            title="Supplier Filter"
+                                            aria-label="Filter by Supplier"
                                             value={supplierFilter}
                                             onChange={(e) => setSupplierFilter(e.target.value)}
                                             className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
@@ -517,6 +523,8 @@ export default function Orders() {
                                     </div>
                                     <div className="col-span-1 relative group">
                                         <select
+                                            title="Designer Filter"
+                                            aria-label="Filter by Designer"
                                             value={designerFilter}
                                             onChange={(e) => setDesignerFilter(e.target.value)}
                                             className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
@@ -528,6 +536,8 @@ export default function Orders() {
                                     </div>
                                     <div className="col-span-1 relative group">
                                         <select
+                                            title="Representative Filter"
+                                            aria-label="Filter by Representative"
                                             value={representativeFilter}
                                             onChange={(e) => setRepresentativeFilter(e.target.value)}
                                             className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
