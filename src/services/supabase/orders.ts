@@ -265,7 +265,7 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
         .order('created_at', { ascending: false })
-        .range(0, 9999); // Fetch up to 10000 orders to avoid default 1000 limit
+        .range(0, 4999); // Fetch up to 5000 orders (Safe limit for single request)
 
     if (error) {
         throw ErrorHandler.handle(error, 'getAllOrdersUnpaginated');

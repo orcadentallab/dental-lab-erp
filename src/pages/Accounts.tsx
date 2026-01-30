@@ -62,21 +62,31 @@ export default function Accounts() {
 
     useEffect(() => {
         const loadData = async () => {
+            // 1. Load Entities (Critical)
             try {
-                const [docs, sups, ords, txs, users] = await Promise.all([
+                const [docs, sups, users] = await Promise.all([
                     db.getDoctors(),
                     db.getSuppliers(),
-                    db.getAllOrdersUnpaginated(),
-                    db.getTransactions(),
                     db.getUsers()
                 ]);
                 setDoctors(docs);
                 setSuppliers(sups);
-                setOrders(ords);
-                setTransactions(txs);
                 setDesigners(users.filter(u => u.role === 'designer'));
             } catch (error) {
-                console.error('Error loading account data:', error);
+                console.error('Error loading entities:', error);
+            }
+
+            // 2. Load Financial Data (Heavy)
+            try {
+                const [ords, txs] = await Promise.all([
+                    db.getAllOrdersUnpaginated(),
+                    db.getTransactions()
+                ]);
+                setOrders(ords);
+                setTransactions(txs);
+            } catch (error) {
+                console.error('Error loading financial data:', error);
+                // Can set an error state here specifically for balances
             }
         };
         loadData();
