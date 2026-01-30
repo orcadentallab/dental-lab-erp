@@ -4,7 +4,7 @@ import OrderList from '../components/orders/OrderList';
 import OrderForm from '../components/orders/OrderForm';
 import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
-import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer } from 'lucide-react';
+import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcelWithHeaders, printTable } from '../lib/exportUtils';
 import { useTranslation } from '../translations';
@@ -403,152 +403,154 @@ export default function Orders() {
                 )}
             </div>
 
-            {/* Filters */}
-            <Card className="border-surface-200 shadow-sm">
-                <div className="flex flex-col gap-4">
-                    {/* Top Row */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                        <div>
-                            <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">الحالة</label>
-                            <select
-                                title="Status Filter"
-                                aria-label="Filter by Status"
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
-                            >
-                                <option value="">كل الحالات</option>
-                                <option value="Pending Review">Pending Request (New)</option>
-                                <option value="New Case">New Case</option>
-                                <option value="Under Design">Under Design</option>
-                                <option value="Waiting Dr Approval">Waiting Approval</option>
-                                <option value="Under Production">Under Production</option>
-                                <option value="Try In">Try In</option>
-                                <option value="Try In Approved">Try In Approved</option>
-                                <option value="Ready">Ready</option>
-                                <option value="Delivered">Delivered</option>
-                                <option value="Returned for Adjustments">Returned</option>
-                                <option value="Rejected">Rejected</option>
-                            </select>
+            {/* Header & Filters - Compact Pro Max */}
+            <div className="sticky top-4 z-40 mb-6 space-y-4">
+                <Card className="p-3 border-none shadow-sm bg-white/95 backdrop-blur-md ring-1 ring-surface-950/5">
+                    <div className="flex flex-col gap-3">
+                        {/* Row 1: Search & Primary Actions (Most often used) */}
+                        <div className="flex flex-col md:flex-row gap-3 items-center">
+                            {/* Search */}
+                            <div className="relative flex-1 w-full group">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <Search className="h-4 w-4 text-surface-400 group-focus-within:text-primary-500 transition-colors" />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder={t.dashboard.searchPlaceholder}
+                                    className="block w-full pl-10 pr-20 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/50 transition-all shadow-sm group-hover:ring-surface-300"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                />
+                                <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                    <Button size="sm" variant="ghost" className="h-7 text-xs text-surface-400 hover:text-primary-600 p-1" onClick={handleSearch}>
+                                        ENTER
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                                {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
+                                    <Button onClick={() => setIsFormOpen(true)} className="gap-2 shadow-sm shadow-primary-500/20 bg-primary-600 hover:bg-primary-700 text-white border-0 ring-0 h-9 px-4 rounded-xl">
+                                        <Plus size={16} />
+                                        <span className="font-bold text-sm">{t.orders.newOrder}</span>
+                                    </Button>
+                                )}
+                            </div>
                         </div>
 
-                        {canFilterByDoctorAndSupplier && (
-                            <>
-                                <div>
-                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">الطبيب</label>
+                        {/* Row 2: Compact Filters Grid */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            {/* Status */}
+                            <div className="col-span-1 md:col-span-1 relative group">
+                                <select
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                    className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                >
+                                    <option value="">{t.common.allStatus}</option>
+                                    <option value="New Case">New Case</option>
+                                    <option value="Under Design">Under Design</option>
+                                    <option value="Waiting Dr Approval">Wait Approval</option>
+                                    <option value="Under Production">Production</option>
+                                    <option value="Try In">Try In</option>
+                                    <option value="Review">Review</option>
+                                    <option value="Ready">Ready</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Delivered">Delivered</option>
+                                    <option value="Rejected">Rejected</option>
+                                </select>
+                                <Filter className="absolute left-2.5 top-2 h-3.5 w-3.5 text-surface-400" />
+                                <ChevronDown className="absolute right-2.5 top-2.5 h-3 w-3 text-surface-400 pointer-events-none" />
+                            </div>
+
+                            {/* Doctor */}
+                            {canFilterByDoctorAndSupplier && (
+                                <div className="col-span-1 md:col-span-1 relative group">
                                     <select
-                                        title="Doctor Filter"
-                                        aria-label="Filter by Doctor"
                                         value={doctorFilter}
                                         onChange={(e) => setDoctorFilter(e.target.value)}
-                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
+                                        className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
                                     >
                                         <option value="">كل الأطباء</option>
                                         {doctors.map(doc => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
                                     </select>
+                                    <User className="absolute left-2.5 top-2 h-3.5 w-3.5 text-surface-400" />
+                                    <ChevronDown className="absolute right-2.5 top-2.5 h-3 w-3 text-surface-400 pointer-events-none" />
                                 </div>
-                                <div>
-                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المعمل</label>
-                                    <select
-                                        title="Supplier Filter"
-                                        aria-label="Filter by Supplier"
-                                        value={supplierFilter}
-                                        onChange={(e) => setSupplierFilter(e.target.value)}
-                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
-                                    >
-                                        <option value="">كل المعامل</option>
-                                        {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المصمم</label>
-                                    <select
-                                        title="Designer Filter"
-                                        aria-label="Filter by Designer"
-                                        value={designerFilter}
-                                        onChange={(e) => setDesignerFilter(e.target.value)}
-                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
-                                    >
-                                        <option value="">كل المصممين</option>
-                                        {users.filter(u => u.role === 'designer').map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">المندوب</label>
-                                    <select
-                                        title="Representative Filter"
-                                        aria-label="Filter by Representative"
-                                        value={representativeFilter}
-                                        onChange={(e) => setRepresentativeFilter(e.target.value)}
-                                        className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all outline-none"
-                                    >
-                                        <option value="">كل المناديب</option>
-                                        {users.filter(u => (u.role === 'representative' || u.role === 'admin') && u.username !== 'admin').map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
-                                    </select>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                            )}
 
-                    {/* Bottom Row */}
-                    <div className="pt-4 border-t border-surface-100 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-4 flex gap-3">
-                            <div className="flex-1">
-                                <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">من</label>
-                                <input title="Start Date" aria-label="Start Date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
-                            </div>
-                            <div className="flex-1">
-                                <label className="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-1.5 block">إلى</label>
-                                <input title="End Date" aria-label="End Date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full px-3 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm outline-none focus:border-primary-500" />
-                            </div>
-                        </div>
-
-                        <div className="md:col-span-4 relative">
-                            <Search className="absolute right-3 top-2.5 text-surface-400" size={18} />
-                            <input
-                                type="text"
-                                placeholder="بحث..."
-                                className="w-full pl-3 pr-10 py-2 bg-surface-50 border border-surface-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 outline-none transition-all"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                            />
-                        </div>
-
-                        <Button variant="secondary" onClick={handleSearch} className="px-4">
-                            {t.common.search}
-                        </Button>
-
-                        <div className="md:col-span-4 flex items-center justify-between gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer text-sm text-surface-600 select-none">
+                            {/* Date Range (Merged) */}
+                            <div className="col-span-2 md:col-span-2 flex items-center bg-surface-50 ring-1 ring-surface-200 rounded-lg px-2 group hover:bg-white transition-colors">
+                                <Calendar className="h-3.5 w-3.5 text-surface-400 mr-2 flex-shrink-0" />
                                 <input
-                                    type="checkbox"
-                                    checked={hideDelivered}
-                                    onChange={(e) => setHideDelivered(e.target.checked)}
-                                    className="w-4 h-4 text-primary-600 rounded border-surface-300 focus:ring-primary-500"
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="w-full bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400"
+                                    placeholder="Start"
                                 />
-                                إخفاء المنتهية
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer text-sm text-surface-600 select-none">
+                                <span className="text-surface-300 mx-1">/</span>
                                 <input
-                                    type="checkbox"
-                                    checked={hideRejected}
-                                    onChange={(e) => setHideRejected(e.target.checked)}
-                                    className="w-4 h-4 text-red-600 rounded border-surface-300 focus:ring-red-500"
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="w-full bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400"
+                                    placeholder="End"
                                 />
-                                إخفاء المرفوضة
-                            </label>
+                            </div>
 
-                            {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
-                                <Button onClick={() => setIsFormOpen(true)} className="gap-2 shadow-lg shadow-primary-500/20 whitespace-nowrap" aria-label="New Order">
-                                    <Plus size={18} />
-                                    <span>{t.orders.newOrder}</span>
-                                </Button>
+                            {/* Secondary Filters (Hidden on small screens logic could go here, but we show them compactly) */}
+                            {canFilterByDoctorAndSupplier && (
+                                <>
+                                    <div className="col-span-1 relative group">
+                                        <select
+                                            value={supplierFilter}
+                                            onChange={(e) => setSupplierFilter(e.target.value)}
+                                            className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                        >
+                                            <option value="">كل المعامل</option>
+                                            {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                                        </select>
+                                        <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
+                                    </div>
+                                    <div className="col-span-1 relative group">
+                                        <select
+                                            value={designerFilter}
+                                            onChange={(e) => setDesignerFilter(e.target.value)}
+                                            className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                        >
+                                            <option value="">كل المصممين</option>
+                                            {users.filter(u => u.role === 'designer').map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
+                                        </select>
+                                        <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
+                                    </div>
+                                </>
                             )}
                         </div>
+
+                        {/* Row 3: Toggles (Very subtle) */}
+                        <div className="flex gap-4 px-1">
+                            <label className="flex items-center gap-1.5 cursor-pointer group">
+                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${hideDelivered ? 'bg-primary-600 border-primary-600' : 'border-surface-300 bg-white group-hover:border-primary-500'}`}>
+                                    {hideDelivered && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
+                                </div>
+                                <input type="checkbox" checked={hideDelivered} onChange={(e) => setHideDelivered(e.target.checked)} className="hidden" />
+                                <span className={`text-[10px] uppercase font-bold tracking-wider ${hideDelivered ? 'text-primary-700' : 'text-surface-400 group-hover:text-primary-600'}`}>إخفاء المنتهية</span>
+                            </label>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer group">
+                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${hideRejected ? 'bg-red-500 border-red-500' : 'border-surface-300 bg-white group-hover:border-red-500'}`}>
+                                    {hideRejected && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
+                                </div>
+                                <input type="checkbox" checked={hideRejected} onChange={(e) => setHideRejected(e.target.checked)} className="hidden" />
+                                <span className={`text-[10px] uppercase font-bold tracking-wider ${hideRejected ? 'text-red-700' : 'text-surface-400 group-hover:text-red-600'}`}>إخفاء المرفوضة</span>
+                            </label>
+                        </div>
                     </div>
-                </div>
-            </Card>
+                </Card>
+            </div>
 
             {/* Order List */}
             <OrderList
