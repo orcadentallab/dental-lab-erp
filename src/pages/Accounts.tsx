@@ -96,93 +96,129 @@ export default function Accounts() {
 
 
 
-    // Helper: Calculate Summary
+    // Helper: Calculate Summary (Optimized O(N))
     const summaryData = useMemo(() => {
         if (viewMode !== 'summary') return [];
 
         const allOrders = orders;
         const allTransactions = transactions;
-        let summaries: EntitySummary[] = [];
 
-        if (activeTab === 'doctors') {
-            summaries = doctors.map(doc => {
-                const docOrders = allOrders.filter(o =>
-                    o.doctorId === doc.id &&
-                    (showAllOrders || o.status !== 'Rejected') &&
-                    (showAllOrders || ['Delivered', 'Completed', 'Ready'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase()))
-                );
-                const totalDebit = docOrders.reduce((sum, o) => {
-                    if (o.status === 'Rejected') return sum;
-                    return sum + o.totalPrice;
-                }, 0);
+        // 1. Pre-aggregate Orders by Entity ID (O(Orders))
+        const orderStats = new Map<string, { totalDebit: number; totalCredit: number; count: number; lastDate: string }>();
+        const getStats = (id: string) => {
+            if (!orderStats.has(id)) orderStats.set(id, { totalDebit: 0, totalCredit: 0, count: 0, lastDate: '' });
+            return orderStats.get(id)!;
+        };
 
-                const docTx = allTransactions.filter(t =>
-                    t.entityType === 'doctor' && t.entityId === doc.id && t.type === 'income'
-                );
-                const totalCredit = docTx.reduce((sum, t) => sum + t.amount, 0);
+        for (const o of allOrders) {
+            if (activeTab === 'doctors' && o.doctorId) {
+                if (o.status === 'Rejected') continue;
+                // For doctors, we only care about delivered/completed for debit, but logic says:
+                // debit = totalPrice if not rejected.
+                // Actually original logic: if (activeTab === 'doctors') ... filter: (showAllOrders || status != Rejected) AND (showAll || ['Delivered'...].includes(status))
+                // Then totalDebit = sum(totalPrice)
 
-                // Get last transaction date
-                const lastOrderDate = docOrders.length > 0 ? docOrders[docOrders.length - 1].createdAt : '';
-                const lastTxDate = docTx.length > 0 ? docTx[docTx.length - 1].date : '';
-                const lastTransaction = lastOrderDate > lastTxDate ? lastOrderDate : lastTxDate;
+                // Let's match original logic EXACTLY but optimized.
+                const isRelevant = (showAllOrders || o.status !== 'Rejected') &&
+                    (showAllOrders || ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase()));
 
-                return {
-                    id: doc.id,
-                    name: doc.name,
-                    totalOrders: docOrders.length,
-                    totalDebit,
-                    totalCredit,
-                    balance: totalDebit - totalCredit,
-                    code: doc.doctorCode,
-                    lastTransaction
-                };
-            });
-        } else if (activeTab === 'suppliers') {
-            summaries = suppliers.map(sup => {
-                const supOrders = allOrders.filter(o => o.supplierId === sup.id && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
-                const totalCredit = supOrders.reduce((sum, o) => {
+                if (isRelevant) {
+                    const stats = getStats(o.doctorId);
+                    stats.count++;
+                    stats.totalDebit += o.totalPrice || 0;
+                    if (o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
+                }
+            } else if (activeTab === 'suppliers' && o.supplierId) {
+                // Logic: status != Rejected AND (showAll || status == Delivered)
+                const isRelevant = o.status !== 'Rejected' &&
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered');
+
+                if (isRelevant) {
+                    const stats = getStats(o.supplierId);
+                    stats.count++;
                     let cost = o.cost || 0;
                     if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
-                    return sum + cost;
-                }, 0);
+                    stats.totalCredit += cost;
+                    // Note: No date tracking in original supplier logic? Original code had lastTransaction: '' for suppliers.
+                }
+            } else if (activeTab === 'designers' && o.designerId) {
+                // Logic: workflowType=split AND status!=Rejected AND (showAll || status == Delivered)
+                const isRelevant = o.workflowType === 'split' &&
+                    o.status !== 'Rejected' &&
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered');
 
-                const supTx = allTransactions.filter(t =>
-                    t.entityType === 'supplier' && t.entityId === sup.id && t.type === 'expense'
-                );
-                const totalDebit = supTx.reduce((sum, t) => sum + t.amount, 0);
-
-                return {
-                    id: sup.id,
-                    name: sup.name,
-                    totalOrders: supOrders.length,
-                    totalDebit,
-                    totalCredit,
-                    balance: totalCredit - totalDebit,
-                    lastTransaction: ''
-                };
-            });
-        } else if (activeTab === 'designers') {
-            summaries = designers.map(des => {
-                const desOrders = allOrders.filter(o => o.designerId === des.id && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
-                const totalCredit = desOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
-
-                const desTx = allTransactions.filter(t =>
-                    t.entityType === 'designer' && t.entityId === des.id && t.type === 'expense'
-                );
-                const totalDebit = desTx.reduce((sum, t) => sum + t.amount, 0);
-
-                return {
-                    id: des.id,
-                    name: des.name,
-                    totalOrders: desOrders.length,
-                    totalDebit,
-                    totalCredit,
-                    balance: totalCredit - totalDebit,
-                    lastTransaction: ''
-                };
-            });
+                if (isRelevant) {
+                    const stats = getStats(o.designerId);
+                    stats.count++;
+                    stats.totalCredit += (o.designPrice || 0);
+                }
+            }
         }
-        return summaries;
+
+        // 2. Pre-aggregate Transactions by Entity ID (O(Transactions))
+        const txStats = new Map<string, { totalDebit: number; totalCredit: number; lastDate: string }>();
+        const getTxStats = (id: string) => {
+            if (!txStats.has(id)) txStats.set(id, { totalDebit: 0, totalCredit: 0, lastDate: '' });
+            return txStats.get(id)!;
+        };
+
+        for (const t of allTransactions) {
+            if (activeTab === 'doctors' && t.entityType === 'doctor' && t.entityId && t.type === 'income') {
+                const stats = getTxStats(t.entityId);
+                stats.totalCredit += t.amount;
+                if (t.date > stats.lastDate) stats.lastDate = t.date;
+            } else if (activeTab === 'suppliers' && t.entityType === 'supplier' && t.entityId && t.type === 'expense') {
+                const stats = getTxStats(t.entityId);
+                stats.totalDebit += t.amount;
+            } else if (activeTab === 'designers' && t.entityType === 'designer' && t.entityId && t.type === 'expense') {
+                const stats = getTxStats(t.entityId);
+                stats.totalDebit += t.amount;
+            }
+        }
+
+        // 3. Map to Summaries (O(Entities))
+        let entities: { id: string; name: string; code?: string }[] = [];
+        if (activeTab === 'doctors') entities = doctors;
+        else if (activeTab === 'suppliers') entities = suppliers;
+        else if (activeTab === 'designers') entities = designers;
+
+        return entities.map(entity => {
+            const oStats = orderStats.get(entity.id) || { totalDebit: 0, totalCredit: 0, count: 0, lastDate: '' };
+            const tStats = txStats.get(entity.id) || { totalDebit: 0, totalCredit: 0, lastDate: '' };
+
+            let totalDebit = 0;
+            let totalCredit = 0;
+            let balance = 0;
+            let lastTransaction = '';
+
+            if (activeTab === 'doctors') {
+                totalDebit = oStats.totalDebit;
+                totalCredit = tStats.totalCredit;
+                balance = totalDebit - totalCredit;
+                lastTransaction = oStats.lastDate > tStats.lastDate ? oStats.lastDate : tStats.lastDate;
+            } else if (activeTab === 'suppliers') {
+                totalDebit = tStats.totalDebit; // We paid them
+                totalCredit = oStats.totalCredit; // Cost of work
+                // Balance = Credit (Work Cost) - Debit (Paid) -> If +, we owe them
+                balance = totalCredit - totalDebit;
+            } else if (activeTab === 'designers') {
+                totalDebit = tStats.totalDebit; // We paid them
+                totalCredit = oStats.totalCredit; // Work done
+                balance = totalCredit - totalDebit;
+            }
+
+            return {
+                id: entity.id,
+                name: entity.name,
+                code: entity.code,
+                totalOrders: oStats.count,
+                totalDebit,
+                totalCredit,
+                balance,
+                lastTransaction
+            };
+        });
+
     }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, showAllOrders]);
 
     // Helper: Logic for Individual Statement
