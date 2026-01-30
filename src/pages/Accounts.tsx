@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
 import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck } from 'lucide-react';
 import clsx from 'clsx';
-import { exportToExcel } from '../lib/exportUtils';
+import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 
 interface StatementItem {
     id: string;
