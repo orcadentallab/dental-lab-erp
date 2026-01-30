@@ -491,12 +491,35 @@ export default function Accounts() {
                     <style>{`
                         @media print {
                             @page { size: auto; margin: 10mm; }
-                            body, html, #root { 
-                                height: auto !important; 
-                                overflow: visible !important; 
+                            
+                            /* Reset Page Constraints */
+                            html, body, #root {
+                                height: auto !important;
+                                min-height: 100% !important;
+                                overflow: visible !important;
+                                position: static !important;
                             }
-                            /* Hide sidebar and other non-print elements globally if not handled */
-                            body > *:not(#root) { display: none; }
+
+                            /* Hide UI Elements */
+                            body > *:not(#root) { display: none !important; } /* Hide ambient background */
+                            nav, aside, .print\\:hidden { display: none !important; }
+
+                            /* Reset Layout Containers (DashboardLayout) */
+                            div[class*="flex h-screen"], 
+                            div[class*="flex-1 flex flex-col"],
+                            main {
+                                display: block !important;
+                                height: auto !important;
+                                overflow: visible !important;
+                                padding: 0 !important;
+                                margin: 0 !important;
+                            }
+
+                            /* Ensure Content Visibility */
+                            .max-w-5xl {
+                                max-width: none !important;
+                                margin: 0 !important;
+                            }
                         }
                     `}</style>
                 </div>
