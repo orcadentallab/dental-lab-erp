@@ -235,17 +235,23 @@ export async function getOrders(
 
 /**
  * Optimized fetch for Dashboard.
- * Uses RPC 'get_dashboard_active_orders' to filter on server side.
- * Returns: Active Orders + Today's Orders + Returned Orders
+ * FILTERS AT DATABASE LEVEL to reduce RLS overhead.
+ * Returns: Active Orders (excludes Delivered, Cancelled, completed older than 7 days)
  */
 export async function getDashboardActiveOrders(): Promise<Order[]> {
-    // Fallback: Fetch all orders directly since RPC is missing.
-    // We select only from the orders table to keep it lighter than a full join.
-    // Client-side filtering in DashboardNew.tsx handles the rest.
+    // Calculate date 7 days ago for limiting returned orders
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const dateLimit = sevenDaysAgo.toISOString();
+
+    // Optimized query: Filter at database level
     const { data, error } = await supabase
         .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*, order_items(*), order_comments(*)')  // Include relations
+        .not('status', 'in', '("Delivered","Cancelled")') // Exclude finished orders
+        .or(`created_at.gte.${dateLimit}`) // Or recent orders
+        .order('created_at', { ascending: false })
+        .range(0, 499); // Limit to 500 orders max for dashboard
 
     if (error) {
         throw ErrorHandler.handle(error, 'getDashboardActiveOrders');
@@ -500,16 +506,23 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     // We should remove them before updating orders table
     const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as any;
 
-    const { error } = await supabase
-        .from('orders')
-        .update(cleanUpdates)
-        .eq('id', id)
-        .select()
-        .single();
+    // Only update if there are actual changes to the orders table
+    if (Object.keys(cleanUpdates).length > 0) {
+        const { data, error } = await supabase
+            .from('orders')
+            .update(cleanUpdates)
+            .eq('id', id)
+            .select();
 
-    if (error) {
-        if (error.code === 'PGRST116') return null;
-        throw ErrorHandler.handle(error, 'updateOrder');
+        if (error) {
+            if (error.code === 'PGRST116') return null;
+            throw ErrorHandler.handle(error, 'updateOrder');
+        }
+
+        // If no rows were updated, RLS might be blocking - log warning
+        if (!data || data.length === 0) {
+            console.warn('updateOrder: No rows updated. RLS might be blocking or order not found:', id);
+        }
     }
 
     // Handle Relations Updates (If provided in the Partial<Order>)
@@ -532,12 +545,21 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
         }
     }
 
-    // Handle Comments (Append/Sync?) 
-    // updateOrder usually receives the Full Updated List if it was modified.
-    // Strategy: Delete all and Insert all (Safe for consistency, less optimized)
+    // Handle Comments - FIXED: Proper error handling and logging
+    // Strategy: Delete all and Insert all (Safe for consistency)
     if (updates.comments !== undefined) {
-        await supabase.from('order_comments').delete().eq('order_id', id);
+        // Step 1: Delete existing comments
+        const { error: deleteError } = await supabase
+            .from('order_comments')
+            .delete()
+            .eq('order_id', id);
 
+        if (deleteError) {
+            console.error('Failed to delete existing comments:', deleteError);
+            // Don't throw - continue to try inserting new comments
+        }
+
+        // Step 2: Insert new comments
         if (updates.comments.length > 0) {
             const commentRows = updates.comments.map(c => ({
                 order_id: id,
@@ -546,7 +568,16 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
                 user_name: c.userName,
                 created_at: c.createdAt
             }));
-            await supabase.from('order_comments').insert(commentRows);
+
+            const { error: insertError } = await supabase
+                .from('order_comments')
+                .insert(commentRows);
+
+            if (insertError) {
+                console.error('Failed to insert comments:', insertError);
+                // Log the actual error for debugging
+                console.error('Comment rows attempted:', JSON.stringify(commentRows, null, 2));
+            }
         }
     }
 

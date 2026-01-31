@@ -440,8 +440,8 @@ export default function OrderCard({
                                 <ChevronRight size={14} className="absolute inset-y-0 right-2 my-auto text-surface-400 pointer-events-none rotate-90" />
                             </div>
 
-                            {/* Tech Actions */}
-                            {onTechAction && (userRole === 'technician' || userRole === 'admin' || userRole === 'representative' || userRole === 'lab' || userRole === 'designer') && (
+                            {/* Tech Actions - Only for admin, designer, lab */}
+                            {onTechAction && (userRole === 'admin' || userRole === 'designer' || userRole === 'lab') && (
                                 <>
                                     <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
                                     <div className="flex bg-white rounded-lg border border-surface-200 p-0.5 shadow-sm">
