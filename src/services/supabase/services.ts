@@ -14,12 +14,19 @@ function dbToService(dbService: DbService): Service {
 }
 
 function serviceToDb(service: Omit<Service, 'id'>): DbServiceInsert {
-    return {
+    const dbService: any = {
         name: service.name,
         selling_price: service.sellingPrice,
         cost_price: service.costPrice,
-        milling_price: service.millingPrice ?? null,
     };
+
+    // Only include milling_price if it has a meaningful value
+    // This prevents "Column not found" errors if the DB migration hasn't been run
+    if (service.millingPrice && service.millingPrice > 0) {
+        dbService.milling_price = service.millingPrice;
+    }
+
+    return dbService;
 }
 
 export async function getServices(): Promise<Service[]> {

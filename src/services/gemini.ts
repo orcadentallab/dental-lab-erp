@@ -8,7 +8,9 @@ import { supabase } from './supabase';
 export interface ChatContext {
     orderCount: number;
     revenue: number;
-    expenses: number;
+    productionCosts: number;
+    operatingExpenses: number;
+    expenses?: number;
     profit: number;
     topDoctors: { name: string; orderCount: number }[];
     topServices: { name: string; count: number }[];
@@ -20,9 +22,12 @@ export interface AnalyzeContext {
     completedOrders: number;
     pendingOrders: number;
     revenue: number;
-    expenses: number;
+    productionCosts: number;
+    operatingExpenses: number;
+    expenses?: number;
     profit: number;
     profitMargin: number;
+    grossMargin: number;
     topDoctors: { name: string; orderCount: number; revenue: number }[];
     topServices: { name: string; count: number; revenue: number }[];
     ordersByStatus: { status: string; count: number }[];

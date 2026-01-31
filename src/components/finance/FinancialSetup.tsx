@@ -5,7 +5,6 @@ import { Input } from '../../components/ui/Input';
 import { Trash, Save, Coins, Building } from 'lucide-react';
 import { financeService, type CapitalEntry, type FixedAsset } from '../../services/financeService';
 import { useAuth } from '../../context/AuthContext';
-import { db } from '../../services/db';
 
 export default function FinancialSetup() {
     const { user } = useAuth();
@@ -247,51 +246,6 @@ export default function FinancialSetup() {
                 </Card>
             </div>
 
-            {/* Data Correction Tools (Temporary) */}
-            <div className="bg-orange-50 p-6 rounded-2xl border border-orange-200">
-                <h3 className="font-bold text-lg mb-4 text-orange-800 flex items-center gap-2">
-                    أدوات إصلاح البيانات
-                </h3>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={async () => {
-                            if (!confirm('هل أنت متأكد من تعيين "Allstars" لجميع الطلبات التي ليس لها مورد؟')) return;
-                            try {
-                                const suppliers = await db.getSuppliers();
-                                const allstars = suppliers.find(s => s.name.toLowerCase().includes('allstar') || s.name.toLowerCase().includes('all star'));
-
-                                if (!allstars) {
-                                    alert('عفواً، لم يتم العثور على مورد باسم "Allstars"');
-                                    return;
-                                }
-
-                                const orders = await db.getAllOrdersUnpaginated();
-                                const ordersToFix = orders.filter(o => !o.supplierId && o.status !== 'Rejected');
-
-                                if (ordersToFix.length === 0) {
-                                    alert('لا توجد طلبات تحتاج للإصلاح (بدون مورد).');
-                                    return;
-                                }
-
-                                let count = 0;
-                                for (const order of ordersToFix) {
-                                    await db.updateOrder(order.id, { supplierId: allstars.id });
-                                    count++;
-                                }
-
-                                alert(`تم تحديث ${count} طلب بنجاح إلى المورد: ${allstars.name}`);
-                                window.location.reload();
-                            } catch (e) {
-                                console.error(e);
-                                alert('حدث خطأ أثناء التحديث.');
-                            }
-                        }}
-                        className="bg-orange-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-orange-700 transition"
-                    >
-                        تثبيت المورد "Allstars" للحالات الحالية
-                    </button>
-                </div>
-            </div>
         </div>
 
     );

@@ -8,7 +8,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { crypto } from 'https://deno.land/std@0.168.0/crypto/mod.ts'
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -117,17 +117,19 @@ serve(async (req) => {
 DATA CONTEXT (Dental Lab - Period: ${periodFrom} to ${periodTo}):
 
 📊 ORDER STATISTICS:
-- Total Orders: ${context.orderCount}
-- Completed Orders: ${context.completedOrders}
-- Pending Orders: ${context.pendingOrders}
+- Total Orders: ${context.orderCount || 0}
+- Completed Orders: ${context.completedOrders || 0}
+- Pending Orders: ${context.pendingOrders || 0}
 
 💰 FINANCIAL STATISTICS:
-- Total Revenue: ${context.revenue.toLocaleString()} EGP
-- Total Expenses: ${context.expenses.toLocaleString()} EGP
-- Net Profit: ${context.profit.toLocaleString()} EGP
-- Profit Margin: ${context.profitMargin.toFixed(1)}%
-- Collection Rate: ${context.collectionRate.toFixed(1)}%
-- Pending Payments: ${context.pendingPayments.toLocaleString()} EGP
+- Total Revenue: ${(context.revenue || 0).toLocaleString()} EGP
+- Production Costs: ${(context.productionCosts || 0).toLocaleString()} EGP
+- Operating Expenses: ${(context.operatingExpenses || 0).toLocaleString()} EGP
+- Total Expenses: ${((context.productionCosts || 0) + (context.operatingExpenses || 0) || context.expenses || 0).toLocaleString()} EGP
+- Net Profit: ${(context.profit || 0).toLocaleString()} EGP
+- Profit Margin: ${(context.profitMargin || 0).toFixed(1)}%
+- Collection Rate: ${(context.collectionRate || 0).toFixed(1)}%
+- Pending Payments: ${(context.pendingPayments || 0).toLocaleString()} EGP
 
 👨‍⚕️ TOP DOCTORS:
 ${context.topDoctors.map((d: any, i: number) => `${i + 1}. ${d.name}: ${d.orderCount} orders (${d.revenue.toLocaleString()} EGP)`).join('\n')}
@@ -224,7 +226,7 @@ ${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')
         // Build the full response object with new schema
         const analysisId = generateUUID()
         const generatedAt = new Date().toISOString()
-        const modelVersion = 'gemini-2.5-flash'
+        const modelVersion = 'gemini-1.5-flash'
         const promptVersion = 'v2.0-strict-json'
 
         const fullResponse = {

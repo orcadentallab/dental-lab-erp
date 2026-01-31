@@ -6,7 +6,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
 
 // System prompt with guardrails
 const SYSTEM_PROMPT = `أنت مساعد تحليل بيانات لمعمل أسنان فقط.
@@ -83,12 +83,14 @@ serve(async (req) => {
         // Build context string for Gemini
         const contextString = `
 بيانات المعمل الحالية:
-- إجمالي الطلبات: ${context.orderCount}
-- إجمالي الإيرادات: ${context.revenue.toLocaleString()} ج.م
-- إجمالي المصروفات: ${context.expenses.toLocaleString()} ج.م
-- صافي الربح: ${context.profit.toLocaleString()} ج.م
-- أعلى الأطباء: ${context.topDoctors.map(d => `${d.name} (${d.orderCount} طلب)`).join('، ')}
-- أعلى الخدمات: ${context.topServices.map(s => `${s.name} (${s.count})`).join('، ')}
+- إجمالي الطلبات: ${context.orderCount || 0}
+- إجمالي الإيرادات: ${(context.revenue || 0).toLocaleString()} ج.م
+- تكاليف الإنتاج: ${(context.productionCosts || 0).toLocaleString()} ج.م
+- مصاريف التشغيل: ${(context.operatingExpenses || 0).toLocaleString()} ج.م
+- إجمالي المصروفات: ${((context.productionCosts || 0) + (context.operatingExpenses || 0) || context.expenses || 0).toLocaleString()} ج.م
+- صافي الربح: ${(context.profit || 0).toLocaleString()} ج.م
+- أعلى الأطباء: ${context.topDoctors?.map((d: any) => `${d.name} (${d.orderCount} طلب)`).join('، ') || 'غير متاح'}
+- أعلى الخدمات: ${context.topServices?.map((s: any) => `${s.name} (${s.count})`).join('، ') || 'غير متاح'}
 `
 
         // Build conversation for Gemini

@@ -1,7 +1,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
-import { TrendingUp, DollarSign, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap } from 'lucide-react';
+import { TrendingUp, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
 
@@ -41,7 +41,8 @@ export default function Analytics() {
         deliveredRevenue: 0,
         grossProfit: 0,
         netProfit: 0,
-        totalExpenses: 0,
+        operatingExpenses: 0,
+        productionCosts: 0,
         pendingRevenue: 0,
         orderCount: 0,
         activeOrders: 0,
@@ -52,7 +53,7 @@ export default function Analytics() {
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
 
     // Date Range Logic - use useMemo instead of useEffect to derive dates
-    const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
+    const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('month');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 
@@ -82,6 +83,8 @@ export default function Analytics() {
                     startDate: formatDate(new Date(today.getFullYear(), 0, 1)),
                     endDate: formatDate(new Date(today.getFullYear(), 11, 31))
                 };
+            case 'all':
+                return { startDate: '', endDate: '' };
         }
     }, [dateRange, customStartDate, customEndDate]);
 
@@ -97,8 +100,9 @@ export default function Analytics() {
 
             const isInRange = (dateStr: string) => {
                 if (!dateStr) return false;
+                if (dateRange === 'all') return true;
                 const d = dateStr.split('T')[0];
-                return d >= startDate && d <= endDate;
+                return d >= (startDate || '') && d <= (endDate || '');
             };
 
             const filteredOrders = orders.filter(o => {
@@ -135,14 +139,19 @@ export default function Analytics() {
             const grossProfit = totalSalesValue - totalCostOfGoods;
 
 
+            let totalProductionCosts = 0;
+            let totalOperatingExpenses = 0;
             const expenseCategories = new Map<string, number>();
-            const totalExpenses = filteredTransactions
-                .filter(t => t.type === 'expense')
-                .reduce((sum, t) => {
+
+            filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
+                if (t.entityType === 'supplier' || t.entityType === 'designer') {
+                    totalProductionCosts += (t.amount || 0);
+                } else {
+                    totalOperatingExpenses += (t.amount || 0);
                     const cat = t.category || 'Other';
                     expenseCategories.set(cat, (expenseCategories.get(cat) || 0) + (t.amount || 0));
-                    return sum + (t.amount || 0);
-                }, 0);
+                }
+            });
 
             let topExpenseCategory = 'None';
             let topExpenseAmount = 0;
@@ -154,14 +163,15 @@ export default function Analytics() {
                 }
             }
 
-            const netProfit = grossProfit - totalExpenses;
+            const netProfit = grossProfit - totalOperatingExpenses;
 
             setStats({
                 totalRevenue: collectedRevenue,
                 deliveredRevenue: totalSalesValue,
                 grossProfit,
                 netProfit,
-                totalExpenses,
+                operatingExpenses: totalOperatingExpenses,
+                productionCosts: totalProductionCosts,
                 pendingRevenue: totalSalesValue - collectedRevenue,
                 orderCount: completedOrders.length,
                 activeOrders: 0,
@@ -193,12 +203,12 @@ export default function Analytics() {
         } catch (error) {
             console.error('Error loading analytics:', error);
         }
-    }, [startDate, endDate]);
+    }, [startDate, endDate, dateRange]);
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- Data fetching requires setting state after async operations
-        if (startDate && endDate) calculateStats();
-    }, [startDate, endDate, calculateStats]);
+        if ((startDate && endDate) || dateRange === 'all') calculateStats();
+    }, [startDate, endDate, dateRange, calculateStats]);
 
     return (
         <div className="space-y-8">
@@ -219,7 +229,7 @@ export default function Analytics() {
 
                     {/* Smart Date Picker */}
                     <div className="bg-white/10 backdrop-blur-md p-1.5 rounded-2xl flex items-center gap-1 border border-white/10">
-                        {(['today', 'week', 'month', 'year'] as const).map((range) => (
+                        {(['today', 'week', 'month', 'year', 'all'] as const).map((range) => (
                             <button
                                 key={range}
                                 onClick={() => setDateRange(range)}
@@ -230,7 +240,7 @@ export default function Analytics() {
                                         : "text-slate-300 hover:bg-white/10"
                                 )}
                             >
-                                {range === 'today' ? 'اليوم' : (range === 'week' ? 'أسبوع' : (range === 'month' ? 'شهر' : 'سنة'))}
+                                {range === 'today' ? 'اليوم' : (range === 'week' ? 'أسبوع' : (range === 'month' ? 'شهر' : (range === 'year' ? 'سنة' : 'كل المدة')))}
                             </button>
                         ))}
                         <div className="w-px h-6 bg-white/20 mx-1"></div>
@@ -269,34 +279,42 @@ export default function Analytics() {
 
             {/* KPI Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <KPICard
-                    title="المبيعات (Sales)"
-                    value={stats.deliveredRevenue}
-                    subtext="قيمة الأعمال المسلمة (Work Done)"
-                    icon={TrendingUp}
-                    type="revenue" // Blue (Growth)
-                />
-                <KPICard
-                    title="التحصيل الفعلي (Collected)"
-                    value={stats.totalRevenue}
-                    subtext="النقدية المستلمة (Cash In)"
-                    icon={DollarSign}
-                    type="profit" // Green (Cash)
-                />
-                <KPICard
-                    title="المصروفات (Expenses)"
-                    value={stats.totalExpenses}
-                    subtext="المصروفات التشغيلية"
-                    icon={ArrowDownRight}
-                    type="expense" // Red
-                />
-                <KPICard
-                    title="صافي الربح"
-                    value={stats.netProfit}
-                    subtext="المبيعات - (التكلفة + المصروفات)"
-                    icon={Wallet}
-                    type={stats.netProfit >= 0 ? 'profit' : 'expense'}
-                />
+                <div className="lg:col-span-1">
+                    <KPICard
+                        title="المبيعات (Sales)"
+                        value={stats.deliveredRevenue}
+                        subtext="قيمة الأعمال المسلمة"
+                        icon={TrendingUp}
+                        type="revenue"
+                    />
+                </div>
+                <div className="lg:col-span-1">
+                    <KPICard
+                        title="مجمل الربح (Gross)"
+                        value={stats.grossProfit}
+                        subtext="المبيعات - تكلفة الإنتاج"
+                        icon={Zap}
+                        type="profit"
+                    />
+                </div>
+                <div className="lg:col-span-1">
+                    <KPICard
+                        title="مصروفات التشغيل"
+                        value={stats.operatingExpenses}
+                        subtext="إيجار، شحن، نثريات..."
+                        icon={ArrowDownRight}
+                        type="expense"
+                    />
+                </div>
+                <div className="lg:col-span-1">
+                    <KPICard
+                        title="صافي الربح (Net)"
+                        value={stats.netProfit}
+                        subtext="مجمل الربح - مصروفات التشغيل"
+                        icon={Wallet}
+                        type={stats.netProfit >= 0 ? 'profit' : 'expense'}
+                    />
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -346,15 +364,15 @@ export default function Analytics() {
                             <div className="bg-white p-4 rounded-2xl shadow-sm border border-indigo-50">
                                 <div className="flex justify-between items-center mb-2">
                                     <span className="text-xs font-bold text-slate-400 uppercase">كفاءة المصروفات</span>
-                                    <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", stats.deliveredRevenue > 0 && (stats.totalExpenses / stats.deliveredRevenue) < 0.3 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
-                                        {stats.deliveredRevenue > 0 && (stats.totalExpenses / stats.deliveredRevenue) < 0.3 ? 'Efficient' : 'High'}
+                                    <span className={clsx("text-xs font-bold px-2 py-0.5 rounded-full", stats.deliveredRevenue > 0 && (stats.operatingExpenses / stats.deliveredRevenue) < 0.3 ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700")}>
+                                        {stats.deliveredRevenue > 0 && (stats.operatingExpenses / stats.deliveredRevenue) < 0.3 ? 'Efficient' : 'High'}
                                     </span>
                                 </div>
                                 <div className="flex items-baseline gap-2 mb-1">
                                     <span className="text-2xl font-black text-slate-800">
-                                        {stats.deliveredRevenue > 0 ? ((stats.totalExpenses / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
+                                        {stats.deliveredRevenue > 0 ? ((stats.operatingExpenses / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                     </span>
-                                    <span className="text-xs text-slate-400">من الدخل</span>
+                                    <span className="text-xs text-slate-400">من المبيعات</span>
                                 </div>
 
                                 {stats.topExpenseCategory && stats.topExpenseAmount > 0 && (
@@ -368,7 +386,7 @@ export default function Analytics() {
                                 )}
 
                                 <p className="text-xs text-slate-500 mt-2">
-                                    {stats.totalExpenses === 0 ? 'لا توجد مصروفات مسجلة.' : 'راقب بنود الصرف الأعلى للتحكم في التكلفة.'}
+                                    {stats.operatingExpenses === 0 ? 'لا توجد مصروفات تشغيلية مسجلة.' : 'راقب بنود الصرف الأعلى للتحكم في التكلفة.'}
                                 </p>
                             </div>
                         </div>

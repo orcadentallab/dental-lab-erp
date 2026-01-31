@@ -48,22 +48,18 @@ try {
     }
     else {
         # 3. Request Commit Message
-        $commitMessage = Read-Host "Enter commit message"
+        $commitMessage = Read-Host "Enter commit message (Leave empty for 'Auto-update')"
         if (-not $commitMessage) {
-            Write-ErrorMsg "Commit message cannot be empty (unless you just want to push existing commits)."
-            $cont = Read-Host "Do you want to continue without committing? (y/n)"
-            if ($cont -ne 'y') {
-                exit 1
-            }
+            $commitMessage = "Auto-update: " + (Get-Date -Format "yyyy-MM-dd HH:mm")
+            Write-Info "No message entered. Using default: $commitMessage"
         }
-        else {
-            # 4. Git Add & Commit
-            Write-Info "Staging changes..."
-            git add .
-            
-            Write-Info "Committing changes..."
-            git commit -m "$commitMessage"
-        }
+        
+        # 4. Git Add & Commit
+        Write-Info "Staging changes..."
+        git add .
+        
+        Write-Info "Committing changes..."
+        git commit -m "$commitMessage"
     }
     
     # 5. Git Push

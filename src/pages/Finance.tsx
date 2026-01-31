@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
-import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, FileSpreadsheet, Trash2, Edit2, Printer } from 'lucide-react'; // Fixed imports
+import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, FileSpreadsheet, Trash2, Edit2, Printer } from 'lucide-react';
 import { db, type Service, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
 import clsx from 'clsx';
 import { exportToExcel, printTable } from '../lib/exportUtils';
@@ -8,7 +8,7 @@ import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
 import FinancialSetup from '../components/finance/FinancialSetup';
 import AdjustmentsPanel from '../components/finance/AdjustmentsPanel';
 import { financeService } from '../services/financeService';
-import type { Adjustment } from '../services/financeService';
+import type { Adjustment, CapitalEntry, FixedAsset } from '../services/financeService';
 
 export default function Finance() {
     const { user } = useAuth();
@@ -19,6 +19,8 @@ export default function Finance() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+    const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>([]);
+    const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
 
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -26,6 +28,7 @@ export default function Finance() {
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [editingService, setEditingService] = useState<Service | null>(null);
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const serviceFormRef = useRef<HTMLFormElement>(null);
 
     // Forms State
@@ -49,14 +52,16 @@ export default function Finance() {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, ordersData, adjustmentsData] = await Promise.all([
+                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, ordersData, adjustmentsData, capitalData, assetsData] = await Promise.all([
                     db.getServices(),
                     db.getTransactions(),
                     db.getDoctors(),
                     db.getSuppliers(),
                     db.getUsers(),
                     db.getAllOrdersUnpaginated(),
-                    financeService.getAdjustments()
+                    financeService.getAdjustments(),
+                    user?.username === 'admin' ? financeService.getCapitalEntries() : Promise.resolve([]),
+                    user?.username === 'admin' ? financeService.getFixedAssets() : Promise.resolve([])
                 ]);
                 setServices(servicesData);
                 setTransactions(transactionsData);
@@ -66,6 +71,8 @@ export default function Finance() {
                 setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
                 setOrders(ordersData);
                 setAdjustments(adjustmentsData);
+                setCapitalEntries(capitalData);
+                setFixedAssets(assetsData);
             } catch (error) {
                 console.error('Error loading finance data:', error);
             } finally {
@@ -73,30 +80,48 @@ export default function Finance() {
             }
         };
         loadData();
-    }, []); // Only load once on mount, or we could reload on tab change but data is shared
+    }, [user?.role]); // Load data when role is available
 
     // Financial Metrics - memoized to prevent recalculation
-    const { totalExpenses, totalIncome, currentBalance } = useMemo(() => {
-        const expenses = transactions
-            .filter(t => {
-                if (t.type !== 'expense') return false;
+    const { totalOperatingExpenses, totalProductionCosts, totalIncome, currentBalance } = useMemo(() => {
+        let opEx = 0;
+        let prodCosts = 0;
+
+        transactions.forEach(t => {
+            if (t.type === 'expense') {
                 const isRepExpense = representatives.some(r => r.id === t.entityId);
-                if (isRepExpense && !t.isRegistered) return false;
-                return true;
-            })
-            .reduce((sum, t) => sum + t.amount, 0);
+                // Production costs are payments to suppliers or designers
+                if (t.entityType === 'supplier' || t.entityType === 'designer') {
+                    prodCosts += t.amount;
+                } else {
+                    // Everything else is operating expense
+                    if (isRepExpense && !t.isRegistered) return;
+                    opEx += t.amount;
+                }
+            }
+        });
+
         const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        return { totalExpenses: expenses, totalIncome: income, currentBalance: income - expenses };
-    }, [transactions, representatives]);
+        const totalCapital = capitalEntries.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+        const totalAssetsValue = fixedAssets.reduce((sum, a) => sum + (Number(a.value) || 0), 0);
+        const startingBalance = totalCapital - totalAssetsValue;
+
+        return {
+            totalOperatingExpenses: opEx,
+            totalProductionCosts: prodCosts,
+            totalIncome: income,
+            currentBalance: startingBalance + income - (opEx + prodCosts)
+        };
+    }, [transactions, representatives, capitalEntries, fixedAssets]);
 
     // Memoized filtered transactions for different tabs
     const generalExpenses = useMemo(() =>
-        transactions.filter(t => t.type === 'expense' && t.entityType === 'general'),
+        transactions.filter(t => t.type === 'expense' && (t.entityType === 'general' || !t.entityType)),
         [transactions]
     );
 
     const generalIncome = useMemo(() =>
-        transactions.filter(t => t.type === 'income' && t.entityType === 'general'),
+        transactions.filter(t => t.type === 'income' && (t.entityType === 'general' || !t.entityType)),
         [transactions]
     );
 
@@ -121,6 +146,7 @@ export default function Finance() {
         setCategory('');
         setSelectedId('');
         setTransactionDate(new Date().toISOString().split('T')[0]);
+        setEditingTransaction(null);
     };
 
     const handleTransactionUpdate = async () => {
@@ -129,17 +155,37 @@ export default function Finance() {
         setTransactions(updatedTx);
     };
 
+    const handleEditTransaction = (t: Transaction) => {
+        setEditingTransaction(t);
+        setAmount(t.amount);
+        setDescription(t.description);
+        setCategory(t.category || '');
+        setTransactionDate(new Date(t.date).toISOString().split('T')[0]);
+        setSelectedId(t.entityId || '');
+        // Scroll to form
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     const handleAddExpense = async (e: FormEvent) => {
         e.preventDefault();
         try {
-            await db.addTransaction({
-                type: 'expense',
-                amount,
-                category: category,
-                description,
-                date: new Date(transactionDate).toISOString(),
-                entityType: 'general'
-            });
+            if (editingTransaction) {
+                await db.updateTransaction(editingTransaction.id, {
+                    amount,
+                    category: category,
+                    description,
+                    date: new Date(transactionDate).toISOString(),
+                });
+            } else {
+                await db.addTransaction({
+                    type: 'expense',
+                    amount,
+                    category: category,
+                    description,
+                    date: new Date(transactionDate).toISOString(),
+                    entityType: 'general'
+                });
+            }
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
@@ -150,14 +196,22 @@ export default function Finance() {
     const handleAddRevenue = async (e: FormEvent) => {
         e.preventDefault();
         try {
-            await db.addTransaction({
-                type: 'income',
-                amount,
-                category: 'إيراد عام',
-                description,
-                date: new Date(transactionDate).toISOString(),
-                entityType: 'general'
-            });
+            if (editingTransaction) {
+                await db.updateTransaction(editingTransaction.id, {
+                    amount,
+                    description,
+                    date: new Date(transactionDate).toISOString(),
+                });
+            } else {
+                await db.addTransaction({
+                    type: 'income',
+                    amount,
+                    category: 'إيراد عام',
+                    description,
+                    date: new Date(transactionDate).toISOString(),
+                    entityType: 'general'
+                });
+            }
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
@@ -255,7 +309,7 @@ export default function Finance() {
                             { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
                         ] as const;
 
-                        const adminTabs = user?.role === 'admin' ? [
+                        const adminTabs = user?.username === 'admin' ? [
                             { id: 'capital', label: 'رأس المال والأصول', color: 'indigo' },
                             { id: 'adjustments', label: 'القيود والتسويات', color: 'teal' }
                         ] as const : [];
@@ -280,35 +334,52 @@ export default function Finance() {
 
             {/* DASHBOARD */}
             {activeTab === 'dashboard' && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-2xl text-white shadow-lg shadow-blue-200">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Card 1: Balance */}
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200">
                         <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-white/20 backdrop-blur-sm rounded-xl"><Wallet size={24} /></div>
-                            <span className="text-xs font-medium bg-blue-500/30 px-2 py-1 rounded-lg">الميزانية الحالية</span>
+                            <div className="p-3 bg-white/10 backdrop-blur-sm rounded-xl"><Wallet size={24} /></div>
+                            <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-lg">الرصيد المتاح</span>
                         </div>
                         <div>
-                            <p className="text-blue-100 text-sm font-medium mb-1">صافي الرصيد</p>
-                            <h3 className="text-3xl font-bold tracking-tight">{currentBalance.toLocaleString()} <span className="text-sm font-normal text-blue-200">ج.م</span></h3>
+                            <p className="text-slate-300 text-sm font-medium mb-1">صافي الرصيد</p>
+                            <h3 className="text-3xl font-black tracking-tight">{currentBalance.toLocaleString()} <span className="text-sm font-normal text-slate-400">ج.م</span></h3>
                         </div>
                     </div>
+
+                    {/* Card 2: Income */}
+                    <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="p-3 bg-green-50 text-green-600 rounded-xl"><TrendingUp size={24} /></div>
+                            <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg">المقبوضات</span>
+                        </div>
+                        <div>
+                            <p className="text-gray-500 text-sm font-medium mb-1">إجمالي الإيرادات</p>
+                            <h3 className="text-3xl font-black text-gray-900">{totalIncome.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
+                        </div>
+                    </div>
+
+                    {/* Card 3: Production Costs */}
+                    <div className="bg-white p-6 rounded-2xl border border-purple-100 shadow-sm border-t-4 border-t-purple-500">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Package size={24} /></div>
+                            <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">تكاليف بضائع</span>
+                        </div>
+                        <div>
+                            <p className="text-gray-500 text-sm font-medium mb-1">تكاليف الإنتاج (COGS)</p>
+                            <h3 className="text-3xl font-black text-gray-900">{totalProductionCosts.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
+                        </div>
+                    </div>
+
+                    {/* Card 4: Operating Expenses */}
                     <div className="bg-white p-6 rounded-2xl border border-red-100 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
                             <div className="p-3 bg-red-50 text-red-600 rounded-xl"><ArrowDownCircle size={24} /></div>
                             <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-lg">مصروفات</span>
                         </div>
                         <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">إجمالي المصروفات</p>
-                            <h3 className="text-3xl font-bold text-gray-900">{totalExpenses.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
-                        </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-green-50 text-green-600 rounded-xl"><TrendingUp size={24} /></div>
-                            <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg">إيرادات</span>
-                        </div>
-                        <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">إجمالي المقبوضات</p>
-                            <h3 className="text-3xl font-bold text-gray-900">{totalIncome.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
+                            <p className="text-gray-500 text-sm font-medium mb-1">مصاريف التشغيل (OpEx)</p>
+                            <h3 className="text-3xl font-black text-gray-900">{totalOperatingExpenses.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
                         </div>
                     </div>
                 </div>
@@ -357,7 +428,9 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">ملاحظات</label>
                                     <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 transition-all" placeholder="تفاصيل المصروف..." />
                                 </div>
-                                <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-[0.98]">تسجيل المصروف</button>
+                                <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-[0.98]">
+                                    {editingTransaction ? 'تحديث المصروف' : 'تسجيل المصروف'}
+                                </button>
                             </form>
                         </div>
                     </div>
@@ -385,7 +458,12 @@ export default function Finance() {
                                                 </td>
                                                 {user?.role === 'admin' && (
                                                     <td className="p-4 text-center">
-                                                        <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            {user?.role === 'admin' && (
+                                                                <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                            )}
+                                                            <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                        </div>
                                                     </td>
                                                 )}
                                             </tr>
@@ -420,7 +498,9 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">وصف الإيراد</label>
                                     <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all" placeholder="مصدر الإيراد..." />
                                 </div>
-                                <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all active:scale-[0.98]">تسجيل الإيراد</button>
+                                <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all active:scale-[0.98]">
+                                    {editingTransaction ? 'تحديث الإيراد' : 'تسجيل الإيراد'}
+                                </button>
                             </form>
                         </div>
                     </div>
@@ -442,7 +522,12 @@ export default function Finance() {
                                             </td>
                                             {user?.role === 'admin' && (
                                                 <td className="p-4 text-center">
-                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        {user?.role === 'admin' && (
+                                                            <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                        )}
+                                                        <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    </div>
                                                 </td>
                                             )}
                                         </tr>
@@ -697,7 +782,8 @@ export default function Finance() {
                             </h3>
                             <form ref={serviceFormRef} onSubmit={async (e) => {
                                 e.preventDefault();
-                                const formData = new FormData(e.currentTarget);
+                                const form = e.currentTarget;
+                                const formData = new FormData(form);
                                 const name = formData.get('name')?.toString() || '';
                                 const sellingPrice = Number(formData.get('sellingPrice'));
                                 const costPrice = Number(formData.get('costPrice'));
@@ -712,7 +798,7 @@ export default function Finance() {
                                     }
                                     const updatedServices = await db.getServices();
                                     setServices(updatedServices);
-                                    e.currentTarget.reset();
+                                    form.reset();
                                 } catch (error) {
                                     console.error('Error saving service:', error);
                                 }

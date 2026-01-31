@@ -61,12 +61,21 @@ export default function AIAnalytics() {
                 .filter(t => t.type === 'income' && t.isApproved)
                 .reduce((sum, t) => sum + t.amount, 0);
 
-            const expenses = transactions
-                .filter(t => t.type === 'expense' && t.isApproved)
-                .reduce((sum, t) => sum + t.amount, 0);
+            let productionCosts = 0;
+            let operatingExpenses = 0;
 
-            const profit = revenue - expenses;
+            transactions.filter(t => t.type === 'expense' && t.isApproved).forEach(t => {
+                if (t.entityType === 'supplier' || t.entityType === 'designer') {
+                    productionCosts += t.amount;
+                } else {
+                    operatingExpenses += t.amount;
+                }
+            });
+
+            const profit = revenue - (productionCosts + operatingExpenses);
+            const grossProfit = revenue - productionCosts;
             const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
+            const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
             // Top Doctors
             const doctorStats = doctors.map(d => {
@@ -117,7 +126,9 @@ export default function AIAnalytics() {
             setChatContext({
                 orderCount: orders.length,
                 revenue,
-                expenses,
+                productionCosts,
+                operatingExpenses,
+                expenses: productionCosts + operatingExpenses,
                 profit,
                 topDoctors: doctorStats.map(d => ({ name: d.name, orderCount: d.orderCount })),
                 topServices: topServices.map(s => ({ name: s.name, count: s.count })),
@@ -134,9 +145,12 @@ export default function AIAnalytics() {
                 completedOrders: completedOrders.length,
                 pendingOrders: pendingOrders.length,
                 revenue,
-                expenses,
+                productionCosts,
+                operatingExpenses,
+                expenses: productionCosts + operatingExpenses,
                 profit,
                 profitMargin,
+                grossMargin,
                 topDoctors: doctorStats,
                 topServices,
                 ordersByStatus,
@@ -297,7 +311,7 @@ export default function AIAnalytics() {
                         'on_demand',
                         responseContent,
                         analyzeContext,
-                        response.model_version || 'gemini-2.5-flash',
+                        response.model_version || 'gemini-1.5-flash',
                         response.prompt_version || 'v2.0'
                     );
                     console.log('[AI Analytics] Fallback save SUCCESS with ID:', savedId);

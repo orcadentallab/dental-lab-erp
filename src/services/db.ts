@@ -29,6 +29,7 @@ export interface Transaction {
     entityType?: 'doctor' | 'supplier' | 'general' | 'designer';
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
     isApproved?: boolean; // Flag for individual expense approval
+    createdAt?: string;
 }
 
 export interface Supplier {

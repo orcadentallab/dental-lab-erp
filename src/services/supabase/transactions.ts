@@ -17,6 +17,7 @@ function dbToTransaction(dbTx: DbTransaction): Transaction {
         entityType: dbTx.entity_type || undefined,
         isRegistered: dbTx.is_registered || undefined,
         isApproved: dbTx.is_approved || undefined,
+        createdAt: dbTx.created_at,
     };
 }
 
