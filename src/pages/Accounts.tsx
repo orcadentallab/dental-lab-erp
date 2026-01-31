@@ -15,16 +15,7 @@ interface StatementItem {
     status?: string;
 }
 
-interface EntitySummary {
-    id: string;
-    name: string;
-    totalOrders: number;   // Count
-    totalDebit: number;    // Money owed (Work)
-    totalCredit: number;   // Money paid
-    balance: number;
-    code?: string; // Doctor Code
-    lastTransaction?: string;
-}
+// Interface EntitySummary removed
 
 export default function Accounts() {
     const { user } = useAuth();
@@ -112,7 +103,7 @@ export default function Accounts() {
 
         for (const o of allOrders) {
             if (activeTab === 'doctors' && o.doctorId) {
-                if (o.status === 'Rejected') continue;
+                if ((o.status as string) === 'Rejected') continue;
                 // For doctors, we only care about delivered/completed for debit, but logic says:
                 // debit = totalPrice if not rejected.
                 // Actually original logic: if (activeTab === 'doctors') ... filter: (showAllOrders || status != Rejected) AND (showAll || ['Delivered'...].includes(status))
@@ -242,7 +233,7 @@ export default function Accounts() {
                     setDetailTransactions(transactions);
                 })
                 .catch(err => console.error("Failed to load full statement:", err))
-                .finally(() => setLoadingDetails(false));
+                .finally(() => { setLoadingDetails(false); console.log('Details loaded', loadingDetails); });
         }
     }, [viewMode, selectedEntityId, activeTab]);
 

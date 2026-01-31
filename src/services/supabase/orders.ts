@@ -1,6 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
-import type { Order, OrderHistoryEntry } from '../db';
+import type { Order, OrderHistoryEntry, Transaction } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 

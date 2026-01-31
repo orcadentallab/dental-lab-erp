@@ -17,50 +17,77 @@ function Write-Info {
     Write-Host "[INFO] $Message" -ForegroundColor Cyan
 }
 
+function Write-WarningMsg {
+    param($Message)
+    Write-Host "[WARN] $Message" -ForegroundColor Yellow
+}
+
 # Main
 try {
-    # 1. Request Commit Message
-    $commitMessage = Read-Host "Enter commit message"
-    if (-not $commitMessage) {
-        Write-ErrorMsg "Commit message cannot be empty."
-        exit 1
+    Write-Info "Starting deployment process..."
+    
+    # Check if we are on master branch
+    $branch = git branch --show-current
+    if ($branch -ne "master") {
+        Write-WarningMsg "You are on branch '$branch', but this script pushes to 'master'."
+        $cont = Read-Host "Do you want to continue? (y/n)"
+        if ($cont -ne 'y') {
+            exit 0
+        }
     }
 
-    # 2. Run Build
+    # 1. Run Build
     Write-Info "Running build..."
-    # Using cmd /c mainly to ensure npm is found in path correctly on some windows envs, 
-    # but direct call usually works too. Let's try direct first.
-    # Note: npm outputs to stderr for info sometimes, so we check $LASTEXITCODE
-    npm run build
+    # Using npm run build
+    cmd /c "npm run build"
     if ($LASTEXITCODE -ne 0) {
         Write-ErrorMsg "Build failed. Aborting deployment."
+        Read-Host "Press Enter to exit..."
         exit 1
     }
     Write-Success "Build passed."
 
-    # 3. Git Add
-    Write-Info "Staging changes..."
-    git add .
-    
-    # 4. Git Commit
-    Write-Info "Committing changes..."
-    git commit -m "$commitMessage"
-    # git commit returns 1 if nothing to commit usually, but could be other errors. 
-    # We'll check output or just proceed if git status shows clean.
+    # 2. Check for changes
+    $status = git status --porcelain
+    if (-not $status) {
+        Write-Info "No changes to commit. Proceeding to push..."
+    }
+    else {
+        # 3. Request Commit Message
+        $commitMessage = Read-Host "Enter commit message"
+        if (-not $commitMessage) {
+            Write-ErrorMsg "Commit message cannot be empty (unless you just want to push existing commits)."
+            $cont = Read-Host "Do you want to continue without committing? (y/n)"
+            if ($cont -ne 'y') {
+                exit 1
+            }
+        }
+        else {
+            # 4. Git Add & Commit
+            Write-Info "Staging changes..."
+            git add .
+            
+            Write-Info "Committing changes..."
+            git commit -m "$commitMessage"
+        }
+    }
     
     # 5. Git Push
     Write-Info "Pushing to remote..."
     git push origin master
     if ($LASTEXITCODE -ne 0) {
-        Write-ErrorMsg "Push failed."
+        Write-ErrorMsg "Push failed. Please check your internet connection or git credentials."
+        Read-Host "Press Enter to exit..."
         exit 1
     }
 
-    Write-Success "Deployment logic completed successfully."
-    Write-Info "Changes are pushed to 'master'. Deployment should trigger automatically."
+    Write-Success "Deployment completed successfully."
+    Write-Info "Changes are pushed to 'master'."
+    Read-Host "Press Enter to exit..."
     exit 0
 }
 catch {
-    Write-Warning "An unexpected error occurred: $_"
+    Write-ErrorMsg "An unexpected error occurred: $_"
+    Read-Host "Press Enter to exit..."
     exit 1
 }

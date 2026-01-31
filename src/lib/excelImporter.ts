@@ -206,8 +206,8 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
 
                     // --- ITEM & SUPPLIER/LAB MAPPING ---
                     let items: OrderItem[] = [];
-                    const serviceName = cleanString(getVal(['الخدمات', 'الخدمة', 'اسم الخدمة', 'Service', 'service']));
-                    const countColumn = parseNumber(getVal(['عدد الاسنان', 'Count', 'count', 'Quantity']));
+                    const serviceName = cleanString(getVal(['اسم الصنف', 'الخدمات', 'الخدمة', 'اسم الخدمة', 'Service', 'service']));
+                    const countColumn = parseNumber(getVal(['كمية', 'الكمية', 'عدد الاسنان', 'Count', 'count', 'Quantity']));
                     const toothCount = countColumn > 0 ? countColumn : 1;
 
                     // --- EXECUTING LAB (SUPPLIER) LOOKUP ---
@@ -224,7 +224,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
 
                     // --- ITEM CREATION ---
                     if (serviceName) {
-                        const unitPrice = parseNumber(getVal(['السعر', 'Unit Price', 'price']));
+                        const unitPrice = parseNumber(getVal(['سعر للواحدة', 'سعر الوحدة', 'السعر', 'Unit Price', 'price']));
                         const teethNumbers: string[] = [];
                         for (let i = 1; i <= toothCount; i++) {
                             teethNumbers.push(String(i));
@@ -249,9 +249,10 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                     }
 
                     // --- TOTALS ---
-                    const netValue = parseNumber(getVal(['صافى القيمة', 'Total Value', 'Net Value']));
+                    const netValue = parseNumber(getVal(['صافى قيمة', 'صافي القيمة', 'صافى القيمة', 'Total Value', 'Net Value']));
 
-                    // Calculate from items if netValue is missing
+                    // User Request: Respect Excel values strictly matching final balance
+                    // Logic: If "Net Value" exists in Excel, use it directly. Otherwise calculate.
                     const calculatedTotal = items.reduce((sum, item) => sum + (item.price * item.teethNumbers.length), 0);
 
                     const totalPrice = netValue > 0 ? netValue : calculatedTotal;
@@ -287,7 +288,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         }
                     }
 
-                    const discount = parseNumber(getVal(['الخصم', 'discount', 'Discount']));
+                    const discount = parseNumber(getVal(['خصم', 'الخصم', 'discount', 'Discount']));
                     const shade = cleanString(getVal(['اللون', 'shade', 'Shade'])) || 'A1';
                     const statusStr = cleanString(getVal(['الحالة', 'status', 'Status'])) || 'Delivered';
                     // Safe cast for status
