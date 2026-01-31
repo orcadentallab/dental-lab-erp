@@ -179,10 +179,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             return;
         }
 
-        if (!selectedSupplier && workflowType === 'full') {
-            toastError('يرجى اختيار المعمل / المورد');
-            return;
-        }
+
 
         const invalidItems = items.filter(i => i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0).length === 0);
         if (invalidItems.length > 0) {
@@ -484,7 +481,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <select
                                     title="Supplier (Split)"
                                     aria-label="Select Supplier for Split Workflow"
-                                    className={clsx("w-full p-2 bg-white border rounded-lg text-xs outline-none", !selectedSupplier ? "border-red-300" : "border-purple-100")}
+                                    className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none"
                                     value={selectedSupplier}
                                     onChange={e => setSelectedSupplier(e.target.value)}
                                 >
@@ -496,12 +493,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <select
                                 title="Supplier (Full)"
                                 aria-label="Select Supplier for Full Lab Workflow"
-                                className={clsx("w-full p-2 bg-white border rounded-lg text-xs outline-none", !selectedSupplier ? "border-red-300 ring-1 ring-red-200" : "border-purple-100")}
+                                className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none"
                                 value={selectedSupplier}
                                 onChange={e => setSelectedSupplier(e.target.value)}
-                                required
                             >
-                                <option value="">-- اختر المعمل / المورد --</option>
+                                <option value="">-- معمل داخلي (أفتراضي) --</option>
                                 {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                             </select>
                         )}
