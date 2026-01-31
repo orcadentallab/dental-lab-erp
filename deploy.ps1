@@ -28,13 +28,7 @@ try {
     
     # Check if we are on master branch
     $branch = git branch --show-current
-    if ($branch -ne "master") {
-        Write-WarningMsg "You are on branch '$branch', but this script pushes to 'master'."
-        $cont = Read-Host "Do you want to continue? (y/n)"
-        if ($cont -ne 'y') {
-            exit 0
-        }
-    }
+    Write-Info "Deploying from branch: $branch"
 
     # 1. Run Build
     Write-Info "Running build..."
@@ -74,7 +68,7 @@ try {
     
     # 5. Git Push
     Write-Info "Pushing to remote..."
-    git push origin master
+    git push origin HEAD
     if ($LASTEXITCODE -ne 0) {
         Write-ErrorMsg "Push failed. Please check your internet connection or git credentials."
         Read-Host "Press Enter to exit..."

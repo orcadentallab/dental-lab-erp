@@ -12,15 +12,18 @@ export default function DoctorFinance() {
 
     const [totalOrderCost, setTotalOrderCost] = useState(0);
 
+    const [adjustments, setAdjustments] = useState<any[]>([]);
+
     useEffect(() => {
         const loadData = async () => {
             if (!user?.entityId) return;
             setLoading(true);
             try {
-                const [txs, doc, cost] = await Promise.all([
+                const [txs, doc, cost, adjs] = await Promise.all([
                     db.getTransactions(),
                     db.getDoctor(user.entityId),
-                    db.getDoctorTotalCost(user.entityId)
+                    db.getDoctorTotalCost(user.entityId),
+                    import('../../services/financeService').then(m => m.financeService.getAdjustments('doctor', user.entityId!))
                 ]);
 
                 // Filter for this doctor (Income Only from Transactions)
@@ -31,6 +34,7 @@ export default function DoctorFinance() {
                 setTransactions(myTxs);
                 setDoctor(doc);
                 setTotalOrderCost(cost);
+                setAdjustments(adjs);
             } catch (error) {
                 console.error(error);
             } finally {
@@ -46,11 +50,19 @@ export default function DoctorFinance() {
             .reduce((acc, curr) => acc + curr.amount, 0);
 
         const manualExpenses = transactions
-            .filter(t => t.type === 'expense')
+            .filter(t => t.type === 'expense') // Should represent "Other Charges" if any exist in transactions? Usually transactions for doctor are income (payments). If there are expense transactions linked to doctor, they reduce his balance (charge).
             .reduce((acc, curr) => acc + curr.amount, 0);
 
-        // Balance = Total Income - (Total Order Cost + Manual Expenses)
-        return totalIncome - (totalOrderCost + manualExpenses);
+        const totalCredits = adjustments
+            .filter(a => a.type === 'credit')
+            .reduce((acc, current) => acc + current.amount, 0);
+
+        const totalCharges = adjustments
+            .filter(a => a.type === 'charge')
+            .reduce((acc, current) => acc + current.amount, 0);
+
+        // Balance = (Income + Credits) - (Order Cost + Manual Expenses + Charges)
+        return (totalIncome + totalCredits) - (totalOrderCost + manualExpenses + totalCharges);
     };
 
     const balance = calculateBalance();

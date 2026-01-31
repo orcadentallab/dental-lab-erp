@@ -5,15 +5,20 @@ import clsx from 'clsx';
 import { exportToExcel, printTable } from '../lib/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
+import FinancialSetup from '../components/finance/FinancialSetup';
+import AdjustmentsPanel from '../components/finance/AdjustmentsPanel';
+import { financeService } from '../services/financeService';
+import type { Adjustment } from '../services/financeService';
 
 export default function Finance() {
     const { user } = useAuth();
     const canExport = ['admin', 'accountant', 'lab'].includes(user?.role || '');
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'services'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'services' | 'capital' | 'adjustments'>('dashboard');
     const [services, setServices] = useState<Service[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
+    const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
 
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -44,13 +49,14 @@ export default function Finance() {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, ordersData] = await Promise.all([
+                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, ordersData, adjustmentsData] = await Promise.all([
                     db.getServices(),
                     db.getTransactions(),
                     db.getDoctors(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    db.getAllOrdersUnpaginated()
+                    db.getAllOrdersUnpaginated(),
+                    financeService.getAdjustments()
                 ]);
                 setServices(servicesData);
                 setTransactions(transactionsData);
@@ -59,6 +65,7 @@ export default function Finance() {
                 setDesigners(usersData.filter(u => u.role === 'designer'));
                 setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
                 setOrders(ordersData);
+                setAdjustments(adjustmentsData);
             } catch (error) {
                 console.error('Error loading finance data:', error);
             } finally {
@@ -237,28 +244,37 @@ export default function Finance() {
             {/* Modern Navigation Tabs */}
             <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
                 <div className="flex gap-1 min-w-max">
-                    {([
-                        { id: 'dashboard', label: 'نظرة عامة', color: 'blue' },
-                        { id: 'expenses', label: 'المصروفات', color: 'red' },
-                        { id: 'revenue', label: 'الإيرادات', color: 'green' },
-                        { id: 'doctors', label: 'حسابات الأطباء', color: 'blue' },
-                        { id: 'suppliers', label: 'حسابات الموردين', color: 'purple' },
-                        { id: 'designers', label: 'حسابات المصممين', color: 'pink' },
-                        { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
-                    ] as const).map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={clsx(
-                                "px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200",
-                                activeTab === tab.id
-                                    ? `bg-${tab.color}-50 text-${tab.color}-600 shadow-sm ring-1 ring-${tab.color}-200`
-                                    : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
-                            )}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
+                    {(() => {
+                        const tabs = [
+                            { id: 'dashboard', label: 'نظرة عامة', color: 'blue' },
+                            { id: 'expenses', label: 'المصروفات', color: 'red' },
+                            { id: 'revenue', label: 'الإيرادات', color: 'green' },
+                            { id: 'doctors', label: 'حسابات الأطباء', color: 'blue' },
+                            { id: 'suppliers', label: 'حسابات الموردين', color: 'purple' },
+                            { id: 'designers', label: 'حسابات المصممين', color: 'pink' },
+                            { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
+                        ] as const;
+
+                        const adminTabs = user?.role === 'admin' ? [
+                            { id: 'capital', label: 'رأس المال والأصول', color: 'indigo' },
+                            { id: 'adjustments', label: 'القيود والتسويات', color: 'teal' }
+                        ] as const : [];
+
+                        return [...tabs, ...adminTabs].map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={clsx(
+                                    "px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200",
+                                    activeTab === tab.id
+                                        ? `bg-${tab.color}-50 text-${tab.color}-600 shadow-sm ring-1 ring-${tab.color}-200`
+                                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
+                                )}
+                            >
+                                {tab.label}
+                            </button>
+                        ));
+                    })()}
                 </div>
             </div>
 
@@ -482,6 +498,7 @@ export default function Finance() {
                                 entityType="doctor"
                                 transactions={transactions}
                                 orders={orders}
+                                adjustments={adjustments}
                                 className="h-full min-h-[300px]"
                             />
                         </div>
@@ -558,6 +575,7 @@ export default function Finance() {
                                 entityType="supplier"
                                 transactions={transactions}
                                 orders={orders}
+                                adjustments={adjustments}
                                 className="h-full min-h-[300px]"
                             />
                         </div>
@@ -633,6 +651,7 @@ export default function Finance() {
                                 entityType="designer"
                                 transactions={transactions}
                                 orders={orders}
+                                adjustments={adjustments}
                                 className="h-full min-h-[300px]"
                             />
                         </div>
@@ -765,6 +784,15 @@ export default function Finance() {
                         </div>
                     </div>
                 </div>
+            )}
+            {/* CAPITAL & ASSETS TAB (ADMIN ONLY) */}
+            {activeTab === 'capital' && user?.role === 'admin' && (
+                <FinancialSetup />
+            )}
+
+            {/* ADJUSTMENTS TAB (ADMIN ONLY) */}
+            {activeTab === 'adjustments' && user?.role === 'admin' && (
+                <AdjustmentsPanel />
             )}
         </div>
     );

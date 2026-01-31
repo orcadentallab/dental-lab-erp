@@ -1,6 +1,7 @@
 import { ArrowDownLeft, ArrowUpRight, History, Wallet } from 'lucide-react';
 import clsx from 'clsx';
 import type { Transaction, Order } from '../../services/db';
+import type { Adjustment } from '../../services/financeService';
 
 interface AccountInfoPanelProps {
     entityId: string;
@@ -8,6 +9,7 @@ interface AccountInfoPanelProps {
     entityType: 'doctor' | 'supplier' | 'designer';
     transactions: Transaction[];
     orders: Order[]; // For doctors (revenue) and suppliers/designers (cost)
+    adjustments?: Adjustment[];
     className?: string;
 }
 
@@ -17,6 +19,7 @@ export function AccountInfoPanel({
     entityType,
     transactions,
     orders,
+    adjustments = [],
     className,
 }: AccountInfoPanelProps) {
     if (!entityId) {
@@ -44,6 +47,14 @@ export function AccountInfoPanel({
         (t) => t.entityType === entityType && t.entityId === entityId
     );
 
+    // Filter Adjustments
+    const entityAdjustments = adjustments.filter(
+        (a) => a.entity_type === entityType && a.entity_id === entityId
+    );
+
+    const totalCharges = entityAdjustments.filter(a => a.type === 'charge').reduce((sum, a) => sum + a.amount, 0);
+    const totalCredits = entityAdjustments.filter(a => a.type === 'credit').reduce((sum, a) => sum + a.amount, 0);
+
     // Filter Orders/Work for this entity
     // Doctor: Orders where he is the doctor. Sum(totalPrice)
     // Supplier: Orders where he is the supplier. Sum(cost)
@@ -51,11 +62,11 @@ export function AccountInfoPanel({
 
     if (entityType === 'doctor') {
         const entityOrders = orders.filter((o) => o.doctorId === entityId && o.status !== 'Rejected');
-        totalWork = entityOrders.reduce((sum, o) => sum + o.totalPrice, 0);
+        totalWork = entityOrders.reduce((sum, o) => sum + o.totalPrice, 0) + totalCharges;
         // Income from doctor
         totalPaid = entityTransactions
             .filter((t) => t.type === 'income')
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + t.amount, 0) + totalCredits;
         // Balance = Work Done - Paid (Positive means he owes us)
         balance = totalWork - totalPaid;
 
@@ -63,21 +74,21 @@ export function AccountInfoPanel({
         // Assuming supplierId is on the order for external lab work
         // Note: Order interface has `supplierId` and `cost`
         const entityOrders = orders.filter((o) => o.supplierId === entityId);
-        totalWork = entityOrders.reduce((sum, o) => sum + (o.cost || 0), 0);
+        totalWork = entityOrders.reduce((sum, o) => sum + (o.cost || 0), 0) + totalCharges;
         // Expenses to supplier
         totalPaid = entityTransactions
             .filter((t) => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + t.amount, 0) + totalCredits;
         // Balance = Work Done (Debt) - Paid (Negative means we overpaid, Positive means we owe)
         balance = totalWork - totalPaid;
 
     } else if (entityType === 'designer') {
         const entityOrders = orders.filter((o) => o.designerId === entityId);
-        totalWork = entityOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
+        totalWork = entityOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0) + totalCharges;
         // Expenses to designer
         totalPaid = entityTransactions
             .filter((t) => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0);
+            .reduce((sum, t) => sum + t.amount, 0) + totalCredits;
         balance = totalWork - totalPaid;
     }
 
