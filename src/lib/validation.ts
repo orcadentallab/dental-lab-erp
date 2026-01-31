@@ -32,7 +32,7 @@ export const DoctorSchema = z.object({
     phone2: z.union([z.string().min(8).max(20).regex(/^[0-9+\-\s()]+$/), z.literal('')]).optional().nullable(),
     address: z.string().min(5).max(500),
     doctorCode: z.string().min(1).max(20).regex(/^[a-zA-Z0-9\-_]+$/, 'كود الطبيب يجب أن يحتوي على حروف إنجليزية وأرقام فقط'),
-    representativeName: z.string().min(1).max(200),
+    representativeName: z.string().max(200).optional().nullable().or(z.literal('')),
     representativeId: z.union([z.string().uuid(), z.literal('')]).optional().nullable()
 });
 
