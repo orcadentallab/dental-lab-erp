@@ -168,7 +168,7 @@ export default function Accounts() {
         }
 
         // 3. Map to Summaries (O(Entities))
-        let entities: { id: string; name: string; code?: string }[] = [];
+        let entities: (Doctor | Supplier | User)[] = [];
         if (activeTab === 'doctors') entities = doctors;
         else if (activeTab === 'suppliers') entities = suppliers;
         else if (activeTab === 'designers') entities = designers;
@@ -198,10 +198,13 @@ export default function Accounts() {
                 balance = totalCredit - totalDebit;
             }
 
+            // Fix: Extract code correctly based on entity type
+            const code = activeTab === 'doctors' ? (entity as Doctor).doctorCode : undefined;
+
             return {
                 id: entity.id,
                 name: entity.name,
-                code: entity.code,
+                code: code,
                 totalOrders: oStats.count,
                 totalDebit,
                 totalCredit,
