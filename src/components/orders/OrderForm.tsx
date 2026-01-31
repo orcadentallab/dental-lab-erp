@@ -179,6 +179,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             return;
         }
 
+        if (!selectedSupplier && workflowType === 'full') {
+            toastError('يرجى اختيار المعمل / المورد');
+            return;
+        }
+
         const invalidItems = items.filter(i => i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0).length === 0);
         if (invalidItems.length > 0) {
             toastError('يرجى إدخال أرقام الأسنان بشكل صحيح');
@@ -476,14 +481,27 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                     <option value="">اختر المصمم...</option>
                                     {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </select>
-                                <select title="Supplier (Split)" aria-label="Select Supplier for Split Workflow" className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
+                                <select
+                                    title="Supplier (Split)"
+                                    aria-label="Select Supplier for Split Workflow"
+                                    className={clsx("w-full p-2 bg-white border rounded-lg text-xs outline-none", !selectedSupplier ? "border-red-300" : "border-purple-100")}
+                                    value={selectedSupplier}
+                                    onChange={e => setSelectedSupplier(e.target.value)}
+                                >
                                     <option value="">اختر المعمل...</option>
                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
                         ) : (
-                            <select title="Supplier (Full)" aria-label="Select Supplier for Full Lab Workflow" className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}>
-                                <option value="">-- معمل داخلي (أفتراضي) --</option>
+                            <select
+                                title="Supplier (Full)"
+                                aria-label="Select Supplier for Full Lab Workflow"
+                                className={clsx("w-full p-2 bg-white border rounded-lg text-xs outline-none", !selectedSupplier ? "border-red-300 ring-1 ring-red-200" : "border-purple-100")}
+                                value={selectedSupplier}
+                                onChange={e => setSelectedSupplier(e.target.value)}
+                                required
+                            >
+                                <option value="">-- اختر المعمل / المورد --</option>
                                 {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                             </select>
                         )}
