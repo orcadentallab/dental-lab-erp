@@ -1,8 +1,8 @@
 [
   {
     "id": "TC001",
-    "title": "Login success with valid credentials and role-based access",
-    "description": "Verify that a user can log in with valid credentials and is granted access appropriate to their assigned role.",
+    "title": "Valid login redirects to appropriate dashboard",
+    "description": "Verify that a user with correct credentials can successfully log in and is redirected to their respective dashboard with the user identity displayed in the header.",
     "category": "functional",
     "priority": "High",
     "steps": [
@@ -20,18 +20,18 @@
       },
       {
         "type": "assertion",
-        "description": "Confirm login is successful and the user is directed to the main dashboard"
+        "description": "Confirm user is redirected to the correct dashboard for their role"
       },
       {
         "type": "assertion",
-        "description": "Verify the features and permissions available match the user's role"
+        "description": "Verify user identity information is shown in the header"
       }
     ]
   },
   {
     "id": "TC002",
-    "title": "Login failure with invalid credentials",
-    "description": "Ensure the system denies access and shows an error message when a user attempts to login with invalid credentials.",
+    "title": "Invalid login shows error message",
+    "description": "Ensure that login fails gracefully when incorrect credentials are provided, displaying an appropriate error notification.",
     "category": "error handling",
     "priority": "High",
     "steps": [
@@ -41,7 +41,7 @@
       },
       {
         "type": "action",
-        "description": "Enter invalid username or password"
+        "description": "Input invalid username or password"
       },
       {
         "type": "action",
@@ -49,181 +49,135 @@
       },
       {
         "type": "assertion",
-        "description": "Confirm login is unsuccessful and an appropriate error message is displayed"
+        "description": "Verify login is prevented and an error message is shown"
       }
     ]
   },
   {
     "id": "TC003",
-    "title": "Main dashboard displays accurate lab performance metrics and alerts",
-    "description": "Validate that the dashboard shows up-to-date and accurate statistics about lab performance, including order alerts (e.g., Late, Rejected) and workload summaries.",
-    "category": "functional",
+    "title": "Role-based UI restrictions prevent unauthorized actions",
+    "description": "Validate that UI elements and actions restricted to certain roles (like Accept/Reject order) are hidden or disabled for users without the required permissions.",
+    "category": "security",
     "priority": "High",
     "steps": [
       {
         "type": "action",
-        "description": "Log in with valid credentials"
+        "description": "Log in as a user without admin, designer, or lab role"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to orders page"
       },
       {
         "type": "assertion",
-        "description": "Verify that lab performance metrics are displayed on the dashboard"
+        "description": "Check that Accept and Reject buttons on orders are not visible or disabled"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to perform restricted API calls (if possible)"
       },
       {
         "type": "assertion",
-        "description": "Verify that order alerts (Late, Rejected, etc.) are visible and accurate based on actual order data"
-      },
-      {
-        "type": "assertion",
-        "description": "Verify workload summary for laboratory staff is shown correctly"
+        "description": "Verify that backend prevents forbidden actions"
       }
     ]
   },
   {
     "id": "TC004",
-    "title": "Create a new dental lab order successfully",
-    "description": "Test that a user can create a new dental lab order with valid input data and the order is saved correctly.",
+    "title": "Dashboard displays real-time statistics and alerts accurately",
+    "description": "Ensure that dashboard cards display up-to-date statistics, workload indicators, and alerts related to rejected, overdue, and pending approval orders.",
     "category": "functional",
     "priority": "High",
     "steps": [
       {
         "type": "action",
-        "description": "Log in and navigate to the order management page"
+        "description": "Log in as authorized user"
       },
       {
         "type": "action",
-        "description": "Open the new order creation form"
-      },
-      {
-        "type": "action",
-        "description": "Fill in valid order details including patient info, procedure, and assigned staff"
-      },
-      {
-        "type": "action",
-        "description": "Submit the order form"
+        "description": "Navigate to the dashboard page"
       },
       {
         "type": "assertion",
-        "description": "Verify the order is created and saved to the system"
+        "description": "Verify statistics cards show correct count values consistent with backend data"
       },
       {
         "type": "assertion",
-        "description": "Check the new order appears in the order list with correct details"
+        "description": "Check alerts section correctly lists rejected, overdue, and pending approval orders"
+      },
+      {
+        "type": "action",
+        "description": "Trigger a change in order status to a rejected state"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm dashboard alerts update accordingly without refresh"
       }
     ]
   },
   {
     "id": "TC005",
-    "title": "Update an existing dental lab order",
-    "description": "Ensure users can update details of an existing order and that changes persist correctly.",
+    "title": "Orders list loads with pagination, filtering, and search",
+    "description": "Validate that the orders management list page loads correctly, supports pagination, filtering by status and other parameters, and search functionality returns accurate results.",
     "category": "functional",
     "priority": "High",
     "steps": [
       {
         "type": "action",
-        "description": "Log in and open the order management section"
-      },
-      {
-        "type": "action",
-        "description": "Select an existing order from the list"
-      },
-      {
-        "type": "action",
-        "description": "Edit one or more fields in the order form"
-      },
-      {
-        "type": "action",
-        "description": "Submit the updated order"
+        "description": "Navigate to the orders page"
       },
       {
         "type": "assertion",
-        "description": "Verify the order details are updated in the system"
+        "description": "Check that orders are loaded and displayed with pagination controls"
+      },
+      {
+        "type": "action",
+        "description": "Apply filters such as status = 'Pending Review'"
       },
       {
         "type": "assertion",
-        "description": "Confirm the changes are reflected in the order list and any related reports"
+        "description": "Verify orders list updates to show only matching orders"
+      },
+      {
+        "type": "action",
+        "description": "Perform a search using order identifiers or doctor names"
+      },
+      {
+        "type": "assertion",
+        "description": "Check the search output contains only relevant orders"
+      },
+      {
+        "type": "action",
+        "description": "Navigate through multiple pages using pagination controls"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm new pages load correctly and pagination is consistent"
       }
     ]
   },
   {
     "id": "TC006",
-    "title": "Filter orders by status and user role",
-    "description": "Confirm the order management module allows users to filter orders based on status (e.g., Pending, Completed) and their user role, returning correct filtered results.",
+    "title": "Create, update, and delete an order",
+    "description": "Verify full CRUD lifecycle of orders including creating a new order, editing existing orders, and deleting orders with appropriate validations and updates shown in the UI.",
     "category": "functional",
-    "priority": "Medium",
+    "priority": "High",
     "steps": [
       {
         "type": "action",
-        "description": "Log in as a user with a specific role"
+        "description": "Open new order form and enter valid order details"
       },
       {
         "type": "action",
-        "description": "Navigate to order management"
-      },
-      {
-        "type": "action",
-        "description": "Apply a filter to view orders by a specific status"
+        "description": "Submit the form to create the order"
       },
       {
         "type": "assertion",
-        "description": "Verify only orders matching the selected status are shown"
+        "description": "Verify new order appears in orders list"
       },
       {
         "type": "action",
-        "description": "Apply a filter that restricts orders visibility based on user role"
-      },
-      {
-        "type": "assertion",
-        "description": "Confirm the orders displayed respect the user's role permissions"
-      }
-    ]
-  },
-  {
-    "id": "TC007",
-    "title": "Add a new doctor profile successfully",
-    "description": "Test creation of a new doctor profile with valid data and verify it persists correctly in the system.",
-    "category": "functional",
-    "priority": "Medium",
-    "steps": [
-      {
-        "type": "action",
-        "description": "Log in and navigate to doctor management"
-      },
-      {
-        "type": "action",
-        "description": "Open the doctor profile creation form"
-      },
-      {
-        "type": "action",
-        "description": "Input valid doctor details including name, contact info and preferences"
-      },
-      {
-        "type": "action",
-        "description": "Submit the new doctor profile form"
-      },
-      {
-        "type": "assertion",
-        "description": "Ensure the new doctor profile is saved and visible in the doctor list"
-      }
-    ]
-  },
-  {
-    "id": "TC008",
-    "title": "Edit an existing doctor profile and persist changes",
-    "description": "Verify users can update an existing doctor’s profile and preferences and that the updates are reflected properly.",
-    "category": "functional",
-    "priority": "Medium",
-    "steps": [
-      {
-        "type": "action",
-        "description": "Log in and access doctor management"
-      },
-      {
-        "type": "action",
-        "description": "Select an existing doctor profile"
-      },
-      {
-        "type": "action",
-        "description": "Modify doctor details and preferences"
+        "description": "Select an existing order and edit details"
       },
       {
         "type": "action",
@@ -231,281 +185,300 @@
       },
       {
         "type": "assertion",
-        "description": "Verify updates are persisted and displayed correctly in the system"
+        "description": "Check order details reflect updated data"
+      },
+      {
+        "type": "action",
+        "description": "Delete an order and confirm deletion"
+      },
+      {
+        "type": "assertion",
+        "description": "Ensure the order is removed from the list"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Add, save, and persist comments on orders",
+    "description": "Check that comments can be added to orders, saved successfully, and persist after page refresh or navigation away and back.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Open an order from the orders list"
+      },
+      {
+        "type": "action",
+        "description": "Add a new comment in the comments section"
+      },
+      {
+        "type": "action",
+        "description": "Save the comment"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify the new comment is visible immediately"
+      },
+      {
+        "type": "action",
+        "description": "Reload the order page"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm the comment remains visible after reload"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Order status lifecycle transitions including accept, reject, and delivery",
+    "description": "Validate proper transitions between order statuses from Pending Review through Accept, Reject, Adjustment requests, and Delivered, ensuring UI and backend consistency.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Locate an order in Pending Review status"
+      },
+      {
+        "type": "action",
+        "description": "Perform Accept action as an authorized user"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm status changes to Accepted and reflects in UI"
+      },
+      {
+        "type": "action",
+        "description": "Perform Reject action with reason"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm order moves to Rejected status and reason is recorded"
+      },
+      {
+        "type": "action",
+        "description": "Request adjustment on an order and verify status updates"
+      },
+      {
+        "type": "action",
+        "description": "Mark order as Delivered"
+      },
+      {
+        "type": "assertion",
+        "description": "Verify final Delivered status and absence from pending lists"
       }
     ]
   },
   {
     "id": "TC009",
-    "title": "Record a financial transaction and verify accuracy",
-    "description": "Ensure that financial transactions can be recorded accurately and the data is correct upon retrieval.",
+    "title": "Doctor management create and edit workflows",
+    "description": "Test the user interface and backend for creating new doctor records and editing existing ones including custom pricing, ensuring data is stored and reflected properly.",
     "category": "functional",
-    "priority": "High",
+    "priority": "Medium",
     "steps": [
       {
         "type": "action",
-        "description": "Log in with appropriate permissions and navigate to the financials module"
+        "description": "Navigate to Doctors management page"
       },
       {
         "type": "action",
-        "description": "Add a new financial transaction with valid details"
-      },
-      {
-        "type": "action",
-        "description": "Submit the transaction"
+        "description": "Create a new doctor with valid details and custom pricing"
       },
       {
         "type": "assertion",
-        "description": "Verify the transaction appears correctly in transaction records with accurate details"
+        "description": "Verify new doctor appears in the list with correct details"
+      },
+      {
+        "type": "action",
+        "description": "Select a doctor to edit details"
+      },
+      {
+        "type": "action",
+        "description": "Modify data and save changes"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm updated doctor information is displayed correctly"
       }
     ]
   },
   {
     "id": "TC010",
-    "title": "Manage expenses and confirm correct data persistence",
-    "description": "Validate users can add and update expenses in the financial module and that changes are maintained.",
+    "title": "Supplier management with custom pricing adjustments",
+    "description": "Validate the ability to add new suppliers, edit existing supplier details, and customize pricing rules with data persistence and accurate listing.",
     "category": "functional",
     "priority": "Medium",
     "steps": [
       {
         "type": "action",
-        "description": "Access the financial management section after login"
+        "description": "Navigated to the Suppliers page"
       },
       {
         "type": "action",
-        "description": "Create a new expense entry with required details"
-      },
-      {
-        "type": "action",
-        "description": "Save the expense data"
+        "description": "Add a supplier with necessary information and custom pricing"
       },
       {
         "type": "assertion",
-        "description": "Ensure the expense is listed with correct details in the expenses overview"
+        "description": "New supplier appears correctly in the list"
       },
       {
         "type": "action",
-        "description": "Edit an existing expense record"
+        "description": "Edit pricing details for an existing supplier"
       },
       {
         "type": "action",
-        "description": "Save the updated expense data"
+        "description": "Save changes"
       },
       {
         "type": "assertion",
-        "description": "Verify the system reflects the updated expense information"
+        "description": "Verify updated pricing is reflected in the supplier details"
       }
     ]
   },
   {
     "id": "TC011",
-    "title": "Generate and validate invoice details",
-    "description": "Test the invoice generation feature to ensure invoices are created properly with accurate transaction and billing data.",
+    "title": "Finance module transaction tracking and summary",
+    "description": "Verify that income and expense transactions can be viewed, filtered, and summarized correctly, including transaction details on the Finance page.",
     "category": "functional",
     "priority": "High",
     "steps": [
       {
         "type": "action",
-        "description": "Navigate to financials and locate the invoice generation section"
+        "description": "Navigate to Finance page"
+      },
+      {
+        "type": "assertion",
+        "description": "List all recent income and expense transactions"
       },
       {
         "type": "action",
-        "description": "Generate an invoice for selected transactions or orders"
+        "description": "Apply filters by date range and type (income/expense)"
       },
       {
         "type": "assertion",
-        "description": "Verify the invoice contains correct client information, itemized charges, totals, and dates"
+        "description": "Verify filtered transactions correspond to criteria"
+      },
+      {
+        "type": "action",
+        "description": "Select a transaction to view detailed information"
       },
       {
         "type": "assertion",
-        "description": "Check the invoice can be saved and retrieved intact"
+        "description": "Correct transaction details are displayed"
       }
     ]
   },
   {
     "id": "TC012",
-    "title": "Add a new system user with role assignment",
-    "description": "Ensure that an admin can create a new user and assign the appropriate role which dictates their permissions in the system.",
+    "title": "Account statements display for doctors and suppliers",
+    "description": "Check that account statements for doctors and suppliers show comprehensive financial overviews including balances, transactions, and summaries.",
     "category": "functional",
-    "priority": "High",
+    "priority": "Medium",
     "steps": [
       {
         "type": "action",
-        "description": "Log in as admin and navigate to user management"
+        "description": "Open the Accounts page"
       },
       {
         "type": "action",
-        "description": "Open new user creation form"
-      },
-      {
-        "type": "action",
-        "description": "Fill in user details and assign a role"
-      },
-      {
-        "type": "action",
-        "description": "Submit to create the new user"
+        "description": "Select a doctor to view account statement"
       },
       {
         "type": "assertion",
-        "description": "Verify the new user appears in the user list with the assigned role"
+        "description": "Verify that detailed financial information is shown accurately"
+      },
+      {
+        "type": "action",
+        "description": "Switch to supplier account statements and repeat verification"
       }
     ]
   },
   {
     "id": "TC013",
-    "title": "Modify existing user roles and verify access changes",
-    "description": "Verify that when an admin changes a user's role, the system updates the user's permissions and enforces the new role appropriately.",
+    "title": "Analytics and AI-powered insights update accurately",
+    "description": "Validate that analytics pages display reports and charts based on current data and AI insights update accordingly to reflect new input data.",
     "category": "functional",
-    "priority": "High",
+    "priority": "Medium",
     "steps": [
       {
         "type": "action",
-        "description": "Log in as admin and access the user management page"
-      },
-      {
-        "type": "action",
-        "description": "Select an existing user"
-      },
-      {
-        "type": "action",
-        "description": "Change the user's role and save changes"
+        "description": "Navigate to Analytics page"
       },
       {
         "type": "assertion",
-        "description": "Confirm changes are saved and displayed correctly"
+        "description": "Verify that order and revenue reports display correct and current data"
       },
       {
         "type": "action",
-        "description": "Log in as the updated user"
+        "description": "Navigate to AI Analytics page"
       },
       {
         "type": "assertion",
-        "description": "Verify the user’s access and functionality align with the new role"
+        "description": "Check AI-powered insights appear and update after data changes"
+      },
+      {
+        "type": "action",
+        "description": "Modify order data and refresh analytics"
+      },
+      {
+        "type": "assertion",
+        "description": "Confirm analytics and AI insights reflect updated data"
       }
     ]
   },
   {
     "id": "TC014",
-    "title": "Remove a system user and ensure access revocation",
-    "description": "Test that admins can delete a system user and that the deleted user can no longer log in or access the system.",
+    "title": "Designer-specific dashboard shows targeted workflow data",
+    "description": "Ensure that users with the designer role see a specialized dashboard with relevant workload indicators and quick actions tailored for design-related tasks.",
     "category": "functional",
-    "priority": "High",
+    "priority": "Medium",
     "steps": [
       {
         "type": "action",
-        "description": "Log in as admin and navigate to the user management interface"
+        "description": "Log in as a designer role user"
       },
       {
         "type": "action",
-        "description": "Delete an existing user"
+        "description": "Navigate to the Designer Dashboard page"
       },
       {
         "type": "assertion",
-        "description": "Confirm the user is removed from the user list"
-      },
-      {
-        "type": "action",
-        "description": "Attempt to log in with the deleted user's credentials"
+        "description": "Verify dashboard shows workflow efficiency statistics and relevant quick action buttons"
       },
       {
         "type": "assertion",
-        "description": "Verify login is denied and appropriate error message is displayed"
+        "description": "Confirm no unauthorized elements from other roles are present"
       }
     ]
   },
   {
     "id": "TC015",
-    "title": "Access restriction enforcement for unauthorized features",
-    "description": "Ensure that users cannot access features or data outside their role permissions regardless of URL manipulation or direct navigation attempts.",
-    "category": "security",
-    "priority": "High",
-    "steps": [
-      {
-        "type": "action",
-        "description": "Log in as a user with limited permissions"
-      },
-      {
-        "type": "action",
-        "description": "Attempt to access restricted modules or pages directly via URL"
-      },
-      {
-        "type": "assertion",
-        "description": "Verify access is denied and user is redirected appropriately with an error or no access message"
-      }
-    ]
-  },
-  {
-    "id": "TC016",
-    "title": "Dashboard displays correct data after backend data changes",
-    "description": "Test that after updating order or financial data in backend, the dashboard refreshes and displays the updated data accurately.",
+    "title": "Export utilities generate correct Excel files and print views",
+    "description": "Test that the export to Excel and print functionalities for orders and reports produce accurate, well-formatted output without errors.",
     "category": "functional",
     "priority": "Medium",
     "steps": [
       {
         "type": "action",
-        "description": "Log in and view dashboard"
+        "description": "Navigate to Orders or Analytics page"
       },
       {
         "type": "action",
-        "description": "Update some order statuses or financial records via backend or another interface"
-      },
-      {
-        "type": "action",
-        "description": "Refresh or revisit the dashboard"
+        "description": "Initiate export to Excel"
       },
       {
         "type": "assertion",
-        "description": "Verify that the dashboard metrics, alerts, and summaries reflect the updated backend data"
-      }
-    ]
-  },
-  {
-    "id": "TC017",
-    "title": "Handle missing or incomplete input gracefully in order creation",
-    "description": "Verify that the order creation form validates input fields and shows appropriate error messages for missing or invalid data.",
-    "category": "error handling",
-    "priority": "High",
-    "steps": [
-      {
-        "type": "action",
-        "description": "Navigate to order creation form"
+        "description": "Download completes and Excel file opens with correct data and formatting"
       },
       {
         "type": "action",
-        "description": "Leave required fields empty or enter invalid data"
-      },
-      {
-        "type": "action",
-        "description": "Submit the order form"
+        "description": "Initiate print preview"
       },
       {
         "type": "assertion",
-        "description": "Verify that validation errors are shown and the form is not submitted"
-      }
-    ]
-  },
-  {
-    "id": "TC018",
-    "title": "System maintains role-based access after user session expiration and re-login",
-    "description": "Verify that when a user's session expires, upon re-login the system enforces the user’s role permissions correctly.",
-    "category": "security",
-    "priority": "Medium",
-    "steps": [
-      {
-        "type": "action",
-        "description": "Log in as a user with role-based restrictions"
-      },
-      {
-        "type": "action",
-        "description": "Expire the user's session manually or wait"
-      },
-      {
-        "type": "action",
-        "description": "Log in again with the same user credentials"
-      },
-      {
-        "type": "assertion",
-        "description": "Verify that the user sees features and data appropriate to their role after re-login"
+        "description": "Printed view displays all data correctly formatted and legible"
       }
     ]
   }

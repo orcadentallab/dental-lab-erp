@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
-import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck } from 'lucide-react';
+import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 
@@ -9,13 +9,54 @@ interface StatementItem {
     id: string;
     date: string;
     description: string;
-    type: 'debit' | 'credit';
+    type: 'debit' | 'credit' | 'opening';
     amount: number;
     details?: string;
     status?: string;
+    runningBalance?: number;
 }
 
-// Interface EntitySummary removed
+// Time filter presets
+type TimeFilter = 'week' | 'month' | '3months' | 'year' | 'all';
+
+// Sorting
+type SortField = 'name' | 'code' | 'totalOrders' | 'totalSales' | 'totalCredit' | 'balance';
+type SortDirection = 'asc' | 'desc';
+
+const getDateRangeFromFilter = (filter: TimeFilter): { start: string; end: string } => {
+    const today = new Date();
+    const end = today.toISOString().split('T')[0];
+    let start = '';
+
+    switch (filter) {
+        case 'week':
+            const weekAgo = new Date(today);
+            weekAgo.setDate(weekAgo.getDate() - 7);
+            start = weekAgo.toISOString().split('T')[0];
+            break;
+        case 'month':
+            const monthAgo = new Date(today);
+            monthAgo.setMonth(monthAgo.getMonth() - 1);
+            start = monthAgo.toISOString().split('T')[0];
+            break;
+        case '3months':
+            const threeMonthsAgo = new Date(today);
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+            start = threeMonthsAgo.toISOString().split('T')[0];
+            break;
+        case 'year':
+            const yearAgo = new Date(today);
+            yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+            start = yearAgo.toISOString().split('T')[0];
+            break;
+        case 'all':
+        default:
+            start = '';
+            break;
+    }
+
+    return { start, end: filter === 'all' ? '' : end };
+};
 
 export default function Accounts() {
     const { user } = useAuth();
@@ -38,11 +79,14 @@ export default function Accounts() {
         return '';
     });
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
 
     // Options
     const [showAllOrders] = useState(false);
     const [hideZeroBalance, setHideZeroBalance] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [sortField, setSortField] = useState<SortField>('balance');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
     // Data
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -51,6 +95,13 @@ export default function Accounts() {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
     const [error, setError] = useState<string | null>(null);
+
+    // Handle time filter changes
+    const handleTimeFilterChange = (filter: TimeFilter) => {
+        setTimeFilter(filter);
+        const range = getDateRangeFromFilter(filter);
+        setDateRange(range);
+    };
 
     useEffect(() => {
         const loadData = async () => {
@@ -64,9 +115,10 @@ export default function Accounts() {
                 setDoctors(docs);
                 setSuppliers(sups);
                 setDesigners(users.filter(u => u.role === 'designer'));
-            } catch (error: any) {
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
                 console.error('Error loading entities:', error);
-                setError(`فشل تحميل البيانات الأساسية: ${error.message || 'خطأ غير معروف'}`);
+                setError(`فشل تحميل البيانات الأساسية: ${errorMessage}`);
             }
 
             // 2. Load Financial Data (Heavy)
@@ -77,9 +129,10 @@ export default function Accounts() {
                 ]);
                 setOrders(ords);
                 setTransactions(txs);
-            } catch (error: any) {
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
                 console.error('Error loading financial data:', error);
-                setError(`فشل تحميل البيانات المالية: ${error.message || 'خطأ غير معروف'}`);
+                setError(`فشل تحميل البيانات المالية: ${errorMessage}`);
             }
         };
         loadData();
@@ -95,21 +148,15 @@ export default function Accounts() {
         const allTransactions = transactions;
 
         // 1. Pre-aggregate Orders by Entity ID (O(Orders))
-        const orderStats = new Map<string, { totalDebit: number; totalCredit: number; count: number; lastDate: string }>();
+        const orderStats = new Map<string, { totalDebit: number; totalCredit: number; count: number; lastDate: string; totalSales: number }>();
         const getStats = (id: string) => {
-            if (!orderStats.has(id)) orderStats.set(id, { totalDebit: 0, totalCredit: 0, count: 0, lastDate: '' });
+            if (!orderStats.has(id)) orderStats.set(id, { totalDebit: 0, totalCredit: 0, count: 0, lastDate: '', totalSales: 0 });
             return orderStats.get(id)!;
         };
 
         for (const o of allOrders) {
             if (activeTab === 'doctors' && o.doctorId) {
                 if ((o.status as string) === 'Rejected') continue;
-                // For doctors, we only care about delivered/completed for debit, but logic says:
-                // debit = totalPrice if not rejected.
-                // Actually original logic: if (activeTab === 'doctors') ... filter: (showAllOrders || status != Rejected) AND (showAll || ['Delivered'...].includes(status))
-                // Then totalDebit = sum(totalPrice)
-
-                // Let's match original logic EXACTLY but optimized.
                 const isRelevant = (showAllOrders || o.status !== 'Rejected') &&
                     (showAllOrders || ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase()));
 
@@ -117,10 +164,10 @@ export default function Accounts() {
                     const stats = getStats(o.doctorId);
                     stats.count++;
                     stats.totalDebit += o.totalPrice || 0;
+                    stats.totalSales += o.totalPrice || 0;
                     if (o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
                 }
             } else if (activeTab === 'suppliers' && o.supplierId) {
-                // Logic: status != Rejected AND (showAll || status == Delivered)
                 const isRelevant = o.status !== 'Rejected' &&
                     (showAllOrders || (o.status || '').toLowerCase() === 'delivered');
 
@@ -130,10 +177,9 @@ export default function Accounts() {
                     let cost = o.cost || 0;
                     if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
                     stats.totalCredit += cost;
-                    // Note: No date tracking in original supplier logic? Original code had lastTransaction: '' for suppliers.
+                    stats.totalSales += cost;
                 }
             } else if (activeTab === 'designers' && o.designerId) {
-                // Logic: workflowType=split AND status!=Rejected AND (showAll || status == Delivered)
                 const isRelevant = o.workflowType === 'split' &&
                     o.status !== 'Rejected' &&
                     (showAllOrders || (o.status || '').toLowerCase() === 'delivered');
@@ -142,6 +188,7 @@ export default function Accounts() {
                     const stats = getStats(o.designerId);
                     stats.count++;
                     stats.totalCredit += (o.designPrice || 0);
+                    stats.totalSales += (o.designPrice || 0);
                 }
             }
         }
@@ -174,7 +221,7 @@ export default function Accounts() {
         else if (activeTab === 'designers') entities = designers;
 
         return entities.map(entity => {
-            const oStats = orderStats.get(entity.id) || { totalDebit: 0, totalCredit: 0, count: 0, lastDate: '' };
+            const oStats = orderStats.get(entity.id) || { totalDebit: 0, totalCredit: 0, count: 0, lastDate: '', totalSales: 0 };
             const tStats = txStats.get(entity.id) || { totalDebit: 0, totalCredit: 0, lastDate: '' };
 
             let totalDebit = 0;
@@ -188,17 +235,15 @@ export default function Accounts() {
                 balance = totalDebit - totalCredit;
                 lastTransaction = oStats.lastDate > tStats.lastDate ? oStats.lastDate : tStats.lastDate;
             } else if (activeTab === 'suppliers') {
-                totalDebit = tStats.totalDebit; // We paid them
-                totalCredit = oStats.totalCredit; // Cost of work
-                // Balance = Credit (Work Cost) - Debit (Paid) -> If +, we owe them
+                totalDebit = tStats.totalDebit;
+                totalCredit = oStats.totalCredit;
                 balance = totalCredit - totalDebit;
             } else if (activeTab === 'designers') {
-                totalDebit = tStats.totalDebit; // We paid them
-                totalCredit = oStats.totalCredit; // Work done
+                totalDebit = tStats.totalDebit;
+                totalCredit = oStats.totalCredit;
                 balance = totalCredit - totalDebit;
             }
 
-            // Fix: Extract code correctly based on entity type
             const code = activeTab === 'doctors' ? (entity as Doctor).doctorCode : undefined;
 
             return {
@@ -206,6 +251,7 @@ export default function Accounts() {
                 name: entity.name,
                 code: code,
                 totalOrders: oStats.count,
+                totalSales: oStats.totalSales,
                 totalDebit,
                 totalCredit,
                 balance,
@@ -216,7 +262,6 @@ export default function Accounts() {
     }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, showAllOrders]);
 
     // -- FETCH FULL DETAIL DATA ON SELECTION --
-    // This ensures that when we print/view a statement, we have EVERYTHING, not just the truncated list.
     const [detailOrders, setDetailOrders] = useState<Order[]>([]);
     const [detailTransactions, setDetailTransactions] = useState<Transaction[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
@@ -240,11 +285,83 @@ export default function Accounts() {
         }
     }, [viewMode, selectedEntityId, activeTab]);
 
-    // Helper: Logic for Individual Statement (Uses detail state if available, else falls back to global)
-    const individualStatement = useMemo(() => {
-        if (viewMode !== 'detail' || !selectedEntityId) return { items: [], totals: { totalDebit: 0, totalCredit: 0, balance: 0 } };
+    // Calculate opening balance (balance before the filtered period)
+    const calculateOpeningBalance = useMemo(() => {
+        if (!dateRange.start || !selectedEntityId) return 0;
 
-        // Use the dedicated Detail arrays if loaded, otherwise fallback to the global truncated list (temporary display)
+        const relevantOrders = detailOrders.length > 0 ? detailOrders : orders;
+        const relevantTransactions = detailTransactions.length > 0 ? detailTransactions : transactions;
+
+        let openingDebit = 0;
+        let openingCredit = 0;
+
+        if (activeTab === 'doctors') {
+            // Orders before the period
+            const beforeOrders = relevantOrders.filter(o => {
+                if (o.doctorId !== selectedEntityId) return false;
+                const orderDate = o.deliveryDate || o.createdAt.split('T')[0];
+                return orderDate < dateRange.start && o.status !== 'Rejected' &&
+                    ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
+            });
+            openingDebit = beforeOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+
+            // Transactions before the period
+            const beforeTx = relevantTransactions.filter(t =>
+                (t.entityType === 'doctor' || !t.entityType) &&
+                t.entityId === selectedEntityId &&
+                t.type === 'income' &&
+                t.date.split('T')[0] < dateRange.start
+            );
+            openingCredit = beforeTx.reduce((sum, t) => sum + t.amount, 0);
+
+            return openingDebit - openingCredit;
+        } else if (activeTab === 'suppliers') {
+            const beforeOrders = relevantOrders.filter(o => {
+                if (o.supplierId !== selectedEntityId) return false;
+                const orderDate = o.deliveryDate || o.createdAt.split('T')[0];
+                return orderDate < dateRange.start && o.status !== 'Rejected' && o.status === 'Delivered';
+            });
+            openingCredit = beforeOrders.reduce((sum, o) => {
+                let cost = o.cost || 0;
+                if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
+                return sum + cost;
+            }, 0);
+
+            const beforeTx = relevantTransactions.filter(t =>
+                (t.entityType === 'supplier' || !t.entityType) &&
+                t.entityId === selectedEntityId &&
+                t.type === 'expense' &&
+                t.date.split('T')[0] < dateRange.start
+            );
+            openingDebit = beforeTx.reduce((sum, t) => sum + t.amount, 0);
+
+            return openingCredit - openingDebit;
+        } else if (activeTab === 'designers') {
+            const beforeOrders = relevantOrders.filter(o => {
+                if (o.designerId !== selectedEntityId) return false;
+                const orderDate = o.deliveryDate || o.createdAt.split('T')[0];
+                return orderDate < dateRange.start && o.workflowType === 'split' && o.status !== 'Rejected' && o.status === 'Delivered';
+            });
+            openingCredit = beforeOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
+
+            const beforeTx = relevantTransactions.filter(t =>
+                (t.entityType === 'designer' || !t.entityType) &&
+                t.entityId === selectedEntityId &&
+                t.type === 'expense' &&
+                t.date.split('T')[0] < dateRange.start
+            );
+            openingDebit = beforeTx.reduce((sum, t) => sum + t.amount, 0);
+
+            return openingCredit - openingDebit;
+        }
+
+        return 0;
+    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions]);
+
+    // Helper: Logic for Individual Statement
+    const individualStatement = useMemo(() => {
+        if (viewMode !== 'detail' || !selectedEntityId) return { items: [], totals: { totalDebit: 0, totalCredit: 0, balance: 0, openingBalance: 0 } };
+
         const relevantOrders = detailOrders.length > 0 ? detailOrders : orders;
         const relevantTransactions = detailTransactions.length > 0 ? detailTransactions : transactions;
 
@@ -268,7 +385,11 @@ export default function Accounts() {
                 status: o.status
             }));
 
-            const docTx = relevantTransactions.filter(t => t.entityType === 'doctor' && t.entityId === selectedEntityId && t.type === 'income');
+            const docTx = relevantTransactions.filter(t =>
+                (t.entityType === 'doctor' || !t.entityType) &&
+                t.entityId === selectedEntityId &&
+                t.type === 'income'
+            );
             items = [...items, ...docTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
@@ -290,7 +411,11 @@ export default function Accounts() {
                 };
             });
 
-            const supTx = relevantTransactions.filter(t => t.entityType === 'supplier' && t.entityId === selectedEntityId && t.type === 'expense');
+            const supTx = relevantTransactions.filter(t =>
+                (t.entityType === 'supplier' || !t.entityType) &&
+                t.entityId === selectedEntityId &&
+                t.type === 'expense'
+            );
             items = [...items, ...supTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
@@ -308,7 +433,11 @@ export default function Accounts() {
                 amount: o.designPrice || 0
             }));
 
-            const desTx = relevantTransactions.filter(t => t.entityType === 'designer' && t.entityId === selectedEntityId && t.type === 'expense');
+            const desTx = relevantTransactions.filter(t =>
+                (t.entityType === 'designer' || !t.entityType) &&
+                t.entityId === selectedEntityId &&
+                t.type === 'expense'
+            );
             items = [...items, ...desTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
@@ -323,42 +452,139 @@ export default function Accounts() {
 
         items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+        // Calculate running balance
+        let runningBalance = dateRange.start ? calculateOpeningBalance : 0;
+        items = items.map(item => {
+            if (activeTab === 'doctors') {
+                runningBalance += item.type === 'debit' ? item.amount : -item.amount;
+            } else {
+                runningBalance += item.type === 'credit' ? item.amount : -item.amount;
+            }
+            return { ...item, runningBalance };
+        });
+
         const totalDebit = items.filter(i => i.type === 'debit').reduce((sum, i) => sum + i.amount, 0);
         const totalCredit = items.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
-        const balance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
+        const periodBalance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
+        const finalBalance = (dateRange.start ? calculateOpeningBalance : 0) + periodBalance;
 
-        return { items, totals: { totalDebit, totalCredit, balance } };
-    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, detailOrders, detailTransactions]);
+        return {
+            items,
+            totals: {
+                totalDebit,
+                totalCredit,
+                balance: finalBalance,
+                openingBalance: dateRange.start ? calculateOpeningBalance : 0
+            }
+        };
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, detailOrders, detailTransactions, calculateOpeningBalance]);
 
 
     const handlePrint = () => window.print();
 
     // -- RENDER HELPERS --
 
-    const filteredSummary = summaryData.filter(item => {
-        if (hideZeroBalance && item.balance === 0) return false;
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
-            return item.name.toLowerCase().includes(q) || item.code?.toLowerCase().includes(q);
+    const filteredSummary = useMemo(() => {
+        let result = summaryData.filter(item => {
+            if (hideZeroBalance && item.balance === 0) return false;
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                return item.name.toLowerCase().includes(q) || item.code?.toLowerCase().includes(q);
+            }
+            return true;
+        });
+
+        // Apply sorting
+        result = [...result].sort((a, b) => {
+            let aValue: string | number = 0;
+            let bValue: string | number = 0;
+
+            switch (sortField) {
+                case 'name':
+                    aValue = a.name.toLowerCase();
+                    bValue = b.name.toLowerCase();
+                    break;
+                case 'code':
+                    aValue = (a.code || '').toLowerCase();
+                    bValue = (b.code || '').toLowerCase();
+                    break;
+                case 'totalOrders':
+                    aValue = a.totalOrders;
+                    bValue = b.totalOrders;
+                    break;
+                case 'totalSales':
+                    aValue = a.totalSales;
+                    bValue = b.totalSales;
+                    break;
+                case 'totalCredit':
+                    aValue = a.totalCredit;
+                    bValue = b.totalCredit;
+                    break;
+                case 'balance':
+                    aValue = Math.abs(a.balance);
+                    bValue = Math.abs(b.balance);
+                    break;
+            }
+
+            if (typeof aValue === 'string' && typeof bValue === 'string') {
+                return sortDirection === 'asc'
+                    ? aValue.localeCompare(bValue, 'ar')
+                    : bValue.localeCompare(aValue, 'ar');
+            }
+
+            return sortDirection === 'asc'
+                ? (aValue as number) - (bValue as number)
+                : (bValue as number) - (aValue as number);
+        });
+
+        return result;
+    }, [summaryData, hideZeroBalance, searchQuery, sortField, sortDirection]);
+
+    // Handle sort
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortDirection('desc');
         }
-        return true;
-    });
+    };
+
+    // Sort indicator component
+    const SortIndicator = ({ field }: { field: SortField }) => {
+        if (sortField !== field) {
+            return <ArrowUpDown size={14} className="text-gray-300 mr-1" />;
+        }
+        return sortDirection === 'asc'
+            ? <ChevronUp size={14} className="text-blue-600 mr-1" />
+            : <ChevronDown size={14} className="text-blue-600 mr-1" />;
+    };
 
     const totalEquity = filteredSummary.reduce((sum, item) => sum + item.balance, 0);
+    const totalSalesAmount = filteredSummary.reduce((sum, item) => sum + item.totalSales, 0);
+    const totalPayments = filteredSummary.reduce((sum, item) => sum + item.totalCredit, 0);
+
+    // Get selected entity name
+    const getSelectedEntityName = () => {
+        if (activeTab === 'doctors') return doctors.find(d => d.id === selectedEntityId)?.name;
+        if (activeTab === 'suppliers') return suppliers.find(s => s.id === selectedEntityId)?.name;
+        return designers.find(u => u.id === selectedEntityId)?.name;
+    };
 
     // -- VIEW: SUMMARY GRID --
     if (viewMode === 'summary') {
         return (
             <div className="space-y-6">
                 {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl" role="alert">
                         <strong className="font-bold">تنبيه! </strong>
                         <span className="block sm:inline">{error}</span>
                     </div>
                 )}
-                {/* Modern Pill Navigation */}
-                <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <nav className="flex bg-gray-100/50 p-1.5 rounded-xl w-full md:w-auto overflow-x-auto">
+
+                {/* Modern Navigation */}
+                <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col lg:flex-row justify-between items-center gap-4">
+                    <nav className="flex bg-gray-50 p-1.5 rounded-xl w-full lg:w-auto overflow-x-auto">
                         {([
                             { id: 'doctors', label: 'العملاء', icon: UserIcon },
                             { id: 'suppliers', label: 'الموردين', icon: Truck },
@@ -368,9 +594,9 @@ export default function Accounts() {
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={clsx(
-                                    "px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap",
+                                    "px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all duration-200 whitespace-nowrap",
                                     activeTab === tab.id
-                                        ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5 scale-[1.02]"
+                                        ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5"
                                         : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
                                 )}
                             >
@@ -380,127 +606,227 @@ export default function Accounts() {
                         ))}
                     </nav>
 
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                        <div className="relative flex-1 md:flex-initial">
+                    <div className="flex items-center gap-3 w-full lg:w-auto">
+                        <div className="relative flex-1 lg:flex-initial lg:w-64">
                             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
                                 type="text"
-                                placeholder="بحث..."
+                                placeholder="بحث بالاسم أو الكود..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-blue-100 text-sm font-medium"
+                                className="w-full pl-4 pr-10 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-300 text-sm font-medium transition-all"
                             />
                         </div>
                         <button
                             onClick={() => setHideZeroBalance(!hideZeroBalance)}
                             className={clsx(
-                                "p-2.5 rounded-xl border transition-all",
+                                "p-2.5 rounded-xl border transition-all flex items-center gap-2",
                                 hideZeroBalance ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-white border-gray-200 text-gray-400 hover:bg-gray-50"
                             )}
                             title="إخفاء الرصيد الصفري"
                             aria-label="Toggle zero balance visibility"
                         >
-                            <Filter size={20} />
+                            <Filter size={18} />
+                            <span className="hidden sm:inline text-sm font-medium">إخفاء الصفري</span>
                         </button>
                         {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
                             <button
                                 onClick={() => {
                                     exportToExcel(
-                                        filteredSummary.map(item => ({ 'الاسم': item.name, 'الرصيد': item.balance })),
+                                        filteredSummary.map(item => ({
+                                            'الاسم': item.name,
+                                            'الكود': item.code || '-',
+                                            'عدد الطلبات': item.totalOrders,
+                                            'إجمالي التعاملات': item.totalSales,
+                                            'المدفوعات': item.totalCredit,
+                                            'الرصيد': item.balance
+                                        })),
                                         `accounts_${activeTab}`,
                                         activeTab
                                     );
                                 }}
-                                className="p-2.5 bg-green-50 text-green-600 border border-green-100 rounded-xl hover:bg-green-100 transition-colors"
+                                className="p-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl hover:bg-emerald-100 transition-colors flex items-center gap-2"
                                 title="تصدير إلى Excel"
                                 aria-label="Export to Excel"
                             >
-                                <FileSpreadsheet size={20} />
+                                <FileSpreadsheet size={18} />
+                                <span className="hidden sm:inline text-sm font-medium">تصدير</span>
                             </button>
                         )}
                     </div>
                 </div>
 
-                {/* Dashboard Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl text-white shadow-lg">
-                        <p className="text-slate-400 text-sm font-medium mb-1">إجمالي الأرصدة ({activeTab === 'doctors' ? 'لنا' : 'علينا'})</p>
-                        <h3 className="text-3xl font-bold tracking-tight">{Math.abs(totalEquity).toLocaleString()} <span className="text-sm font-normal text-slate-400">ج.م</span></h3>
-                        <div className="mt-4 flex gap-2">
-                            <span className={clsx("text-xs px-2 py-1 rounded-lg", totalEquity > 0 ? "bg-red-500/20 text-red-300" : "bg-emerald-500/20 text-emerald-300")}>
-                                {totalEquity > 0 ? (activeTab === 'doctors' ? 'مستحقات لنا' : 'ديون علينا') : 'رصيد إيجابي'}
+                {/* Summary Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 rounded-2xl text-white shadow-lg">
+                        <div className="flex items-center justify-between mb-3">
+                            <Wallet className="text-slate-400" size={24} />
+                            <span className={clsx("text-xs px-2 py-1 rounded-lg font-medium", totalEquity > 0 ? "bg-red-500/20 text-red-300" : "bg-emerald-500/20 text-emerald-300")}>
+                                {activeTab === 'doctors' ? (totalEquity > 0 ? 'مستحقات' : 'سلف') : (totalEquity > 0 ? 'مطلوب سداد' : 'مدفوع زيادة')}
                             </span>
                         </div>
+                        <p className="text-slate-400 text-sm font-medium mb-1">إجمالي الأرصدة</p>
+                        <h3 className="text-2xl font-bold tracking-tight">{Math.abs(totalEquity).toLocaleString()} <span className="text-sm font-normal text-slate-400">ج.م</span></h3>
                     </div>
-                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                        <p className="text-gray-500 text-sm font-medium mb-1">عدد الحسابات النشطة</p>
-                        <h3 className="text-3xl font-bold text-gray-800">{filteredSummary.filter(s => s.balance !== 0).length}</h3>
+
+                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                            <TrendingUp className="text-blue-500" size={24} />
+                        </div>
+                        <p className="text-gray-500 text-sm font-medium mb-1">إجمالي {activeTab === 'doctors' ? 'المبيعات' : 'المشتريات'}</p>
+                        <h3 className="text-2xl font-bold text-gray-800">{totalSalesAmount.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
                     </div>
-                    <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                        <p className="text-gray-500 text-sm font-medium mb-1">إجمالي الحركات</p>
-                        <h3 className="text-3xl font-bold text-gray-800">{filteredSummary.reduce((sum, item) => sum + item.totalOrders, 0)}</h3>
+
+                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                            <TrendingDown className="text-emerald-500" size={24} />
+                        </div>
+                        <p className="text-gray-500 text-sm font-medium mb-1">إجمالي {activeTab === 'doctors' ? 'التحصيلات' : 'المدفوعات'}</p>
+                        <h3 className="text-2xl font-bold text-gray-800">{totalPayments.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center justify-between mb-3">
+                            <UserIcon className="text-gray-400" size={24} />
+                        </div>
+                        <p className="text-gray-500 text-sm font-medium mb-1">حسابات نشطة</p>
+                        <h3 className="text-2xl font-bold text-gray-800">{filteredSummary.filter(s => s.balance !== 0).length} <span className="text-sm font-normal text-gray-400">من {filteredSummary.length}</span></h3>
                     </div>
                 </div>
 
-                {/* Modern Table View (Requested by User) */}
+                {/* Data Table */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <table className="w-full text-right">
-                        <thead className="bg-gray-50/50 text-gray-500 font-medium text-xs uppercase tracking-wider border-b border-gray-100">
-                            <tr>
-                                <th className="p-4 w-16">#</th>
-                                <th className="p-4">الاسم</th>
-                                <th className="p-4">كود</th>
-                                <th className="p-4">آخر نشاط</th>
-                                <th className="p-4">إجمالي الحركات</th>
-                                <th className="p-4">الرصيد الحالي</th>
-                                <th className="p-4">الحالة</th>
-                                <th className="p-4"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {filteredSummary.length === 0 ? (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-right">
+                            <thead className="bg-gray-50 text-gray-600 font-semibold text-sm border-b border-gray-100">
                                 <tr>
-                                    <td colSpan={8} className="p-8 text-center text-gray-400">لا توجد حسابات مطابقة للبحث</td>
-                                </tr>
-                            ) : (
-                                filteredSummary.map((item, idx) => (
-                                    <tr
-                                        key={item.id}
-                                        onClick={() => { setSelectedEntityId(item.id); setViewMode('detail'); }}
-                                        className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                                    <th className="p-4 w-14">#</th>
+                                    <th
+                                        className="p-4 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => handleSort('name')}
                                     >
-                                        <td className="p-4 text-gray-400 font-mono text-sm">{idx + 1}</td>
-                                        <td className="p-4 font-bold text-gray-800 flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                                {item.name.charAt(0)}
+                                        <div className="flex items-center gap-1">
+                                            <SortIndicator field="name" />
+                                            الاسم
+                                        </div>
+                                    </th>
+                                    {activeTab === 'doctors' && (
+                                        <th
+                                            className="p-4 w-24 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                            onClick={() => handleSort('code')}
+                                        >
+                                            <div className="flex items-center gap-1">
+                                                <SortIndicator field="code" />
+                                                الكود
                                             </div>
-                                            {item.name}
-                                        </td>
-                                        <td className="p-4 text-gray-500 text-sm font-mono">{item.code || '-'}</td>
-                                        <td className="p-4 text-gray-500 text-sm">
-                                            {item.lastTransaction ? new Date(item.lastTransaction).toLocaleDateString('en-GB') : '-'}
-                                        </td>
-                                        <td className="p-4 text-gray-600 font-medium">{item.totalOrders}</td>
-                                        <td className="p-4">
-                                            <span className={clsx("font-bold font-mono tracking-tight", item.balance > 0 ? "text-rose-600" : (item.balance < 0 ? "text-emerald-600" : "text-gray-400"))}>
-                                                {Math.abs(item.balance).toLocaleString()}
-                                            </span>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={clsx("text-xs font-bold px-2 py-1 rounded-md", item.balance > 0 ? "bg-rose-50 text-rose-600" : (item.balance < 0 ? "bg-emerald-50 text-emerald-600" : "bg-gray-100 text-gray-500"))}>
-                                                {item.balance === 0 ? 'خالص' : (item.balance > 0 ? (activeTab === 'doctors' ? 'مدين' : 'مستحق') : (activeTab === 'doctors' ? 'دائن' : 'مدفوع'))}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-left">
-                                            <button className="text-gray-400 group-hover:text-blue-600 transition-colors" aria-label="View Details" title="عرض التفاصيل">
-                                                <ArrowRight size={18} className="rtl:rotate-180" />
-                                            </button>
+                                        </th>
+                                    )}
+                                    <th
+                                        className="p-4 w-28 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => handleSort('totalOrders')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <SortIndicator field="totalOrders" />
+                                            الطلبات
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="p-4 w-36 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => handleSort('totalSales')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <SortIndicator field="totalSales" />
+                                            {activeTab === 'doctors' ? 'إجمالي المبيعات' : 'إجمالي التعاملات'}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="p-4 w-36 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => handleSort('totalCredit')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <SortIndicator field="totalCredit" />
+                                            {activeTab === 'doctors' ? 'المحصل' : 'المدفوع'}
+                                        </div>
+                                    </th>
+                                    <th
+                                        className="p-4 w-32 cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                                        onClick={() => handleSort('balance')}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            <SortIndicator field="balance" />
+                                            الرصيد
+                                        </div>
+                                    </th>
+                                    <th className="p-4 w-24">الحالة</th>
+                                    <th className="p-4 w-14"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-50">
+                                {filteredSummary.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={activeTab === 'doctors' ? 9 : 8} className="p-12 text-center text-gray-400">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Search size={32} className="text-gray-300" />
+                                                <span>لا توجد حسابات مطابقة للبحث</span>
+                                            </div>
                                         </td>
                                     </tr>
-                                ))
+                                ) : (
+                                    filteredSummary.map((item, idx) => (
+                                        <tr
+                                            key={item.id}
+                                            onClick={() => { setSelectedEntityId(item.id); setViewMode('detail'); }}
+                                            className="hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                                        >
+                                            <td className="p-4 text-gray-400 font-mono text-sm">{idx + 1}</td>
+                                            <td className="p-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-sm font-bold text-gray-500 group-hover:from-blue-100 group-hover:to-blue-50 group-hover:text-blue-600 transition-all border border-gray-200 group-hover:border-blue-200">
+                                                        {item.name.charAt(0)}
+                                                    </div>
+                                                    <span className="font-bold text-gray-800">{item.name}</span>
+                                                </div>
+                                            </td>
+                                            {activeTab === 'doctors' && <td className="p-4 text-gray-500 text-sm font-mono">{item.code || '-'}</td>}
+                                            <td className="p-4 text-gray-600 font-medium">{item.totalOrders}</td>
+                                            <td className="p-4 font-bold text-gray-700">{item.totalSales.toLocaleString()}</td>
+                                            <td className="p-4 font-medium text-emerald-600">{item.totalCredit.toLocaleString()}</td>
+                                            <td className="p-4">
+                                                <span className={clsx("font-bold font-mono text-lg", item.balance > 0 ? "text-rose-600" : (item.balance < 0 ? "text-emerald-600" : "text-gray-400"))}>
+                                                    {Math.abs(item.balance).toLocaleString()}
+                                                </span>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={clsx("text-xs font-bold px-2.5 py-1.5 rounded-lg", item.balance > 0 ? "bg-rose-50 text-rose-600 border border-rose-100" : (item.balance < 0 ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-gray-100 text-gray-500 border border-gray-200"))}>
+                                                    {item.balance === 0 ? 'خالص' : (item.balance > 0 ? (activeTab === 'doctors' ? 'مدين' : 'مستحق') : (activeTab === 'doctors' ? 'دائن' : 'مدفوع'))}
+                                                </span>
+                                            </td>
+                                            <td className="p-4">
+                                                <button className="text-gray-400 group-hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-blue-100" aria-label="View Details" title="عرض كشف الحساب">
+                                                    <ArrowRight size={18} className="rtl:rotate-180" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                            {filteredSummary.length > 0 && (
+                                <tfoot className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                                    <tr>
+                                        <td colSpan={activeTab === 'doctors' ? 4 : 3} className="p-4 text-gray-600">الإجمالي</td>
+                                        <td className="p-4 text-gray-800">{totalSalesAmount.toLocaleString()}</td>
+                                        <td className="p-4 text-emerald-600">{totalPayments.toLocaleString()}</td>
+                                        <td className="p-4">
+                                            <span className={clsx("font-mono text-lg", totalEquity > 0 ? "text-rose-600" : "text-emerald-600")}>
+                                                {Math.abs(totalEquity).toLocaleString()}
+                                            </span>
+                                        </td>
+                                        <td colSpan={2}></td>
+                                    </tr>
+                                </tfoot>
                             )}
-                        </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
             </div>
         );
@@ -508,185 +834,333 @@ export default function Accounts() {
 
     // -- VIEW: DETAIL STATEMENT --
     return (
-        <div className="space-y-6 max-w-5xl mx-auto">
-            {/* Action Header */}
-            <div className="flex items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 print:hidden">
+        <div className="space-y-4 max-w-5xl mx-auto">
+            {/* Print Styles */}
+            <style>{`
+                @media print {
+                    @page { 
+                        size: A4; 
+                        margin: 15mm 10mm; 
+                    }
+                    
+                    html, body, #root {
+                        height: auto !important;
+                        min-height: 100% !important;
+                        overflow: visible !important;
+                        background: white !important;
+                    }
+
+                    body > *:not(#root) { display: none !important; }
+                    nav, aside, header, .print-hidden { display: none !important; }
+
+                    div[class*="flex h-screen"], 
+                    div[class*="flex-1 flex flex-col"],
+                    main {
+                        display: block !important;
+                        height: auto !important;
+                        overflow: visible !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        background: white !important;
+                    }
+
+                    .max-w-5xl {
+                        max-width: none !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+
+                    .print-container {
+                        background: white !important;
+                        box-shadow: none !important;
+                        border: none !important;
+                        border-radius: 0 !important;
+                        padding: 0 !important;
+                    }
+
+                    table {
+                        font-size: 11px !important;
+                        page-break-inside: avoid;
+                    }
+
+                    thead {
+                        background: #1e293b !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+
+                    tfoot {
+                        background: #f1f5f9 !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+
+                    tr {
+                        page-break-inside: avoid;
+                    }
+
+                    .print-header {
+                        border-bottom: 2px solid #e2e8f0 !important;
+                        padding-bottom: 16px !important;
+                        margin-bottom: 16px !important;
+                    }
+
+                    .print-summary {
+                        background: #f8fafc !important;
+                        border: 1px solid #e2e8f0 !important;
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                }
+            `}</style>
+
+            {/* Action Header - Hidden in Print */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4 print-hidden">
                 <button onClick={() => setViewMode('summary')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
                     <ArrowRight size={20} />
                     <span>عودة للحسابات</span>
                 </button>
+
+                {/* Time Filter Pills */}
+                <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl overflow-x-auto">
+                    {([
+                        { id: 'week', label: 'أسبوع' },
+                        { id: 'month', label: 'شهر' },
+                        { id: '3months', label: '3 شهور' },
+                        { id: 'year', label: 'سنة' },
+                        { id: 'all', label: 'الكل' },
+                    ] as { id: TimeFilter; label: string }[]).map((filter) => (
+                        <button
+                            key={filter.id}
+                            onClick={() => handleTimeFilterChange(filter.id)}
+                            className={clsx(
+                                "px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap",
+                                timeFilter === filter.id
+                                    ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5"
+                                    : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                            )}
+                        >
+                            {filter.label}
+                        </button>
+                    ))}
+                </div>
+
                 <div className="flex gap-2">
-                    {/* Date Filters */}
-                    <input
-                        type="date"
-                        value={dateRange.start}
-                        onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                        className="bg-gray-50 border-none rounded-xl text-sm"
-                        aria-label="Start Date"
-                        title="تاريخ البداية"
-                    />
-                    <input
-                        type="date"
-                        value={dateRange.end}
-                        onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                        className="bg-gray-50 border-none rounded-xl text-sm"
-                        aria-label="End Date"
-                        title="تاريخ النهاية"
-                    />
                     <button
                         onClick={() => {
                             const fileName = `statement_${activeTab}_${selectedEntityId}_${new Date().toISOString().split('T')[0]}`;
+                            const exportData = [];
+
+                            // Add opening balance row if applicable
+                            if (dateRange.start && individualStatement.totals.openingBalance !== 0) {
+                                exportData.push({
+                                    date: dateRange.start,
+                                    description: 'رصيد سابق',
+                                    debit: individualStatement.totals.openingBalance > 0 ? individualStatement.totals.openingBalance : 0,
+                                    credit: individualStatement.totals.openingBalance < 0 ? Math.abs(individualStatement.totals.openingBalance) : 0,
+                                    runningBalance: individualStatement.totals.openingBalance,
+                                    details: 'الرصيد المرحل من الفترة السابقة'
+                                });
+                            }
+
+                            // Add statement items
+                            exportData.push(...individualStatement.items.map(i => ({
+                                date: i.date,
+                                description: i.description,
+                                debit: i.type === 'debit' ? i.amount : 0,
+                                credit: i.type === 'credit' ? i.amount : 0,
+                                runningBalance: i.runningBalance || 0,
+                                details: i.details || ''
+                            })));
+
                             exportToExcelWithHeaders(
-                                individualStatement.items.map(i => ({
-                                    date: i.date,
-                                    description: i.description,
-                                    debit: i.type === 'debit' ? i.amount : 0,
-                                    credit: i.type === 'credit' ? i.amount : 0,
-                                    details: i.details || ''
-                                })),
+                                exportData,
                                 {
                                     date: 'التاريخ',
                                     description: 'البيان',
                                     debit: 'مدين',
                                     credit: 'دائن',
+                                    runningBalance: 'الرصيد',
                                     details: 'التفاصيل'
                                 },
                                 fileName
                             );
                         }}
-                        className="bg-green-600 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 shadow-lg shadow-green-200"
+                        className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all"
                     >
                         <FileSpreadsheet size={18} /> تصدير
                     </button>
-                    <button onClick={handlePrint} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 shadow-lg shadow-slate-200">
-                        <Printer size={18} /> الطباعة
+                    <button onClick={handlePrint} className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-900 shadow-lg shadow-slate-200 transition-all">
+                        <Printer size={18} /> طباعة
                     </button>
-
-                    {/* Print Styles Fix */}
-                    <style>{`
-                        @media print {
-                            @page { size: auto; margin: 10mm; }
-                            
-                            /* Reset Page Constraints */
-                            html, body, #root {
-                                height: auto !important;
-                                min-height: 100% !important;
-                                overflow: visible !important;
-                                position: static !important;
-                            }
-
-                            /* Hide UI Elements */
-                            body > *:not(#root) { display: none !important; } /* Hide ambient background */
-                            nav, aside, .print\\:hidden { display: none !important; }
-
-                            /* Reset Layout Containers (DashboardLayout) */
-                            div[class*="flex h-screen"], 
-                            div[class*="flex-1 flex flex-col"],
-                            main {
-                                display: block !important;
-                                height: auto !important;
-                                overflow: visible !important;
-                                padding: 0 !important;
-                                margin: 0 !important;
-                            }
-
-                            /* Ensure Content Visibility */
-                            .max-w-5xl {
-                                max-width: none !important;
-                                margin: 0 !important;
-                            }
-                        }
-                    `}</style>
                 </div>
             </div>
 
-            {/* Invoice/Statement Paper */}
-            <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-100 min-h-[800px] print:shadow-none print:border-none print:p-0">
+            {/* Custom Date Range (shown when not using presets) */}
+            {timeFilter === 'all' && (
+                <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-gray-100 print-hidden">
+                    <Calendar size={18} className="text-gray-400" />
+                    <span className="text-sm text-gray-500 font-medium">تاريخ مخصص:</span>
+                    <input
+                        type="date"
+                        value={dateRange.start}
+                        onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                        className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2"
+                        aria-label="Start Date"
+                    />
+                    <span className="text-gray-400">إلى</span>
+                    <input
+                        type="date"
+                        value={dateRange.end}
+                        onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                        className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2"
+                        aria-label="End Date"
+                    />
+                </div>
+            )}
+
+            {/* Statement Paper */}
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 print-container">
                 {/* Letterhead */}
-                <div className="flex justify-between items-start border-b-2 border-slate-100 pb-8 mb-8">
+                <div className="flex justify-between items-start pb-6 mb-6 border-b-2 border-gray-100 print-header">
                     <div>
-                        <img src="/orca-logo.png" alt="ORCA" className="h-16 mb-4" />
-                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">كشف حساب</h1>
-                        <p className="text-slate-500 mt-1 font-medium bg-slate-50 inline-block px-3 py-1 rounded-lg">رقم مرجعي: #{selectedEntityId.slice(0, 8)}</p>
-                    </div>
-                    <div className="text-left space-y-1">
-                        <h2 className="text-xl font-bold text-slate-800">
-                            {activeTab === 'doctors'
-                                ? doctors.find(d => d.id === selectedEntityId)?.name
-                                : (activeTab === 'suppliers'
-                                    ? suppliers.find(s => s.id === selectedEntityId)?.name
-                                    : designers.find(u => u.id === selectedEntityId)?.name)
+                        <img src="/orca-logo.png" alt="ORCA Dental Lab" className="h-14 mb-3" />
+                        <h1 className="text-2xl font-black text-gray-900">كشف حساب تفصيلي</h1>
+                        <p className="text-gray-500 text-sm mt-1">
+                            {dateRange.start && dateRange.end
+                                ? `الفترة من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} إلى ${new Date(dateRange.end).toLocaleDateString('ar-EG')}`
+                                : dateRange.start
+                                    ? `من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} حتى الآن`
+                                    : 'جميع المعاملات'
                             }
-                        </h2>
-                        <p className="text-slate-500 text-sm">
-                            {activeTab === 'doctors' ? 'عميل (طبيب)' : (activeTab === 'suppliers' ? 'مورد خارجي' : 'مصمم')}
                         </p>
-                        <div className="pt-4">
-                            <p className="text-xs text-slate-400 uppercase tracking-wider font-bold">تاريخ التقرير</p>
-                            <p className="font-mono font-bold text-slate-700">{new Date().toLocaleDateString('ar-EG')}</p>
+                    </div>
+                    <div className="text-left">
+                        <h2 className="text-xl font-bold text-gray-800">{getSelectedEntityName()}</h2>
+                        <span className="inline-block bg-gray-100 text-gray-600 text-xs font-medium px-3 py-1 rounded-full mt-1">
+                            {activeTab === 'doctors' ? 'عميل' : (activeTab === 'suppliers' ? 'مورد' : 'مصمم')}
+                        </span>
+                        <div className="mt-4 text-sm">
+                            <p className="text-gray-400">تاريخ التقرير</p>
+                            <p className="font-bold text-gray-700">{new Date().toLocaleDateString('ar-EG')}</p>
                         </div>
                     </div>
                 </div>
 
-                {/* Balance Hero */}
-                <div className="bg-slate-50 rounded-2xl p-6 mb-8 flex justify-between items-center border border-slate-100">
-                    <div>
-                        <p className="text-slate-500 font-medium mb-1">الرصيد الحالي المستحق</p>
-                        <p className="text-xs text-slate-400">حتى تاريخ اليوم</p>
+                {/* Balance Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 print-summary p-4 rounded-xl bg-gray-50">
+                    {dateRange.start && (
+                        <div className="text-center p-3">
+                            <p className="text-xs text-gray-500 mb-1">الرصيد السابق</p>
+                            <p className={clsx("text-lg font-bold", individualStatement.totals.openingBalance > 0 ? "text-amber-600" : individualStatement.totals.openingBalance < 0 ? "text-blue-600" : "text-gray-400")}>
+                                {Math.abs(individualStatement.totals.openingBalance).toLocaleString()}
+                            </p>
+                        </div>
+                    )}
+                    <div className="text-center p-3">
+                        <p className="text-xs text-gray-500 mb-1">إجمالي المدين</p>
+                        <p className="text-lg font-bold text-rose-600">{individualStatement.totals.totalDebit.toLocaleString()}</p>
                     </div>
-                    <div className="text-right">
-                        <h2 className={clsx("text-4xl font-black tracking-tight dir-ltr", individualStatement.totals.balance > 0 ? "text-rose-600" : "text-emerald-600")}>
-                            {Math.abs(individualStatement.totals.balance).toLocaleString()} <span className="text-lg text-slate-400 font-normal">EGP</span>
-                        </h2>
-                        <p className="text-sm font-bold text-slate-500 mt-1">
+                    <div className="text-center p-3">
+                        <p className="text-xs text-gray-500 mb-1">إجمالي الدائن</p>
+                        <p className="text-lg font-bold text-emerald-600">{individualStatement.totals.totalCredit.toLocaleString()}</p>
+                    </div>
+                    <div className="text-center p-3 bg-white rounded-lg shadow-sm">
+                        <p className="text-xs text-gray-500 mb-1">الرصيد الحالي</p>
+                        <p className={clsx("text-xl font-black", individualStatement.totals.balance > 0 ? "text-rose-600" : "text-emerald-600")}>
+                            {Math.abs(individualStatement.totals.balance).toLocaleString()}
+                            <span className="text-xs font-normal text-gray-400 mr-1">ج.م</span>
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
                             {individualStatement.totals.balance > 0
                                 ? (activeTab === 'doctors' ? 'مطلوب سداده' : 'مستحق له')
-                                : (activeTab === 'doctors' ? 'دفعة مقدمة / له' : 'مدفوع مقدم')}
+                                : (activeTab === 'doctors' ? 'رصيد دائن' : 'مدفوع زيادة')}
                         </p>
                     </div>
                 </div>
 
                 {/* Statement Table */}
-                <table className="w-full text-right">
-                    <thead className="bg-slate-900 text-white">
-                        <tr>
-                            <th className="p-4 rounded-tr-xl font-bold">المعاملة</th>
-                            <th className="p-4 font-bold">التاريخ</th>
-                            <th className="p-4 font-bold">مدين (Debit)</th>
-                            <th className="p-4 rounded-tl-xl font-bold">دائن (Credit)</th>
-                        </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                        {individualStatement.items.map((item, idx) => (
-                            <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-                                <td className="p-4 max-w-md">
-                                    <div className="font-bold text-slate-800">{item.description}</div>
-                                    {item.details && <div className="text-slate-500 text-xs mt-1 truncate">{item.details}</div>}
-                                    {item.status === 'Rejected' && <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 mt-1">مرفوض</span>}
-                                </td>
-                                <td className="p-4 font-mono text-slate-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
-                                <td className="p-4 font-mono font-bold text-slate-700">
-                                    {item.type === 'debit' ? item.amount.toLocaleString() : '-'}
-                                </td>
-                                <td className="p-4 font-mono font-bold text-slate-700">
-                                    {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-right">
+                        <thead className="bg-slate-800 text-white">
+                            <tr>
+                                <th className="p-3 rounded-tr-lg font-semibold text-sm">البيان</th>
+                                <th className="p-3 font-semibold text-sm w-28">التاريخ</th>
+                                <th className="p-3 font-semibold text-sm w-28">مدين</th>
+                                <th className="p-3 font-semibold text-sm w-28">دائن</th>
+                                <th className="p-3 rounded-tl-lg font-semibold text-sm w-32">الرصيد</th>
+                            </tr>
+                        </thead>
+                        <tbody className="text-sm">
+                            {/* Opening Balance Row */}
+                            {dateRange.start && individualStatement.totals.openingBalance !== 0 && (
+                                <tr className="bg-amber-50 border-b border-amber-100">
+                                    <td className="p-3">
+                                        <div className="font-bold text-amber-800">رصيد سابق (مرحّل)</div>
+                                        <div className="text-xs text-amber-600">الرصيد من الفترات السابقة</div>
+                                    </td>
+                                    <td className="p-3 font-mono text-amber-700">{new Date(dateRange.start).toLocaleDateString('en-GB')}</td>
+                                    <td className="p-3 font-mono font-bold text-amber-700">
+                                        {individualStatement.totals.openingBalance > 0 ? individualStatement.totals.openingBalance.toLocaleString() : '-'}
+                                    </td>
+                                    <td className="p-3 font-mono font-bold text-amber-700">
+                                        {individualStatement.totals.openingBalance < 0 ? Math.abs(individualStatement.totals.openingBalance).toLocaleString() : '-'}
+                                    </td>
+                                    <td className="p-3 font-mono font-bold text-amber-800">
+                                        {Math.abs(individualStatement.totals.openingBalance).toLocaleString()}
+                                    </td>
+                                </tr>
+                            )}
+
+                            {/* Statement Items */}
+                            {individualStatement.items.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} className="p-12 text-center text-gray-400">
+                                        <div className="flex flex-col items-center gap-2">
+                                            <Calendar size={32} className="text-gray-300" />
+                                            <span>لا توجد معاملات في هذه الفترة</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : (
+                                individualStatement.items.map((item, idx) => (
+                                    <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", item.status === 'Rejected' && "bg-red-50")}>
+                                        <td className="p-3">
+                                            <div className="font-medium text-gray-800">{item.description}</div>
+                                            {item.details && <div className="text-gray-500 text-xs mt-0.5 truncate max-w-xs">{item.details}</div>}
+                                            {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded mt-1">مرفوض</span>}
+                                        </td>
+                                        <td className="p-3 font-mono text-gray-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
+                                        <td className="p-3 font-mono font-bold text-rose-600">
+                                            {item.type === 'debit' ? item.amount.toLocaleString() : '-'}
+                                        </td>
+                                        <td className="p-3 font-mono font-bold text-emerald-600">
+                                            {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
+                                        </td>
+                                        <td className={clsx("p-3 font-mono font-bold", (item.runningBalance || 0) > 0 ? "text-rose-600" : "text-emerald-600")}>
+                                            {Math.abs(item.runningBalance || 0).toLocaleString()}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                        <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                            <tr>
+                                <td colSpan={2} className="p-3 text-gray-700">الإجمالي</td>
+                                <td className="p-3 text-rose-600 font-mono">{individualStatement.totals.totalDebit.toLocaleString()}</td>
+                                <td className="p-3 text-emerald-600 font-mono">{individualStatement.totals.totalCredit.toLocaleString()}</td>
+                                <td className={clsx("p-3 font-mono text-lg", individualStatement.totals.balance > 0 ? "text-rose-600" : "text-emerald-600")}>
+                                    {Math.abs(individualStatement.totals.balance).toLocaleString()}
                                 </td>
                             </tr>
-                        ))}
-                    </tbody>
-                    <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                        <tr>
-                            <td colSpan={2} className="p-4 text-slate-600">الإجماليات</td>
-                            <td className="p-4 text-rose-600">{individualStatement.totals.totalDebit.toLocaleString()}</td>
-                            <td className="p-4 text-emerald-600">{individualStatement.totals.totalCredit.toLocaleString()}</td>
-                        </tr>
-                    </tfoot>
-                </table>
+                        </tfoot>
+                    </table>
+                </div>
 
                 {/* Footer */}
-                <div className="mt-12 text-center text-slate-400 text-xs border-t border-slate-100 pt-8">
-                    <p>تم إنشاء هذا التقرير تلقائياً بواسطة نظام ORCA Dental Lab ERP</p>
-                    <p className="mt-1">في حالة وجود استفسارات يرجى التواصل مع الإدارة المالية</p>
+                <div className="mt-8 pt-6 border-t border-gray-100 text-center text-gray-400 text-xs">
+                    <p className="font-medium">ORCA Dental Lab ERP System</p>
+                    <p className="mt-1">للاستفسارات والملاحظات يرجى التواصل مع الإدارة المالية</p>
                 </div>
             </div>
         </div>

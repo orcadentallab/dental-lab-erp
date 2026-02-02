@@ -1,16 +1,18 @@
 {
   "status": "commited",
-  "type": "backend",
+  "type": "frontend",
   "scope": "codebase",
   "localEndpoint": "http://localhost:5173",
-  "backendAuthType": "public",
+  "loginUser": "admin",
+  "loginPassword": "EmanSleem@1997",
   "executionArgs": {
     "projectName": "dental-lab-erp",
     "projectPath": "c:\\Users\\loq\\.gemini\\antigravity\\scratch\\dental-lab-erp",
     "testIds": [],
-    "additionalInstruction": "Generate robust playwright tests. IMPORTANT: Ideally use a configurable BASE_URL so we can switch between localhost and production. If not possible, default to localhost but make it easy to change.",
+    "additionalInstruction": "Test login page, dashboard access, and orders page functionality",
     "envs": {
       "API_KEY": "sk-user-jfDQW5wNxTEKgHo9zL0qAX-bIDx3tpIJH_6BLAt_eEEDFQfWk5oZ3pqhd8cEJ2ljL9YW6qKydrZtgY7Tp9dD7JdFQlbO0z_epHXA_bswVgsWAyvS_Fz19iWwwIw09Wj3WQA"
     }
-  }
+  },
+  "proxy": "http://0343b5cb-4124-4b37-a3e0-3785710d1dfc:VAe2TFaDCDznO7eWBZYTvZiSZn1pqhSk@tun.testsprite.com:8080"
 }

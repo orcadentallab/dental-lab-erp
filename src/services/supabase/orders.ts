@@ -296,6 +296,9 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 
 /**
  * Fetch all data for a single entity statement.
+ * FIXED: Now fetches transactions by entity_id only at DB level,
+ * then filters by entity_type in JS to handle legacy records where
+ * entity_type might be null or different.
  */
 export async function fetchFullEntityStatement(
     entityId: string,
@@ -317,19 +320,42 @@ export async function fetchFullEntityStatement(
     if (orderError) throw ErrorHandler.handle(orderError, 'fetchFullEntityStatement_Orders');
 
     // 2. Fetch Transactions for this Entity
-    let txQuery = supabase
+    // FIXED: Only filter by entity_id at DB level to catch all transactions
+    // including legacy ones that might have null/different entity_type
+    const { data: txData, error: txError } = await supabase
         .from('transactions')
         .select('*')
         .eq('entity_id', entityId)
-        .eq('entity_type', entityType)
-        .order('date', { ascending: false });
+        .order('date', { ascending: false })
+        .range(0, 4999);
 
-    const { data: txData, error: txError } = await txQuery.range(0, 4999);
     if (txError) throw ErrorHandler.handle(txError, 'fetchFullEntityStatement_Tx');
+
+    // Filter transactions in JS to match expected entity_type OR handle nulls
+    const filteredTransactions = (txData || []).filter((t: any) => {
+        // Accept if entity_type matches OR entity_type is null (legacy records)
+        return t.entity_type === entityType || t.entity_type === null || t.entity_type === undefined;
+    });
+
+    // CRITICAL FIX: Map DB format (snake_case) to app format (camelCase)
+    // Without this, the transactions have wrong field names!
+    const mappedTransactions: Transaction[] = filteredTransactions.map((t: any) => ({
+        id: t.id,
+        type: t.type,
+        amount: t.amount,
+        category: t.category,
+        date: t.date,
+        description: t.description,
+        entityId: t.entity_id || undefined,
+        entityType: t.entity_type || undefined,
+        isRegistered: t.is_registered || undefined,
+        isApproved: t.is_approved || undefined,
+        createdAt: t.created_at,
+    }));
 
     return {
         orders: (ordersData || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations)),
-        transactions: (txData as any[]) || []
+        transactions: mappedTransactions
     };
 }
 

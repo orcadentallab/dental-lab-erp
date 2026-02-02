@@ -1,61 +1,122 @@
 {
     "tech_stack": [
         "TypeScript",
-        "React",
+        "React 18",
         "Vite",
         "Supabase",
-        "Tailwind CSS",
-        "Playwright"
+        "TailwindCSS",
+        "Framer Motion",
+        "Lucide Icons",
+        "Zod",
+        "XLSX"
     ],
     "features": [
         {
             "name": "Authentication",
-            "description": "User login, logout, and role-based access control.",
+            "description": "User login/logout with Supabase Auth, role-based access control",
             "files": [
+                "src/pages/Login.tsx",
                 "src/context/AuthContext.tsx",
-                "src/pages/Login.tsx"
+                "src/lib/supabase.ts"
             ]
         },
         {
             "name": "Dashboard",
-            "description": "Main dashboard showing statistics, order tracking alerts (Late, Rejected, etc.), and lab workload.",
+            "description": "Main dashboard with statistics, alerts, and quick actions",
             "files": [
                 "src/pages/DashboardNew.tsx",
                 "src/components/dashboard/AlertCard.tsx",
-                "src/components/dashboard/OrderListItem.tsx",
-                "src/components/dashboard/OrderListModal.tsx"
+                "src/components/dashboard/OrderListModal.tsx",
+                "src/components/dashboard/OrderListItem.tsx"
             ]
         },
         {
-            "name": "Order Management",
-            "description": "Create, update, and manage dental lab orders. Includes filtering by status and role.",
+            "name": "Orders Management",
+            "description": "CRUD operations for orders with pagination, filtering, comments",
             "files": [
                 "src/pages/Orders.tsx",
+                "src/components/orders/OrderList.tsx",
+                "src/components/orders/OrderCard.tsx",
                 "src/components/orders/OrderForm.tsx",
-                "src/services/db.ts"
+                "src/services/supabase/orders.ts"
             ]
         },
         {
-            "name": "Doctor Management",
-            "description": "Manage doctor profiles and preferences.",
+            "name": "Order Comments",
+            "description": "Add and manage comments on orders",
+            "files": [
+                "src/pages/Orders.tsx",
+                "src/services/supabase/orders.ts"
+            ]
+        },
+        {
+            "name": "Tech Actions",
+            "description": "Accept/Reject order actions for admin, designer, lab roles",
+            "files": [
+                "src/components/orders/OrderCard.tsx"
+            ]
+        },
+        {
+            "name": "Doctors Management",
+            "description": "CRUD operations for doctors",
             "files": [
                 "src/pages/Doctors.tsx",
-                "src/components/doctors/DoctorForm.tsx"
+                "src/components/doctors/DoctorForm.tsx",
+                "src/services/supabase/doctors.ts"
             ]
         },
         {
-            "name": "Financials",
-            "description": "Manage transactions, expenses, and invoices.",
+            "name": "Suppliers Management",
+            "description": "Manage lab suppliers with custom pricing",
+            "files": [
+                "src/pages/Suppliers.tsx",
+                "src/services/supabase/suppliers.ts"
+            ]
+        },
+        {
+            "name": "Finance",
+            "description": "Income/expense tracking and transaction management",
             "files": [
                 "src/pages/Finance.tsx",
+                "src/services/supabase/transactions.ts",
+                "src/services/financeService.ts"
+            ]
+        },
+        {
+            "name": "Accounts",
+            "description": "Account statements for doctors and suppliers",
+            "files": [
                 "src/pages/Accounts.tsx"
             ]
         },
         {
-            "name": "User Management",
-            "description": "Admin interface to manage system users and roles.",
+            "name": "Analytics",
+            "description": "Order analytics and AI-powered insights",
             "files": [
-                "src/pages/Users.tsx"
+                "src/pages/Analytics.tsx",
+                "src/pages/AIAnalytics.tsx"
+            ]
+        },
+        {
+            "name": "Users Management",
+            "description": "Admin user management",
+            "files": [
+                "src/pages/Users.tsx",
+                "src/services/supabase/users.ts"
+            ]
+        },
+        {
+            "name": "Designer Dashboard",
+            "description": "Specialized dashboard for designers",
+            "files": [
+                "src/pages/DesignerDashboard.tsx"
+            ]
+        },
+        {
+            "name": "Export Utilities",
+            "description": "Excel export and print functionality",
+            "files": [
+                "src/lib/exportUtils.ts"
             ]
         }
     ]
