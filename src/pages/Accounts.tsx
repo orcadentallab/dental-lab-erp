@@ -62,13 +62,16 @@ export default function Accounts() {
     const { user } = useAuth();
     const isLab = user?.role === 'lab';
     const isDesigner = user?.role === 'designer';
+    const isRepresentative = user?.role === 'representative';
 
-    const [viewMode, setViewMode] = useState<'summary' | 'detail'>(() => {
+    const [viewMode, setViewMode] = useState<'summary' | 'detail' | 'rep-search'>(() => {
+        if (isRepresentative) return 'rep-search'; // Representatives see search-only view
         if (isLab && user?.entityId) return 'detail';
         if (isDesigner && user?.id) return 'detail';
         return 'summary';
     });
     const [activeTab, setActiveTab] = useState<'doctors' | 'suppliers' | 'designers'>(() => {
+        if (isRepresentative) return 'doctors'; // Representatives only see doctors
         if (isLab && user?.entityId) return 'suppliers';
         if (isDesigner && user?.id) return 'designers';
         return 'doctors';
@@ -142,7 +145,7 @@ export default function Accounts() {
 
     // Helper: Calculate Summary (Optimized O(N))
     const summaryData = useMemo(() => {
-        if (viewMode !== 'summary') return [];
+        if (viewMode !== 'summary' && viewMode !== 'rep-search') return [];
 
         const allOrders = orders;
         const allTransactions = transactions;
@@ -571,6 +574,151 @@ export default function Accounts() {
         return designers.find(u => u.id === selectedEntityId)?.name;
     };
 
+    // -- VIEW: REPRESENTATIVE SEARCH (No aggregated data) --
+    if (viewMode === 'rep-search') {
+        // Filter customers
+        let repFilteredCustomers = summaryData.filter(item => {
+            if (searchQuery) {
+                const q = searchQuery.toLowerCase();
+                return item.name.toLowerCase().includes(q) || item.code?.toLowerCase().includes(q);
+            }
+            return true;
+        });
+
+        // Sort customers based on current sort settings
+        repFilteredCustomers = [...repFilteredCustomers].sort((a, b) => {
+            if (sortField === 'name') {
+                const comparison = a.name.localeCompare(b.name, 'ar');
+                return sortDirection === 'asc' ? comparison : -comparison;
+            } else if (sortField === 'code') {
+                const aCode = a.code || '';
+                const bCode = b.code || '';
+                const comparison = aCode.localeCompare(bCode, 'ar');
+                return sortDirection === 'asc' ? comparison : -comparison;
+            }
+            return 0;
+        });
+
+        return (
+            <div className="space-y-6">
+                {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl" role="alert">
+                        <strong className="font-bold">تنبيه! </strong>
+                        <span className="block sm:inline">{error}</span>
+                    </div>
+                )}
+
+                {/* Header */}
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                                <UserIcon className="text-blue-600" size={20} />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-gray-800">العملاء</h1>
+                                <p className="text-sm text-gray-500">البحث عن عميل لعرض كشف حسابه</p>
+                            </div>
+                        </div>
+
+                        {/* Sort Buttons */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400 hidden sm:inline">ترتيب:</span>
+                            <button
+                                onClick={() => {
+                                    if (sortField === 'name') {
+                                        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                                    } else {
+                                        setSortField('name');
+                                        setSortDirection('asc');
+                                    }
+                                }}
+                                className={clsx(
+                                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1",
+                                    sortField === 'name'
+                                        ? "bg-blue-50 text-blue-600 border border-blue-200"
+                                        : "bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100"
+                                )}
+                            >
+                                الاسم
+                                {sortField === 'name' && (
+                                    sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                                )}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (sortField === 'code') {
+                                        setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                                    } else {
+                                        setSortField('code');
+                                        setSortDirection('asc');
+                                    }
+                                }}
+                                className={clsx(
+                                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1",
+                                    sortField === 'code'
+                                        ? "bg-blue-50 text-blue-600 border border-blue-200"
+                                        : "bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100"
+                                )}
+                            >
+                                الكود
+                                {sortField === 'code' && (
+                                    sortDirection === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Search Bar */}
+                    <div className="relative">
+                        <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="بحث بالاسم أو الكود..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-300 text-sm font-medium transition-all"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
+                {/* Customer List - Simplified, no totals */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="divide-y divide-gray-50">
+                        {repFilteredCustomers.length === 0 ? (
+                            <div className="p-12 text-center text-gray-400">
+                                <div className="flex flex-col items-center gap-2">
+                                    <Search size={32} className="text-gray-300" />
+                                    <span>لا توجد نتائج للبحث</span>
+                                </div>
+                            </div>
+                        ) : (
+                            repFilteredCustomers.map((item) => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => { setSelectedEntityId(item.id); setViewMode('detail'); }}
+                                    className="w-full flex items-center justify-between p-4 hover:bg-blue-50/50 transition-colors text-right"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-sm font-bold text-gray-500 border border-gray-200">
+                                            {item.name.charAt(0)}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-800">{item.name}</p>
+                                            {item.code && <p className="text-xs text-gray-400 font-mono">{item.code}</p>}
+                                        </div>
+                                    </div>
+                                    <ArrowRight size={18} className="text-gray-400 rtl:rotate-180" />
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     // -- VIEW: SUMMARY GRID --
     if (viewMode === 'summary') {
         return (
@@ -916,10 +1064,18 @@ export default function Accounts() {
 
             {/* Action Header - Hidden in Print */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4 print-hidden">
-                <button onClick={() => setViewMode('summary')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
-                    <ArrowRight size={20} />
-                    <span>عودة للحسابات</span>
-                </button>
+                {/* Hide back button for lab/designer - they can only see their own account */}
+                {!isLab && !isDesigner ? (
+                    <button onClick={() => setViewMode(isRepresentative ? 'rep-search' : 'summary')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+                        <ArrowRight size={20} />
+                        <span>عودة للعملاء</span>
+                    </button>
+                ) : (
+                    <div className="flex items-center gap-2 text-gray-600 font-bold px-4 py-2">
+                        <Wallet size={20} className="text-blue-600" />
+                        <span>كشف حسابي</span>
+                    </div>
+                )}
 
                 {/* Time Filter Pills */}
                 <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl overflow-x-auto">

@@ -295,6 +295,7 @@ export default function AIAnalytics() {
             console.log('[AI Analytics] Analysis ID:', response.analysis_id);
             const debugInfo = (response as any)._debug;
             let savedId = debugInfo?.savedId;
+            let saveSucceeded = debugInfo?.saved === true;
 
             if (debugInfo) {
                 console.log('[AI Analytics] Edge Function save status:', debugInfo.saved ? '✅ SAVED' : '❌ FAILED');
@@ -303,7 +304,7 @@ export default function AIAnalytics() {
             }
 
             // Fallback: If Edge Function didn't save, save from frontend
-            if (!debugInfo?.saved) {
+            if (!saveSucceeded) {
                 console.log('[AI Analytics] Attempting fallback save from frontend...');
                 try {
                     const responseContent = JSON.stringify(response);
@@ -315,8 +316,11 @@ export default function AIAnalytics() {
                         response.prompt_version || 'v2.0'
                     );
                     console.log('[AI Analytics] Fallback save SUCCESS with ID:', savedId);
-                } catch (saveErr) {
+                    saveSucceeded = true;
+                } catch (saveErr: any) {
                     console.error('[AI Analytics] Fallback save FAILED:', saveErr);
+                    // Show warning but don't block - user can still see the analysis
+                    setError(`⚠️ التحليل ظهر لكن لم يتم حفظه في الأرشيف. السبب: ${saveErr?.message || 'خطأ في الحفظ'}`);
                 }
             }
 
@@ -340,9 +344,11 @@ export default function AIAnalytics() {
                 created_at: response.generated_at
             })));
 
-            // Prepend to list and select it
-            setReports(prev => [newReport, ...prev]);
-            setSelectedReportId(newReport.id);
+            // Prepend to list and select it (only if saved successfully)
+            if (saveSucceeded) {
+                setReports(prev => [newReport, ...prev]);
+                setSelectedReportId(newReport.id);
+            }
 
         } catch (err) {
             console.error('Error generating insights:', err);

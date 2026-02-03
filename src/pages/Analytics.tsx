@@ -6,7 +6,16 @@ import clsx from 'clsx';
 import React from 'react';
 
 // KPICard component defined outside of Analytics to avoid recreation on each render
-const KPICard = ({ title, value, subtext, icon: Icon, type }: { title: string; value: number; subtext: string; icon: React.ComponentType<{ size: number }>; type: string }) => {
+const KPICard = ({ title, value, subtext, icon: Icon, type, percentage, percentageLabel, isPercentage = true }: {
+    title: string;
+    value: number;
+    subtext: string;
+    icon: React.ComponentType<{ size: number }>;
+    type: string;
+    percentage?: number;
+    percentageLabel?: string;
+    isPercentage?: boolean;
+}) => {
     const styleMap: Record<string, { bg: string; text: string; iconBg: string; trend: string }> = {
         profit: { bg: 'bg-emerald-50', text: 'text-emerald-700', iconBg: 'bg-emerald-500', trend: 'text-emerald-600' },
         revenue: { bg: 'bg-blue-50', text: 'text-blue-700', iconBg: 'bg-blue-500', trend: 'text-blue-600' },
@@ -29,11 +38,32 @@ const KPICard = ({ title, value, subtext, icon: Icon, type }: { title: string; v
             <h3 className="text-3xl font-black text-gray-800 tracking-tight mb-1">
                 {value.toLocaleString()} <span className="text-sm font-medium text-gray-400">ج.م</span>
             </h3>
+            {/* Percentage/Metric Display */}
+            {percentage !== undefined && (
+                <div className="flex items-center gap-2 mb-2">
+                    <span className={clsx(
+                        "text-lg font-bold",
+                        isPercentage
+                            ? (percentage >= 0 ? "text-emerald-600" : "text-rose-600")
+                            : "text-blue-600"
+                    )}>
+                        {isPercentage ? (
+                            <>{percentage >= 0 ? '+' : ''}{percentage.toFixed(1)}%</>
+                        ) : (
+                            <>{Math.round(percentage).toLocaleString()}</>
+                        )}
+                    </span>
+                    {percentageLabel && (
+                        <span className="text-xs text-gray-400">{percentageLabel}</span>
+                    )}
+                </div>
+            )}
             <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
             <p className="text-xs text-gray-400">{subtext}</p>
         </div>
     );
 };
+
 
 export default function Analytics() {
     const [stats, setStats] = useState({
@@ -286,6 +316,9 @@ export default function Analytics() {
                         subtext="قيمة الأعمال المسلمة"
                         icon={TrendingUp}
                         type="revenue"
+                        percentage={stats.totalUnits > 0 ? stats.deliveredRevenue / stats.totalUnits : undefined}
+                        percentageLabel="ج.م/وحدة"
+                        isPercentage={false}
                     />
                 </div>
                 <div className="lg:col-span-1">
@@ -295,6 +328,8 @@ export default function Analytics() {
                         subtext="المبيعات - تكلفة الإنتاج"
                         icon={Zap}
                         type="profit"
+                        percentage={stats.deliveredRevenue > 0 ? (stats.grossProfit / stats.deliveredRevenue) * 100 : undefined}
+                        percentageLabel="هامش إجمالي"
                     />
                 </div>
                 <div className="lg:col-span-1">
@@ -304,6 +339,8 @@ export default function Analytics() {
                         subtext="إيجار، شحن، نثريات..."
                         icon={ArrowDownRight}
                         type="expense"
+                        percentage={stats.deliveredRevenue > 0 ? -((stats.operatingExpenses / stats.deliveredRevenue) * 100) : undefined}
+                        percentageLabel="من المبيعات"
                     />
                 </div>
                 <div className="lg:col-span-1">
@@ -313,6 +350,8 @@ export default function Analytics() {
                         subtext="مجمل الربح - مصروفات التشغيل"
                         icon={Wallet}
                         type={stats.netProfit >= 0 ? 'profit' : 'expense'}
+                        percentage={stats.deliveredRevenue > 0 ? (stats.netProfit / stats.deliveredRevenue) * 100 : undefined}
+                        percentageLabel="هامش صافي"
                     />
                 </div>
             </div>

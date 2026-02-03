@@ -10,6 +10,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
     const [phone, setPhone] = useState('');
     const [phone2, setPhone2] = useState('');
     const [address, setAddress] = useState('');
+    const [doctorCode, setDoctorCode] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -22,7 +23,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                 phone,
                 phone2: phone2 || undefined,
                 address,
-                doctorCode: '', // Will be auto-generated on backend
+                doctorCode: doctorCode.trim().toUpperCase(),
                 representativeName: '' // Optional field
             });
 
@@ -31,6 +32,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
             setPhone('');
             setPhone2('');
             setAddress('');
+            setDoctorCode('');
 
             if (onSuccess) onSuccess();
         } catch (error) {
@@ -81,6 +83,20 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                     onChange={(e) => setPhone2(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="01234567890"
+                />
+            </div>
+
+            <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    كود الطبيب *
+                </label>
+                <input
+                    type="text"
+                    required
+                    value={doctorCode}
+                    onChange={(e) => setDoctorCode(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white uppercase"
+                    placeholder="AHM"
                 />
             </div>
 

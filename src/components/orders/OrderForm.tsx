@@ -547,6 +547,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <Input label="رقم الهاتف" required type="tel" value={newDoctor.phone} onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })} />
                                 <Input label="الكود" required placeholder="AHM" value={newDoctor.doctorCode} onChange={e => setNewDoctor({ ...newDoctor, doctorCode: e.target.value })} />
                             </div>
+                            <Input label="العنوان" required placeholder="القاهرة، مصر" value={newDoctor.address} onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })} />
                             <Button onClick={handleAddDoctorFull} className="w-full mt-2">
                                 <span>حفظ</span>
                             </Button>
