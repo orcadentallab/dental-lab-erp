@@ -82,7 +82,8 @@ export default function DashboardNew() {
     );
 
     const overdueOrders = orders.filter(o =>
-        o.deliveryDate < today && o.status !== 'Delivered'
+        o.deliveryDate < today &&
+        !['Delivered', 'Rejected', 'Cancelled'].includes(o.status)
     );
 
     const designPhaseOrders = orders.filter(o =>

@@ -60,7 +60,7 @@ export default function Dashboard() {
         loadData();
     }, [user]);
 
-    const activeOrders = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Returned for Adjustments' && o.technicianStatus !== 'Rejected');
+    const activeOrders = orders.filter(o => !['Delivered', 'Rejected', 'Cancelled', 'Returned for Adjustments'].includes(o.status) && o.technicianStatus !== 'Rejected');
     const unassignedOrders = activeOrders.filter(o => !o.supplierId);
     const todayStr = new Date().toISOString().split('T')[0];
     const delayedOrders = activeOrders.filter(o => o.deliveryDate < todayStr);

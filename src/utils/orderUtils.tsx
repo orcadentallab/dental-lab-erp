@@ -46,6 +46,9 @@ export const getTechStatusBadge = (status?: string) => {
 };
 
 export const checkIsLate = (order: Order) => {
+    // Rejected or Cancelled orders are never considered late
+    if (order.status === 'Rejected' || order.status === 'Cancelled') return false;
+
     if (!order.deliveryDate) return false;
     const actualDate = order.actualDeliveryDate || (order.status !== 'Delivered' ? new Date().toISOString().split('T')[0] : '');
     if (!actualDate) return false;

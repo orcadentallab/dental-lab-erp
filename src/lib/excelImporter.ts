@@ -298,7 +298,22 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         }
 
                         if (serviceName) {
-                            const unitPrice = parseNumber(getVal(['سعر للواحدة', 'سعر الوحدة', 'السعر', 'Unit Price', 'price']));
+                            const rawPrice = getVal(['سعر للواحدة', 'سعر الوحدة', 'السعر', 'Unit Price', 'price']);
+                            let unitPrice = parseNumber(rawPrice);
+
+                            // PRICE LOGIC:
+                            // 1. If explicit 0 in Excel -> Keep 0 (Free/Offer)
+                            // 2. If empty/missing -> Try to lookup from system Services
+                            const isPriceMissing = rawPrice === undefined || rawPrice === null || String(rawPrice).trim() === '';
+
+                            if (isPriceMissing && serviceName) {
+                                const normalizedServiceSearch = normalizeArabic(serviceName);
+                                const matchedService = services.find(s => normalizeArabic(s.name) === normalizedServiceSearch);
+                                if (matchedService) {
+                                    unitPrice = matchedService.sellingPrice;
+                                }
+                            }
+
                             const teethNumbers: string[] = [];
                             for (let i = 1; i <= toothCount; i++) {
                                 teethNumbers.push(String(i));

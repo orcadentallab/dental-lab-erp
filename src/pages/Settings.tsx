@@ -225,6 +225,97 @@ export default function Settings() {
                 </div>
             </div>
 
+            {/* Data Correction Section - Admin Only */}
+            {isAdmin && (
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div className="p-4 bg-gray-50 border-b border-gray-200">
+                        <h2 className="font-bold text-gray-800 flex items-center gap-2">
+                            <SettingsIcon size={18} className="text-orange-500" />
+                            أدوات إصلاح البيانات
+                        </h2>
+                    </div>
+                    <div className="p-4">
+                        <div className="flex items-center justify-between p-4 bg-orange-50 rounded-xl border border-orange-100">
+                            <div>
+                                <h3 className="font-bold text-orange-900 mb-1">تحديث أسعار الأوردرات الصفرية</h3>
+                                <p className="text-xs text-orange-700">
+                                    أوردرات اليوم فقط. سيتم البحث عن السعر بناءً على اسم الخدمة.
+                                </p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    if (!window.confirm('هل أنت متأكد؟ سيتم تحديث أسعار الأوردرات الصفرية المسجلة اليوم فقط.')) return;
+                                    setImportStatus({ success: true, message: 'جاري تحديث الأسعار...' });
+                                    try {
+                                        // 1. Fetch Orders with 0 price created TODAY
+                                        const today = new Date().toISOString().split('T')[0];
+                                        const [allOrders, services] = await Promise.all([db.getAllOrdersUnpaginated(), db.getServices()]);
+
+                                        // Helper for normalization
+                                        const norm = (t: string) => t.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
+
+                                        const zeroPriceOrders = allOrders.filter(o => {
+                                            const isToday = o.createdAt.startsWith(today);
+                                            const isZero = o.totalPrice === 0;
+                                            return isToday && isZero;
+                                        });
+
+                                        if (zeroPriceOrders.length === 0) {
+                                            setImportStatus({ success: true, message: 'لا توجد أوردرات صفرية مسجلة اليوم.' });
+                                            return;
+                                        }
+
+                                        let updatedCount = 0;
+                                        const updates: any[] = [];
+
+                                        for (const order of zeroPriceOrders) {
+                                            let orderUpdated = false;
+                                            let newTotal = 0;
+                                            const newItems = order.items?.map(item => {
+                                                let finalPrice = item.price;
+                                                // Only update if price is 0
+                                                if (finalPrice === 0 && item.serviceType) {
+                                                    const matchedService = services.find(s => norm(s.name) === norm(item.serviceType));
+                                                    if (matchedService) {
+                                                        finalPrice = matchedService.sellingPrice;
+                                                        orderUpdated = true;
+                                                    }
+                                                }
+                                                newTotal += (finalPrice * (item.teethNumbers?.length || 1));
+                                                return { ...item, price: finalPrice };
+                                            });
+
+                                            if (orderUpdated) {
+                                                updatedCount++;
+                                                updates.push({
+                                                    ...order,
+                                                    items: newItems,
+                                                    totalPrice: newTotal > 0 ? newTotal : order.totalPrice, // Update total if calculated > 0
+                                                    cost: order.cost // Keep cost as is for now unless logic requires update, but usually cost depends on external factors. For internal lab, maybe standard cost? keeping simple.
+                                                });
+                                            }
+                                        }
+
+                                        if (updates.length > 0) {
+                                            await db.bulkUpsertOrders(updates);
+                                            setImportStatus({ success: true, message: `تم تحديث أسعار ${updatedCount} أوردر بنجاح!` });
+                                        } else {
+                                            setImportStatus({ success: true, message: 'تم الفحص ولكن لم يتم العثور على خدمات مطابقة لتحديث أسعارها.' });
+                                        }
+
+                                    } catch (err: any) {
+                                        setImportStatus({ success: false, message: `حدث خطأ: ${err.message}` });
+                                    }
+                                }}
+                                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+                            >
+                                بدء التصحيح
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Excel Import Section - Admin Only */}
             {isAdmin && (
                 <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">

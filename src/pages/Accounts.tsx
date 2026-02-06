@@ -373,7 +373,7 @@ export default function Accounts() {
         if (activeTab === 'doctors') {
             const docOrders = relevantOrders.filter(o => {
                 if (o.doctorId !== selectedEntityId) return false;
-                if (o.status === 'Rejected') return true;
+                if (o.status === 'Rejected') return false; // HIDE Rejected for Doctors
                 if (showAllOrders) return true;
                 return ['Delivered', 'Completed', 'Ready'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
             });
@@ -384,7 +384,7 @@ export default function Accounts() {
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                 details: o.items.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
-                amount: o.status === 'Rejected' ? 0 : o.totalPrice,
+                amount: o.totalPrice,
                 status: o.status
             }));
 
@@ -401,14 +401,18 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'suppliers') {
-            const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
+            const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected'));
             items = supOrders.map(o => {
                 let cost = o.cost || 0;
                 if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
+
+                // If Rejected, set cost to 0
+                if (o.status === 'Rejected') cost = 0;
+
                 return {
                     id: o.id,
                     date: o.deliveryDate || o.createdAt.split('T')[0],
-                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
+                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}`,
                     type: 'credit' as const,
                     amount: cost
                 };
@@ -427,13 +431,13 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && o.status !== 'Rejected' && (showAllOrders || o.status === 'Delivered'));
+            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected'));
             items = desOrders.map(o => ({
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
-                description: `تصميم #${o.caseId} - ${o.patientName}`,
+                description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}`,
                 type: 'credit' as const,
-                amount: o.designPrice || 0
+                amount: o.status === 'Rejected' ? 0 : (o.designPrice || 0)
             }));
 
             const desTx = relevantTransactions.filter(t =>
