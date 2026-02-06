@@ -18,17 +18,49 @@ function parseDate(value: unknown): string {
     // If it's a number (Excel date serial number)
     if (typeof value === 'number') {
         const date = XLSX.SSF.parse_date_code(value);
-        return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+        if (date && date.y && date.m && date.d) {
+            return `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+        }
     }
 
     // If it's a string, try to parse it
     if (typeof value === 'string') {
-        // Try ISO format
-        if (value.match(/^\d{4}-\d{2}-\d{2}/)) {
-            return value.split('T')[0];
+        const trimmed = value.trim();
+
+        // Try ISO format (2024-01-15)
+        if (trimmed.match(/^\d{4}-\d{2}-\d{2}/)) {
+            return trimmed.split('T')[0];
         }
-        // Try other formats
-        const date = new Date(value);
+
+        // Try dd/mm/yyyy format (common in Arabic Excel)
+        const ddmmyyyy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (ddmmyyyy) {
+            const day = ddmmyyyy[1].padStart(2, '0');
+            const month = ddmmyyyy[2].padStart(2, '0');
+            const year = ddmmyyyy[3];
+            return `${year}-${month}-${day}`;
+        }
+
+        // Try mm/dd/yyyy format - if first number > 12, treat as dd/mm/yyyy
+        const mmddyyyy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (mmddyyyy && parseInt(mmddyyyy[1]) > 12) {
+            const day = mmddyyyy[1].padStart(2, '0');
+            const month = mmddyyyy[2].padStart(2, '0');
+            const year = mmddyyyy[3];
+            return `${year}-${month}-${day}`;
+        }
+
+        // Try yyyy/mm/dd format
+        const yyyymmdd = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (yyyymmdd) {
+            const year = yyyymmdd[1];
+            const month = yyyymmdd[2].padStart(2, '0');
+            const day = yyyymmdd[3].padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // Try other formats using Date.parse
+        const date = new Date(trimmed);
         if (!isNaN(date.getTime())) {
             return date.toISOString().split('T')[0];
         }
@@ -36,6 +68,7 @@ function parseDate(value: unknown): string {
 
     return new Date().toISOString().split('T')[0];
 }
+
 
 // Helper to clean string values
 function cleanString(value: unknown): string {
@@ -392,7 +425,7 @@ export function importTransactionsFromExcel(
                         };
 
                         const amount = parseNumber(getVal(['المبلغ', 'amount', 'Amount', 'القيمة', 'Value', 'السعر', 'Debit', 'مدين']));
-                        const date = parseDate(getVal(['التاريخ', 'date', 'Date']));
+                        const date = parseDate(getVal(['التاريخ', 'تاريخ المستند', 'date', 'Date', 'تاريخ']));
                         const description = cleanString(getVal(['الوصف', 'description', 'Description', 'البيان', 'ملاحظات', 'Notes']));
                         let category = cleanString(getVal(['الفئة', 'category', 'Category', 'النوع', 'Type', 'نوع', 'القسم', 'Section'])) || 'عام';
 

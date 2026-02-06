@@ -184,8 +184,7 @@ export default function OrderCard({
 
                 <div className="flex flex-col h-full">
                     {/* Header */}
-                    {/* Header */}
-                    <div className="flex items-center justify-between px-3 py-2 bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-black/5 dark:bg-white/5 border-b border-black/5 dark:border-white/5">
                         <div className="flex items-center gap-2">
                             <span className="font-mono text-xs font-bold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded-md border border-primary-100 dark:border-primary-800">
                                 #{order.caseId}
@@ -217,7 +216,7 @@ export default function OrderCard({
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                             {/* Designer Action */}
                             {onUpdateDesignUrl && (userRole === 'designer' || userRole === 'admin' || userRole === 'lab') && (
                                 <Button
@@ -407,7 +406,7 @@ export default function OrderCard({
                     )}
 
                     {/* Footer Actions */}
-                    <div className="bg-black/5 dark:bg-white/5 px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-wrap justify-between items-center gap-2">
+                    <div className="bg-black/5 dark:bg-white/5 px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-2">
                         {/* Left: Quick Actions */}
                         <div className="flex items-center gap-2">
                             {/* Status Dropdown */}
@@ -418,7 +417,7 @@ export default function OrderCard({
                                     value={order.status || 'New Case'}
                                     onChange={(e) => handleStatusChangeClick(e.target.value as Order['status'])}
                                     className={clsx(
-                                        "appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-[150px] focus:ring-2",
+                                        "appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-full sm:w-[150px] focus:ring-2",
                                         order.status === 'Delivered'
                                             ? 'bg-green-100 text-green-800 border-green-300 ring-green-200'
                                             : 'bg-white text-surface-700 border-surface-200 hover:border-primary-300 focus:ring-primary-100'

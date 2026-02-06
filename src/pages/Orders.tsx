@@ -343,10 +343,10 @@ export default function Orders() {
             className="space-y-6"
         >
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500">{t.orders.title}</h1>
-                    <p className="text-sm text-surface-500 mt-1">إدارة ومتابعة جميع الطلبات والحالات</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500">{t.orders.title}</h1>
+                    <p className="text-xs sm:text-sm text-surface-500 mt-1">إدارة ومتابعة جميع الطلبات والحالات</p>
                 </div>
                 {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
                     <div className="flex gap-2">
@@ -442,7 +442,7 @@ export default function Orders() {
                             </div>
 
                             {/* Date Range (Moved to Top) */}
-                            <div className="flex items-center bg-surface-50 ring-1 ring-surface-200 rounded-lg px-2 group hover:bg-white transition-colors h-9 flex-shrink-0">
+                            <div className="flex items-center bg-surface-50 ring-1 ring-surface-200 rounded-lg px-2 group hover:bg-white transition-colors h-9 flex-shrink-0 w-full sm:w-auto">
                                 <Calendar className="h-3.5 w-3.5 text-surface-400 mr-2 flex-shrink-0" />
                                 <input
                                     type="date"
@@ -450,7 +450,7 @@ export default function Orders() {
                                     aria-label="Start Date"
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
-                                    className="bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400 w-28"
+                                    className="bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400 w-24 sm:w-28 min-w-0"
                                 />
                                 <span className="text-surface-300 mx-1">/</span>
                                 <input
@@ -459,7 +459,7 @@ export default function Orders() {
                                     aria-label="End Date"
                                     value={endDate}
                                     onChange={(e) => setEndDate(e.target.value)}
-                                    className="bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400 w-28"
+                                    className="bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400 w-24 sm:w-28 min-w-0"
                                 />
                             </div>
 
@@ -477,7 +477,7 @@ export default function Orders() {
 
                         {/* Row 2: All Filters & Checkbox 2 */}
                         <div className="flex flex-col lg:flex-row gap-2">
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 flex-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 flex-1">
                                 {/* Status */}
                                 <div className="col-span-1 relative group">
                                     <select

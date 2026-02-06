@@ -258,16 +258,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     return (
         <form onSubmit={handleSubmit} className="space-y-4 text-right font-sans max-w-7xl mx-auto">
             {/* Header / Top Actions */}
-            <div className="flex items-center justify-between gap-4">
-                <h2 className="text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <h2 className="text-lg sm:text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
                     <Box className="text-primary-600" />
                     {initialData ? 'تعديل بيانات الأوردر' : 'إنشاء أوردر جديد'}
                 </h2>
-                <div className="flex gap-2">
-                    <Button type="button" variant="ghost" className="text-surface-500" onClick={onCancel}>
+                <div className="flex gap-2 w-full sm:w-auto">
+                    <Button type="button" variant="ghost" className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
                         <span>إلغاء</span>
                     </Button>
-                    <Button type="submit" size="md" className="px-8 shadow-lg shadow-primary-500/20">
+                    <Button type="submit" size="md" className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
                         <span>{initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر'}</span>
                     </Button>
                 </div>

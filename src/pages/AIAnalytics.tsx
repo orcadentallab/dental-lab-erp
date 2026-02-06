@@ -86,23 +86,23 @@ export default function AIAnalytics() {
                     orderCount: doctorOrders.length,
                     revenue: doctorRevenue
                 };
-            }).sort((a, b) => b.orderCount - a.orderCount).slice(0, 5);
+            }).sort((a, b) => b.orderCount - a.orderCount); // All doctors, sorted by order count
 
-            // Top Services
+            // Top Services - count teeth (units) from completed orders only
             const serviceStats: Record<string, { count: number; revenue: number }> = {};
-            orders.forEach(order => {
-                order.items?.forEach((item: { serviceType: string; price: number }) => {
+            completedOrders.forEach(order => {
+                order.items?.forEach((item: { serviceType: string; price: number; teethNumbers?: string[] }) => {
                     if (!serviceStats[item.serviceType]) {
                         serviceStats[item.serviceType] = { count: 0, revenue: 0 };
                     }
-                    serviceStats[item.serviceType].count++;
-                    serviceStats[item.serviceType].revenue += item.price || 0;
+                    const unitCount = item.teethNumbers?.length || 1;
+                    serviceStats[item.serviceType].count += unitCount;
+                    serviceStats[item.serviceType].revenue += (item.price || 0) * unitCount;
                 });
             });
             const topServices = Object.entries(serviceStats)
                 .map(([name, stats]) => ({ name, ...stats }))
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5);
+                .sort((a, b) => b.count - a.count); // All services, sorted by usage
 
             // Orders by Status
             const statusCounts: Record<string, number> = {};
