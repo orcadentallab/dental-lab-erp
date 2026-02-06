@@ -15,6 +15,7 @@ export default function Suppliers() {
     // Form State
     const [formData, setFormData] = useState<{
         name: string;
+        supplierCode: string;
         username: string;
         phone: string;
         redoCostPercentage: number;
@@ -22,6 +23,7 @@ export default function Suppliers() {
         millingPrices: Record<string, number>;
     }>({
         name: '',
+        supplierCode: '',
         username: '',
         phone: '',
         redoCostPercentage: 0,
@@ -54,6 +56,7 @@ export default function Suppliers() {
             setEditingSupplier(supplier);
             setFormData({
                 name: supplier.name,
+                supplierCode: supplier.supplierCode || '',
                 username: supplier.username,
                 phone: supplier.phone,
                 redoCostPercentage: supplier.redoCostPercentage || 0,
@@ -62,7 +65,7 @@ export default function Suppliers() {
             });
         } else {
             setEditingSupplier(null);
-            setFormData({ name: '', username: '', phone: '', redoCostPercentage: 0, customPrices: {}, millingPrices: {} });
+            setFormData({ name: '', supplierCode: '', username: '', phone: '', redoCostPercentage: 0, customPrices: {}, millingPrices: {} });
         }
         setIsModalOpen(true);
     };
@@ -117,6 +120,7 @@ export default function Suppliers() {
                         <div className="flex justify-between items-start mb-4">
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900">{supplier.name}</h3>
+                                {supplier.supplierCode && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs ml-2">{supplier.supplierCode}</span>}
                                 <p className="text-sm text-gray-500">@{supplier.username}</p>
                             </div>
                             {user?.role !== 'accountant' && (
@@ -183,6 +187,16 @@ export default function Suppliers() {
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                                         className="w-full p-2 border rounded-lg"
                                         aria-label="اسم المعمل / المورد"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">كود المورد (مطابقة الاستيراد)</label>
+                                    <input
+                                        type="text"
+                                        value={formData.supplierCode}
+                                        onChange={e => setFormData({ ...formData, supplierCode: e.target.value })}
+                                        className="w-full p-2 border rounded-lg"
+                                        placeholder="مثلاً: SUP001"
                                     />
                                 </div>
                                 <div>

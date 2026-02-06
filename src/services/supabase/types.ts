@@ -118,6 +118,7 @@ export interface DbService {
 export interface DbSupplier {
     id: string;
     name: string;
+    supplier_code?: string | null;
     username?: string | null;
     phone: string;
     custom_prices?: Record<string, number> | null; // JSONB

@@ -35,6 +35,7 @@ export interface Transaction {
 export interface Supplier {
     id: string;
     name: string;
+    supplierCode?: string;
     username: string; // for login
     phone: string;
     customPrices?: Record<string, number>; // serviceName -> costPrice

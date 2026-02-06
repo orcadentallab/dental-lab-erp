@@ -121,6 +121,7 @@ export const TransactionUpdateSchema = TransactionSchema.partial().extend({
 export const SupplierSchema = z.object({
     id: z.string().uuid().optional(),
     name: z.string().min(2).max(200),
+    supplierCode: z.string().max(20).optional().nullable(),
     username: z.string().min(3).max(50).optional().nullable(),
     phone: z.string().min(8).max(20),
     customPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),

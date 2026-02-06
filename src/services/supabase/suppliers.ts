@@ -8,6 +8,7 @@ function dbToSupplier(dbSupplier: DbSupplier): Supplier {
     return {
         id: dbSupplier.id,
         name: dbSupplier.name,
+        supplierCode: dbSupplier.supplier_code || undefined,
         username: dbSupplier.username || '',
         phone: dbSupplier.phone,
         customPrices: dbSupplier.custom_prices || undefined,
@@ -19,6 +20,7 @@ function dbToSupplier(dbSupplier: DbSupplier): Supplier {
 function supplierToDb(supplier: Omit<Supplier, 'id'>): DbSupplierInsert {
     return {
         name: supplier.name,
+        supplier_code: supplier.supplierCode || null,
         username: supplier.username,
         phone: supplier.phone,
         custom_prices: supplier.customPrices || null,
@@ -63,6 +65,7 @@ export async function addSupplier(supplier: Omit<Supplier, 'id'>): Promise<Suppl
 export async function updateSupplier(id: string, updates: Partial<Supplier>): Promise<Supplier | null> {
     const dbUpdates: DbSupplierUpdate = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
+    if (updates.supplierCode !== undefined) dbUpdates.supplier_code = updates.supplierCode;
     if (updates.username !== undefined) dbUpdates.username = updates.username;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
     if (updates.customPrices !== undefined) dbUpdates.custom_prices = updates.customPrices;

@@ -281,10 +281,15 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         const toothCount = countColumn > 0 ? countColumn : 1;
 
                         const supplierName = cleanString(getVal(['المعمل المنفذ', 'المعمل', 'Executing Lab', 'Lab', 'Supplier']));
+                        const supplierCode = cleanString(getVal(['كود المعمل', 'كود المورد', 'Supplier Code', 'Lab Code', 'code']));
                         let supplierId: string | undefined = undefined;
                         let foundSupplier: Supplier | undefined = undefined;
 
-                        if (supplierName) {
+                        if (supplierCode) {
+                            foundSupplier = suppliers.find(s => s.supplierCode && s.supplierCode.toUpperCase() === supplierCode.toUpperCase());
+                        }
+
+                        if (!foundSupplier && supplierName) {
                             const normalizedSupplierSearch = normalizeArabic(supplierName);
                             foundSupplier = suppliers.find(s => normalizeArabic(s.name) === normalizedSupplierSearch || normalizeArabic(s.name).includes(normalizedSupplierSearch));
                             if (foundSupplier) {
