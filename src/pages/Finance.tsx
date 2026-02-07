@@ -342,7 +342,7 @@ export default function Finance() {
                             <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-lg">الرصيد المتاح</span>
                         </div>
                         <div>
-                            <p className="text-slate-300 text-sm font-medium mb-1">صافي الرصيد</p>
+                            <p className="text-slate-300 text-sm font-medium mb-1">الخزينة</p>
                             <h3 className="text-3xl font-black tracking-tight">{currentBalance.toLocaleString()} <span className="text-sm font-normal text-slate-400">ج.م</span></h3>
                         </div>
                     </div>
@@ -354,7 +354,7 @@ export default function Finance() {
                             <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg">المقبوضات</span>
                         </div>
                         <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">إجمالي الإيرادات</p>
+                            <p className="text-gray-500 text-sm font-medium mb-1">الايرادات</p>
                             <h3 className="text-3xl font-black text-gray-900">{totalIncome.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
                         </div>
                     </div>
@@ -366,7 +366,7 @@ export default function Finance() {
                             <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">تكاليف بضائع</span>
                         </div>
                         <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">تكاليف الإنتاج (COGS)</p>
+                            <p className="text-gray-500 text-sm font-medium mb-1">السداد للموردين</p>
                             <h3 className="text-3xl font-black text-gray-900">{totalProductionCosts.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
                         </div>
                     </div>
@@ -378,7 +378,7 @@ export default function Finance() {
                             <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-lg">مصروفات</span>
                         </div>
                         <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">مصاريف التشغيل (OpEx)</p>
+                            <p className="text-gray-500 text-sm font-medium mb-1">مصاريف التشغيل</p>
                             <h3 className="text-3xl font-black text-gray-900">{totalOperatingExpenses.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
                         </div>
                     </div>

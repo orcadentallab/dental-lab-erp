@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
-import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 
@@ -85,7 +85,7 @@ export default function Accounts() {
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
 
     // Options
-    const [showAllOrders] = useState(false);
+    const [showAllOrders, setShowAllOrders] = useState(false);
     const [hideZeroBalance, setHideZeroBalance] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortField, setSortField] = useState<SortField>('balance');
@@ -161,37 +161,39 @@ export default function Accounts() {
             if (activeTab === 'doctors' && o.doctorId) {
                 if ((o.status as string) === 'Rejected') continue;
                 const isRelevant = (showAllOrders || o.status !== 'Rejected') &&
-                    (showAllOrders || ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase()));
+                    (showAllOrders || ['delivered', 'completed', 'ready', 'cancelled'].includes((o.status || '').toLowerCase()));
 
                 if (isRelevant) {
                     const stats = getStats(o.doctorId);
                     stats.count++;
-                    stats.totalDebit += o.totalPrice || 0;
-                    stats.totalSales += o.totalPrice || 0;
+                    const amount = (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0));
+                    stats.totalDebit += amount;
+                    stats.totalSales += amount;
                     if (o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
                 }
             } else if (activeTab === 'suppliers' && o.supplierId) {
                 const isRelevant = o.status !== 'Rejected' &&
-                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered');
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled');
 
                 if (isRelevant) {
                     const stats = getStats(o.supplierId);
                     stats.count++;
-                    let cost = o.cost || 0;
-                    if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
+                    let cost = (o.status === 'Cancelled' ? 0 : (o.cost || 0));
+                    if (o.workflowType === 'split' && o.designPrice && o.status !== 'Cancelled') cost -= o.designPrice;
                     stats.totalCredit += cost;
                     stats.totalSales += cost;
                 }
             } else if (activeTab === 'designers' && o.designerId) {
                 const isRelevant = o.workflowType === 'split' &&
                     o.status !== 'Rejected' &&
-                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered');
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled');
 
                 if (isRelevant) {
                     const stats = getStats(o.designerId);
                     stats.count++;
-                    stats.totalCredit += (o.designPrice || 0);
-                    stats.totalSales += (o.designPrice || 0);
+                    const price = (o.status === 'Cancelled' ? 0 : (o.designPrice || 0));
+                    stats.totalCredit += price;
+                    stats.totalSales += price;
                 }
             }
         }
@@ -373,9 +375,9 @@ export default function Accounts() {
         if (activeTab === 'doctors') {
             const docOrders = relevantOrders.filter(o => {
                 if (o.doctorId !== selectedEntityId) return false;
-                if (o.status === 'Rejected') return false; // HIDE Rejected for Doctors
-                if (showAllOrders) return true;
-                return ['Delivered', 'Completed', 'Ready'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
+                if (showAllOrders) return true; // Show ALL (Including Rejected/Pending)
+                if (o.status === 'Rejected') return false;
+                return ['Delivered', 'Completed', 'Ready', 'Cancelled'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
             });
 
             items = docOrders.map(o => ({
@@ -384,7 +386,7 @@ export default function Accounts() {
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                 details: o.items.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
-                amount: o.totalPrice,
+                amount: (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0)),
                 status: o.status
             }));
 
@@ -401,18 +403,18 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'suppliers') {
-            const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected'));
+            const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = supOrders.map(o => {
                 let cost = o.cost || 0;
                 if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
 
-                // If Rejected, set cost to 0
-                if (o.status === 'Rejected') cost = 0;
+                // If Rejected or Cancelled, set cost to 0
+                if (o.status === 'Rejected' || o.status === 'Cancelled') cost = 0;
 
                 return {
                     id: o.id,
                     date: o.deliveryDate || o.createdAt.split('T')[0],
-                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}`,
+                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''}`,
                     type: 'credit' as const,
                     amount: cost
                 };
@@ -431,13 +433,13 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected'));
+            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = desOrders.map(o => ({
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
-                description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}`,
+                description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''}`,
                 type: 'credit' as const,
-                amount: o.status === 'Rejected' ? 0 : (o.designPrice || 0)
+                amount: (o.status === 'Rejected' || o.status === 'Cancelled') ? 0 : (o.designPrice || 0)
             }));
 
             const desTx = relevantTransactions.filter(t =>
@@ -569,7 +571,7 @@ export default function Accounts() {
 
     const totalEquity = filteredSummary.reduce((sum, item) => sum + item.balance, 0);
     const totalSalesAmount = filteredSummary.reduce((sum, item) => sum + item.totalSales, 0);
-    const totalPayments = filteredSummary.reduce((sum, item) => sum + item.totalCredit, 0);
+    const totalPayments = filteredSummary.reduce((sum, item) => sum + (activeTab === 'doctors' ? item.totalCredit : item.totalDebit), 0);
 
     // Get selected entity name
     const getSelectedEntityName = () => {
@@ -770,6 +772,17 @@ export default function Accounts() {
                             />
                         </div>
                         <button
+                            onClick={() => setShowAllOrders(!showAllOrders)}
+                            className={clsx(
+                                "p-2.5 rounded-xl border transition-all flex items-center gap-2",
+                                showAllOrders ? "bg-blue-50 border-blue-200 text-blue-600" : "bg-white border-gray-200 text-gray-400 hover:bg-gray-50"
+                            )}
+                            title="إظهار كل الطلبات (حتى غير المنتهية)"
+                        >
+                            <FileText size={18} />
+                            <span className="hidden sm:inline text-sm font-medium">كل الطلبات</span>
+                        </button>
+                        <button
                             onClick={() => setHideZeroBalance(!hideZeroBalance)}
                             className={clsx(
                                 "p-2.5 rounded-xl border transition-all flex items-center gap-2",
@@ -942,7 +955,7 @@ export default function Accounts() {
                                             {activeTab === 'doctors' && <td className="p-4 text-gray-500 text-sm font-mono">{item.code || '-'}</td>}
                                             <td className="p-4 text-gray-600 font-medium">{item.totalOrders}</td>
                                             <td className="p-4 font-bold text-gray-700">{item.totalSales.toLocaleString()}</td>
-                                            <td className="p-4 font-medium text-emerald-600">{item.totalCredit.toLocaleString()}</td>
+                                            <td className="p-4 font-medium text-emerald-600">{(activeTab === 'doctors' ? item.totalCredit : item.totalDebit).toLocaleString()}</td>
                                             <td className="p-4">
                                                 <span className={clsx("font-bold font-mono text-lg", item.balance > 0 ? "text-rose-600" : (item.balance < 0 ? "text-emerald-600" : "text-gray-400"))}>
                                                     {Math.abs(item.balance).toLocaleString()}
@@ -1106,6 +1119,19 @@ export default function Accounts() {
                 </div>
 
                 <div className="flex gap-2">
+                    <button
+                        onClick={() => setShowAllOrders(!showAllOrders)}
+                        className={clsx(
+                            "px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all shadow-sm border print-hidden",
+                            showAllOrders
+                                ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700 shadow-blue-200"
+                                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                        )}
+                        title="إظهار كل الطلبات (حتى غير المنتهية)"
+                    >
+                        <FileText size={18} />
+                        <span className="hidden sm:inline">الكل</span>
+                    </button>
                     <button
                         onClick={() => {
                             const fileName = `statement_${activeTab}_${selectedEntityId}_${new Date().toISOString().split('T')[0]}`;

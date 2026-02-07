@@ -280,13 +280,18 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         const countColumn = parseNumber(getVal(['كمية', 'الكمية', 'عدد الاسنان', 'Count', 'count', 'Quantity']));
                         const toothCount = countColumn > 0 ? countColumn : 1;
 
-                        const supplierName = cleanString(getVal(['المعمل المنفذ', 'المعمل', 'Executing Lab', 'Lab', 'Supplier']));
+                        const supplierName = cleanString(getVal(['المعمل المنفذ', 'المعمل', 'Executing Lab', 'Lab', 'Supplier', 'Laboratory', 'المعمل الخارجي']));
                         const supplierCode = cleanString(getVal(['كود المعمل', 'كود المورد', 'Supplier Code', 'Lab Code', 'code']));
                         let supplierId: string | undefined = undefined;
                         let foundSupplier: Supplier | undefined = undefined;
 
                         if (supplierCode) {
                             foundSupplier = suppliers.find(s => s.supplierCode && s.supplierCode.toUpperCase() === supplierCode.toUpperCase());
+
+                            // If code provided but not found, and no name provided to fallback on -> ERROR
+                            if (!foundSupplier && !supplierName) {
+                                throw new Error(`لم يتم العثور على المعمل بالكود (${supplierCode}) - يرجى التأكد من صحة الكود أو إضافته لبيانات المعمل`);
+                            }
                         }
 
                         if (!foundSupplier && supplierName) {
@@ -294,7 +299,11 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             foundSupplier = suppliers.find(s => normalizeArabic(s.name) === normalizedSupplierSearch || normalizeArabic(s.name).includes(normalizedSupplierSearch));
                             if (foundSupplier) {
                                 supplierId = foundSupplier.id;
+                            } else {
+                                throw new Error(`لم يتم العثور على المعمل (${supplierName}) - يرجى التأكد من تسجيله في قائمة الموردين`);
                             }
+                        } else if (foundSupplier) {
+                            supplierId = foundSupplier.id;
                         }
 
                         if (serviceName) {
@@ -571,6 +580,64 @@ export function importTransactionsFromExcel(
             }
         };
         reader.onerror = () => reject(new Error('فشل قراءة الملف'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// Helper for Lab Correction Tool
+export function parseLabAssignments(file: File, suppliers: Supplier[]): Promise<Array<{ patient: string; service: string; supplierId: string }>> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target?.result as ArrayBuffer);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet) as ExcelRow[];
+
+                const assignments: Array<{ patient: string; service: string; supplierId: string }> = [];
+
+                jsonData.forEach((row) => {
+                    const getVal = (keys: string[]) => {
+                        for (const k of keys) {
+                            if (row[k] !== undefined && row[k] !== null) return row[k];
+                        }
+                        return undefined;
+                    };
+
+                    const patient = cleanString(getVal(['اسم المريض', 'المريض', 'patient_name', 'PatientName']));
+                    const service = cleanString(getVal(['اسم الصنف', 'الخدمات', 'الخدمة', 'اسم الخدمة', 'Service', 'service']));
+
+                    const supplierName = cleanString(getVal(['المعمل المنفذ', 'المعمل', 'Executing Lab', 'Lab', 'Supplier', 'Laboratory', 'المعمل الخارجي']));
+                    const supplierCode = cleanString(getVal(['كود المعمل', 'كود المورد', 'Supplier Code', 'Lab Code', 'code']));
+
+                    if (patient && service && (supplierName || supplierCode)) {
+                        let foundSupplier: Supplier | undefined;
+
+                        if (supplierCode) {
+                            foundSupplier = suppliers.find(s => s.supplierCode && s.supplierCode.toUpperCase() === supplierCode.toUpperCase());
+                        }
+
+                        if (!foundSupplier && supplierName) {
+                            const normalizedSupplierSearch = normalizeArabic(supplierName);
+                            foundSupplier = suppliers.find(s => normalizeArabic(s.name) === normalizedSupplierSearch || normalizeArabic(s.name).includes(normalizedSupplierSearch));
+                        }
+
+                        if (foundSupplier) {
+                            assignments.push({
+                                patient: normalizeArabic(patient),
+                                service: normalizeArabic(service),
+                                supplierId: foundSupplier.id
+                            });
+                        }
+                    }
+                });
+
+                resolve(assignments);
+            } catch (err: any) {
+                reject(new Error(`Error parsing file: ${err.message}`));
+            }
+        };
         reader.readAsArrayBuffer(file);
     });
 }

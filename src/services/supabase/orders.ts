@@ -190,6 +190,7 @@ export async function getOrders(
 
     if (filters.hideRejected) {
         query = query.neq('technician_status', 'Rejected');
+        query = query.neq('status', 'Rejected');
     }
 
     // Search filter: case_id OR patient_name OR doctor_name OR doctor_code
@@ -248,8 +249,9 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
     const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')  // Include relations
-        .not('status', 'in', '("Delivered","Cancelled")') // Exclude finished orders
-        .or(`created_at.gte.${dateLimit}`) // Or recent orders
+        // Fix: Use single OR to get (Active) OR (Recent)
+        // Previous chained .not().or() resulted in (Active) AND (Recent), hiding old active orders
+        .or(`status.not.in.("Delivered","Cancelled"),created_at.gte.${dateLimit}`)
         .order('created_at', { ascending: false })
         .range(0, 499); // Limit to 500 orders max for dashboard
 

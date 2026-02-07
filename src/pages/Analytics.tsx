@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
-import { TrendingUp, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap, Package, Users, DollarSign, BarChart3, RefreshCcw, ArrowUpRight, CreditCard, Receipt, Clock, AlertCircle, PiggyBank, TrendingDown, Banknote, FileText } from 'lucide-react';
+import { TrendingUp, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap, Package, Users, DollarSign, BarChart3, RefreshCcw, ArrowUpRight, CreditCard, Receipt, PiggyBank, TrendingDown, Banknote, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
 
@@ -83,6 +83,7 @@ export default function Analytics() {
         orderCount: 0,
         activeOrders: 0,
         totalUnits: 0,
+        returnCount: 0,
         topExpenseCategory: '',
         topExpenseAmount: 0
     });
@@ -206,6 +207,12 @@ export default function Analytics() {
             const totalCostOfGoods = completedOrders.reduce((sum, o) => sum + (o.cost || 0), 0);
             const grossProfit = totalSalesValue - totalCostOfGoods;
 
+            // 5. Returns
+            const returnedOrders = filteredOrders.filter(o =>
+                ['rejected', 'returned for adjustments'].includes((o.status || '').toLowerCase())
+            );
+            const returnCount = returnedOrders.length;
+
 
             let totalProductionCosts = 0;
             let totalOperatingExpenses = 0;
@@ -244,6 +251,7 @@ export default function Analytics() {
                 orderCount: completedOrders.length,
                 activeOrders: 0,
                 totalUnits,
+                returnCount,
                 topExpenseCategory,
                 topExpenseAmount
             });
@@ -612,6 +620,7 @@ export default function Analytics() {
                                             {stats.deliveredRevenue > 0 ? ((stats.totalRevenue / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                         </div>
                                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                            {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
                                             <div
                                                 className="bg-gradient-to-r from-blue-500 to-blue-400 h-full rounded-full transition-all duration-700"
                                                 style={{ width: `${Math.min(100, (stats.totalRevenue / (stats.deliveredRevenue || 1)) * 100)}%` }}
@@ -698,6 +707,7 @@ export default function Analytics() {
                                                 </div>
                                             </div>
                                             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                                {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
                                                 <div
                                                     className={clsx(
                                                         "h-full rounded-full transition-all duration-700 ease-out",
@@ -753,6 +763,7 @@ export default function Analytics() {
                                             <span className="text-xs text-slate-400 block">وحدة</span>
                                         </div>
                                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                            {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
                                             <div
                                                 className={clsx(
                                                     "h-full rounded-full transition-all duration-700",
@@ -809,7 +820,16 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <p className="text-teal-600 text-xs font-bold uppercase mb-1">نسبة الإرجاع</p>
-                            <p className="text-2xl font-black text-teal-900">0%</p>
+                            <div className="flex flex-col items-center">
+                                <p className="text-2xl font-black text-teal-900">
+                                    {(stats.orderCount + stats.returnCount) > 0
+                                        ? ((stats.returnCount / (stats.orderCount + stats.returnCount)) * 100).toFixed(1)
+                                        : 0}%
+                                </p>
+                                <span className="text-xs text-teal-600 font-medium bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full mt-1">
+                                    {stats.returnCount} حالة
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </>
@@ -917,92 +937,138 @@ export default function Analytics() {
                     {/* Receivables & Payables Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Accounts Receivable */}
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-amber-100 rounded-lg">
-                                    <CreditCard size={20} className="text-amber-600" />
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-amber-100 rounded-xl">
+                                        <CreditCard size={22} className="text-amber-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-slate-800">الذمم المدينة</h3>
+                                        <p className="text-slate-400 text-xs font-medium">Accounts Receivable</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-slate-800">الذمم المدينة</h3>
-                                    <p className="text-slate-400 text-xs">Accounts Receivable</p>
+                                <div className="text-right">
+                                    <p className="text-3xl font-black text-slate-800">{financialStats.totalReceivables.toLocaleString()}</p>
+                                    <p className="text-xs text-slate-400 font-medium mt-1">إجمالي المستحق على العملاء</p>
                                 </div>
                             </div>
 
-                            <div className="text-center mb-6 p-4 bg-gradient-to-br from-amber-50 to-white rounded-xl border border-amber-100">
-                                <p className="text-3xl font-black text-amber-700">{financialStats.totalReceivables.toLocaleString()} <span className="text-sm font-normal">ج.م</span></p>
-                                <p className="text-xs text-slate-400 mt-1">إجمالي المستحق على العملاء</p>
-                            </div>
+                            {/* Aging Visual Analysis */}
+                            <div className="flex-1 flex flex-col justify-center">
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-end mb-1">
+                                        <p className="text-sm font-bold text-slate-700">تحليل أعمار الديون</p>
+                                        <span className="text-xs text-slate-400 font-mono">DSO: {financialStats.dso} days</span>
+                                    </div>
 
-                            {/* Aging Analysis */}
-                            <div className="space-y-3">
-                                <p className="text-sm font-bold text-slate-600 mb-3">أعمار المديونية</p>
-                                <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
-                                        <span className="text-sm text-slate-600">0-30 يوم</span>
+                                    {/* Segmented Progress Bar */}
+                                    <div className="h-4 bg-slate-100 rounded-full flex overflow-hidden">
+                                        {[
+                                            { val: financialStats.aging0to30, color: 'bg-emerald-500', label: '0-30' },
+                                            { val: financialStats.aging30to60, color: 'bg-blue-500', label: '30-60' },
+                                            { val: financialStats.aging60to90, color: 'bg-amber-500', label: '60-90' },
+                                            { val: financialStats.aging90plus, color: 'bg-rose-500', label: '+90' }
+                                        ].map((segment, idx) => {
+                                            const width = financialStats.totalReceivables > 0
+                                                ? (segment.val / financialStats.totalReceivables) * 100
+                                                : 0;
+                                            if (width === 0) return null;
+                                            return (
+                                                // eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for aging bar
+                                                <div
+                                                    key={idx}
+                                                    className={segment.color}
+                                                    style={{ width: `${width}%` }}
+                                                    title={`${segment.label} يوم: ${segment.val.toLocaleString()}`}
+                                                />
+                                            );
+                                        })}
                                     </div>
-                                    <span className="font-bold text-emerald-700">{financialStats.aging0to30.toLocaleString()} ج.م</span>
-                                </div>
-                                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                                        <span className="text-sm text-slate-600">30-60 يوم</span>
-                                    </div>
-                                    <span className="font-bold text-blue-700">{financialStats.aging30to60.toLocaleString()} ج.م</span>
-                                </div>
-                                <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-                                        <span className="text-sm text-slate-600">60-90 يوم</span>
-                                    </div>
-                                    <span className="font-bold text-amber-700">{financialStats.aging60to90.toLocaleString()} ج.م</span>
-                                </div>
-                                <div className="flex items-center justify-between p-3 bg-rose-50 rounded-lg">
-                                    <div className="flex items-center gap-2">
-                                        <AlertCircle size={14} className="text-rose-500" />
-                                        <span className="text-sm text-slate-600">+90 يوم</span>
-                                    </div>
-                                    <span className="font-bold text-rose-700">{financialStats.aging90plus.toLocaleString()} ج.م</span>
-                                </div>
-                            </div>
 
-                            {/* DSO */}
-                            <div className="mt-4 p-3 bg-slate-50 rounded-lg flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <Clock size={16} className="text-slate-400" />
-                                    <span className="text-sm text-slate-600">متوسط أيام التحصيل (DSO)</span>
+                                    {/* Legend / Breakdown */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
+                                        <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-100/50">
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                                <span className="text-[10px] text-slate-500 font-bold">0-30 يوم</span>
+                                            </div>
+                                            <p className="text-sm font-bold text-emerald-700">{financialStats.aging0to30.toLocaleString()}</p>
+                                        </div>
+                                        <div className="bg-blue-50 p-2 rounded-lg border border-blue-100/50">
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                                <span className="text-[10px] text-slate-500 font-bold">30-60 يوم</span>
+                                            </div>
+                                            <p className="text-sm font-bold text-blue-700">{financialStats.aging30to60.toLocaleString()}</p>
+                                        </div>
+                                        <div className="bg-amber-50 p-2 rounded-lg border border-amber-100/50">
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                                                <span className="text-[10px] text-slate-500 font-bold">60-90 يوم</span>
+                                            </div>
+                                            <p className="text-sm font-bold text-amber-700">{financialStats.aging60to90.toLocaleString()}</p>
+                                        </div>
+                                        <div className="bg-rose-50 p-2 rounded-lg border border-rose-100/50">
+                                            <div className="flex items-center gap-1.5 mb-1">
+                                                <div className="w-2 h-2 rounded-full bg-rose-500"></div>
+                                                <span className="text-[10px] text-slate-500 font-bold">+90 يوم</span>
+                                            </div>
+                                            <p className="text-sm font-bold text-rose-700">{financialStats.aging90plus.toLocaleString()}</p>
+                                        </div>
+                                    </div>
                                 </div>
-                                <span className="font-bold text-slate-800">{financialStats.dso} يوم</span>
                             </div>
                         </div>
 
                         {/* Accounts Payable */}
-                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="p-2 bg-purple-100 rounded-lg">
-                                    <PiggyBank size={20} className="text-purple-600" />
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                            <div className="flex justify-between items-start mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-purple-100 rounded-xl">
+                                        <PiggyBank size={22} className="text-purple-600" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-slate-800">الذمم الدائنة</h3>
+                                        <p className="text-slate-400 text-xs font-medium">Accounts Payable</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-slate-800">الذمم الدائنة</h3>
-                                    <p className="text-slate-400 text-xs">Accounts Payable</p>
+                                <div className="text-right">
+                                    <p className="text-3xl font-black text-purple-700">{financialStats.totalPayables.toLocaleString()}</p>
+                                    <p className="text-xs text-slate-400 font-medium mt-1">المستحق للموردين</p>
                                 </div>
                             </div>
 
-                            <div className="text-center p-6 bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-100">
-                                <p className="text-3xl font-black text-purple-700">{financialStats.totalPayables.toLocaleString()} <span className="text-sm font-normal">ج.م</span></p>
-                                <p className="text-xs text-slate-400 mt-1">المستحق للموردين والمصممين</p>
-                            </div>
+                            <div className="flex-1 flex flex-col justify-end">
+                                {/* Net Position Card */}
+                                <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                    <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                        <Wallet size={16} className="text-slate-400" />
+                                        صافي المركز المالي (Net Position)
+                                    </h4>
 
-                            {/* Net Position */}
-                            <div className="mt-6 p-4 bg-slate-900 rounded-xl text-white">
-                                <p className="text-sm text-slate-400 mb-2">صافي المركز المالي</p>
-                                <p className={clsx(
-                                    "text-2xl font-black",
-                                    (financialStats.totalReceivables - financialStats.totalPayables) >= 0 ? "text-emerald-400" : "text-rose-400"
-                                )}>
-                                    {(financialStats.totalReceivables - financialStats.totalPayables).toLocaleString()} ج.م
-                                </p>
-                                <p className="text-xs text-slate-500 mt-1">الذمم المدينة - الذمم الدائنة</p>
+                                    <div className="flex items-center gap-4 text-sm mb-4">
+                                        <div className="flex-1">
+                                            <p className="text-xs text-slate-400 mb-1">الذمم المدينة (+)</p>
+                                            <p className="font-bold text-slate-700">{financialStats.totalReceivables.toLocaleString()}</p>
+                                        </div>
+                                        <div className="text-slate-300">-</div>
+                                        <div className="flex-1 text-left">
+                                            <p className="text-xs text-slate-400 mb-1">الذمم الدائنة (-)</p>
+                                            <p className="font-bold text-rose-600">{financialStats.totalPayables.toLocaleString()}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-3 border-t border-slate-200 flex justify-between items-center">
+                                        <span className="text-xs font-bold text-slate-500">الصافي:</span>
+                                        <span className={clsx(
+                                            "text-xl font-black",
+                                            (financialStats.totalReceivables - financialStats.totalPayables) >= 0 ? "text-emerald-600" : "text-rose-600"
+                                        )}>
+                                            {(financialStats.totalReceivables - financialStats.totalPayables).toLocaleString()} ج.م
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

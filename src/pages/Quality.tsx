@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useMemo } from 'react';
 import { db, type Order, type Supplier, type Doctor } from '../services/db';
+import { wasRejected } from '../utils/orderUtils';
 import { AlertCircle, Clock, Star, CheckCircle, Building2 } from 'lucide-react';
 
 export default function QualityDashboard() {
@@ -32,9 +33,10 @@ export default function QualityDashboard() {
     }, []);
 
     // --- Metrics Calculations (Memoized) ---
-    const { completedOrders, onTimeRate, ratedOrders, avgRating, redoRate, pendingFeedback } = useMemo(() => {
-        const HISTORICAL_CUTOFF = new Date('2026-02-01');
-        const active = orders.filter(o => new Date(o.createdAt) >= HISTORICAL_CUTOFF);
+    const { activeOrders, completedOrders, onTimeRate, ratedOrders, avgRating, redoRate, pendingFeedback } = useMemo(() => {
+        // const HISTORICAL_CUTOFF = new Date('2026-02-01');
+        // const active = orders.filter(o => new Date(o.createdAt) >= HISTORICAL_CUTOFF);
+        const active = orders; // Use all orders for now
         const completed = active.filter(o => o.status === 'Delivered' || o.status === 'Completed');
 
         const late = completed.filter(o => {
@@ -50,7 +52,7 @@ export default function QualityDashboard() {
             ? (rated.reduce((sum, o) => sum + o.feedback!.rating, 0) / rated.length).toFixed(1)
             : '---';
 
-        const redo = active.filter(o => o.isRedo);
+        const redo = active.filter(o => o.isRedo || wasRejected(o));
         const redoRt = active.length > 0
             ? ((redo.length / active.length) * 100).toFixed(1)
             : '0';
@@ -70,23 +72,77 @@ export default function QualityDashboard() {
     }, [orders]);
 
     // Supplier Performance (Memoized)
-    const supplierStats = useMemo(() => suppliers.map(sup => {
-        const supOrders = completedOrders.filter(o => o.supplierId === sup.id);
-        const supRated = supOrders.filter(o => o.feedback);
-        const supAvg = supRated.length > 0
-            ? (supRated.reduce((sum, o) => sum + o.feedback!.rating, 0) / supRated.length)
-            : 0;
-        const supLate = supOrders.filter(o => o.actualDeliveryDate && o.actualDeliveryDate > o.deliveryDate).length;
+    const supplierStats = useMemo(() => {
+        const mappedStats = suppliers.map(sup => {
+            // Use active orders for this supplier to include rejections in the total if appropriate,
+            // or just use them to find rejections.
+            // Total cases: usually implies all cases sent to the lab.
+            const supOrders = activeOrders.filter(o => o.supplierId === sup.id);
+            const supCompleted = completedOrders.filter(o => o.supplierId === sup.id); // For rating/late
 
-        return {
-            id: sup.id,
-            name: sup.name,
-            total: supOrders.length,
-            rating: supAvg,
-            lateCount: supLate,
-            lateRate: supOrders.length > 0 ? (supLate / supOrders.length) * 100 : 0
-        };
-    }), [suppliers, completedOrders]);
+            const supRated = supCompleted.filter(o => o.feedback);
+            const supAvg = supRated.length > 0
+                ? (supRated.reduce((sum, o) => sum + o.feedback!.rating, 0) / supRated.length)
+                : 0;
+
+            const supLate = supCompleted.filter(o => o.actualDeliveryDate && o.actualDeliveryDate > o.deliveryDate).length;
+
+            // Rejections
+            const docRejections = supOrders.filter(o => wasRejected(o)).length;
+            const labRejections = supOrders.filter(o => o.technicianStatus === 'Rejected').length;
+
+            // Rates relative to TOTAL ACTIVE ORDERS for this supplier
+            const total = supOrders.length;
+            const docRejectRate = total > 0 ? (docRejections / total) * 100 : 0;
+            const labRejectRate = total > 0 ? (labRejections / total) * 100 : 0;
+
+            return {
+                id: sup.id,
+                name: sup.name,
+                total,
+                rating: supAvg,
+                lateCount: supLate,
+                lateRate: supCompleted.length > 0 ? (supLate / supCompleted.length) * 100 : 0,
+                docRejections,
+                labRejections,
+                docRejectRate,
+                labRejectRate
+            };
+        });
+
+        // Add Unassigned / Internal Row
+        const unassignedOrders = activeOrders.filter(o => !o.supplierId);
+        if (unassignedOrders.length > 0) {
+            const unassignedCompleted = completedOrders.filter(o => !o.supplierId);
+            const unRated = unassignedCompleted.filter(o => o.feedback);
+            const unAvg = unRated.length > 0
+                ? (unRated.reduce((sum, o) => sum + o.feedback!.rating, 0) / unRated.length)
+                : 0;
+            const unLate = unassignedCompleted.filter(o => o.actualDeliveryDate && o.actualDeliveryDate > o.deliveryDate).length;
+
+            const docRejections = unassignedOrders.filter(o => wasRejected(o)).length;
+            // Internal lab rejections technically don't exist in the same way, but maybe 'Rejected' status applies? 
+            // Or if technicianStatus is used internally.
+            const labRejections = unassignedOrders.filter(o => o.technicianStatus === 'Rejected').length;
+
+            const total = unassignedOrders.length;
+
+            mappedStats.push({
+                id: 'internal-unassigned',
+                name: 'In-House / Unassigned',
+                total,
+                rating: unAvg,
+                lateCount: unLate,
+                lateRate: unassignedCompleted.length > 0 ? (unLate / unassignedCompleted.length) * 100 : 0,
+                docRejections,
+                labRejections,
+                docRejectRate: total > 0 ? (docRejections / total) * 100 : 0,
+                labRejectRate: total > 0 ? (labRejections / total) * 100 : 0
+            });
+        }
+
+        return mappedStats.sort((a, b) => b.total - a.total);
+    }, [suppliers, activeOrders, completedOrders]);
 
     // Issues Breakdown (Memoized)
     const issuesData = useMemo(() => {
@@ -253,11 +309,12 @@ export default function QualityDashboard() {
                                     <th className="pb-2 font-medium">المعمل</th>
                                     <th className="pb-2 font-medium">الحالات</th>
                                     <th className="pb-2 font-medium">التقييم</th>
-                                    <th className="pb-2 font-medium text-red-500">نسبة التأخير</th>
+                                    <th className="pb-2 font-medium">رفض طبيب</th>
+                                    <th className="pb-2 font-medium">رفض معمل</th>
                                 </tr>
                             </thead>
                             <tbody className="text-sm">
-                                {supplierStats.length > 0 ? supplierStats.map(sup => (
+                                {supplierStats.map(sup => (
                                     <tr key={sup.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50">
                                         <td className="py-3 font-bold text-gray-800">{sup.name}</td>
                                         <td className="py-3 text-gray-600 font-mono">{sup.total}</td>
@@ -270,14 +327,26 @@ export default function QualityDashboard() {
                                             ) : <span className="text-gray-300">-</span>}
                                         </td>
                                         <td className="py-3">
-                                            {sup.lateRate > 0 ? (
-                                                <span className="text-red-600 font-bold">{sup.lateRate.toFixed(0)}%</span>
-                                            ) : <span className="text-green-500 text-xs">0% (ممتاز)</span>}
+                                            <div className="flex flex-col">
+                                                <span className={`${sup.docRejections > 0 ? 'text-red-600 font-bold' : 'text-gray-400'}`}>
+                                                    {sup.docRejectRate.toFixed(1)}%
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">({sup.docRejections})</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-3">
+                                            <div className="flex flex-col">
+                                                <span className={`${sup.labRejections > 0 ? 'text-orange-600 font-bold' : 'text-gray-400'}`}>
+                                                    {sup.labRejectRate.toFixed(1)}%
+                                                </span>
+                                                <span className="text-[10px] text-gray-400">({sup.labRejections})</span>
+                                            </div>
                                         </td>
                                     </tr>
-                                )) : (
+                                ))}
+                                {supplierStats.length === 0 && (
                                     <tr>
-                                        <td colSpan={4} className="py-8 text-center text-gray-400 text-sm">لا توجد بيانات للمعامل</td>
+                                        <td colSpan={5} className="py-8 text-center text-gray-400 text-sm">لا توجد بيانات للمعامل</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -299,6 +368,7 @@ export default function QualityDashboard() {
                                     <span className="text-gray-500 font-mono">{item.count} حالة</span>
                                 </div>
                                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                    {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
                                     <div
                                         className="h-full bg-red-400 rounded-full"
                                         style={{ width: `${(item.count / ratedOrders.length) * 100}%` }}

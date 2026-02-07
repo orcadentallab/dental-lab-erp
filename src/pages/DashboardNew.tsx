@@ -11,6 +11,7 @@ import DailySummaryPrint from '../components/dashboard/DailySummaryPrint';
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import { useTranslation } from '../translations';
 
+
 export default function DashboardNew() {
     const { user } = useAuth();
     const [isLoading, setIsLoading] = useState(true);
@@ -71,6 +72,7 @@ export default function DashboardNew() {
     const today = new Date().toISOString().split('T')[0];
 
     const pendingApprovalOrders = orders.filter(o => {
+        if (o.technicianStatus === 'Rejected') return false; // Exclude rejected by lab
         if (o.status !== 'New Case') return false;
         if (o.workflowType === 'split' && o.designerId) return true;
         if (o.supplierId) return true;
@@ -112,6 +114,11 @@ export default function DashboardNew() {
     const ordersTodayCount = orders.filter(o => o.createdAt.startsWith(today)).length;
     const readyOrdersCount = orders.filter(o => o.status === 'Ready').length;
 
+    // Quality Stats
+    const labRejections = orders.filter(o => o.technicianStatus === 'Rejected');
+
+
+
 
 
     // Helper functions
@@ -121,6 +128,13 @@ export default function DashboardNew() {
             return acc;
         }, {} as Record<string, string>);
     }, [doctors]);
+
+    const suppliersMap = useMemo(() => {
+        return suppliers.reduce((acc, sup) => {
+            acc[sup.id] = sup.name;
+            return acc;
+        }, {} as Record<string, string>);
+    }, [suppliers]);
 
     const getLabName = (supplierId?: string) => {
         return suppliers.find(s => s.id === supplierId)?.name;
@@ -138,6 +152,19 @@ export default function DashboardNew() {
             console.error('Error registering order:', error);
         }
     };
+
+    const handleArchiveOrder = async (orderId: string) => {
+        try {
+            await db.updateOrder(orderId, { status: 'Cancelled' });
+            // Update local state to remove the order from the list immediately
+            setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Cancelled' } : o));
+        } catch (error) {
+            console.error('Error archiving order:', error);
+            alert('Failed to archive order');
+        }
+    };
+
+
 
     const handleAcceptOrder = async (data: {
         caseId: string;
@@ -265,7 +292,7 @@ export default function DashboardNew() {
                             <CheckCircle size={24} />
                         </div>
                     </div>
-                    {readyOrdersCount > 0 && (
+                    {readyOrdersCount > 0 && user?.role !== 'lab' && user?.role !== 'designer' && (
                         <button
                             onClick={() => setShowDailySummary(true)}
                             className="w-full mt-2 flex items-center justify-center gap-2 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 py-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
@@ -300,12 +327,33 @@ export default function DashboardNew() {
                             )}
                             {rejectedOrders.length > 0 && (
                                 <AlertCard
-                                    title={t.dashboard.rejectedReturned}
-                                    count={rejectedOrders.length}
+                                    title="مرفوض (طبيب)"
+                                    count={rejectedOrders.filter(o => o.status === 'Rejected').length}
                                     icon={AlertTriangle}
                                     colorClass="red"
                                     useModal
-                                    onExpand={() => setActiveModal('rejected')}
+                                    onExpand={() => setActiveModal('rejected-doctor')}
+                                />
+                            )}
+                            {/* Lab Rejections Card */}
+                            {rejectedOrders.some(o => o.status === 'Returned for Adjustments') && (
+                                <AlertCard
+                                    title="مرتجع للتعديل"
+                                    count={rejectedOrders.filter(o => o.status === 'Returned for Adjustments').length}
+                                    icon={Clock}
+                                    colorClass="yellow"
+                                    useModal
+                                    onExpand={() => setActiveModal('returned')}
+                                />
+                            )}
+                            {labRejections.length > 0 && (
+                                <AlertCard
+                                    title="مرفوض (معمل)"
+                                    count={labRejections.length}
+                                    icon={AlertTriangle}
+                                    colorClass="red"
+                                    useModal
+                                    onExpand={() => setActiveModal('rejected-lab')}
                                 />
                             )}
                             {overdueOrders.length > 0 && (
@@ -422,74 +470,106 @@ export default function DashboardNew() {
 
             {/* Lab Workload Cards - Visible to All (with role-based filtering) */}
             {
-                suppliers.length > 0 && (
-                    <div className="space-y-4">
-                        <h2 className="text-lg font-bold text-gray-800 dark:text-white">{t.dashboard.labWorkload}</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {suppliers.map(supplier => {
-                                // Filter orders based on user role
-                                let labOrders = orders.filter(o => o.supplierId === supplier.id && o.status !== 'Delivered');
+                suppliers.length > 0 && (() => {
+                    const hasActive = suppliers.some(supplier => {
+                        let labOrders = orders.filter(o => o.supplierId === supplier.id && o.status !== 'Delivered');
+                        if (user?.role === 'lab' && user.entityId !== supplier.id) return false;
+                        if (user?.role === 'designer') labOrders = labOrders.filter(o => o.designerId === user.id);
+                        return labOrders.length > 0;
+                    });
 
-                                // For lab users, only show their own lab's orders
-                                if (user?.role === 'lab' && user.entityId !== supplier.id) {
-                                    return null;
-                                }
+                    if (!hasActive) return null;
 
-                                // For designers, only show orders they're assigned to
-                                if (user?.role === 'designer') {
-                                    labOrders = labOrders.filter(o => o.designerId === user.id);
-                                }
+                    return (
+                        <div className="space-y-4">
+                            <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                <Building2 className="text-blue-600" size={20} />
+                                {t.dashboard.labWorkload}
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {suppliers.map(supplier => {
+                                    // Filter orders based on user role
+                                    let labOrders = orders.filter(o => o.supplierId === supplier.id && o.status !== 'Delivered');
 
-                                if (labOrders.length === 0) return null;
+                                    // For lab users, only show their own lab's orders
+                                    if (user?.role === 'lab' && user.entityId !== supplier.id) {
+                                        return null;
+                                    }
 
-                                return (
-                                    <div key={supplier.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm">
-                                        <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
-                                            <div className="flex items-center gap-2">
-                                                <Building2 className="text-blue-600 dark:text-blue-400 w-5 h-5" />
-                                                <h3 className="font-bold text-gray-800 dark:text-white">{supplier.name}</h3>
-                                            </div>
-                                            <span className="bg-blue-600 text-white px-2.5 py-1 rounded-full text-xs font-bold">
-                                                {labOrders.length}
-                                            </span>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {labOrders.map(order => (
-                                                <div key={order.id} className="flex items-center justify-between text-sm gap-2">
-                                                    <span className="font-mono text-blue-600 dark:text-blue-400 font-bold">#{order.caseId}</span>
-                                                    <span className="text-gray-600 dark:text-gray-400 truncate flex-1">{order.patientName}</span>
-                                                    <div className="flex items-center gap-1">
-                                                        {order.workflowType === 'split' && order.designerId && (
-                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold whitespace-nowrap">
-                                                                Milling
-                                                            </span>
-                                                        )}
-                                                        <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                                                            {order.status}
-                                                        </span>
+                                    // For designers, only show orders they're assigned to
+                                    if (user?.role === 'designer') {
+                                        labOrders = labOrders.filter(o => o.designerId === user.id);
+                                    }
+
+                                    if (labOrders.length === 0) return null;
+
+                                    return (
+                                        <div key={supplier.id} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200">
+                                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-sm">
+                                                        {supplier.name.charAt(0)}
                                                     </div>
+                                                    <h3 className="font-bold text-gray-800 dark:text-white">{supplier.name}</h3>
                                                 </div>
-                                            ))}
+                                                <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm shadow-blue-200 dark:shadow-none">
+                                                    {labOrders.length}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                                {labOrders.map(order => (
+                                                    <div key={order.id} className="flex items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-default">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="font-mono text-xs text-gray-400">#{order.caseId}</span>
+                                                            <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{order.patientName}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            {order.workflowType === 'split' && order.designerId && (
+                                                                <span className="w-2 h-2 rounded-full bg-purple-500" title="Milling"></span>
+                                                            )}
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${order.status === 'Ready'
+                                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                                                : order.status === 'Rejected'
+                                                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                                                }`}>
+                                                                {order.status === 'Rejected' ? 'رفض دكتور' : order.status}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
-                )
+                    );
+                })()
             }
 
-            {/* Empty State */}
+            {/* Empty State - Pro UI */}
             {
                 orders.length === 0 && (
-                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                        <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-                        <h3 className="text-xl font-bold text-gray-700 dark:text-gray-300 mb-2">
-                            {t.dashboard.allGood}
+                    <div className="flex flex-col items-center justify-center py-16 px-4 bg-white dark:bg-gray-800 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700">
+                        <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                            <Package className="w-10 h-10 text-blue-500 dark:text-blue-400" />
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                            لا توجد طلبات نشطة حالياً
                         </h3>
-                        <p className="text-gray-500 dark:text-gray-400">
-                            {t.dashboard.noOrdersNeedAttention}
+                        <p className="text-gray-500 dark:text-gray-400 text-center max-w-sm mb-8 leading-relaxed">
+                            يبدو أن كل شيء هادئ الآن. يمكنك البدء بإضافة طلب جديد أو تسجيل دكتور.
                         </p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowOrderForm(true)}
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-semibold shadow-lg shadow-blue-200 dark:shadow-none transition-all hover:-translate-y-0.5"
+                            >
+                                <PlusCircle size={20} />
+                                <span>إضافة طلب جديد</span>
+                            </button>
+                        </div>
                     </div>
                 )
             }
@@ -541,16 +621,49 @@ export default function DashboardNew() {
             </OrderListModal>
 
             <OrderListModal
-                title="حالات مرفوضة/مرتجعة"
-                isOpen={activeModal === 'rejected'}
+                title="حالات مرفوضة من الطبيب"
+                isOpen={activeModal === 'rejected-doctor'}
                 onClose={() => setActiveModal(null)}
             >
-                {rejectedOrders.map(order => (
+                {rejectedOrders.filter(o => o.status === 'Rejected').map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
+                        onArchive={handleArchiveOrder}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="حالات مرفوضة من المعمل"
+                isOpen={activeModal === 'rejected-lab'}
+                onClose={() => setActiveModal(null)}
+            >
+                {labRejections.map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                        onArchive={handleArchiveOrder}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="حالات مرتجعة للتعديل"
+                isOpen={activeModal === 'returned'}
+                onClose={() => setActiveModal(null)}
+            >
+                {rejectedOrders.filter(o => o.status === 'Returned for Adjustments').map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                        onArchive={handleArchiveOrder}
                     />
                 ))}
             </OrderListModal>
@@ -724,6 +837,7 @@ export default function DashboardNew() {
                     <DailySummaryPrint
                         orders={orders.filter(o => o.status === 'Ready')}
                         doctors={doctorsMap}
+                        suppliers={suppliersMap}
                         onClose={() => setShowDailySummary(false)}
                     />
                 </div>

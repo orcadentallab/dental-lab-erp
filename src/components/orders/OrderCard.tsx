@@ -51,7 +51,8 @@ export default function OrderCard({
     hideSensitiveInfo,
     onDelete,
     isHighlighted = false,
-    onAccept
+    onAccept,
+    onRequestRedo
 }: OrderCardProps) {
     const { success } = useToast();
 
@@ -150,7 +151,7 @@ export default function OrderCard({
         ? order.comments[order.comments.length - 1]
         : null;
 
-    const isReturnedOrRejected = order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected';
+    const isReturnedOrRejected = order.status === 'Returned for Adjustments' || order.status === 'Rejected' || order.technicianStatus === 'Rejected';
     const isDelivered = order.status === 'Delivered';
 
     return (
@@ -420,7 +421,9 @@ export default function OrderCard({
                                         "appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-full sm:w-[150px] focus:ring-2",
                                         order.status === 'Delivered'
                                             ? 'bg-green-100 text-green-800 border-green-300 ring-green-200'
-                                            : 'bg-white text-surface-700 border-surface-200 hover:border-primary-300 focus:ring-primary-100'
+                                            : order.status === 'Rejected'
+                                                ? 'bg-red-100 text-red-800 border-red-300 ring-red-200'
+                                                : 'bg-white text-surface-700 border-surface-200 hover:border-primary-300 focus:ring-primary-100'
                                     )}
                                     disabled={userRole === 'lab' && order.status === 'Delivered'}
                                 >
@@ -435,9 +438,26 @@ export default function OrderCard({
                                     <option value="Delivered">🚚 Delivered</option>
                                     <option value="Returned for Adjustments">↩️ Returned</option>
                                     <option value="Rejected">❌ Rejected</option>
+                                    <option value="Cancelled">🚫 Cancelled</option>
                                 </select>
                                 <ChevronRight size={14} className="absolute inset-y-0 right-2 my-auto text-surface-400 pointer-events-none rotate-90" />
                             </div>
+
+                            {/* Archive Action for Rejected/Returned/LabRejected */}
+                            {(order.status === 'Rejected' || order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected') && (
+                                <button
+                                    onClick={() => {
+                                        if (confirm('هل أنت متأكد من أرشفة هذه الحالة؟ ستختفي من القائمة.')) {
+                                            handleStatusChangeClick('Cancelled');
+                                        }
+                                    }}
+                                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300"
+                                    title="أرشفة (إلغاء) الحالة"
+                                >
+                                    <Trash2 size={14} />
+                                    <span>أرشفة</span>
+                                </button>
+                            )}
 
                             {/* Tech Actions - Only for admin, designer, lab */}
                             {onTechAction && (userRole === 'admin' || userRole === 'designer' || userRole === 'lab') && (
@@ -466,6 +486,20 @@ export default function OrderCard({
                                             <AlertTriangle size={14} />
                                         </button>
                                     </div>
+                                </>
+                            )}
+
+                            {/* Redo Action - Admin Only */}
+                            {userRole === 'admin' && onRequestRedo && (
+                                <>
+                                    <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
+                                    <button
+                                        onClick={() => onRequestRedo(order)}
+                                        className={`p-1.5 rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors ${order.isRedo ? 'bg-red-100 text-red-700' : ''}`}
+                                        title={order.isRedo ? 'تم تسجيله كإعادة' : 'تسجيل كإعادة (Redo)'}
+                                    >
+                                        <History size={14} />
+                                    </button>
                                 </>
                             )}
                         </div>

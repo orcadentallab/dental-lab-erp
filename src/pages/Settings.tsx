@@ -4,7 +4,7 @@ import { db } from '../services/db';
 import { Download, Upload, AlertCircle, CheckCircle, FileSpreadsheet, Cloud, Lock, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { importDoctorsFromExcel, importServicesFromExcel, importOrdersFromExcel, importTransactionsFromExcel } from '../lib/excelImporter';
+import { importDoctorsFromExcel, importServicesFromExcel, importOrdersFromExcel, importTransactionsFromExcel, parseLabAssignments } from '../lib/excelImporter';
 
 export default function Settings() {
     const { user } = useAuth();
@@ -311,6 +311,106 @@ export default function Settings() {
                             >
                                 بدء التصحيح
                             </button>
+                        </div>
+
+                        {/* Lab Correction Tool */}
+                        <div className="flex items-center justify-between p-4 bg-blue-50 rounded-xl border border-blue-100 mt-4">
+                            <div>
+                                <h3 className="font-bold text-blue-900 mb-1">تصحيح المعامل المفقودة</h3>
+                                <p className="text-xs text-blue-700">
+                                    للحالات المستوردة حديثاً. سيتم مطابقة (المريض + الخدمة) وتحديث المعمل.
+                                </p>
+                            </div>
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept=".xlsx,.xls"
+                                    aria-label="تصحيح المعامل المفقودة"
+                                    onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+
+                                        if (!window.confirm('هل أنت متأكد؟ سيتم تحديث معامل الحالات المسجلة اليوم والأمس بناءً على الملف.')) return;
+
+                                        setImportStatus({ success: true, message: 'جاري فحص الملف ومطابقة الحالات...' });
+                                        try {
+                                            // 1. Parse Excel
+                                            const suppliers = await db.getSuppliers();
+                                            const assignments = await parseLabAssignments(file, suppliers);
+
+                                            if (assignments.length === 0) {
+                                                setImportStatus({ success: false, message: 'لم يتم العثور على بيانات معامل صالحة في الملف.' });
+                                                return;
+                                            }
+
+                                            // 2. Fetch Today & Yesterday's Orders
+                                            const today = new Date();
+                                            const yesterday = new Date(today);
+                                            yesterday.setDate(yesterday.getDate() - 1);
+
+                                            const todayStr = today.toISOString().split('T')[0];
+                                            const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+                                            const allOrders = await db.getAllOrdersUnpaginated();
+                                            const recentOrders = allOrders.filter(o =>
+                                                o.createdAt.startsWith(todayStr) ||
+                                                o.createdAt.startsWith(yesterdayStr)
+                                            );
+
+                                            if (recentOrders.length === 0) {
+                                                setImportStatus({ success: false, message: 'لا توجد حالات مسجلة اليوم أو الأمس.' });
+                                                return;
+                                            }
+
+                                            // 3. Match and Update
+                                            let updatedCount = 0;
+                                            const norm = (t: string) => t.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
+
+                                            const updates: any[] = [];
+                                            const processedOrderIds = new Set<string>();
+
+                                            for (const asm of assignments) {
+                                                // Find matching orders
+                                                // Match criteria: Patient Name AND Service Name in items
+                                                const matches = recentOrders.filter(o =>
+                                                    !processedOrderIds.has(o.id) && // Don't update same order twice
+                                                    norm(o.patientName) === norm(asm.patient) &&
+                                                    o.items.some(i => norm(i.serviceType) === norm(asm.service))
+                                                );
+
+                                                for (const match of matches) {
+                                                    // Only update if supplier is missing or different?
+                                                    // User said "put the lab", implies missing. But overwriting is safer if correction is needed.
+                                                    if (match.supplierId !== asm.supplierId) {
+                                                        updates.push({
+                                                            ...match,
+                                                            supplierId: asm.supplierId
+                                                        });
+                                                        processedOrderIds.add(match.id);
+                                                        updatedCount++;
+                                                    }
+                                                }
+                                            }
+
+                                            if (updates.length > 0) {
+                                                await db.bulkUpsertOrders(updates);
+                                                setImportStatus({ success: true, message: `تم تحديث المعمل لـ ${updatedCount} حالة بنجاح!` });
+                                                setTimeout(() => window.location.reload(), 2000);
+                                            } else {
+                                                setImportStatus({ success: true, message: 'لم يتم العثور على حالات مطابقة لتحديثها.' });
+                                            }
+
+                                        } catch (err: any) {
+                                            setImportStatus({ success: false, message: `خطأ: ${err.message}` });
+                                        }
+                                        e.target.value = '';
+                                    }}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                                <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors pointer-events-none">
+                                    رفع الملف وتصحيح
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -76,10 +76,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 }
             }
 
-            // Auto-Status Logic: If Rejected, mark order as Rejected
-            if (action === 'Rejected') {
-                await db.updateOrder(orderId, { status: 'Rejected' });
-            }
+
 
             onStatusChange(orderId, 'same'); // Triggers refresh
         } catch (error) {

@@ -1,6 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 import type { Order } from '../../services/db';
+import { getTechStatusBadge } from '../../utils/orderUtils';
 
 interface OrderListItemProps {
     order: Order;
@@ -9,6 +11,7 @@ interface OrderListItemProps {
     onRegister?: (orderId: string) => void;
     showRegister?: boolean;
     onAccept?: (order: Order) => void;
+    onArchive?: (orderId: string) => void;
 }
 
 const OrderListItem = React.memo(function OrderListItem({
@@ -17,7 +20,8 @@ const OrderListItem = React.memo(function OrderListItem({
     designerName,
     onRegister,
     showRegister = false,
-    onAccept
+    onAccept,
+    onArchive
 }: OrderListItemProps) {
     const navigate = useNavigate();
 
@@ -65,14 +69,36 @@ const OrderListItem = React.memo(function OrderListItem({
 
                 {/* Status */}
                 <div>
-                    <span className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                        {order.status}
-                    </span>
+                    <div className="flex items-center gap-1">
+                        <span className={`text-xs px-2 py-1 rounded ${order.status === 'Rejected' ? 'bg-red-100 text-red-700 font-bold' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>
+                            {order.status === 'Rejected' ? 'رفض طبيب' : order.status}
+                        </span>
+                        {/* Lab Rejection / Tech Status Badge */}
+                        {(order.technicianStatus && order.technicianStatus !== 'Pending') && (
+                            <div className="scale-90 origin-right">
+                                {getTechStatusBadge(order.technicianStatus)}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
             {/* Actions */}
             <div className="flex gap-2 mr-4">
+                {(order.status === 'Rejected' || order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected') && onArchive && (
+                    <button
+                        onClick={() => {
+                            if (confirm('هل أنت متأكد من أرشفة هذه الحالة؟')) {
+                                onArchive(order.id);
+                            }
+                        }}
+                        className="text-xs bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 px-3 py-1.5 rounded transition-colors flex items-center gap-1 border border-gray-200"
+                        title="أرشفة"
+                    >
+                        <Trash2 size={14} />
+                        <span>أرشفة</span>
+                    </button>
+                )}
                 <button
                     onClick={handleNavigate}
                     className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded transition-colors"
