@@ -18,8 +18,10 @@ const expenseCategories = [
     { id: 'work_shipping', label: 'شحن شغل', icon: Truck },      // Work Shipping
     { id: 'transport', label: 'انتقالات', icon: MapPin },       // Transportation
     { id: 'supplies', label: 'مستلزمات', icon: Package },       // Supplies
+    { id: 'bonus', label: 'منحة/مكافأة', icon: DollarSign },    // Bonus
+    { id: 'deduction', label: 'خصم/جزاء', icon: AlertCircle },  // Deduction
     { id: 'other', label: 'أخرى', icon: Banknote },             // Other
-    { id: 'salaries', label: 'رواتب', icon: UsersIcon },        // Internal for Payouts
+    { id: 'salaries', label: 'مرتبات وأجور', icon: UsersIcon }, // Internal for Payouts
 ];
 
 interface RepresentativeStats {
@@ -32,6 +34,8 @@ interface RepresentativeStats {
     commissionRate: number;
     commissionAmount: number;
     approvedExpenses: number; // Pending Payout
+    totalBonuses: number;
+    totalDeductions: number;
     netPayout: number;
     isSalaryPaid?: boolean;
 }
@@ -96,15 +100,30 @@ export default function Staff() {
                 // We keep expenses cumulative as they are irrelevant to the month of Salary
                 // Only count APPROVED expenses (awaiting settlement)
                 const unpaidExpenses = staffExpenses
-                    .filter(e => e.entityId === rep.id && e.isApproved && !e.isRegistered)
-                    .reduce((sum, e) => sum + e.amount, 0);
+                    .filter(e => e.entityId === rep.id && e.isApproved && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
 
-                // Check if Salary is already paid for this month
-                // Look for transaction: category='salaries', entityId=rep.id, date startsWith selectedMonth
-                const isSalaryPaid = allTransactions.some(t =>
-                    t.category === 'salaries' &&
+                const approvedExpensesAmount = unpaidExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+                // Bonuses and Deductions for THIS MONTH
+                const monthlyAdjustments = staffExpenses.filter(t =>
                     t.entityId === rep.id &&
                     t.date.startsWith(selectedMonth)
+                );
+
+                const totalBonuses = monthlyAdjustments
+                    .filter(t => t.category === 'bonus')
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                const totalDeductions = monthlyAdjustments
+                    .filter(t => t.category === 'deduction')
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                // Check if Salary is already paid for this month
+                // Check by description containing "ratib shahr YYYY-MM"
+                const isSalaryPaid = allTransactions.some(t =>
+                    t.entityId === rep.id &&
+                    t.description &&
+                    t.description.includes(`راتب شهر ${selectedMonth}`)
                 );
 
                 return {
@@ -116,8 +135,10 @@ export default function Staff() {
                     kpiPercent: kpi,
                     commissionRate: rate,
                     commissionAmount: commission,
-                    approvedExpenses: unpaidExpenses,
-                    netPayout: fixedPart + variablePart + commission, // Salary Payout Only
+                    approvedExpenses: approvedExpensesAmount,
+                    totalBonuses,
+                    totalDeductions,
+                    netPayout: fixedPart + variablePart + commission + totalBonuses - totalDeductions, // Salary Payout Only
                     isSalaryPaid // New Flag
                 };
             });
@@ -137,6 +158,40 @@ export default function Staff() {
     const handleKpiChange = (userId: string, val: string) => {
         const num = Math.min(100, Math.max(0, parseInt(val) || 0));
         setKpiMap(prev => ({ ...prev, [userId]: num }));
+    };
+
+    // Adjustment Modal
+    const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
+    const [selectedRepForAdjustment, setSelectedRepForAdjustment] = useState<string | null>(null);
+    const [adjustmentType, setAdjustmentType] = useState<'bonus' | 'deduction'>('bonus');
+
+    const handleAddAdjustment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedRepForAdjustment) return;
+
+        try {
+            await db.addTransaction({
+                type: 'expense',
+                amount: parseFloat(newExpense.amount),
+                description: newExpense.description, // e.g. "Bonus for excellence"
+                date: selectedMonth + '-01', // Keep adjustments in the month they belong to? Or today?
+                // User said "whether salary or bonus... put in 'meratabat'".
+                // But for adjustments, let's keep them as markers in the month.
+                // The User primarily cares about the FINAL payout date.
+                category: adjustmentType,
+                entityId: selectedRepForAdjustment,
+                entityType: 'general',
+                isRegistered: false // Not registered yet, will be "settled" upon salary payment
+            });
+
+            setNewExpense({ amount: '', description: '', category: '' });
+            setIsAdjustmentModalOpen(false);
+            setSelectedRepForAdjustment(null);
+            await loadData();
+        } catch (error) {
+            console.error("Error adding adjustment", error);
+            alert('حدث خطأ');
+        }
     };
 
     const handleAddExpense = async (e: React.FormEvent) => {
@@ -167,31 +222,39 @@ export default function Staff() {
     const handlePaySalary = async (stat: RepresentativeStats) => {
         if (!confirm(`هل أنت متأكد من صرف راتب شهر ${selectedMonth} للمندوب ${stat.user.name}؟\nالمبلغ: ${stat.netPayout.toFixed(0)} ج.م`)) return;
 
-        // Or use selectedMonth + '-01'? No, payment date is now.
-        // But we want to tag it as belonging to selectedMonth. We can put it in description.
-
         try {
+            // Get all adjustments for this month to delete them (prevent double counting)
+            // We need to fetch fresh transactions to be sure
+            const allTransactions = await db.getTransactions();
+            const monthlyAdjustments = allTransactions.filter(t =>
+                t.type === 'expense' &&
+                t.entityId === stat.user.id &&
+                t.date.startsWith(selectedMonth) &&
+                ['bonus', 'deduction'].includes(t.category)
+            );
+
+            // Construct detailed description from adjustments
+            const adjustmentDetails = monthlyAdjustments.map(t =>
+                `${t.category === 'bonus' ? 'منحة' : 'خصم'} (${t.description}: ${t.amount})`
+            ).join(' - ');
+
+            const adjustmentsDesc = adjustmentDetails ? ` [تفاصيل: ${adjustmentDetails}]` : '';
+
             await db.addTransaction({
                 type: 'expense',
                 amount: stat.netPayout,
-                category: 'salaries',
-                description: `راتب شهر ${selectedMonth} - ${stat.user.name}`,
-                date: selectedMonth + '-01', // Force date to be 1st of selected month for easy checking? 
-                // Better: Use real date, but check is done by finding *any* salary tx in that month range? 
-                // Or we store 'reference_month' in metadata? We don't have metadata column.
-                // Let's rely on the record Date being in that month. 
-                // Wait, if I pay January salary in February, the transaction date is Feb.
-                // But I check `t.date.startsWith(selectedMonth)`. 
-                // So I MUST set the transaction date to be within the payroll month to "lock" it.
-                // OR I rely on Description parsing. 
-                // Let's set the date to the END of the payroll month (or 1st) to ensure it appears in that month's filter.
-                // User requirement: "Filter by month... get salary status".
-                // If I set date to '2023-10-28' (payment date) but salary is for '2023-09', it won't show as paid in Sept view if I filter by date.
-                // TRADEOFF: Set transaction date to the selected month (e.g., 28th of selected month) so it registers as "Paid" for that month.
+                category: 'مرتبات وأجور', // Correct Category Label
+                description: `راتب شهر ${selectedMonth} - ${stat.user.name} (أساسي: ${stat.baseSalary} - عمولة: ${stat.commissionAmount.toFixed(0)} - إجمالي منح: ${stat.totalBonuses} - إجمالي خصم: ${stat.totalDeductions})${adjustmentsDesc}`,
+                date: new Date().toISOString().split('T')[0], // Pay Date = Today
                 entityId: stat.user.id,
                 entityType: 'general',
                 isRegistered: true
             });
+
+            // Delete the individual adjustment transactions so they don't count twice
+            if (monthlyAdjustments.length > 0) {
+                await Promise.all(monthlyAdjustments.map(t => db.deleteTransaction(t.id)));
+            }
 
             await loadData();
             alert('تم صرف الراتب بنجاح ✅');
@@ -204,7 +267,7 @@ export default function Staff() {
     // 2. Settle Expenses
     const handleSettleExpenses = async (stat: RepresentativeStats) => {
         // Only settle APPROVED expenses
-        const approvedExpenses = expenses.filter(e => e.entityId === stat.user.id && e.isApproved && !e.isRegistered);
+        const approvedExpenses = expenses.filter(e => e.entityId === stat.user.id && e.isApproved && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
         if (approvedExpenses.length === 0) {
             alert('لا توجد مصاريف معتمدة للتسوية');
             return;
@@ -271,12 +334,12 @@ export default function Staff() {
 
     // Memoize expensive filtering operations
     const pendingExpenses = useMemo(() =>
-        expenses.filter(e => !e.isRegistered).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        expenses.filter(e => !e.isRegistered && !['bonus', 'deduction'].includes(e.category)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         [expenses]
     );
 
     const myExpenses = useMemo(() =>
-        expenses.filter(e => e.entityId === currentUser?.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        expenses.filter(e => e.entityId === currentUser?.id && !['bonus', 'deduction'].includes(e.category)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         [expenses, currentUser?.id]
     );
 
@@ -338,6 +401,7 @@ export default function Staff() {
                                         <th className="p-4">المبيعات (ش)</th>
                                         <th className="p-4">الأساسي</th>
                                         <th className="p-4">الثابت / المتغير</th>
+                                        <th className="p-4">المنح / الخصومات</th>
                                         <th className="p-4">العمولة</th>
                                         <th className="p-4">الراتب المستحق</th>
                                         <th className="p-4">حالة الراتب</th>
@@ -367,6 +431,24 @@ export default function Staff() {
                                                         <span>%</span>
                                                     </div>
                                                 )}
+                                            </td>
+                                            <td className="p-4 text-xs">
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="text-green-600">+{stat.totalBonuses}</div>
+                                                    <div className="text-red-500">-{stat.totalDeductions}</div>
+                                                    {!stat.isSalaryPaid && (
+                                                        <button
+                                                            onClick={() => {
+                                                                setSelectedRepForAdjustment(stat.user.id);
+                                                                setIsAdjustmentModalOpen(true);
+                                                                setNewExpense({ amount: '', description: '', category: '' });
+                                                            }}
+                                                            className="text-blue-500 text-[10px] hover:underline"
+                                                        >
+                                                            + إضافة
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="p-4 text-green-600">
                                                 <div className="flex flex-col text-xs">
@@ -426,67 +508,84 @@ export default function Staff() {
                             {pendingExpenses.length === 0 ? (
                                 <p className="p-8 text-center text-gray-400">لا يوجد مصاريف معلقة أو غير مسواة</p>
                             ) : (
-                                pendingExpenses.map(expense => {
-                                    const cat = expenseCategories.find(c => c.label === expense.category);
-                                    const Icon = cat?.icon || Banknote;
-                                    const isPending = !expense.isApproved;
-                                    const isApproved = expense.isApproved && !expense.isRegistered;
+                                Object.entries(pendingExpenses.reduce((acc, expense) => {
+                                    const repId = expense.entityId || 'unknown';
+                                    if (!acc[repId]) acc[repId] = [];
+                                    acc[repId].push(expense);
+                                    return acc;
+                                }, {} as Record<string, typeof pendingExpenses>)).map(([repId, repExpenses]) => {
+                                    const repName = stats.find(s => s.user.id === repId)?.user.name || 'مندوب غير معروف';
 
                                     return (
-                                        <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                                            <div className="flex items-center gap-4">
-                                                <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isPending ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600")}>
-                                                    <Icon size={20} />
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
-                                                    </div>
-                                                    <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
-                                                </div>
+                                        <div key={repId} className="border-b last:border-0">
+                                            <div className="bg-gray-50/80 px-4 py-2 text-sm font-bold text-gray-700 flex items-center gap-2">
+                                                <UsersIcon size={16} className="text-blue-500" />
+                                                {repName}
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="font-bold text-lg">{expense.amount} ج.م</span>
+                                            {repExpenses.map(expense => {
+                                                const cat = expenseCategories.find(c => c.label === expense.category);
+                                                const Icon = cat?.icon || Banknote;
+                                                const isPending = !expense.isApproved;
+                                                const isApproved = expense.isApproved && !expense.isRegistered;
 
-                                                {/* Status Badge */}
-                                                {isPending && (
-                                                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
-                                                )}
-                                                {isApproved && (
-                                                    <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
-                                                )}
+                                                return (
+                                                    <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isPending ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600")}>
+                                                                <Icon size={20} />
+                                                            </div>
+                                                            <div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
+                                                                </div>
+                                                                <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="font-bold text-lg">{expense.amount} ج.م</span>
 
-                                                {/* Action Buttons */}
-                                                {isPending && (
-                                                    <div className="flex items-center gap-1">
-                                                        <button
-                                                            onClick={() => handleApproveExpense(expense)}
-                                                            className="p-1.5 text-green-600 hover:bg-green-50 rounded"
-                                                            title="اعتماد المصروف"
-                                                        >
-                                                            <CheckCircle size={18} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleRejectExpense(expense)}
-                                                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                            title="رفض وحذف المصروف"
-                                                        >
-                                                            <XCircle size={18} />
-                                                        </button>
+                                                            {/* Status Badge */}
+                                                            {isPending && (
+                                                                <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
+                                                            )}
+                                                            {isApproved && (
+                                                                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
+                                                            )}
+
+                                                            {/* Action Buttons */}
+                                                            {isPending && (
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        onClick={() => handleApproveExpense(expense)}
+                                                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded"
+                                                                        title="اعتماد المصروف"
+                                                                    >
+                                                                        <CheckCircle size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleRejectExpense(expense)}
+                                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                                        title="رفض وحذف المصروف"
+                                                                    >
+                                                                        <XCircle size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Admin Delete Button for Approved Expenses */}
+                                                            {isApproved && isAdmin && (
+                                                                <button
+                                                                    onClick={() => handleDeleteTransaction(expense)}
+                                                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                                                                    title="حذف المصروف"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                )}
-
-                                                {/* Admin Delete Button for Approved Expenses */}
-                                                {isApproved && isAdmin && (
-                                                    <button
-                                                        onClick={() => handleDeleteTransaction(expense)}
-                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                        title="حذف المصروف"
-                                                    >
-                                                        <Trash2 size={18} />
-                                                    </button>
-                                                )}
-                                            </div>
+                                                );
+                                            })}
                                         </div>
                                     );
                                 })
@@ -556,6 +655,69 @@ export default function Staff() {
                             ))
                             }
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Add Adjustment Modal */}
+            {isAdjustmentModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+                        <h2 className="text-xl font-bold mb-4">إضافة تعديل على الراتب</h2>
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => setAdjustmentType('bonus')}
+                                className={clsx("flex-1 py-2 rounded-lg font-bold transition-colors", adjustmentType === 'bonus' ? "bg-green-100 text-green-700 ring-2 ring-green-500" : "bg-gray-100 text-gray-600")}
+                            >
+                                <DollarSign size={16} className="inline mr-1" /> منحة / مكافأة
+                            </button>
+                            <button
+                                onClick={() => setAdjustmentType('deduction')}
+                                className={clsx("flex-1 py-2 rounded-lg font-bold transition-colors", adjustmentType === 'deduction' ? "bg-red-100 text-red-700 ring-2 ring-red-500" : "bg-gray-100 text-gray-600")}
+                            >
+                                <AlertCircle size={16} className="inline mr-1" /> خصم / جزاء
+                            </button>
+                        </div>
+                        <form onSubmit={handleAddAdjustment} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">المبلغ</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min="0"
+                                    value={newExpense.amount}
+                                    onChange={e => setNewExpense({ ...newExpense, amount: e.target.value })}
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">السبب</label>
+                                <textarea
+                                    required
+                                    value={newExpense.description}
+                                    onChange={e => setNewExpense({ ...newExpense, description: e.target.value })}
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                                    rows={3}
+                                    placeholder="سبب المنحة أو الخصم..."
+                                />
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAdjustmentModalOpen(false)}
+                                    className="flex-1 py-2 text-gray-600 hover:bg-gray-50 rounded-lg border"
+                                >
+                                    إلغاء
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                                >
+                                    حفظ
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

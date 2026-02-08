@@ -123,7 +123,8 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
         entity_id: user.entityId || null,
         base_salary: user.baseSalary || null,
         unit_rate: user.unitRate || null,
-        email: user.email || null
+        email: user.email || null,
+        custom_permissions: user.customPermissions || null
     };
 
     const { error } = await supabase

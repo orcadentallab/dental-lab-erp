@@ -237,31 +237,39 @@ export default function Settings() {
                     <div className="p-4">
                         <div className="flex items-center justify-between p-4 bg-orange-50 rounded-xl border border-orange-100">
                             <div>
-                                <h3 className="font-bold text-orange-900 mb-1">تحديث أسعار الأوردرات الصفرية</h3>
+                                <h3 className="font-bold text-orange-900 mb-1">تحديث أسعار البيع الصفرية</h3>
                                 <p className="text-xs text-orange-700">
-                                    أوردرات اليوم فقط. سيتم البحث عن السعر بناءً على اسم الخدمة.
+                                    جميع الأوردرات بسعر بيع = 0. مطابقة ذكية للأسماء (تتجاهل الكبير/صغير والمسافات).
                                 </p>
                             </div>
                             <button
                                 onClick={async () => {
-                                    if (!window.confirm('هل أنت متأكد؟ سيتم تحديث أسعار الأوردرات الصفرية المسجلة اليوم فقط.')) return;
+                                    if (!window.confirm('هل أنت متأكد؟ سيتم تحديث أسعار البيع لجميع الأوردرات الصفرية.')) return;
                                     setImportStatus({ success: true, message: 'جاري تحديث الأسعار...' });
                                     try {
-                                        // 1. Fetch Orders with 0 price created TODAY
-                                        const today = new Date().toISOString().split('T')[0];
                                         const [allOrders, services] = await Promise.all([db.getAllOrdersUnpaginated(), db.getServices()]);
 
-                                        // Helper for normalization
-                                        const norm = (t: string) => t.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
+                                        // Helper for normalization (case-insensitive + remove spaces + Arabic normalization)
+                                        const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
 
-                                        const zeroPriceOrders = allOrders.filter(o => {
-                                            const isToday = o.createdAt.startsWith(today);
-                                            const isZero = o.totalPrice === 0;
-                                            return isToday && isZero;
-                                        });
+                                        // Helper to count teeth (handles both string and array)
+                                        const getTeethCount = (teethNumbers: string[] | string | undefined): number => {
+                                            if (!teethNumbers) return 1;
+                                            if (Array.isArray(teethNumbers)) return teethNumbers.length || 1;
+                                            if (typeof teethNumbers === 'string') {
+                                                const parts = teethNumbers.split(',').filter(t => t.trim());
+                                                return parts.length || 1;
+                                            }
+                                            return 1;
+                                        };
+
+                                        const zeroPriceOrders = allOrders.filter(o =>
+                                            o.totalPrice === 0 &&
+                                            o.status !== 'Cancelled'
+                                        );
 
                                         if (zeroPriceOrders.length === 0) {
-                                            setImportStatus({ success: true, message: 'لا توجد أوردرات صفرية مسجلة اليوم.' });
+                                            setImportStatus({ success: true, message: 'لا توجد أوردرات بسعر بيع = 0.' });
                                             return;
                                         }
 
@@ -281,7 +289,7 @@ export default function Settings() {
                                                         orderUpdated = true;
                                                     }
                                                 }
-                                                newTotal += (finalPrice * (item.teethNumbers?.length || 1));
+                                                newTotal += (finalPrice * getTeethCount(item.teethNumbers));
                                                 return { ...item, price: finalPrice };
                                             });
 
@@ -310,6 +318,134 @@ export default function Settings() {
                                 className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
                             >
                                 بدء التصحيح
+                            </button>
+                        </div>
+
+                        {/* Supplier Cost Recalculation Tool */}
+                        <div className="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-100 mt-4">
+                            <div>
+                                <h3 className="font-bold text-red-900 mb-1">🔧 تصحيح تكلفة الموردين</h3>
+                                <p className="text-xs text-red-700">
+                                    للأوردرات المرتبطة بمورد وتكلفتها = 0. <strong>لن يغير أسعار البيع أو الفواتير.</strong>
+                                </p>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    if (!window.confirm('سيتم تحديث حقل التكلفة (cost) فقط للأوردرات المرتبطة بمورد وتكلفتها 0.\n\nلن يتم تغيير:\n• أسعار البيع (totalPrice)\n• أسعار الخدمات في الفاتورة\n\nهل تريد المتابعة؟')) return;
+                                    setImportStatus({ success: true, message: 'جاري فحص وتصحيح تكاليف الموردين...' });
+                                    try {
+                                        const [allOrders, services, suppliers] = await Promise.all([
+                                            db.getAllOrdersUnpaginated(),
+                                            db.getServices(),
+                                            db.getSuppliers()
+                                        ]);
+
+                                        // Helper for normalization (case-insensitive + remove spaces + Arabic normalization)
+                                        const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
+
+                                        // Helper to count teeth (handles both string and array)
+                                        const getTeethCount = (teethNumbers: string[] | string | undefined): number => {
+                                            if (!teethNumbers) return 1;
+                                            if (Array.isArray(teethNumbers)) return teethNumbers.length || 1;
+                                            if (typeof teethNumbers === 'string') {
+                                                const parts = teethNumbers.split(',').filter(t => t.trim());
+                                                return parts.length || 1;
+                                            }
+                                            return 1;
+                                        };
+
+                                        // Filter orders: cost = 0 AND has supplierId
+                                        const zeroCostOrders = allOrders.filter(o =>
+                                            o.cost === 0 &&
+                                            o.supplierId &&
+                                            o.status !== 'Cancelled' &&
+                                            o.status !== 'Rejected'
+                                        );
+
+                                        if (zeroCostOrders.length === 0) {
+                                            setImportStatus({ success: true, message: '✅ لا توجد أوردرات بتكلفة صفرية مرتبطة بموردين.' });
+                                            return;
+                                        }
+
+                                        let updatedCount = 0;
+                                        const updates: any[] = [];
+
+                                        for (const order of zeroCostOrders) {
+                                            const supplier = suppliers.find(s => s.id === order.supplierId);
+                                            if (!supplier) continue;
+
+                                            let newCost = 0;
+
+                                            // Calculate cost based on workflow type
+                                            if (order.workflowType === 'split') {
+                                                // Split workflow: milling cost only (design price is separate)
+                                                for (const item of order.items || []) {
+                                                    const teethCount = getTeethCount(item.teethNumbers);
+                                                    const serviceName = item.serviceType;
+                                                    const matchedService = services.find(s => norm(s.name) === norm(serviceName));
+                                                    const canonicalName = matchedService?.name || serviceName;
+
+                                                    let millingCost = 0;
+                                                    if (supplier.millingPrices?.[canonicalName]) {
+                                                        millingCost = supplier.millingPrices[canonicalName];
+                                                    } else if (matchedService?.millingPrice) {
+                                                        millingCost = matchedService.millingPrice;
+                                                    } else if (matchedService?.costPrice) {
+                                                        millingCost = matchedService.costPrice * 0.5; // Default to 50% of cost
+                                                    }
+                                                    newCost += millingCost * teethCount;
+                                                }
+                                                // Add design price back if exists (it's part of total cost)
+                                                newCost += order.designPrice || 0;
+                                            } else {
+                                                // Full workflow: use supplier customPrices or service costPrice
+                                                for (const item of order.items || []) {
+                                                    const teethCount = getTeethCount(item.teethNumbers);
+                                                    const serviceName = item.serviceType;
+                                                    const matchedService = services.find(s => norm(s.name) === norm(serviceName));
+                                                    const canonicalName = matchedService?.name || serviceName;
+
+                                                    let unitCost = 0;
+                                                    // Priority: supplier customPrices > service costPrice
+                                                    if (supplier.customPrices?.[canonicalName] !== undefined) {
+                                                        unitCost = supplier.customPrices[canonicalName];
+                                                    } else if (matchedService?.costPrice) {
+                                                        unitCost = matchedService.costPrice;
+                                                    }
+                                                    newCost += unitCost * teethCount;
+                                                }
+                                            }
+
+                                            if (newCost > 0) {
+                                                updatedCount++;
+                                                updates.push({
+                                                    ...order,
+                                                    cost: newCost
+                                                    // NOTE: We only change 'cost', NOT 'totalPrice' or 'items'
+                                                });
+                                            }
+                                        }
+
+                                        if (updates.length > 0) {
+                                            await db.bulkUpsertOrders(updates);
+                                            setImportStatus({
+                                                success: true,
+                                                message: `✅ تم تصحيح تكلفة ${updatedCount} أوردر!\n\nتم تحديث حقل "cost" فقط.\nلم يتم تغيير أسعار البيع أو الفواتير.`
+                                            });
+                                        } else {
+                                            setImportStatus({
+                                                success: true,
+                                                message: `⚠️ تم فحص ${zeroCostOrders.length} أوردر لكن لم يتم العثور على أسعار تكلفة مطابقة.\n\nتأكد من:\n• إضافة costPrice للخدمات في صفحة Finance\n• أو إضافة customPrices للمورد في صفحة Suppliers`
+                                            });
+                                        }
+
+                                    } catch (err: any) {
+                                        setImportStatus({ success: false, message: `حدث خطأ: ${err.message}` });
+                                    }
+                                }}
+                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+                            >
+                                تصحيح التكاليف
                             </button>
                         </div>
 
@@ -364,7 +500,8 @@ export default function Settings() {
 
                                             // 3. Match and Update
                                             let updatedCount = 0;
-                                            const norm = (t: string) => t.trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
+                                            // Helper for normalization (case-insensitive + remove spaces + Arabic normalization)
+                                            const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, '').replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/[\u064B-\u065F]/g, '');
 
                                             const updates: any[] = [];
                                             const processedOrderIds = new Set<string>();
@@ -410,6 +547,190 @@ export default function Settings() {
                                 <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors pointer-events-none">
                                     رفع الملف وتصحيح
                                 </button>
+                            </div>
+                        </div>
+
+                        {/* Zero Price Orders Diagnostic Tool */}
+                        <div className="p-4 bg-yellow-50 rounded-xl border border-yellow-100 mt-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <h3 className="font-bold text-yellow-900 mb-1">🔍 فحص الأوردرات الصفرية</h3>
+                                    <p className="text-xs text-yellow-700">
+                                        عرض جميع الأوردرات التي لها سعر بيع = 0 أو تكلفة = 0
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        setImportStatus({ success: true, message: 'جاري البحث عن الأوردرات الصفرية...' });
+                                        try {
+                                            const [allOrders, doctors, suppliers] = await Promise.all([
+                                                db.getAllOrdersUnpaginated(),
+                                                db.getDoctors(),
+                                                db.getSuppliers()
+                                            ]);
+
+                                            // Find orders with 0 totalPrice OR 0 cost (with supplier)
+                                            const zeroSelling = allOrders.filter(o =>
+                                                o.totalPrice === 0 &&
+                                                o.status !== 'Cancelled'
+                                            );
+                                            const zeroCost = allOrders.filter(o =>
+                                                o.cost === 0 &&
+                                                o.supplierId &&
+                                                o.status !== 'Cancelled'
+                                            );
+
+                                            if (zeroSelling.length === 0 && zeroCost.length === 0) {
+                                                setImportStatus({ success: true, message: '✅ لا توجد أوردرات بأسعار صفرية!' });
+                                                return;
+                                            }
+
+                                            // Build report
+                                            let report = '';
+
+                                            if (zeroSelling.length > 0) {
+                                                report += `📊 أوردرات بسعر بيع = 0 (${zeroSelling.length} أوردر):\n`;
+                                                report += '─'.repeat(50) + '\n';
+                                                zeroSelling.slice(0, 20).forEach((o, i) => {
+                                                    const doc = doctors.find(d => d.id === o.doctorId);
+                                                    const sup = o.supplierId ? suppliers.find(s => s.id === o.supplierId) : null;
+                                                    const services = o.items?.map(it => it.serviceType).join(', ') || '-';
+                                                    report += `${i + 1}. [${o.caseId}] ${o.patientName}\n`;
+                                                    report += `   👨‍⚕️ ${doc?.name || 'غير معروف'} | 🏭 ${sup?.name || 'داخلي'}\n`;
+                                                    report += `   📋 ${services}\n`;
+                                                    report += `   📅 ${o.createdAt.split('T')[0]} | الحالة: ${o.status}\n\n`;
+                                                });
+                                                if (zeroSelling.length > 20) {
+                                                    report += `... و ${zeroSelling.length - 20} أوردر آخر\n`;
+                                                }
+                                                report += '\n';
+                                            }
+
+                                            if (zeroCost.length > 0) {
+                                                report += `💰 أوردرات بتكلفة شراء = 0 (${zeroCost.length} أوردر):\n`;
+                                                report += '─'.repeat(50) + '\n';
+                                                zeroCost.slice(0, 20).forEach((o, i) => {
+                                                    const doc = doctors.find(d => d.id === o.doctorId);
+                                                    const sup = o.supplierId ? suppliers.find(s => s.id === o.supplierId) : null;
+                                                    const services = o.items?.map(it => it.serviceType).join(', ') || '-';
+                                                    report += `${i + 1}. [${o.caseId}] ${o.patientName}\n`;
+                                                    report += `   👨‍⚕️ ${doc?.name || 'غير معروف'} | 🏭 ${sup?.name || 'داخلي'}\n`;
+                                                    report += `   📋 ${services}\n`;
+                                                    report += `   💵 سعر البيع: ${o.totalPrice} | 📅 ${o.createdAt.split('T')[0]}\n\n`;
+                                                });
+                                                if (zeroCost.length > 20) {
+                                                    report += `... و ${zeroCost.length - 20} أوردر آخر\n`;
+                                                }
+                                            }
+
+                                            setImportStatus({ success: false, message: report });
+
+                                        } catch (err: any) {
+                                            setImportStatus({ success: false, message: `حدث خطأ: ${err.message}` });
+                                        }
+                                    }}
+                                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+                                >
+                                    بدء الفحص
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Rejected Orders with Cost Diagnostic Tool */}
+                        <div className="p-4 bg-red-50 rounded-xl border border-red-100 mt-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <div>
+                                    <h3 className="font-bold text-red-900 mb-1">⚠️ فحص الأوردرات المرفوضة</h3>
+                                    <p className="text-xs text-red-700">
+                                        البحث عن أوردرات مرفوضة (Rejected/Cancelled) لها تكلفة &gt; 0 بالغلط
+                                    </p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={async () => {
+                                            setImportStatus({ success: true, message: 'جاري البحث عن الأوردرات المرفوضة...' });
+                                            try {
+                                                const [allOrders, doctors, suppliers] = await Promise.all([
+                                                    db.getAllOrdersUnpaginated(),
+                                                    db.getDoctors(),
+                                                    db.getSuppliers()
+                                                ]);
+
+                                                // Find rejected/cancelled orders with cost > 0
+                                                const rejectedWithCost = allOrders.filter(o =>
+                                                    (o.status === 'Rejected' || o.status === 'Cancelled') &&
+                                                    o.cost > 0
+                                                );
+
+                                                if (rejectedWithCost.length === 0) {
+                                                    setImportStatus({ success: true, message: '✅ لا توجد أوردرات مرفوضة بتكلفة > 0. كل شيء صحيح!' });
+                                                    return;
+                                                }
+
+                                                let report = `⚠️ أوردرات مرفوضة/ملغاة لها تكلفة > 0 (${rejectedWithCost.length} أوردر):\n`;
+                                                report += '─'.repeat(50) + '\n';
+
+                                                let totalWrongCost = 0;
+                                                rejectedWithCost.slice(0, 30).forEach((o, i) => {
+                                                    const doc = doctors.find(d => d.id === o.doctorId);
+                                                    const sup = o.supplierId ? suppliers.find(s => s.id === o.supplierId) : null;
+                                                    const services = o.items?.map(it => it.serviceType).join(', ') || '-';
+                                                    totalWrongCost += o.cost;
+                                                    report += `${i + 1}. [${o.caseId}] ${o.patientName}\n`;
+                                                    report += `   👨‍⚕️ ${doc?.name || 'غير معروف'} | 🏭 ${sup?.name || 'داخلي'}\n`;
+                                                    report += `   📋 ${services}\n`;
+                                                    report += `   💰 التكلفة الخاطئة: ${o.cost} | الحالة: ${o.status}\n\n`;
+                                                });
+                                                if (rejectedWithCost.length > 30) {
+                                                    report += `... و ${rejectedWithCost.length - 30} أوردر آخر\n\n`;
+                                                }
+                                                report += `\n📊 إجمالي التكاليف الخاطئة: ${totalWrongCost} جنيه`;
+                                                report += `\n\n💡 اضغط "تصفير التكاليف" لتصحيح هذه الأوردرات`;
+
+                                                setImportStatus({ success: false, message: report });
+
+                                            } catch (err: any) {
+                                                setImportStatus({ success: false, message: `حدث خطأ: ${err.message}` });
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+                                    >
+                                        فحص
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (!window.confirm('هل أنت متأكد؟ سيتم تصفير تكلفة جميع الأوردرات المرفوضة/الملغاة.')) return;
+                                            setImportStatus({ success: true, message: 'جاري تصفير التكاليف...' });
+                                            try {
+                                                const allOrders = await db.getAllOrdersUnpaginated();
+
+                                                const rejectedWithCost = allOrders.filter(o =>
+                                                    (o.status === 'Rejected' || o.status === 'Cancelled') &&
+                                                    o.cost > 0
+                                                );
+
+                                                if (rejectedWithCost.length === 0) {
+                                                    setImportStatus({ success: true, message: '✅ لا توجد أوردرات تحتاج تصحيح.' });
+                                                    return;
+                                                }
+
+                                                const updates = rejectedWithCost.map(o => ({ ...o, cost: 0 }));
+                                                await db.bulkUpsertOrders(updates);
+
+                                                setImportStatus({
+                                                    success: true,
+                                                    message: `✅ تم تصفير تكلفة ${updates.length} أوردر مرفوض/ملغى.`
+                                                });
+
+                                            } catch (err: any) {
+                                                setImportStatus({ success: false, message: `حدث خطأ: ${err.message}` });
+                                            }
+                                        }}
+                                        className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
+                                    >
+                                        تصفير التكاليف
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

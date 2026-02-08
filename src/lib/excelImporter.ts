@@ -359,9 +359,9 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                                 const matchedService = services.find(s => normalizeArabic(s.name) === normalizedServiceSearch);
                                 const canonicalServiceName = matchedService ? matchedService.name : serviceName;
                                 let supplierUnitCost = 0;
-                                if (foundSupplier.customPrices && foundSupplier.customPrices[canonicalServiceName]) {
+                                if (foundSupplier.customPrices?.[canonicalServiceName] !== undefined) {
                                     supplierUnitCost = foundSupplier.customPrices[canonicalServiceName];
-                                } else if (foundSupplier.millingPrices && foundSupplier.millingPrices[canonicalServiceName]) {
+                                } else if (foundSupplier.millingPrices?.[canonicalServiceName] !== undefined) {
                                     supplierUnitCost = foundSupplier.millingPrices[canonicalServiceName];
                                 } else if (matchedService) {
                                     supplierUnitCost = matchedService.costPrice || 0;

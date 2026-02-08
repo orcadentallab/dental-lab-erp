@@ -70,14 +70,27 @@ export default function Suppliers() {
         setIsModalOpen(true);
     };
 
-    const handlePriceChange = (serviceName: string, price: number, type: 'cost' | 'milling') => {
-        setFormData(prev => ({
-            ...prev,
-            [type === 'cost' ? 'customPrices' : 'millingPrices']: {
-                ...prev[type === 'cost' ? 'customPrices' : 'millingPrices'],
-                [serviceName]: price
+    const handlePriceChange = (serviceName: string, rawValue: string, type: 'cost' | 'milling') => {
+        setFormData(prev => {
+            const priceKey = type === 'cost' ? 'customPrices' : 'millingPrices';
+            const currentPrices = { ...prev[priceKey] };
+
+            // If empty string → delete to revert to default
+            // If valid number (including 0) → use as custom price
+            if (rawValue.trim() === '') {
+                delete currentPrices[serviceName];
+            } else {
+                const price = Number(rawValue);
+                if (!isNaN(price)) {
+                    currentPrices[serviceName] = price;
+                }
             }
-        }));
+
+            return {
+                ...prev,
+                [priceKey]: currentPrices
+            };
+        });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -142,19 +155,18 @@ export default function Suppliers() {
                         </div>
 
                         <div className="border-t border-gray-100 pt-4">
-                            <h4 className="font-bold text-xs text-gray-500 mb-2">أسعار الشراء الخاصة (جنيه)</h4>
-                            <h4 className="font-bold text-xs text-gray-500 mb-2">أسعار خاصة (شراء / خراطة فقط)</h4>
+                            <h4 className="font-bold text-xs text-gray-500 mb-2">أسعار خاصة (شراء / خراطة)</h4>
                             <div className="space-y-1 max-h-32 overflow-y-auto">
                                 {[...new Set([...Object.keys(supplier.customPrices || {}), ...Object.keys(supplier.millingPrices || {})])].map((srv) => (
                                     <div key={srv} className="flex justify-between text-xs items-center">
                                         <span>{srv}</span>
                                         <div className="flex gap-2">
-                                            {supplier.customPrices?.[srv] && <span className="font-medium text-red-600 px-1 bg-red-50 rounded" title="سعر كامل">{supplier.customPrices[srv]}</span>}
-                                            {supplier.millingPrices?.[srv] && <span className="font-medium text-blue-600 px-1 bg-blue-50 rounded" title="خراطة فقط">{supplier.millingPrices[srv]}</span>}
+                                            {supplier.customPrices?.[srv] !== undefined && <span className="font-medium text-red-600 px-1 bg-red-50 rounded" title="سعر كامل">{supplier.customPrices[srv]}</span>}
+                                            {supplier.millingPrices?.[srv] !== undefined && <span className="font-medium text-blue-600 px-1 bg-blue-50 rounded" title="خراطة فقط">{supplier.millingPrices[srv]}</span>}
                                         </div>
                                     </div>
                                 ))}
-                                {(!supplier.customPrices && !supplier.millingPrices) && (
+                                {(!supplier.customPrices || Object.keys(supplier.customPrices).length === 0) && (!supplier.millingPrices || Object.keys(supplier.millingPrices).length === 0) && (
                                     <p className="text-xs text-gray-400 italic">نفس الأسعار الافتراضية</p>
                                 )}
                             </div>
@@ -261,15 +273,15 @@ export default function Suppliers() {
                                                     type="number"
                                                     placeholder="كامل"
                                                     className="w-24 p-1 text-sm border rounded hover:border-red-300 focus:border-red-500"
-                                                    value={formData.customPrices[service.name] || ''}
-                                                    onChange={e => handlePriceChange(service.name, Number(e.target.value), 'cost')}
+                                                    value={formData.customPrices[service.name] !== undefined ? formData.customPrices[service.name] : ''}
+                                                    onChange={e => handlePriceChange(service.name, e.target.value, 'cost')}
                                                 />
                                                 <input
                                                     type="number"
                                                     placeholder="خراطة"
                                                     className="w-24 p-1 text-sm border rounded hover:border-blue-300 focus:border-blue-500 bg-blue-50/50"
-                                                    value={formData.millingPrices[service.name] || ''}
-                                                    onChange={e => handlePriceChange(service.name, Number(e.target.value), 'milling')}
+                                                    value={formData.millingPrices[service.name] !== undefined ? formData.millingPrices[service.name] : ''}
+                                                    onChange={e => handlePriceChange(service.name, e.target.value, 'milling')}
                                                 />
                                             </div>
                                         </div>

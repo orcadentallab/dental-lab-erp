@@ -607,6 +607,7 @@ export default function Orders() {
                 onUpdateDesignUrl={openDesignLinkModal}
                 highlightedOrderId={highlightedOrderId}
                 onAccept={(order) => setAcceptingOrder(order)}
+                currentUser={user || undefined}
             />
 
             {/* Pagination */}

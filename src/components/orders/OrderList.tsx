@@ -17,9 +17,10 @@ interface OrderListProps {
     onDelete?: (order: Order) => void;
     highlightedOrderId?: string | null; // Order ID to highlight and scroll to
     onAccept?: (order: Order) => void;
+    currentUser?: any; // Avoiding strict type for now to prevent import cycles, but ideally User
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, currentUser }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
 
@@ -187,6 +188,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         onDelete={onDelete}
                         isHighlighted={highlightedOrderId === order.id}
                         onAccept={onAccept}
+                        currentUser={currentUser}
                     />
                 ))
             )}

@@ -12,10 +12,12 @@ import UsersPage from './pages/Users';
 import Settings from './pages/Settings';
 import QualityDashboard from './pages/Quality';
 import AIAnalytics from './pages/AIAnalytics';
-import Staff from './pages/Staff'; // New Import
+import Staff from './pages/Staff';
 import NewOrderRequest from './pages/doctor/NewOrderRequest';
 import DoctorOrders from './pages/doctor/DoctorOrders';
 import DoctorFinance from './pages/doctor/DoctorFinance';
+import DoctorRegister from './pages/DoctorRegister';
+import RegistrationRequests from './pages/RegistrationRequests';
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
 
@@ -34,6 +36,7 @@ function App() {
               <ToastProvider>
                 <Routes>
                   <Route path="/login" element={<Login />} />
+                  <Route path="/register/doctor" element={<DoctorRegister />} />
 
                   <Route element={<ProtectedRoute />}>
                     <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'representative', 'accountant', 'designer']} />}>
@@ -85,6 +88,7 @@ function App() {
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/ai-analytics" element={<AIAnalytics />} />
                       <Route path="/users" element={<UsersPage />} />
+                      <Route path="/registration-requests" element={<RegistrationRequests />} />
 
                     </Route>
                   </Route>

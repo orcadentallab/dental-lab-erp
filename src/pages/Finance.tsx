@@ -5,10 +5,13 @@ import clsx from 'clsx';
 import { exportToExcel, printTable } from '../lib/exportUtils';
 import { useAuth } from '../context/AuthContext';
 import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
+import { DoctorSelect } from '../components/orders/DoctorSelect';
 import FinancialSetup from '../components/finance/FinancialSetup';
 import AdjustmentsPanel from '../components/finance/AdjustmentsPanel';
 import { financeService } from '../services/financeService';
 import type { Adjustment, CapitalEntry, FixedAsset } from '../services/financeService';
+import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
+import type { FilterType } from '../components/finance/FinanceFilters';
 
 export default function Finance() {
     const { user } = useAuth();
@@ -37,6 +40,12 @@ export default function Finance() {
     const [category, setCategory] = useState(''); // For Expenses
     const [selectedId, setSelectedId] = useState(''); // For Doctors/Suppliers
     const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+    // Filters
+    const [expenseFilter, setExpenseFilter] = useState<FilterType>('month');
+    const [revenueFilter, setRevenueFilter] = useState<FilterType>('month');
+    const [doctorPaymentFilter, setDoctorPaymentFilter] = useState<FilterType>('month');
+    const [supplierPaymentFilter, setSupplierPaymentFilter] = useState<FilterType>('month');
+    const [designerPaymentFilter, setDesignerPaymentFilter] = useState<FilterType>('month');
 
     // Expense Categories
     const expenseCategories = [
@@ -140,6 +149,13 @@ export default function Finance() {
         [transactions]
     );
 
+    // Filtered Lists
+    const filteredExpenses = useMemo(() => filterEntries(generalExpenses, expenseFilter), [generalExpenses, expenseFilter]);
+    const filteredIncome = useMemo(() => filterEntries(generalIncome, revenueFilter), [generalIncome, revenueFilter]);
+    const filteredDoctorPayments = useMemo(() => filterEntries(doctorPayments, doctorPaymentFilter), [doctorPayments, doctorPaymentFilter]);
+    const filteredSupplierPayments = useMemo(() => filterEntries(supplierPayments, supplierPaymentFilter), [supplierPayments, supplierPaymentFilter]);
+    const filteredDesignerPayments = useMemo(() => filterEntries(designerPayments, designerPaymentFilter), [designerPayments, designerPaymentFilter]);
+
     const handleResetForm = () => {
         setAmount(0);
         setDescription('');
@@ -174,7 +190,7 @@ export default function Finance() {
                     amount,
                     category: category,
                     description,
-                    date: new Date(transactionDate).toISOString(),
+                    date: transactionDate,
                 });
             } else {
                 await db.addTransaction({
@@ -182,7 +198,7 @@ export default function Finance() {
                     amount,
                     category: category,
                     description,
-                    date: new Date(transactionDate).toISOString(),
+                    date: transactionDate,
                     entityType: 'general'
                 });
             }
@@ -200,7 +216,7 @@ export default function Finance() {
                 await db.updateTransaction(editingTransaction.id, {
                     amount,
                     description,
-                    date: new Date(transactionDate).toISOString(),
+                    date: transactionDate,
                 });
             } else {
                 await db.addTransaction({
@@ -208,7 +224,7 @@ export default function Finance() {
                     amount,
                     category: 'إيراد عام',
                     description,
-                    date: new Date(transactionDate).toISOString(),
+                    date: transactionDate,
                     entityType: 'general'
                 });
             }
@@ -223,15 +239,24 @@ export default function Finance() {
         e.preventDefault();
         try {
             const docName = doctors.find(d => d.id === selectedId)?.name;
-            await db.addTransaction({
-                type: 'income',
-                amount,
-                category: 'collection',
-                description: `تحصيل من د. ${docName} - ${description}`,
-                date: new Date(transactionDate).toISOString(),
-                entityType: 'doctor',
-                entityId: selectedId
-            });
+            if (editingTransaction) {
+                await db.updateTransaction(editingTransaction.id, {
+                    amount,
+                    description,
+                    date: transactionDate,
+                    entityId: selectedId
+                });
+            } else {
+                await db.addTransaction({
+                    type: 'income',
+                    amount,
+                    category: 'collection',
+                    description: `تحصيل من د. ${docName} - ${description}`,
+                    date: transactionDate,
+                    entityType: 'doctor',
+                    entityId: selectedId
+                });
+            }
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
@@ -243,15 +268,24 @@ export default function Finance() {
         e.preventDefault();
         try {
             const supName = suppliers.find(s => s.id === selectedId)?.name;
-            await db.addTransaction({
-                type: 'expense',
-                amount,
-                category: 'supplier_payment',
-                description: `سداد للمورد ${supName} - ${description}`,
-                date: new Date(transactionDate).toISOString(),
-                entityType: 'supplier',
-                entityId: selectedId
-            });
+            if (editingTransaction) {
+                await db.updateTransaction(editingTransaction.id, {
+                    amount,
+                    description,
+                    date: transactionDate,
+                    entityId: selectedId
+                });
+            } else {
+                await db.addTransaction({
+                    type: 'expense',
+                    amount,
+                    category: 'supplier_payment',
+                    description: `سداد للمورد ${supName} - ${description}`,
+                    date: transactionDate,
+                    entityType: 'supplier',
+                    entityId: selectedId
+                });
+            }
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
@@ -263,15 +297,24 @@ export default function Finance() {
         e.preventDefault();
         try {
             const desName = designers.find(d => d.id === selectedId)?.name;
-            await db.addTransaction({
-                type: 'expense',
-                amount,
-                category: 'designer_payment',
-                description: `سداد للمصمم ${desName} - ${description}`,
-                date: new Date(transactionDate).toISOString(),
-                entityType: 'designer',
-                entityId: selectedId
-            });
+            if (editingTransaction) {
+                await db.updateTransaction(editingTransaction.id, {
+                    amount,
+                    description,
+                    date: transactionDate,
+                    entityId: selectedId
+                });
+            } else {
+                await db.addTransaction({
+                    type: 'expense',
+                    amount,
+                    category: 'designer_payment',
+                    description: `سداد للمصمم ${desName} - ${description}`,
+                    date: transactionDate,
+                    entityType: 'designer',
+                    entityId: selectedId
+                });
+            }
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
@@ -436,14 +479,15 @@ export default function Finance() {
                     </div>
                     <div className="lg:col-span-2 space-y-4">
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                                 <h3 className="font-bold text-gray-800">سجل المصروفات العامة</h3>
+                                <DateFilter activeFilter={expenseFilter} onFilterChange={setExpenseFilter} />
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-right">
                                     <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                     <tbody className="divide-y divide-gray-50">
-                                        {generalExpenses.map(t => (
+                                        {filteredExpenses.map(t => (
                                             <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                                 <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                                 <td className="p-4 font-bold text-gray-800">{t.category}</td>
@@ -469,6 +513,13 @@ export default function Finance() {
                                             </tr>
                                         ))}
                                     </tbody>
+                                    <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
+                                        <tr>
+                                            <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
+                                            <td className="p-4 text-red-700">{calculateTotal(filteredExpenses).toLocaleString()} ج.م</td>
+                                            <td colSpan={2}></td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
@@ -506,13 +557,14 @@ export default function Finance() {
                     </div>
                     <div className="lg:col-span-2">
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                                 <h3 className="font-bold text-gray-800">سجل الإيرادات العامة</h3>
+                                <DateFilter activeFilter={revenueFilter} onFilterChange={setRevenueFilter} />
                             </div>
                             <table className="w-full text-sm text-right">
                                 <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {generalIncome.map(t => (
+                                    {filteredIncome.map(t => (
                                         <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                             <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                             <td className="p-4 text-gray-800">{t.description}</td>
@@ -533,6 +585,13 @@ export default function Finance() {
                                         </tr>
                                     ))}
                                 </tbody>
+                                <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
+                                    <tr>
+                                        <td colSpan={2} className="p-4 text-gray-700">الإجمالي</td>
+                                        <td className="p-4 text-green-700">{calculateTotal(filteredIncome).toLocaleString()} ج.م</td>
+                                        <td colSpan={2}></td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>
@@ -553,10 +612,17 @@ export default function Finance() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="col-span-2">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">الطبيب</label>
-                                        <select aria-label="اختر من القائمة" required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all">
-                                            <option value="">-- اختر الطبيب --</option>
-                                            {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                        </select>
+                                        <DoctorSelect
+                                            value={selectedId}
+                                            onChange={setSelectedId}
+                                        />
+                                        <input
+                                            type="hidden"
+                                            required
+                                            value={selectedId}
+                                            onInvalid={(e) => (e.target as HTMLInputElement).setCustomValidity('يرجى اختيار الطبيب')}
+                                            onInput={(e) => (e.target as HTMLInputElement).setCustomValidity('')}
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
@@ -571,7 +637,9 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="مثال: دفعة من الحساب..." />
                                 </div>
-                                <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-[0.98]">تسجيل التحصيل</button>
+                                <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-[0.98]">
+                                    {editingTransaction ? 'تحديث التحصيل' : 'تسجيل التحصيل'}
+                                </button>
                             </form>
                         </div>
 
@@ -591,13 +659,14 @@ export default function Finance() {
 
                     {/* History Table */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800">سجل تحصيلات الأطباء</h3>
+                            <DateFilter activeFilter={doctorPaymentFilter} onFilterChange={setDoctorPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
-                                {doctorPayments.map(t => (
+                                {filteredDoctorPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                         <td className="p-4 font-bold text-blue-700">{doctors.find(d => d.id === t.entityId)?.name || 'غير معروف'}</td>
@@ -608,12 +677,22 @@ export default function Finance() {
                                         </td>
                                         {user?.role === 'admin' && (
                                             <td className="p-4 text-center">
-                                                <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                </div>
                                             </td>
                                         )}
                                     </tr>
                                 ))}
                             </tbody>
+                            <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
+                                <tr>
+                                    <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
+                                    <td className="p-4 text-green-700">{calculateTotal(filteredDoctorPayments).toLocaleString()} ج.م</td>
+                                    <td colSpan={2}></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>
@@ -650,7 +729,9 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="مثال: فاتورة رقم..." />
                                 </div>
-                                <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 shadow-lg shadow-purple-200 transition-all active:scale-[0.98]">تسجيل السداد</button>
+                                <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 shadow-lg shadow-purple-200 transition-all active:scale-[0.98]">
+                                    {editingTransaction ? 'تحديث السداد' : 'تسجيل السداد'}
+                                </button>
                             </form>
                         </div>
                         <div className="h-full">
@@ -667,13 +748,14 @@ export default function Finance() {
                     </div>
 
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800">سجل مدفوعات الموردين</h3>
+                            <DateFilter activeFilter={supplierPaymentFilter} onFilterChange={setSupplierPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
-                                {supplierPayments.map(t => (
+                                {filteredSupplierPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                         <td className="p-4 font-bold text-purple-700">{suppliers.find(s => s.id === t.entityId)?.name || 'غير معروف'}</td>
@@ -684,12 +766,22 @@ export default function Finance() {
                                         </td>
                                         {user?.role === 'admin' && (
                                             <td className="p-4 text-center">
-                                                <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                </div>
                                             </td>
                                         )}
                                     </tr>
                                 ))}
                             </tbody>
+                            <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
+                                <tr>
+                                    <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
+                                    <td className="p-4 text-red-700">{calculateTotal(filteredSupplierPayments).toLocaleString()} ج.م</td>
+                                    <td colSpan={2}></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>
@@ -726,7 +818,9 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500" placeholder="مثال: حساب الأسبوع..." />
                                 </div>
-                                <button type="submit" className="w-full bg-pink-600 text-white py-3 rounded-xl font-bold hover:bg-pink-700 shadow-lg shadow-pink-200 transition-all active:scale-[0.98]">تسجيل السداد</button>
+                                <button type="submit" className="w-full bg-pink-600 text-white py-3 rounded-xl font-bold hover:bg-pink-700 shadow-lg shadow-pink-200 transition-all active:scale-[0.98]">
+                                    {editingTransaction ? 'تحديث السداد' : 'تسجيل السداد'}
+                                </button>
                             </form>
                         </div>
                         <div className="h-full">
@@ -743,13 +837,14 @@ export default function Finance() {
                     </div>
 
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="p-4 border-b border-gray-100 bg-gray-50/50">
+                        <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800">سجل مدفوعات المصممين</h3>
+                            <DateFilter activeFilter={designerPaymentFilter} onFilterChange={setDesignerPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
-                                {designerPayments.map(t => (
+                                {filteredDesignerPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                         <td className="p-4 font-bold text-pink-700">{designers.find(d => d.id === t.entityId)?.name || 'غير معروف'}</td>
@@ -760,12 +855,22 @@ export default function Finance() {
                                         </td>
                                         {user?.role === 'admin' && (
                                             <td className="p-4 text-center">
-                                                <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                </div>
                                             </td>
                                         )}
                                     </tr>
                                 ))}
                             </tbody>
+                            <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
+                                <tr>
+                                    <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
+                                    <td className="p-4 text-red-700">{calculateTotal(filteredDesignerPayments).toLocaleString()} ج.م</td>
+                                    <td colSpan={2}></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>

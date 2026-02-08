@@ -44,6 +44,7 @@ export default function Users() {
         { key: 'view_staff', label: 'رؤية صفحة شئون الموظفين', icon: '👥' },
         { key: 'view_suppliers', label: 'رؤية صفحة الموردين', icon: '🏭' },
         { key: 'manage_orders', label: 'إدارة الطلبات', icon: '📋' },
+        { key: 'edit_orders', label: 'تعديل الطلبات (Admin Mode)', icon: '✏️' },
         { key: 'manage_users', label: 'إدارة المستخدمين', icon: '👤' },
         { key: 'view_accounts', label: 'رؤية صفحة الحسابات', icon: '💳' },
     ];

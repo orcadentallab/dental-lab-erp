@@ -7,6 +7,7 @@ import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
 
 interface OrderFormProps {
@@ -16,7 +17,8 @@ interface OrderFormProps {
 }
 
 interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
-    teethNumbers: string;
+    teethNumbers: string[]; // Changed to array for tags input
+    customPrice?: number; // Override price for this order only
 }
 
 import { DoctorSelect } from './DoctorSelect';
@@ -91,9 +93,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
         serviceType: i.serviceType,
-        teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers.join(',') : i.teethNumbers,
-        price: i.price
-    })) : [{ serviceType: '', teethNumbers: '', price: 0 }]);
+        teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (i.teethNumbers as string).split(',').map(s => s.trim()).filter(Boolean),
+        price: i.price,
+        customPrice: undefined
+    })) : [{ serviceType: '', teethNumbers: [], price: 0 }]);
 
     const setItems = (newItems: FormOrderItem[]) => itemsSet(newItems);
 
@@ -150,9 +153,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     const handleAddItem = () => {
         if (services.length > 0) {
-            setItems([...items, { serviceType: services[0].name, teethNumbers: '', price: 0 }]);
+            setItems([...items, { serviceType: services[0].name, teethNumbers: [], price: 0 }]);
         } else {
-            setItems([...items, { serviceType: '', teethNumbers: '', price: 0 }]);
+            setItems([...items, { serviceType: '', teethNumbers: [], price: 0 }]);
         }
     };
 
@@ -163,10 +166,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     };
 
     const subTotal = items.reduce((sum, item) => {
-        const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
+        const count = item.teethNumbers ? item.teethNumbers.length : 0;
         const svc = services.find(s => s.name === item.serviceType);
-        // Use service price if found (fresh data), otherwise fallback to stored item price (legacy/custom)
-        const unitPrice = svc ? svc.sellingPrice : (item.price || 0);
+        // Use custom price if set, else service price, else fallback to stored item price
+        const unitPrice = item.customPrice !== undefined ? item.customPrice : (svc ? svc.sellingPrice : (item.price || 0));
         return sum + (count * unitPrice);
     }, 0);
 
@@ -181,7 +184,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
 
 
-        const invalidItems = items.filter(i => i.teethNumbers.split(/[\s,]+/).filter(t => t.trim().length > 0).length === 0);
+        const invalidItems = items.filter(i => i.teethNumbers.length === 0);
         if (invalidItems.length > 0) {
             toastError('يرجى إدخال أرقام الأسنان بشكل صحيح');
             return;
@@ -192,12 +195,12 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         let calculatedCost = 0;
         if (workflowType === 'full') {
             calculatedCost = items.reduce((sum, item) => {
-                const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
+                const count = item.teethNumbers ? item.teethNumbers.length : 0;
                 const svc = services.find(s => s.name === item.serviceType);
                 let unitCost = svc ? svc.costPrice : 0;
                 if (selectedSupplier) {
                     const sup = suppliers.find(s => s.id === selectedSupplier);
-                    if (sup?.customPrices?.[item.serviceType]) unitCost = sup.customPrices[item.serviceType];
+                    if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
                 }
                 return sum + (unitCost * count);
             }, 0);
@@ -205,11 +208,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             const designer = designers.find(d => d.id === designerId);
             const sup = suppliers.find(s => s.id === selectedSupplier);
             calculatedCost = items.reduce((sum, item) => {
-                const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
+                const count = item.teethNumbers ? item.teethNumbers.length : 0;
                 const svc = services.find(s => s.name === item.serviceType);
                 const dCost = (designer?.unitRate || 0) * count;
                 let mCost = 0;
-                if (sup?.millingPrices?.[item.serviceType]) mCost = sup.millingPrices[item.serviceType] * count;
+                if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
                 else if (svc) mCost = (svc.costPrice * 0.5) * count;
                 return sum + dCost + mCost;
             }, 0);
@@ -220,7 +223,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             const designer = designers.find(d => d.id === designerId);
             const designerRate = designer?.unitRate || 0;
             totalDesignPrice = items.reduce((sum, item) => {
-                const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
+                const count = item.teethNumbers ? item.teethNumbers.length : 0;
                 return sum + (designerRate * count);
             }, 0);
         }
@@ -229,7 +232,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode, existingOrders) : 'UNKNOWN'),
             doctorId,
             patientName,
-            items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers.split(',').map(s => s.trim()).filter(Boolean) })),
+            items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers })),
             shade,
             instructions: instructions || undefined,
             stlUrl: stlUrl || undefined,
@@ -341,36 +344,59 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                         </div>
 
                         <div className="space-y-2">
-                            {items.map((item, index) => (
-                                <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
-                                    <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">
-                                        {index + 1}
+                            {items.map((item, index) => {
+                                const svc = services.find(s => s.name === item.serviceType);
+                                const displayPrice = item.customPrice !== undefined ? item.customPrice : (svc?.sellingPrice || 0);
+                                return (
+                                    <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
+                                        <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">
+                                            {index + 1}
+                                        </div>
+                                        <div className="w-1/4">
+                                            <select
+                                                title="Service Type"
+                                                aria-label="Select Service Type"
+                                                className="w-full bg-transparent font-bold text-sm outline-none text-surface-800 cursor-pointer"
+                                                value={item.serviceType}
+                                                onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
+                                            >
+                                                {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex-1">
+                                            <TeethTagsInput
+                                                value={item.teethNumbers}
+                                                onChange={(teeth) => {
+                                                    const newItems = [...items];
+                                                    newItems[index] = { ...newItems[index], teethNumbers: teeth };
+                                                    setItems(newItems);
+                                                }}
+                                                placeholder="أدخل رقم السن..."
+                                            />
+                                        </div>
+                                        {/* Price column - Admin only */}
+                                        {user?.role === 'admin' && (
+                                            <div className="w-20 border-r border-surface-200 pr-2">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    className="w-full bg-white border border-surface-200 rounded px-2 py-1 text-xs font-bold text-center outline-none focus:ring-1 focus:ring-primary-500"
+                                                    value={displayPrice}
+                                                    onChange={(e) => {
+                                                        const newItems = [...items];
+                                                        newItems[index] = { ...newItems[index], customPrice: Number(e.target.value) };
+                                                        setItems(newItems);
+                                                    }}
+                                                    title="سعر الوحدة"
+                                                />
+                                            </div>
+                                        )}
+                                        {items.length > 1 && (
+                                            <button onClick={() => handleRemoveItem(index)} aria-label="Remove Item" className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
+                                        )}
                                     </div>
-                                    <div className="w-1/3">
-                                        <select
-                                            title="Service Type"
-                                            aria-label="Select Service Type"
-                                            className="w-full bg-transparent font-bold text-sm outline-none text-surface-800 cursor-pointer"
-                                            value={item.serviceType}
-                                            onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
-                                        >
-                                            {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="flex-1 border-r border-surface-200 pr-2">
-                                        <input
-                                            type="text"
-                                            className="w-full bg-transparent outline-none text-sm font-mono text-left ltr placeholder:text-surface-300"
-                                            placeholder="e.g. 11, 21"
-                                            value={item.teethNumbers}
-                                            onChange={(e) => updateItem(index, 'teethNumbers', e.target.value)}
-                                        />
-                                    </div>
-                                    {items.length > 1 && (
-                                        <button onClick={() => handleRemoveItem(index)} aria-label="Remove Item" className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
-                                    )}
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </Card>
 

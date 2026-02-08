@@ -35,6 +35,7 @@ interface OrderCardProps {
     onDelete?: (order: Order) => void;
     isHighlighted?: boolean;
     onAccept?: (order: Order) => void;
+    currentUser?: any;
 }
 
 export default function OrderCard({
@@ -52,7 +53,8 @@ export default function OrderCard({
     onDelete,
     isHighlighted = false,
     onAccept,
-    onRequestRedo
+    onRequestRedo,
+    currentUser
 }: OrderCardProps) {
     const { success } = useToast();
 
@@ -506,7 +508,7 @@ export default function OrderCard({
 
                         {/* Right: Admin Tools */}
                         <div className="flex items-center gap-2">
-                            {userRole === 'admin' && onEdit && (
+                            {(userRole === 'admin' || currentUser?.customPermissions?.edit_orders) && onEdit && (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />
                                 </Button>
