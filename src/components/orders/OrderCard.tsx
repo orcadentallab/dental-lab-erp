@@ -318,7 +318,7 @@ export default function OrderCard({
                     {/* Content */}
                     <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-3">
                         {/* Patient Info */}
-                        <div className="md:col-span-4 flex flex-col gap-2 border-l-0 md:border-l border-surface-100 dark:border-surface-700 pl-0 md:pl-3">
+                        <div className={`${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-4'} flex flex-col gap-2 border-l-0 md:border-l border-surface-100 dark:border-surface-700 pl-0 md:pl-3`}>
                             <div className="flex items-center gap-2">
                                 <div className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 shrink-0">
                                     <User size={16} />
@@ -343,7 +343,7 @@ export default function OrderCard({
                         </div>
 
                         {/* Order Details */}
-                        <div className="md:col-span-8 flex flex-col gap-2">
+                        <div className={`${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-8'} flex flex-col gap-2`}>
                             <div>
                                 <span className="text-[9px] font-bold text-surface-400 uppercase tracking-wider mb-1 block">الخدمات المطلوبة</span>
                                 <div className="flex flex-wrap gap-1.5">
@@ -366,22 +366,90 @@ export default function OrderCard({
                                 </div>
                             </div>
 
-                            {/* Context Info (Supplier/Designer) */}
-                            <div className="flex flex-wrap gap-2 mt-0.5 opacity-80 scale-95 origin-right">
-                                {order.supplierId && suppliers[order.supplierId] && (
-                                    <div className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/10 px-1.5 py-0.5 rounded text-xs border border-purple-100 dark:border-purple-800/30">
-                                        <Building2 size={12} className="text-purple-600" />
-                                        <span className="font-semibold text-purple-800 dark:text-purple-300">{suppliers[order.supplierId]}</span>
-                                    </div>
-                                )}
-                                {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
-                                    <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
-                                        <User size={12} className="text-blue-600" />
-                                        <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
-                                    </div>
-                                )}
-                            </div>
+                            {/* Context Info (Representative) - Small badges for non-admin */}
+                            {userRole !== 'admin' && (
+                                <div className="flex flex-wrap gap-2 mt-0.5 opacity-80 scale-95 origin-right">
+                                    {order.supplierId && suppliers[order.supplierId] && (
+                                        <div className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/10 px-1.5 py-0.5 rounded text-xs border border-purple-100 dark:border-purple-800/30">
+                                            <Building2 size={12} className="text-purple-600" />
+                                            <span className="font-semibold text-purple-800 dark:text-purple-300">{suppliers[order.supplierId]}</span>
+                                        </div>
+                                    )}
+                                    {userRole === 'representative' && order.representativeId && users[order.representativeId] && (
+                                        <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
+                                            <User size={12} className="text-blue-600" />
+                                            <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
+
+                        {/* Supplier/Designer Box - Admin Only */}
+                        {userRole === 'admin' && (
+                            <div className="md:col-span-2 flex items-center justify-center">
+                                <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border border-purple-200 dark:border-purple-800/50 rounded-xl p-2">
+                                    {/* Split Workflow: Designer + Supplier */}
+                                    {order.workflowType === 'split' ? (
+                                        <div className="flex flex-col items-center justify-center gap-1 w-full">
+                                            {/* Designer (Top) */}
+                                            <div className="flex items-center gap-1 text-center">
+                                                <User size={14} className="text-indigo-600 dark:text-indigo-400" />
+                                                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[80px]">
+                                                    {order.designerId && users[order.designerId] ? users[order.designerId] : 'مصمم'}
+                                                </span>
+                                            </div>
+                                            {/* Divider */}
+                                            <div className="w-full h-px bg-purple-200 dark:bg-purple-700/50 my-0.5"></div>
+                                            {/* Supplier (Bottom) */}
+                                            <div className="flex items-center gap-1 text-center">
+                                                <Building2 size={14} className="text-purple-600 dark:text-purple-400" />
+                                                <span className="text-xs font-bold text-purple-700 dark:text-purple-300 truncate max-w-[80px]">
+                                                    {order.supplierId && suppliers[order.supplierId] ? suppliers[order.supplierId] : 'خراطة'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ) : order.supplierId && suppliers[order.supplierId] ? (
+                                        /* Full External Lab */
+                                        <>
+                                            <Building2 size={16} className="text-purple-600 dark:text-purple-400 mb-1" />
+                                            <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">المعمل</span>
+                                            <span className="text-sm font-black text-purple-700 dark:text-purple-300 leading-tight text-center mt-0.5">
+                                                {suppliers[order.supplierId]}
+                                            </span>
+                                        </>
+                                    ) : order.designerId && users[order.designerId] ? (
+                                        /* Designer Only */
+                                        <>
+                                            <User size={16} className="text-indigo-600 dark:text-indigo-400 mb-1" />
+                                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">المصمم</span>
+                                            <span className="text-sm font-black text-indigo-700 dark:text-indigo-300 leading-tight text-center mt-0.5">
+                                                {users[order.designerId]}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        /* Internal Lab */
+                                        <>
+                                            <Building2 size={16} className="text-surface-400 mb-1" />
+                                            <span className="text-[10px] font-bold text-surface-400 uppercase tracking-wider">معمل داخلي</span>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Invoice Total - Admin Only - Far Right Column */}
+                        {userRole === 'admin' && (
+                            <div className="md:col-span-2 flex items-center justify-center">
+                                <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800/50 rounded-xl p-3">
+                                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1">الإجمالي</span>
+                                    <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
+                                        {((order.totalPrice || 0) - (order.discount || 0)).toLocaleString('en-EG')}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 mt-0.5">ج.م</span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Notes & Instructions */}
