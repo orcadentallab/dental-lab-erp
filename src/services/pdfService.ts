@@ -23,7 +23,7 @@ async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = tr
             windowWidth: 794,
         });
 
-        const imgData = canvas.toDataURL('image/png');
+        const imgData = canvas.toDataURL('image/jpeg', 0.75);
         const pdfWidth = 210;
         const pdfHeight = 297;
         const imgWidth = pdfWidth;
@@ -33,9 +33,9 @@ async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = tr
 
         if (imgHeight > pdfHeight) {
             const scale = pdfHeight / imgHeight;
-            doc.addImage(imgData, 'PNG', 0, 0, imgWidth * scale, imgHeight * scale);
+            doc.addImage(imgData, 'JPEG', 0, 0, imgWidth * scale, imgHeight * scale);
         } else {
-            doc.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            doc.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
         }
     } finally {
         document.body.removeChild(container);

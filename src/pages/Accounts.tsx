@@ -178,15 +178,16 @@ export default function Accounts() {
                 return;
             }
 
+            // Always export as ZIP per user request
             await generateBulkStatementsPDF(
                 results,
                 dateRange,
                 DEFAULT_LAB_INFO,
-                'merged'
+                'zip'
             );
         } catch (error) {
             console.error('Bulk export failed:', error);
-            alert('فشل في تصدير الكشوفات');
+            alert('فشل في تصدير الكشوفات.');
         } finally {
             setIsGeneratingBulk(false);
         }
@@ -890,14 +891,67 @@ export default function Accounts() {
                                 onClick={handleBulkExport}
                                 disabled={isGeneratingBulk}
                                 className="p-2.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-2"
-                                title="طباعة كشف حساب مجمع لكل العملاء الظاهرين"
-                                aria-label="Bulk Print Statements"
+                                title="تصدير كشوفات الحساب مجمعة لكل العملاء الظاهرين"
+                                aria-label="Bulk Export Statements"
                             >
-                                <Printer size={18} />
-                                <span className="hidden sm:inline text-sm font-medium">{isGeneratingBulk ? 'جاري التحضير...' : 'طباعة مجمعة'}</span>
+                                <FileDown size={18} />
+                                <span className="hidden sm:inline text-sm font-medium">{isGeneratingBulk ? 'جاري التحضير...' : 'تصدير مجمع'}</span>
                             </button>
                         )}
                     </div>
+                </div>
+
+
+                {/* Date Filters (For Bulk Export & View) */}
+                <div className="bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <Calendar className="text-gray-400" size={20} />
+                        <span className="text-sm font-bold text-gray-700">فترة الكشف:</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl overflow-x-auto">
+                        {([
+                            { id: 'week', label: 'أسبوع' },
+                            { id: 'month', label: 'شهر' },
+                            { id: '3months', label: '3 شهور' },
+                            { id: 'year', label: 'سنة' },
+                            { id: 'all', label: 'الكل' },
+                        ] as { id: TimeFilter; label: string }[]).map((filter) => (
+                            <button
+                                key={filter.id}
+                                onClick={() => handleTimeFilterChange(filter.id)}
+                                className={clsx(
+                                    "px-3 py-1.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap",
+                                    timeFilter === filter.id
+                                        ? "bg-white text-blue-600 shadow-sm ring-1 ring-black/5"
+                                        : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                                )}
+                            >
+                                {filter.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {timeFilter === 'all' && (
+                        <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
+                            <span className="text-sm text-gray-500 font-medium px-2">تاريخ مخصص:</span>
+                            <input
+                                type="date"
+                                value={dateRange.start}
+                                onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                className="bg-white border border-gray-200 rounded-lg text-sm px-2 py-1"
+                                aria-label="Start Date"
+                            />
+                            <span className="text-gray-400">إلى</span>
+                            <input
+                                type="date"
+                                value={dateRange.end}
+                                onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                className="bg-white border border-gray-200 rounded-lg text-sm px-2 py-1"
+                                aria-label="End Date"
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Summary Cards */}
@@ -1072,7 +1126,7 @@ export default function Accounts() {
                         </table>
                     </div>
                 </div>
-            </div>
+            </div >
         );
     }
 

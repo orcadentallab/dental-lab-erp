@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
-    Trash2, History, Box, Printer, FileDown
+    Trash2, History, Box, FileDown
 } from 'lucide-react';
 import OrderHistoryModal from './OrderHistoryModal';
 import { db } from '../../services/db';
@@ -35,8 +35,9 @@ interface OrderCardProps {
     onDelete?: (order: Order) => void;
     isHighlighted?: boolean;
     onAccept?: (order: Order) => void;
-    onPrint?: (order: Order) => void;
+    // onPrint removed
     onExportInvoice?: (order: Order) => void;
+
     currentUser?: any;
 }
 
@@ -56,8 +57,9 @@ export default function OrderCard({
     isHighlighted = false,
     onAccept,
     onRequestRedo,
-    onPrint,
+    // onPrint removed
     onExportInvoice,
+
     currentUser
 }: OrderCardProps) {
     const { success } = useToast();
@@ -588,11 +590,8 @@ export default function OrderCard({
                                     <Trash2 size={14} />
                                 </Button>
                             )}
-                            {onPrint && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-50" onClick={() => onPrint(order)} title="طباعة">
-                                    <Printer size={14} />
-                                </Button>
-                            )}
+
+
                             {onExportInvoice && (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50" onClick={() => onExportInvoice(order)} title="فاتورة PDF">
                                     <FileDown size={14} />

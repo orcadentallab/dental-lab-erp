@@ -90,15 +90,7 @@ export default function Login() {
                     </form>
 
                     {/* Doctor Registration Link */}
-                    <div className="mt-6 pt-6 border-t border-gray-200 text-center">
-                        <p className="text-gray-500 text-sm mb-3">طبيب جديد؟</p>
-                        <a
-                            href="/register/doctor"
-                            className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold rounded-xl hover:from-cyan-600 hover:to-blue-600 transition-all shadow-md shadow-cyan-200"
-                        >
-                            سجّل معنا الآن
-                        </a>
-                    </div>
+
                 </div>
             </div>
         </div>

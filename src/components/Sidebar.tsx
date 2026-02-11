@@ -24,7 +24,7 @@ export default function Sidebar() {
         { name: t.nav.suppliers, href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
         { name: t.nav.staff, href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
         { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
-        { name: 'طلبات التسجيل', href: '/registration-requests', icon: Users, roles: ['admin'] },
+
         { name: t.nav.settings, href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
         // Doctor Portal
         { name: 'طلب جديد', href: '/doctor/new-request', icon: Plus, roles: ['doctor'] },

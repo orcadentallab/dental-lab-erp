@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
 import OrderForm from '../components/orders/OrderForm';
@@ -15,8 +15,6 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 
-import { useReactToPrint } from 'react-to-print';
-import { OrderInvoice } from '../components/orders/OrderInvoice';
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 
 
@@ -330,24 +328,7 @@ export default function Orders() {
 
     const canFilterByDoctorAndSupplier = user?.role === 'admin' || user?.role === 'representative';
 
-    // Print Logic
-    const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
-    const printRef = useRef<HTMLDivElement>(null);
-
-    const handlePrintProcessed = useReactToPrint({
-        content: () => printRef.current,
-        onAfterPrint: () => setPrintingOrder(null),
-    } as any);
-
-    useEffect(() => {
-        if (printingOrder) {
-            handlePrintProcessed();
-        }
-    }, [printingOrder, handlePrintProcessed]);
-
-    const handlePrintClick = (order: Order) => {
-        setPrintingOrder(order);
-    };
+    // Print Logic Removed
 
     const handleExportInvoice = async (order: Order) => {
         const doctor = doctors.find(d => d.id === order.doctorId);
@@ -381,21 +362,7 @@ export default function Orders() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
         >
-            {/* Hidden Invoice for Printing */}
-            <div className="hidden">
-                {printingOrder && (
-                    <OrderInvoice
-                        ref={printRef}
-                        order={printingOrder}
-                        doctor={doctors.find(d => d.id === printingOrder.doctorId)}
-                        labInfo={{
-                            name: 'ORCA Dental Lab',
-                            address: 'Cairo, Egypt',
-                            phone: '+20 123 456 7890'
-                        }}
-                    />
-                )}
-            </div>
+
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -654,7 +621,6 @@ export default function Orders() {
                 onUpdateDesignUrl={openDesignLinkModal}
                 highlightedOrderId={highlightedOrderId}
                 onAccept={(order) => setAcceptingOrder(order)}
-                onPrint={handlePrintClick}
                 onExportInvoice={handleExportInvoice}
                 currentUser={user || undefined}
             />
