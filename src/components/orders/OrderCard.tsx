@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
-    Trash2, History, Box
+    Trash2, History, Box, Printer, FileDown
 } from 'lucide-react';
 import OrderHistoryModal from './OrderHistoryModal';
 import { db } from '../../services/db';
@@ -35,6 +35,8 @@ interface OrderCardProps {
     onDelete?: (order: Order) => void;
     isHighlighted?: boolean;
     onAccept?: (order: Order) => void;
+    onPrint?: (order: Order) => void;
+    onExportInvoice?: (order: Order) => void;
     currentUser?: any;
 }
 
@@ -54,6 +56,8 @@ export default function OrderCard({
     isHighlighted = false,
     onAccept,
     onRequestRedo,
+    onPrint,
+    onExportInvoice,
     currentUser
 }: OrderCardProps) {
     const { success } = useToast();
@@ -366,23 +370,21 @@ export default function OrderCard({
                                 </div>
                             </div>
 
-                            {/* Context Info (Representative) - Small badges for non-admin */}
-                            {userRole !== 'admin' && (
-                                <div className="flex flex-wrap gap-2 mt-0.5 opacity-80 scale-95 origin-right">
-                                    {order.supplierId && suppliers[order.supplierId] && (
-                                        <div className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/10 px-1.5 py-0.5 rounded text-xs border border-purple-100 dark:border-purple-800/30">
-                                            <Building2 size={12} className="text-purple-600" />
-                                            <span className="font-semibold text-purple-800 dark:text-purple-300">{suppliers[order.supplierId]}</span>
-                                        </div>
-                                    )}
-                                    {userRole === 'representative' && order.representativeId && users[order.representativeId] && (
-                                        <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
-                                            <User size={12} className="text-blue-600" />
-                                            <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            {/* Context Info (Representative) */}
+                            <div className="flex flex-wrap gap-2 mt-0.5 opacity-80 scale-95 origin-right">
+                                {userRole !== 'admin' && order.supplierId && suppliers[order.supplierId] && (
+                                    <div className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/10 px-1.5 py-0.5 rounded text-xs border border-purple-100 dark:border-purple-800/30">
+                                        <Building2 size={12} className="text-purple-600" />
+                                        <span className="font-semibold text-purple-800 dark:text-purple-300">{suppliers[order.supplierId]}</span>
+                                    </div>
+                                )}
+                                {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
+                                    <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
+                                        <User size={12} className="text-blue-600" />
+                                        <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         {/* Supplier/Designer Box - Admin Only */}
@@ -584,6 +586,16 @@ export default function OrderCard({
                             {userRole === 'admin' && onDelete && (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { if (confirm('حذف؟')) onDelete(order); }} title="حذف">
                                     <Trash2 size={14} />
+                                </Button>
+                            )}
+                            {onPrint && (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-gray-500 hover:text-gray-700 hover:bg-gray-50" onClick={() => onPrint(order)} title="طباعة">
+                                    <Printer size={14} />
+                                </Button>
+                            )}
+                            {onExportInvoice && (
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50" onClick={() => onExportInvoice(order)} title="فاتورة PDF">
+                                    <FileDown size={14} />
                                 </Button>
                             )}
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary-500" onClick={handleShowHistory} title="سجل">

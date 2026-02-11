@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { Package, Star } from 'lucide-react';
 import type { Order } from '../../services/db';
@@ -15,12 +16,14 @@ interface OrderListProps {
     onAddNote?: (order: Order) => void; // Add Note (Everyone)
     onUpdateDesignUrl?: (order: Order) => void; // Update Design URL (Designer/Admin)
     onDelete?: (order: Order) => void;
+    onPrint?: (order: Order) => void;
+    onExportInvoice?: (order: Order) => void;
     highlightedOrderId?: string | null; // Order ID to highlight and scroll to
     onAccept?: (order: Order) => void;
     currentUser?: any; // Avoiding strict type for now to prevent import cycles, but ideally User
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, currentUser }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, currentUser, onPrint, onExportInvoice }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
 
@@ -120,7 +123,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
         try {
             await db.addOrder(newOrder);
-            alert(`✅ تم إنشاء طلب إعادة برقم ${newOrder.caseId}`);
+            alert('تم إنشاء طلب إعادة برقم ' + newOrder.caseId);
             onStatusChange(order.id, 'same');
         } catch (error) {
             console.error('Error creating redo order:', error);
@@ -186,6 +189,8 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         onFeedback={() => setFeedbackOrder(order)}
                         hideSensitiveInfo={hideSensitiveInfo}
                         onDelete={onDelete}
+                        onPrint={onPrint}
+                        onExportInvoice={onExportInvoice}
                         isHighlighted={highlightedOrderId === order.id}
                         onAccept={onAccept}
                         currentUser={currentUser}

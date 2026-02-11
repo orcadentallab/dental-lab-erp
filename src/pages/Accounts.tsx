@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
-import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText } from 'lucide-react';
+import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
+import { statementService, type StatementResult } from '../services/statementService';
+import { generateDoctorStatementPDF, generateBulkStatementsPDF } from '../services/pdfService';
+import { DEFAULT_LAB_INFO } from '../utils/finance';
 
 interface StatementItem {
     id: string;
@@ -121,7 +124,7 @@ export default function Accounts() {
             } catch (error: unknown) {
                 const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
                 console.error('Error loading entities:', error);
-                setError(`فشل تحميل البيانات الأساسية: ${errorMessage}`);
+                setError(`فشل تحميل البيانات الأساسية: ${errorMessage} `);
             }
 
             // 2. Load Financial Data (Heavy)
@@ -135,11 +138,59 @@ export default function Accounts() {
             } catch (error: unknown) {
                 const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
                 console.error('Error loading financial data:', error);
-                setError(`فشل تحميل البيانات المالية: ${errorMessage}`);
+                setError(`فشل تحميل البيانات المالية: ${errorMessage} `);
             }
         };
         loadData();
     }, []);
+
+    // -- BULK PRINT LOGIC --
+    const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
+
+
+    const handleBulkExport = async () => {
+        if (activeTab !== 'doctors') return;
+        setIsGeneratingBulk(true);
+
+        try {
+            const activeDoctors = filteredSummary;
+            const results: StatementResult[] = [];
+
+            for (const summaryItem of activeDoctors) {
+                const doctor = doctors.find(d => d.id === summaryItem.id);
+                if (!doctor) continue;
+
+                const statement = statementService.calculateDoctorStatement(
+                    doctor.id,
+                    orders,
+                    transactions,
+                    dateRange.start,
+                    dateRange.end
+                );
+
+                statement.doctorName = doctor.name;
+                statement.doctorCode = doctor.doctorCode;
+                results.push(statement);
+            }
+
+            if (results.length === 0) {
+                alert('لا توجد بيانات للتصدير');
+                return;
+            }
+
+            await generateBulkStatementsPDF(
+                results,
+                dateRange,
+                DEFAULT_LAB_INFO,
+                'merged'
+            );
+        } catch (error) {
+            console.error('Bulk export failed:', error);
+            alert('فشل في تصدير الكشوفات');
+        } finally {
+            setIsGeneratingBulk(false);
+        }
+    };
 
 
 
@@ -383,7 +434,7 @@ export default function Accounts() {
             items = docOrders.map(o => ({
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
-                description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
+                description: `حالة #${o.caseId} - المريض: ${o.patientName} `,
                 details: o.items.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
                 amount: (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0)),
@@ -398,7 +449,7 @@ export default function Accounts() {
             items = [...items, ...docTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
-                description: `دفعة نقدية - ${t.description || ''}`,
+                description: `دفعة نقدية - ${t.description || ''} `,
                 type: 'credit' as const,
                 amount: t.amount
             }))];
@@ -414,7 +465,7 @@ export default function Accounts() {
                 return {
                     id: o.id,
                     date: o.deliveryDate || o.createdAt.split('T')[0],
-                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''}`,
+                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
                     type: 'credit' as const,
                     amount: cost
                 };
@@ -428,7 +479,7 @@ export default function Accounts() {
             items = [...items, ...supTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
-                description: `سداد للمورد - ${t.description || ''}`,
+                description: `سداد للمورد - ${t.description || ''} `,
                 type: 'debit' as const,
                 amount: t.amount
             }))];
@@ -437,7 +488,7 @@ export default function Accounts() {
             items = desOrders.map(o => ({
                 id: o.id,
                 date: o.deliveryDate || o.createdAt.split('T')[0],
-                description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''}`,
+                description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
                 type: 'credit' as const,
                 amount: (o.status === 'Rejected' || o.status === 'Cancelled') ? 0 : (o.designPrice || 0)
             }));
@@ -450,7 +501,7 @@ export default function Accounts() {
             items = [...items, ...desTx.map(t => ({
                 id: t.id,
                 date: t.date.split('T')[0],
-                description: `سداد للمصمم - ${t.description || ''}`,
+                description: `سداد للمصمم - ${t.description || ''} `,
                 type: 'debit' as const,
                 amount: t.amount
             }))];
@@ -490,6 +541,20 @@ export default function Accounts() {
 
 
     const handlePrint = () => window.print();
+
+    const handleExportStatementPDF = async () => {
+        if (!selectedEntityId || !individualStatement) return;
+        const entityName = getSelectedEntityName();
+        const doctor = doctors.find(d => d.id === selectedEntityId);
+
+        const statementForPdf: StatementResult = {
+            ...individualStatement,
+            doctorName: entityName,
+            doctorCode: doctor?.doctorCode
+        };
+
+        await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO);
+    };
 
     // -- RENDER HELPERS --
 
@@ -806,7 +871,7 @@ export default function Accounts() {
                                             'المدفوعات': item.totalCredit,
                                             'الرصيد': item.balance
                                         })),
-                                        `accounts_${activeTab}`,
+                                        `accounts_${activeTab} `,
                                         activeTab
                                     );
                                 }}
@@ -816,6 +881,20 @@ export default function Accounts() {
                             >
                                 <FileSpreadsheet size={18} />
                                 <span className="hidden sm:inline text-sm font-medium">تصدير</span>
+                            </button>
+                        )}
+
+                        {/* Bulk Print Button */}
+                        {['admin', 'accountant'].includes(user?.role || '') && activeTab === 'doctors' && (
+                            <button
+                                onClick={handleBulkExport}
+                                disabled={isGeneratingBulk}
+                                className="p-2.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-2"
+                                title="طباعة كشف حساب مجمع لكل العملاء الظاهرين"
+                                aria-label="Bulk Print Statements"
+                            >
+                                <Printer size={18} />
+                                <span className="hidden sm:inline text-sm font-medium">{isGeneratingBulk ? 'جاري التحضير...' : 'طباعة مجمعة'}</span>
                             </button>
                         )}
                     </div>
@@ -1002,82 +1081,82 @@ export default function Accounts() {
         <div className="space-y-4 max-w-5xl mx-auto">
             {/* Print Styles */}
             <style>{`
-                @media print {
-                    @page { 
-                        size: A4; 
-                        margin: 15mm 10mm; 
-                    }
-                    
-                    html, body, #root {
-                        height: auto !important;
-                        min-height: 100% !important;
-                        overflow: visible !important;
-                        background: white !important;
-                    }
+@media print {
+    @page {
+        size: A4;
+        margin: 15mm 10mm;
+    }
 
-                    body > *:not(#root) { display: none !important; }
-                    nav, aside, header, .print-hidden { display: none !important; }
+    html, body, #root {
+        height: auto!important;
+        min - height: 100 % !important;
+        overflow: visible!important;
+        background: white!important;
+    }
 
-                    div[class*="flex h-screen"], 
-                    div[class*="flex-1 flex flex-col"],
-                    main {
-                        display: block !important;
-                        height: auto !important;
-                        overflow: visible !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        background: white !important;
-                    }
+    body > *: not(#root) { display: none!important; }
+    nav, aside, header, .print - hidden { display: none!important; }
 
-                    .max-w-5xl {
-                        max-width: none !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
+    div[class*= "flex h-screen"],
+        div[class*= "flex-1 flex flex-col"],
+        main {
+        display: block!important;
+        height: auto!important;
+        overflow: visible!important;
+        padding: 0!important;
+        margin: 0!important;
+        background: white!important;
+    }
 
-                    .print-container {
-                        background: white !important;
-                        box-shadow: none !important;
-                        border: none !important;
-                        border-radius: 0 !important;
-                        padding: 0 !important;
-                    }
+                    .max - w - 5xl {
+        max - width: none!important;
+        margin: 0!important;
+        padding: 0!important;
+    }
+
+                    .print - container {
+        background: white!important;
+        box - shadow: none!important;
+        border: none!important;
+        border - radius: 0!important;
+        padding: 0!important;
+    }
 
                     table {
-                        font-size: 11px !important;
-                        page-break-inside: avoid;
-                    }
+        font - size: 11px!important;
+        page -break-inside: avoid;
+    }
 
                     thead {
-                        background: #1e293b !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
+        background: #1e293b!important;
+        -webkit - print - color - adjust: exact;
+        print - color - adjust: exact;
+    }
 
                     tfoot {
-                        background: #f1f5f9 !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
+        background: #f1f5f9!important;
+        -webkit - print - color - adjust: exact;
+        print - color - adjust: exact;
+    }
 
                     tr {
-                        page-break-inside: avoid;
-                    }
+        page -break-inside: avoid;
+    }
 
-                    .print-header {
-                        border-bottom: 2px solid #e2e8f0 !important;
-                        padding-bottom: 16px !important;
-                        margin-bottom: 16px !important;
-                    }
+                    .print - header {
+        border - bottom: 2px solid #e2e8f0!important;
+        padding - bottom: 16px!important;
+        margin - bottom: 16px!important;
+    }
 
-                    .print-summary {
-                        background: #f8fafc !important;
-                        border: 1px solid #e2e8f0 !important;
-                        -webkit-print-color-adjust: exact;
-                        print-color-adjust: exact;
-                    }
-                }
-            `}</style>
+                    .print - summary {
+        background: #f8fafc!important;
+        border: 1px solid #e2e8f0!important;
+        -webkit - print - color - adjust: exact;
+        print - color - adjust: exact;
+    }
+}
+`}</style>
 
             {/* Action Header - Hidden in Print */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4 print-hidden">
@@ -1134,7 +1213,7 @@ export default function Accounts() {
                     </button>
                     <button
                         onClick={() => {
-                            const fileName = `statement_${activeTab}_${selectedEntityId}_${new Date().toISOString().split('T')[0]}`;
+                            const fileName = `statement_${activeTab}_${selectedEntityId}_${new Date().toISOString().split('T')[0]} `;
                             const exportData = [];
 
                             // Add opening balance row if applicable
@@ -1179,6 +1258,9 @@ export default function Accounts() {
                     <button onClick={handlePrint} className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-900 shadow-lg shadow-slate-200 transition-all">
                         <Printer size={18} /> طباعة
                     </button>
+                    <button onClick={handleExportStatementPDF} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
+                        <FileDown size={18} /> PDF
+                    </button>
                 </div>
             </div>
 
@@ -1214,7 +1296,7 @@ export default function Accounts() {
                         <h1 className="text-2xl font-black text-gray-900">كشف حساب تفصيلي</h1>
                         <p className="text-gray-500 text-sm mt-1">
                             {dateRange.start && dateRange.end
-                                ? `الفترة من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} إلى ${new Date(dateRange.end).toLocaleDateString('ar-EG')}`
+                                ? `الفترة من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} إلى ${new Date(dateRange.end).toLocaleDateString('ar-EG')} `
                                 : dateRange.start
                                     ? `من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} حتى الآن`
                                     : 'جميع المعاملات'
@@ -1273,8 +1355,7 @@ export default function Accounts() {
                                 <th className="p-3 rounded-tr-lg font-semibold text-sm">البيان</th>
                                 <th className="p-3 font-semibold text-sm w-28">التاريخ</th>
                                 <th className="p-3 font-semibold text-sm w-28">مدين</th>
-                                <th className="p-3 font-semibold text-sm w-28">دائن</th>
-                                <th className="p-3 rounded-tl-lg font-semibold text-sm w-32">الرصيد</th>
+                                <th className="p-3 rounded-tl-lg font-semibold text-sm w-28">دائن</th>
                             </tr>
                         </thead>
                         <tbody className="text-sm">
@@ -1292,16 +1373,13 @@ export default function Accounts() {
                                     <td className="p-3 font-mono font-bold text-amber-700">
                                         {individualStatement.totals.openingBalance < 0 ? Math.abs(individualStatement.totals.openingBalance).toLocaleString() : '-'}
                                     </td>
-                                    <td className="p-3 font-mono font-bold text-amber-800">
-                                        {Math.abs(individualStatement.totals.openingBalance).toLocaleString()}
-                                    </td>
                                 </tr>
                             )}
 
                             {/* Statement Items */}
                             {individualStatement.items.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-12 text-center text-gray-400">
+                                    <td colSpan={4} className="p-12 text-center text-gray-400">
                                         <div className="flex flex-col items-center gap-2">
                                             <Calendar size={32} className="text-gray-300" />
                                             <span>لا توجد معاملات في هذه الفترة</span>
@@ -1323,9 +1401,6 @@ export default function Accounts() {
                                         <td className="p-3 font-mono font-bold text-emerald-600">
                                             {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
                                         </td>
-                                        <td className={clsx("p-3 font-mono font-bold", (item.runningBalance || 0) > 0 ? "text-rose-600" : "text-emerald-600")}>
-                                            {Math.abs(item.runningBalance || 0).toLocaleString()}
-                                        </td>
                                     </tr>
                                 ))
                             )}
@@ -1335,9 +1410,6 @@ export default function Accounts() {
                                 <td colSpan={2} className="p-3 text-gray-700">الإجمالي</td>
                                 <td className="p-3 text-rose-600 font-mono">{individualStatement.totals.totalDebit.toLocaleString()}</td>
                                 <td className="p-3 text-emerald-600 font-mono">{individualStatement.totals.totalCredit.toLocaleString()}</td>
-                                <td className={clsx("p-3 font-mono text-lg", individualStatement.totals.balance > 0 ? "text-rose-600" : "text-emerald-600")}>
-                                    {Math.abs(individualStatement.totals.balance).toLocaleString()}
-                                </td>
                             </tr>
                         </tfoot>
                     </table>
@@ -1349,6 +1421,8 @@ export default function Accounts() {
                     <p className="mt-1">للاستفسارات والملاحظات يرجى التواصل مع الإدارة المالية</p>
                 </div>
             </div>
+            {/* Hidden Bulk Print Component */}
+
         </div>
     );
 }

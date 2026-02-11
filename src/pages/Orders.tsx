@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
 import OrderForm from '../components/orders/OrderForm';
@@ -6,12 +6,17 @@ import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
 import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User as UserIcon, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { exportToExcelWithHeaders, printTable } from '../lib/exportUtils';
+import { exportToExcelWithHeaders } from '../lib/exportUtils';
+import { generateDoctorInvoicePDF, generateOrdersListPDF } from '../services/pdfService';
+import { calculateOpeningBalance, DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+
+import { useReactToPrint } from 'react-to-print';
+import { OrderInvoice } from '../components/orders/OrderInvoice';
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 
 
@@ -325,6 +330,40 @@ export default function Orders() {
 
     const canFilterByDoctorAndSupplier = user?.role === 'admin' || user?.role === 'representative';
 
+    // Print Logic
+    const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
+    const printRef = useRef<HTMLDivElement>(null);
+
+    const handlePrintProcessed = useReactToPrint({
+        content: () => printRef.current,
+        onAfterPrint: () => setPrintingOrder(null),
+    } as any);
+
+    useEffect(() => {
+        if (printingOrder) {
+            handlePrintProcessed();
+        }
+    }, [printingOrder, handlePrintProcessed]);
+
+    const handlePrintClick = (order: Order) => {
+        setPrintingOrder(order);
+    };
+
+    const handleExportInvoice = async (order: Order) => {
+        const doctor = doctors.find(d => d.id === order.doctorId);
+        let previousBalance: number | undefined;
+
+        try {
+            const { orders: allOrders, transactions } = await db.fetchFullEntityStatement(order.doctorId, 'doctor');
+            const orderDate = order.deliveryDate || order.createdAt.split('T')[0];
+            previousBalance = calculateOpeningBalance(allOrders, transactions, order.doctorId, orderDate);
+        } catch {
+            console.warn('Could not calculate previous balance for invoice');
+        }
+
+        await generateDoctorInvoicePDF(order, doctor, DEFAULT_LAB_INFO, previousBalance);
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-screen w-full">
@@ -342,6 +381,22 @@ export default function Orders() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
         >
+            {/* Hidden Invoice for Printing */}
+            <div className="hidden">
+                {printingOrder && (
+                    <OrderInvoice
+                        ref={printRef}
+                        order={printingOrder}
+                        doctor={doctors.find(d => d.id === printingOrder.doctorId)}
+                        labInfo={{
+                            name: 'ORCA Dental Lab',
+                            address: 'Cairo, Egypt',
+                            phone: '+20 123 456 7890'
+                        }}
+                    />
+                )}
+            </div>
+
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
@@ -375,7 +430,7 @@ export default function Orders() {
                         <Button
                             variant="outline"
                             onClick={() => {
-                                printTable(
+                                generateOrdersListPDF(
                                     orders.map((order: Order) => ({
                                         caseId: order.caseId,
                                         doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
@@ -384,15 +439,7 @@ export default function Orders() {
                                         price: order.totalPrice,
                                         date: order.deliveryDate
                                     })),
-                                    [
-                                        { key: 'caseId', label: 'رقم الحالة' },
-                                        { key: 'doctor', label: 'الطبيب' },
-                                        { key: 'patient', label: 'المريض' },
-                                        { key: 'status', label: 'الحالة' },
-                                        { key: 'price', label: 'السعر' },
-                                        { key: 'date', label: 'تاريخ التسليم' }
-                                    ],
-                                    'قائمة الأوردرات'
+                                    DEFAULT_LAB_INFO
                                 );
                             }}
                             className="text-surface-600 border-surface-200 hover:bg-surface-50"
@@ -607,8 +654,11 @@ export default function Orders() {
                 onUpdateDesignUrl={openDesignLinkModal}
                 highlightedOrderId={highlightedOrderId}
                 onAccept={(order) => setAcceptingOrder(order)}
+                onPrint={handlePrintClick}
+                onExportInvoice={handleExportInvoice}
                 currentUser={user || undefined}
             />
+
 
             {/* Pagination */}
             {totalPages > 1 && (

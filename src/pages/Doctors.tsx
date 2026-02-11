@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { db, type Doctor } from '../services/db';
 import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { exportToExcel, printTable } from '../lib/exportUtils';
+import { exportToExcel } from '../lib/exportUtils';
+import { generateGenericTablePDF } from '../services/pdfService';
+import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 
 export default function Doctors() {
@@ -186,22 +188,21 @@ export default function Doctors() {
                             </button>
                             <button
                                 onClick={() => {
-                                    printTable(
+                                    generateGenericTablePDF(
+                                        'قائمة الأطباء',
+                                        [
+                                            { header: 'الكود', key: 'code' },
+                                            { header: 'اسم الطبيب', key: 'name' },
+                                            { header: 'الهاتف', key: 'phone' },
+                                            { header: 'العنوان', key: 'address' }
+                                        ],
                                         filteredDoctors.map(doc => ({
                                             code: doc.doctorCode,
                                             name: doc.name,
                                             phone: doc.phone,
-                                            address: doc.address,
-                                            // rep: doc.representativeName || '-'
+                                            address: doc.address
                                         })),
-                                        [
-                                            { key: 'code', label: 'الكود' },
-                                            { key: 'name', label: 'اسم الطبيب' },
-                                            { key: 'phone', label: 'الهاتف' },
-                                            { key: 'address', label: 'العنوان' },
-                                            // { key: 'rep', label: 'المندوب' }
-                                        ],
-                                        'قائمة الأطباء'
+                                        DEFAULT_LAB_INFO
                                     );
                                 }}
                                 className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"

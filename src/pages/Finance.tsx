@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
 import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, FileSpreadsheet, Trash2, Edit2, Printer } from 'lucide-react';
 import { db, type Service, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
 import clsx from 'clsx';
-import { exportToExcel, printTable } from '../lib/exportUtils';
+import { exportToExcel } from '../lib/exportUtils';
+import { generateGenericTablePDF } from '../services/pdfService';
+import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useAuth } from '../context/AuthContext';
 import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
 import { DoctorSelect } from '../components/orders/DoctorSelect';
@@ -944,12 +946,17 @@ export default function Finance() {
                                 {canExport && (
                                     <div className="flex gap-2">
                                         <button onClick={() => exportToExcel(services.map(s => ({ 'اسم الخدمة': s.name, 'سعر البيع': s.sellingPrice, 'التكلفة': s.costPrice, 'الخراطة': s.millingPrice || 0, 'الربح': s.sellingPrice - s.costPrice })), `services_${new Date().toISOString().split('T')[0]}`, 'الخدمات')} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="تصدير Excel"><FileSpreadsheet size={18} /></button>
-                                        <button onClick={() => printTable(services, [
-                                            { key: 'name', label: 'اسم الخدمة' },
-                                            { key: 'sellingPrice', label: 'سعر البيع' },
-                                            { key: 'costPrice', label: 'التكلفة' },
-                                            { key: 'millingPrice', label: 'الخراطة' }
-                                        ], 'قائمة الخدمات')} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="طباعة"><Printer size={18} /></button>
+                                        <button onClick={() => generateGenericTablePDF('قائمة الخدمات', [
+                                            { header: 'اسم الخدمة', key: 'name' },
+                                            { header: 'سعر البيع', key: 'sellingPrice' },
+                                            { header: 'التكلفة', key: 'costPrice' },
+                                            { header: 'الخراطة', key: 'millingPrice' }
+                                        ], services.map(s => ({
+                                            name: s.name,
+                                            sellingPrice: s.sellingPrice,
+                                            costPrice: s.costPrice,
+                                            millingPrice: s.millingPrice
+                                        })), DEFAULT_LAB_INFO)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="طباعة"><Printer size={18} /></button>
                                     </div>
                                 )}
                             </div>
