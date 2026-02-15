@@ -61,7 +61,7 @@ export default function Orders() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [hideDelivered, setHideDelivered] = useState(true);
-    const [hideRejected, setHideRejected] = useState(false);
+    const [showArchived, setShowArchived] = useState(false);
 
     // Modal state
     const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
@@ -83,7 +83,7 @@ export default function Orders() {
             designerId?: string;
             search?: string;
             hideDelivered?: boolean;
-            hideRejected?: boolean;
+            showArchived?: boolean;
         } = {};
 
         if (statusFilter) filters.status = statusFilter;
@@ -95,7 +95,8 @@ export default function Orders() {
         if (designerFilter) filters.designerId = designerFilter;
         if (searchQuery.trim()) filters.search = searchQuery.trim();
         if (hideDelivered) filters.hideDelivered = true;
-        if (hideRejected) filters.hideRejected = true;
+
+        if (showArchived) filters.showArchived = true;
 
         return filters;
     };
@@ -132,7 +133,7 @@ export default function Orders() {
         }, 150); // Shorter debounce for filter changes, still prevents rapid calls
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, hideRejected]); // Removed searchQuery from here
+    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]); // Removed searchQuery from here
 
     // Page change handler
     const handlePageChange = (page: number) => {
@@ -586,11 +587,11 @@ export default function Orders() {
                             {/* Checkbox 2 (Bottom Left) */}
                             <div className="hidden lg:flex items-center min-w-[110px] justify-end">
                                 <label className="flex items-center gap-1.5 cursor-pointer group select-none">
-                                    <input type="checkbox" checked={hideRejected} onChange={(e) => setHideRejected(e.target.checked)} className="hidden" />
-                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${hideRejected ? 'bg-red-500 border-red-500' : 'border-surface-300 bg-white group-hover:border-red-500'}`}>
-                                        {hideRejected && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
+                                    <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="hidden" />
+                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all ${showArchived ? 'bg-amber-500 border-amber-500' : 'border-surface-300 bg-white group-hover:border-amber-500'}`}>
+                                        {showArchived && <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path></svg>}
                                     </div>
-                                    <span className={`text-[10px] uppercase font-bold tracking-wider ${hideRejected ? 'text-red-700' : 'text-surface-400 group-hover:text-red-600 ml-auto'}`}>إخفاء المرفوضة</span>
+                                    <span className={`text-[10px] uppercase font-bold tracking-wider ${showArchived ? 'text-amber-700' : 'text-surface-400 group-hover:text-amber-600 ml-auto'}`}>عرض المؤرشفة</span>
                                 </label>
                             </div>
 
@@ -601,8 +602,8 @@ export default function Orders() {
                                     إخفاء المنتهية
                                 </label>
                                 <label className="flex items-center gap-2 text-xs">
-                                    <input type="checkbox" checked={hideRejected} onChange={(e) => setHideRejected(e.target.checked)} />
-                                    إخفاء المرفوضة
+                                    <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
+                                    عرض المؤرشفة
                                 </label>
                             </div>
                         </div>

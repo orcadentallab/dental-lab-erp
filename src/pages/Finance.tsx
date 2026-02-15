@@ -71,8 +71,8 @@ export default function Finance() {
                     db.getUsers(),
                     db.getAllOrdersUnpaginated(),
                     financeService.getAdjustments(),
-                    user?.username === 'admin' ? financeService.getCapitalEntries() : Promise.resolve([]),
-                    user?.username === 'admin' ? financeService.getFixedAssets() : Promise.resolve([])
+                    canExport ? financeService.getCapitalEntries() : Promise.resolve([]),
+                    canExport ? financeService.getFixedAssets() : Promise.resolve([])
                 ]);
                 setServices(servicesData);
                 setTransactions(transactionsData);

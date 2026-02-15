@@ -3,6 +3,7 @@ import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderComm
 import type { Order, OrderHistoryEntry, Transaction } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
+import { generateArabicSearchPattern } from '../../lib/searchUtils';
 
 // Helper to handle joined data which isn't in DbOrder type
 interface DbOrderWithRelations extends DbOrder {
@@ -74,6 +75,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         isRedo: dbOrder.is_redo || undefined,
         originalOrderId: dbOrder.original_order_id || undefined,
         statusHistory: dbOrder.status_history || undefined,
+        isArchived: dbOrder.is_archived || false,
     };
 }
 
@@ -113,6 +115,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         is_redo: order.isRedo || false,
         original_order_id: order.originalOrderId || null,
         status_history: order.statusHistory || [],
+        is_archived: order.isArchived || false,
     };
 }
 
@@ -127,7 +130,9 @@ export interface OrderFilters {
     designerId?: string;
     search?: string; // Searches case_id, patient_name
     hideDelivered?: boolean;
-    hideRejected?: boolean;
+
+    // hideRejected replaced by showArchived
+    showArchived?: boolean;
 }
 
 export interface PaginatedOrdersResult {
@@ -188,25 +193,36 @@ export async function getOrders(
         query = query.not('status', 'in', '("Delivered","Returned for Adjustments")');
     }
 
-    if (filters.hideRejected) {
-        query = query.neq('technician_status', 'Rejected');
-        query = query.neq('status', 'Rejected');
+    // Archive Filter
+    if (filters.showArchived) {
+        query = query.eq('is_archived', true);
+    } else {
+        // Default: Show active orders (false OR null)
+        // Fix: Explicitly include NULLs because 'not.eq.true' excludes them in SQL
+        query = query.or('is_archived.eq.false,is_archived.is.null');
     }
+
+
+
+    // Legacy filter: We don't need hideRejected anymore if using Archive workflow
+    // But keeping it for backward compatibility if needed, though UI will use showArchived
+    // if (filters.hideRejected) { ... }
 
     // Search filter: case_id OR patient_name OR doctor_name OR doctor_code
     if (filters.search && filters.search.trim()) {
-        const searchTerm = `%${filters.search.trim()}%`;
+        const regexBuilder = generateArabicSearchPattern(filters.search.trim());
+        const regex = `"${regexBuilder}"`; // Wrap in quotes for PostgREST to handle meaningful characters
 
         // 1. Find matching doctors first
         const { data: matchingDoctors } = await supabase
             .from('doctors')
             .select('id')
-            .or(`name.ilike.${searchTerm},doctor_code.ilike.${searchTerm}`);
+            .or(`name.imatch.${regex},doctor_code.imatch.${regex}`);
 
         const doctorIds = matchingDoctors?.map(d => d.id) || [];
 
         // 2. Build OR query
-        let orQuery = `case_id.ilike.${searchTerm},patient_name.ilike.${searchTerm}`;
+        let orQuery = `case_id.imatch.${regex},patient_name.imatch.${regex}`;
 
         if (doctorIds.length > 0) {
             // Postgres syntax for IN in OR filter is a bit tricky with Supabase JS
@@ -252,6 +268,8 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
         // Fix: Use single OR to get (Active) OR (Recent)
         // Previous chained .not().or() resulted in (Active) AND (Recent), hiding old active orders
         .or(`status.not.in.("Delivered","Cancelled"),created_at.gte.${dateLimit}`)
+        // Fix: Exclude archived orders explicitly (keeping NULLs visible)
+        .or('is_archived.eq.false,is_archived.is.null')
         .order('created_at', { ascending: false })
         .range(0, 499); // Limit to 500 orders max for dashboard
 
@@ -485,7 +503,9 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     if (updates.actualDeliveryDate !== undefined) dbUpdates.actual_delivery_date = updates.actualDeliveryDate || null;
     if (updates.feedback !== undefined) dbUpdates.feedback = updates.feedback || null;
     if (updates.isRedo !== undefined) dbUpdates.is_redo = updates.isRedo;
+
     if (updates.originalOrderId !== undefined) dbUpdates.original_order_id = updates.originalOrderId;
+    if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
 
     // --- TIME TRACKING LOGIC ---
     if (updates.status !== undefined) {

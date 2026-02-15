@@ -275,11 +275,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         const patientName = cleanString(getVal(['اسم المريض', 'المريض', 'patient_name', 'PatientName']));
                         const caseId = cleanString(getVal(['رقم الحالة', 'كود الحالة', 'case_id', 'CaseId'])) || `CASE-${Date.now()}-${index}`;
 
-                        let items: OrderItem[] = [];
-                        const serviceName = cleanString(getVal(['اسم الصنف', 'الخدمات', 'الخدمة', 'اسم الخدمة', 'Service', 'service']));
-                        const countColumn = parseNumber(getVal(['كمية', 'الكمية', 'عدد الاسنان', 'Count', 'count', 'Quantity']));
-                        const toothCount = countColumn > 0 ? countColumn : 1;
-
+                        // Supplier Logic
                         const supplierName = cleanString(getVal(['المعمل المنفذ', 'المعمل', 'Executing Lab', 'Lab', 'Supplier', 'Laboratory', 'المعمل الخارجي']));
                         const supplierCode = cleanString(getVal(['كود المعمل', 'كود المورد', 'Supplier Code', 'Lab Code', 'code']));
                         let supplierId: string | undefined = undefined;
@@ -287,10 +283,8 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
 
                         if (supplierCode) {
                             foundSupplier = suppliers.find(s => s.supplierCode && s.supplierCode.toUpperCase() === supplierCode.toUpperCase());
-
-                            // If code provided but not found, and no name provided to fallback on -> ERROR
                             if (!foundSupplier && !supplierName) {
-                                throw new Error(`لم يتم العثور على المعمل بالكود (${supplierCode}) - يرجى التأكد من صحة الكود أو إضافته لبيانات المعمل`);
+                                throw new Error(`لم يتم العثور على المعمل بالكود (${supplierCode})`);
                             }
                         }
 
@@ -300,22 +294,62 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             if (foundSupplier) {
                                 supplierId = foundSupplier.id;
                             } else {
-                                throw new Error(`لم يتم العثور على المعمل (${supplierName}) - يرجى التأكد من تسجيله في قائمة الموردين`);
+                                throw new Error(`لم يتم العثور على المعمل (${supplierName})`);
                             }
                         } else if (foundSupplier) {
                             supplierId = foundSupplier.id;
                         }
 
-                        if (serviceName) {
-                            const rawPrice = getVal(['سعر للواحدة', 'سعر الوحدة', 'السعر', 'Unit Price', 'price']);
-                            let unitPrice = parseNumber(rawPrice);
 
-                            // PRICE LOGIC:
-                            // 1. If explicit 0 in Excel -> Keep 0 (Free/Offer)
-                            // 2. If empty/missing -> Try to lookup from system Services
-                            const isPriceMissing = rawPrice === undefined || rawPrice === null || String(rawPrice).trim() === '';
+                        // Service & Item Logic (Multi-Service Support)
+                        let items: OrderItem[] = [];
+                        let calculatedTotal = 0;
+                        let calculatedCost = 0;
 
-                            if (isPriceMissing && serviceName) {
+                        // Check up to 5 services per row
+                        for (let i = 1; i <= 5; i++) {
+                            // Column names for Service Name
+                            const serviceKeys = [
+                                `الخدمة ${i}`, `Service ${i}`, `Service${i}`,
+                                `اسم الخدمة ${i}`, `ServiceName${i}`,
+                                `الخدمه ${i}`, `الخدمة${i}`
+                            ];
+                            // Also check without number for the first one for backward compatibility
+                            if (i === 1) {
+                                serviceKeys.push('اسم الصنف', 'الخدمات', 'الخدمة', 'اسم الخدمة', 'Service', 'service');
+                            }
+
+                            const serviceName = cleanString(getVal(serviceKeys));
+                            if (!serviceName) continue; // No service in this slot
+
+                            // Column names for Count
+                            const countKeys = [
+                                `العدد ${i}`, `كمية ${i}`, `الكمية ${i}`, `عدد الاسنان ${i}`,
+                                `عدد الاسنان الخدمة ${i}`, `عدد الأسنان الخدمة ${i}`,
+                                `Count ${i}`, `Count${i}`, `Quantity ${i}`, `Quantity${i}`,
+                                `عدد ${i}`, `Tooth Count ${i}`
+                            ];
+                            if (i === 1) {
+                                countKeys.push('كمية', 'الكمية', 'عدد الاسنان', 'Count', 'count', 'Quantity');
+                            }
+
+                            const countVal = parseNumber(getVal(countKeys));
+                            const toothCount = countVal > 0 ? countVal : 1;
+
+                            // Column names for Price (Per Unit) - Optional override
+                            // Often prices are not per-service column in these sheets, but we check if they exist
+                            // If not, we fall back to system price
+                            const priceKeys = [`سعر ${i}`, `Price ${i}`, `Price${i}`, `Unit Price ${i}`];
+                            if (i === 1) priceKeys.push('سعر للواحدة', 'سعر الوحدة', 'السعر', 'Unit Price', 'price');
+
+                            let rawPrice = getVal(priceKeys);
+                            let unitPrice = 0;
+
+                            // Price Lookup
+                            if (rawPrice !== undefined && rawPrice !== null && String(rawPrice).trim() !== '') {
+                                unitPrice = parseNumber(rawPrice);
+                            } else {
+                                // Look up system price
                                 const normalizedServiceSearch = normalizeArabic(serviceName);
                                 const matchedService = services.find(s => normalizeArabic(s.name) === normalizedServiceSearch);
                                 if (matchedService) {
@@ -323,41 +357,22 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                                 }
                             }
 
+                            // Generate Teeth Numbers
                             const teethNumbers: string[] = [];
-                            for (let i = 1; i <= toothCount; i++) {
-                                teethNumbers.push(String(i));
+                            for (let t = 1; t <= toothCount; t++) {
+                                teethNumbers.push(String(t));
                             }
 
-                            items.push({
-                                serviceType: serviceName,
-                                teethNumbers: teethNumbers,
-                                price: unitPrice
-                            });
-                        } else {
-                            try {
-                                const itemsStr = getVal(['العناصر', 'items', 'Items']) || '[]';
-                                if (typeof itemsStr === 'string') {
-                                    items = JSON.parse(itemsStr) as OrderItem[];
-                                } else if (Array.isArray(itemsStr)) {
-                                    items = itemsStr as unknown as OrderItem[];
-                                }
-                            } catch { /* ignore */ }
-                        }
-
-                        const netValue = parseNumber(getVal(['صافى قيمة', 'صافي القيمة', 'Total Value', 'Net Value']));
-                        const calculatedTotal = items.reduce((sum, item) => sum + (item.price * item.teethNumbers.length), 0);
-                        const totalPrice = netValue > 0 ? netValue : calculatedTotal;
-
-                        let cost = parseNumber(getVal(['التكلفة', 'cost', 'Cost', 'اجمالي التكلفة', 'Total Cost']));
-
-                        if (cost === 0 && items.length > 0) {
-                            const excelUnitCost = parseNumber(getVal(['سعر الشراء', 'Buying Price', 'Unit Cost']));
-                            if (excelUnitCost > 0) {
-                                cost = excelUnitCost * toothCount;
-                            } else if (foundSupplier && serviceName) {
+                            // Item Cost Calculation
+                            let itemCost = 0;
+                            // Check if specific cost column exists for this item (rare)
+                            // Usually cost is calculated or total cost is given.
+                            // We attempt to calculate unit cost from supplier if known
+                            if (foundSupplier) {
                                 const normalizedServiceSearch = normalizeArabic(serviceName);
                                 const matchedService = services.find(s => normalizeArabic(s.name) === normalizedServiceSearch);
                                 const canonicalServiceName = matchedService ? matchedService.name : serviceName;
+
                                 let supplierUnitCost = 0;
                                 if (foundSupplier.customPrices?.[canonicalServiceName] !== undefined) {
                                     supplierUnitCost = foundSupplier.customPrices[canonicalServiceName];
@@ -366,14 +381,87 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                                 } else if (matchedService) {
                                     supplierUnitCost = matchedService.costPrice || 0;
                                 }
-                                if (supplierUnitCost > 0) cost = supplierUnitCost * toothCount;
+                                itemCost = supplierUnitCost * toothCount;
+                            } else {
+                                // If no supplier, check system cost
+                                const normalizedServiceSearch = normalizeArabic(serviceName);
+                                const matchedService = services.find(s => normalizeArabic(s.name) === normalizedServiceSearch);
+                                if (matchedService) {
+                                    itemCost = (matchedService.costPrice || 0) * toothCount;
+                                }
+                            }
+
+                            calculatedCost += itemCost;
+                            calculatedTotal += (unitPrice * toothCount);
+
+                            items.push({
+                                serviceType: serviceName,
+                                teethNumbers: teethNumbers,
+                                price: unitPrice
+                            });
+                        }
+
+                        // Fallback to JSON items if no columns found (backward compatibility)
+                        if (items.length === 0) {
+                            try {
+                                const itemsStr = getVal(['العناصر', 'items', 'Items']) || '[]';
+                                if (typeof itemsStr === 'string') {
+                                    const parsed = JSON.parse(itemsStr) as OrderItem[];
+                                    if (Array.isArray(parsed)) items = parsed;
+                                }
+                            } catch { /* ignore */ }
+
+                            // Re-calculate total from these items if we found them
+                            if (items.length > 0) {
+                                calculatedTotal = items.reduce((sum, item) => sum + (item.price * item.teethNumbers.length), 0);
                             }
                         }
 
+
+                        const netValue = parseNumber(getVal(['صافى قيمة', 'صافي القيمة', 'Total Value', 'Net Value']));
+                        const totalPrice = netValue > 0 ? netValue : calculatedTotal;
+
+                        // Total Cost Logic
+                        // 1. Explicit Total Cost Column
+                        // 2. Sum of calculated item costs
+                        let cost = parseNumber(getVal(['التكلفة', 'cost', 'Cost', 'اجمالي التكلفة', 'Total Cost']));
+
+                        if (cost === 0 && calculatedCost > 0) {
+                            cost = calculatedCost;
+                        }
+
+                        // Just in case calculation failed and we have explicit unit cost column (old format)
+                        if (cost === 0 && items.length > 0) {
+                            const excelUnitCost = parseNumber(getVal(['سعر الشراء', 'Buying Price', 'Unit Cost']));
+                            if (excelUnitCost > 0) {
+                                const totalTeeth = items.reduce((sum, i) => sum + i.teethNumbers.length, 0);
+                                cost = excelUnitCost * totalTeeth;
+                            }
+                        }
+
+
                         const discount = parseNumber(getVal(['خصم', 'الخصم', 'discount', 'Discount']));
                         const shade = cleanString(getVal(['اللون', 'shade', 'Shade'])) || 'A1';
-                        const statusStr = cleanString(getVal(['الحالة', 'status', 'Status'])) || 'Delivered';
-                        const status = (['New Case', 'Under Design', 'Design Completed', 'Printing', 'Milling', 'Finishing', 'Ready', 'Delivered', 'Completed', 'Cancelled'].includes(statusStr) ? statusStr : 'Delivered') as Order['status'];
+
+                        // Updated Status Parsing
+                        const statusStr = cleanString(getVal(['حالة الاوردر', 'Order Status', 'Status', 'الحالة', 'status'])).trim();
+
+                        // Normalize status (case insensitive matching)
+                        let status: Order['status'] = 'Delivered';
+                        const validStatuses = ['New Case', 'Under Design', 'Design Completed', 'Printing', 'Milling', 'Finishing', 'Ready', 'Delivered', 'Completed', 'Cancelled', 'Try in', 'try in', 'Try In', 'under design'];
+
+                        // Find match ignoring case
+                        const matchedStatus = validStatuses.find(s => s.toLowerCase() === statusStr.toLowerCase());
+
+                        if (matchedStatus) {
+                            // Convert to canonical case
+                            if (matchedStatus.toLowerCase() === 'try in') status = 'Try In';
+                            else if (matchedStatus.toLowerCase() === 'under design') status = 'Under Design';
+                            else status = matchedStatus as Order['status'];
+                        } else if (statusStr) {
+                            status = 'Delivered';
+                        }
+
                         const deliveryDate = parseDate(getVal(['تاريخ التسليم', 'delivery_date', 'DeliveryDate', 'التاريخ']));
                         const priorityStr = cleanString(getVal(['الأولوية', 'priority', 'Priority']));
                         const priority = (priorityStr === 'Urgent' ? 'Urgent' : 'Normal') as 'Normal' | 'Urgent';

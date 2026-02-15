@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 import { statementService, type StatementResult } from '../services/statementService';
 import { generateDoctorStatementPDF, generateBulkStatementsPDF } from '../services/pdfService';
+import { financeService, type Adjustment } from '../services/financeService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 
 interface StatementItem {
@@ -17,6 +18,8 @@ interface StatementItem {
     details?: string;
     status?: string;
     runningBalance?: number;
+    services?: string;
+    count?: number;
 }
 
 // Time filter presets
@@ -91,6 +94,7 @@ export default function Accounts() {
     const [showAllOrders, setShowAllOrders] = useState(false);
     const [hideZeroBalance, setHideZeroBalance] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statementSearch, setStatementSearch] = useState('');
     const [sortField, setSortField] = useState<SortField>('balance');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -100,6 +104,7 @@ export default function Accounts() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
+    const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     // Handle time filter changes
@@ -129,12 +134,14 @@ export default function Accounts() {
 
             // 2. Load Financial Data (Heavy)
             try {
-                const [ords, txs] = await Promise.all([
+                const [ords, txs, adjs] = await Promise.all([
                     db.getAllOrdersUnpaginated(),
-                    db.getTransactions()
+                    db.getTransactions(),
+                    financeService.getAdjustments()
                 ]);
                 setOrders(ords);
                 setTransactions(txs);
+                setAdjustments(adjs);
             } catch (error: unknown) {
                 const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
                 console.error('Error loading financial data:', error);
@@ -165,7 +172,8 @@ export default function Accounts() {
                     orders,
                     transactions,
                     dateRange.start,
-                    dateRange.end
+                    dateRange.end,
+                    adjustments
                 );
 
                 statement.doctorName = doctor.name;
@@ -271,6 +279,35 @@ export default function Accounts() {
             }
         }
 
+        // 2b. Pre-aggregate Adjustments by Entity ID
+        for (const adj of adjustments) {
+            if (activeTab === 'doctors' && adj.entity_type === 'doctor') {
+                const stats = getStats(adj.entity_id);
+                const txSt = getTxStats(adj.entity_id);
+                if (adj.type === 'charge') {
+                    stats.totalDebit += adj.amount;
+                } else {
+                    txSt.totalCredit += adj.amount;
+                }
+            } else if (activeTab === 'suppliers' && adj.entity_type === 'supplier') {
+                const stats = getStats(adj.entity_id);
+                const txSt = getTxStats(adj.entity_id);
+                if (adj.type === 'charge') {
+                    txSt.totalDebit += adj.amount;
+                } else {
+                    stats.totalCredit += adj.amount;
+                }
+            } else if (activeTab === 'designers' && adj.entity_type === 'designer') {
+                const stats = getStats(adj.entity_id);
+                const txSt = getTxStats(adj.entity_id);
+                if (adj.type === 'charge') {
+                    txSt.totalDebit += adj.amount;
+                } else {
+                    stats.totalCredit += adj.amount;
+                }
+            }
+        }
+
         // 3. Map to Summaries (O(Entities))
         let entities: (Doctor | Supplier | User)[] = [];
         if (activeTab === 'doctors') entities = doctors;
@@ -316,7 +353,7 @@ export default function Accounts() {
             };
         });
 
-    }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, showAllOrders]);
+    }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, adjustments, showAllOrders]);
 
     // -- FETCH FULL DETAIL DATA ON SELECTION --
     const [detailOrders, setDetailOrders] = useState<Order[]>([]);
@@ -371,6 +408,17 @@ export default function Accounts() {
             );
             openingCredit = beforeTx.reduce((sum, t) => sum + t.amount, 0);
 
+            // Adjustments before the period
+            const beforeAdjs = adjustments.filter(a =>
+                a.entity_type === 'doctor' &&
+                a.entity_id === selectedEntityId &&
+                a.date < dateRange.start
+            );
+            for (const adj of beforeAdjs) {
+                if (adj.type === 'charge') openingDebit += adj.amount;
+                else openingCredit += adj.amount;
+            }
+
             return openingDebit - openingCredit;
         } else if (activeTab === 'suppliers') {
             const beforeOrders = relevantOrders.filter(o => {
@@ -392,6 +440,17 @@ export default function Accounts() {
             );
             openingDebit = beforeTx.reduce((sum, t) => sum + t.amount, 0);
 
+            // Adjustments before the period
+            const beforeAdjs = adjustments.filter(a =>
+                a.entity_type === 'supplier' &&
+                a.entity_id === selectedEntityId &&
+                a.date < dateRange.start
+            );
+            for (const adj of beforeAdjs) {
+                if (adj.type === 'charge') openingDebit += adj.amount;
+                else openingCredit += adj.amount;
+            }
+
             return openingCredit - openingDebit;
         } else if (activeTab === 'designers') {
             const beforeOrders = relevantOrders.filter(o => {
@@ -409,11 +468,22 @@ export default function Accounts() {
             );
             openingDebit = beforeTx.reduce((sum, t) => sum + t.amount, 0);
 
+            // Adjustments before the period
+            const beforeAdjs = adjustments.filter(a =>
+                a.entity_type === 'designer' &&
+                a.entity_id === selectedEntityId &&
+                a.date < dateRange.start
+            );
+            for (const adj of beforeAdjs) {
+                if (adj.type === 'charge') openingDebit += adj.amount;
+                else openingCredit += adj.amount;
+            }
+
             return openingCredit - openingDebit;
         }
 
         return 0;
-    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions]);
+    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments]);
 
     // Helper: Logic for Individual Statement
     const individualStatement = useMemo(() => {
@@ -432,15 +502,22 @@ export default function Accounts() {
                 return ['Delivered', 'Completed', 'Ready', 'Cancelled'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
             });
 
-            items = docOrders.map(o => ({
-                id: o.id,
-                date: o.deliveryDate || o.createdAt.split('T')[0],
-                description: `حالة #${o.caseId} - المريض: ${o.patientName} `,
-                details: o.items.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
-                type: 'debit' as const,
-                amount: (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0)),
-                status: o.status
-            }));
+            items = docOrders.map(o => {
+                const orderItems = o.items || [];
+                const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
+                const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
+                return {
+                    id: o.id,
+                    date: o.deliveryDate || o.createdAt.split('T')[0],
+                    description: `حالة #${o.caseId} - المريض: ${o.patientName} `,
+                    details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
+                    type: 'debit' as const,
+                    amount: (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0)),
+                    status: o.status,
+                    services,
+                    count
+                };
+            });
 
             const docTx = relevantTransactions.filter(t =>
                 (t.entityType === 'doctor' || !t.entityType) &&
@@ -463,12 +540,18 @@ export default function Accounts() {
                 // If Rejected or Cancelled, set cost to 0
                 if (o.status === 'Rejected' || o.status === 'Cancelled') cost = 0;
 
+                const orderItems = o.items || [];
+                const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
+                const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
+
                 return {
                     id: o.id,
                     date: o.deliveryDate || o.createdAt.split('T')[0],
                     description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
                     type: 'credit' as const,
-                    amount: cost
+                    amount: cost,
+                    services,
+                    count
                 };
             });
 
@@ -486,13 +569,20 @@ export default function Accounts() {
             }))];
         } else if (activeTab === 'designers') {
             const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
-            items = desOrders.map(o => ({
-                id: o.id,
-                date: o.deliveryDate || o.createdAt.split('T')[0],
-                description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
-                type: 'credit' as const,
-                amount: (o.status === 'Rejected' || o.status === 'Cancelled') ? 0 : (o.designPrice || 0)
-            }));
+            items = desOrders.map(o => {
+                const orderItems = o.items || [];
+                const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
+                const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
+                return {
+                    id: o.id,
+                    date: o.deliveryDate || o.createdAt.split('T')[0],
+                    description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
+                    type: 'credit' as const,
+                    amount: (o.status === 'Rejected' || o.status === 'Cancelled') ? 0 : (o.designPrice || 0),
+                    services,
+                    count
+                };
+            });
 
             const desTx = relevantTransactions.filter(t =>
                 (t.entityType === 'designer' || !t.entityType) &&
@@ -507,6 +597,23 @@ export default function Accounts() {
                 amount: t.amount
             }))];
         }
+
+        // Add Adjustments as statement items
+        const entityTypeMap: Record<string, string> = { doctors: 'doctor', suppliers: 'supplier', designers: 'designer' };
+        const entityAdjustments = adjustments.filter(a =>
+            a.entity_type === entityTypeMap[activeTab] &&
+            a.entity_id === selectedEntityId
+        );
+        items = [...items, ...entityAdjustments.map(adj => ({
+            id: adj.id,
+            date: adj.date,
+            description: `تسوية - ${adj.reason || 'قيد محاسبي'}`,
+            type: (activeTab === 'doctors'
+                ? (adj.type === 'charge' ? 'debit' : 'credit')
+                : (adj.type === 'charge' ? 'debit' : 'credit')
+            ) as 'debit' | 'credit',
+            amount: adj.amount
+        }))];
 
         if (dateRange.start) items = items.filter(i => i.date >= dateRange.start);
         if (dateRange.end) items = items.filter(i => i.date <= dateRange.end);
@@ -538,10 +645,22 @@ export default function Accounts() {
                 openingBalance: dateRange.start ? calculateOpeningBalance : 0
             }
         };
-    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, detailOrders, detailTransactions, calculateOpeningBalance]);
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance]);
 
 
-    const handlePrint = () => window.print();
+    const handlePrint = async () => {
+        if (!selectedEntityId || !individualStatement) return;
+        const entityName = getSelectedEntityName();
+        const doctor = doctors.find(d => d.id === selectedEntityId);
+
+        const statementForPdf: StatementResult = {
+            ...individualStatement,
+            doctorName: entityName,
+            doctorCode: doctor?.doctorCode
+        };
+
+        await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO, { print: true });
+    };
 
     const handleExportStatementPDF = async () => {
         if (!selectedEntityId || !individualStatement) return;
@@ -1401,12 +1520,28 @@ export default function Accounts() {
                     </div>
                 </div>
 
+                {/* Statement Search */}
+                <div className="mb-4 print-hidden">
+                    <div className="relative">
+                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="ابحث برقم الحالة، اسم المريض، أو الخدمة..."
+                            value={statementSearch}
+                            onChange={e => setStatementSearch(e.target.value)}
+                            className="w-full pr-10 pl-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none transition-all"
+                        />
+                    </div>
+                </div>
+
                 {/* Statement Table */}
                 <div className="overflow-x-auto">
                     <table className="w-full text-right">
                         <thead className="bg-slate-800 text-white">
                             <tr>
                                 <th className="p-3 rounded-tr-lg font-semibold text-sm">البيان</th>
+                                <th className="p-3 font-semibold text-sm w-40">الخدمات</th>
+                                <th className="p-3 font-semibold text-sm w-16">العدد</th>
                                 <th className="p-3 font-semibold text-sm w-28">التاريخ</th>
                                 <th className="p-3 font-semibold text-sm w-28">مدين</th>
                                 <th className="p-3 rounded-tl-lg font-semibold text-sm w-28">دائن</th>
@@ -1420,6 +1555,8 @@ export default function Accounts() {
                                         <div className="font-bold text-amber-800">رصيد سابق (مرحّل)</div>
                                         <div className="text-xs text-amber-600">الرصيد من الفترات السابقة</div>
                                     </td>
+                                    <td className="p-3 text-amber-600">-</td>
+                                    <td className="p-3 text-amber-600">-</td>
                                     <td className="p-3 font-mono text-amber-700">{new Date(dateRange.start).toLocaleDateString('en-GB')}</td>
                                     <td className="p-3 font-mono font-bold text-amber-700">
                                         {individualStatement.totals.openingBalance > 0 ? individualStatement.totals.openingBalance.toLocaleString() : '-'}
@@ -1430,38 +1567,48 @@ export default function Accounts() {
                                 </tr>
                             )}
 
-                            {/* Statement Items */}
-                            {individualStatement.items.length === 0 ? (
-                                <tr>
-                                    <td colSpan={4} className="p-12 text-center text-gray-400">
-                                        <div className="flex flex-col items-center gap-2">
-                                            <Calendar size={32} className="text-gray-300" />
-                                            <span>لا توجد معاملات في هذه الفترة</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                individualStatement.items.map((item, idx) => (
-                                    <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", item.status === 'Rejected' && "bg-red-50")}>
-                                        <td className="p-3">
-                                            <div className="font-medium text-gray-800">{item.description}</div>
-                                            {item.details && <div className="text-gray-500 text-xs mt-0.5 truncate max-w-xs">{item.details}</div>}
-                                            {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded mt-1">مرفوض</span>}
-                                        </td>
-                                        <td className="p-3 font-mono text-gray-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
-                                        <td className="p-3 font-mono font-bold text-rose-600">
-                                            {item.type === 'debit' ? item.amount.toLocaleString() : '-'}
-                                        </td>
-                                        <td className="p-3 font-mono font-bold text-emerald-600">
-                                            {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
+                            {(() => {
+                                const filteredItems = statementSearch
+                                    ? individualStatement.items.filter(item =>
+                                        item.description.toLowerCase().includes(statementSearch.toLowerCase()) ||
+                                        (item.services || '').toLowerCase().includes(statementSearch.toLowerCase()) ||
+                                        (item.details || '').toLowerCase().includes(statementSearch.toLowerCase())
+                                    )
+                                    : individualStatement.items;
+                                return filteredItems.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="p-12 text-center text-gray-400">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <Search size={32} className="text-gray-300" />
+                                                <span>{statementSearch ? `لا توجد نتائج لـ "${statementSearch}"` : 'لا توجد معاملات في هذه الفترة'}</span>
+                                            </div>
                                         </td>
                                     </tr>
-                                ))
-                            )}
+                                ) : (
+                                    filteredItems.map((item, idx) => (
+                                        <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", item.status === 'Rejected' && "bg-red-50")}>
+                                            <td className="p-3">
+                                                <div className="font-medium text-gray-800">{item.description}</div>
+                                                {item.details && <div className="text-gray-500 text-xs mt-0.5 truncate max-w-xs">{item.details}</div>}
+                                                {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded mt-1">مرفوض</span>}
+                                            </td>
+                                            <td className="p-3 text-gray-600 text-xs">{item.services || '-'}</td>
+                                            <td className="p-3 text-gray-600 font-medium text-center">{item.count ? `(${item.count})` : '-'}</td>
+                                            <td className="p-3 font-mono text-gray-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
+                                            <td className="p-3 font-mono font-bold text-rose-600">
+                                                {item.type === 'debit' ? item.amount.toLocaleString() : '-'}
+                                            </td>
+                                            <td className="p-3 font-mono font-bold text-emerald-600">
+                                                {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
+                                            </td>
+                                        </tr>
+                                    ))
+                                );
+                            })()}
                         </tbody>
                         <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-300">
                             <tr>
-                                <td colSpan={2} className="p-3 text-gray-700">الإجمالي</td>
+                                <td colSpan={4} className="p-3 text-gray-700">الإجمالي</td>
                                 <td className="p-3 text-rose-600 font-mono">{individualStatement.totals.totalDebit.toLocaleString()}</td>
                                 <td className="p-3 text-emerald-600 font-mono">{individualStatement.totals.totalCredit.toLocaleString()}</td>
                             </tr>

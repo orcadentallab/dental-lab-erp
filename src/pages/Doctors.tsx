@@ -6,6 +6,7 @@ import { exportToExcel } from '../lib/exportUtils';
 import { generateGenericTablePDF } from '../services/pdfService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
+import { matchArabic } from '../lib/searchUtils';
 
 export default function Doctors() {
     const { user } = useAuth();
@@ -138,14 +139,18 @@ export default function Doctors() {
 
     const [sortBy, setSortBy] = useState<'name' | 'code' | 'rep'>('name');
 
+    // ...
+
     const filteredDoctors = doctors
         .filter(doc => {
-            const term = searchTerm.toLowerCase();
+            const term = searchTerm.trim();
+            if (!term) return true;
+
             return (
-                doc.name.toLowerCase().includes(term) ||
+                matchArabic(doc.name, term) ||
                 doc.phone.includes(term) ||
                 (doc.phone2 && doc.phone2.includes(term)) ||
-                (doc.doctorCode && doc.doctorCode.toLowerCase().includes(term))
+                (doc.doctorCode && matchArabic(doc.doctorCode, term))
             );
         })
         .sort((a, b) => {

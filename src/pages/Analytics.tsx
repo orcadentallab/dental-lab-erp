@@ -156,6 +156,15 @@ export default function Analytics() {
     }, [dateRange, customStartDate, customEndDate]);
 
 
+    // Helper: count actual units from teethNumbers
+    const getUnitCount = (teethNumbers: unknown): number => {
+        if (Array.isArray(teethNumbers) && teethNumbers.length > 0) return teethNumbers.length;
+        if (typeof teethNumbers === 'string' && teethNumbers.trim()) {
+            return teethNumbers.split(',').filter(s => s.trim()).length || 1;
+        }
+        return 1;
+    };
+
     const calculateStats = useCallback(async () => {
 
         try {
@@ -192,9 +201,8 @@ export default function Analytics() {
 
             // 2. Units
             const totalUnits = completedOrders.reduce((sum, o) => {
-                return sum + (o.items || []).reduce((itemSum, item: { teethNumbers?: string[] }) => {
-                    const count = item.teethNumbers?.length || 1;
-                    return itemSum + count;
+                return sum + (o.items || []).reduce((itemSum, item: { teethNumbers?: unknown }) => {
+                    return itemSum + getUnitCount(item.teethNumbers);
                 }, 0);
             }, 0);
 
@@ -277,9 +285,9 @@ export default function Analytics() {
             // Top Services
             const serviceStats = new Map<string, { count: number; revenue: number }>();
             completedOrders.forEach(o => {
-                (o.items || []).forEach((item: { serviceType: string; teethNumbers?: string[]; price?: number }) => {
+                (o.items || []).forEach((item: { serviceType: string; teethNumbers?: unknown; price?: number }) => {
                     const current = serviceStats.get(item.serviceType) || { count: 0, revenue: 0 };
-                    const unitCount = item.teethNumbers?.length || 1;
+                    const unitCount = getUnitCount(item.teethNumbers);
                     current.count += unitCount;
                     current.revenue += (item.price || 0) * unitCount;
                     serviceStats.set(item.serviceType, current);

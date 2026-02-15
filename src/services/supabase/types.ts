@@ -78,6 +78,7 @@ export interface DbOrder {
     }[] | null;
     created_at: string;
     updated_at: string;
+    is_archived?: boolean;
 }
 
 export interface DbTransaction {
@@ -88,7 +89,7 @@ export interface DbTransaction {
     date: string;
     description: string;
     entity_id?: string | null;
-    entity_type?: 'doctor' | 'supplier' | 'general' | 'designer' | null;
+    entity_type?: 'doctor' | 'supplier' | 'general' | 'designer' | 'representative' | null;
     is_registered: boolean;
     is_approved?: boolean;
     created_at: string;

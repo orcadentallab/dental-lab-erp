@@ -5,7 +5,7 @@ import { useToast } from '../../context/ToastContext';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
     User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
-    Trash2, History, Box, FileDown
+    Trash2, History, Box, FileDown, Archive as ArchiveIcon, RotateCcw
 } from 'lucide-react';
 import OrderHistoryModal from './OrderHistoryModal';
 import { db } from '../../services/db';
@@ -159,8 +159,19 @@ export default function OrderCard({
         ? order.comments[order.comments.length - 1]
         : null;
 
-    const isReturnedOrRejected = order.status === 'Returned for Adjustments' || order.status === 'Rejected' || order.technicianStatus === 'Rejected';
+    const isRedStatus = order.status === 'Returned for Adjustments' || order.status === 'Rejected' || order.status === 'Cancelled' || order.technicianStatus === 'Rejected';
     const isDelivered = order.status === 'Delivered';
+
+    const handleArchive = async (archive: boolean) => {
+        if (!confirm(archive ? 'أرشفة الطلب؟ سيختفي من القائمة الرئيسية.' : 'إلغاء الأرشفة؟')) return;
+        try {
+            await db.updateOrder(order.id, { isArchived: archive });
+            if (onStatusChange) onStatusChange(order.id, 'same');
+            success(archive ? 'تمت الأرشفة بنجاح' : 'تم إلغاء الأرشفة');
+        } catch (error) {
+            console.error(error);
+        }
+    };
 
     return (
         <motion.div
@@ -175,11 +186,13 @@ export default function OrderCard({
                 className={clsx(
                     "relative overflow-hidden transition-all duration-200 border-l-4",
                     isHighlighted ? 'ring-2 ring-primary-500 shadow-lg scale-[1.01] z-10' : 'hover:shadow-md',
-                    isDelivered
-                        ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
-                        : isReturnedOrRejected
-                            ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
-                            : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
+                    order.isArchived
+                        ? 'bg-gray-50 dark:bg-gray-800/50 border-l-gray-400 border-gray-200 opacity-75'
+                        : isDelivered
+                            ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
+                            : isRedStatus
+                                ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
+                                : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
                 )}
             >
                 {/* Urgent Strip */}
@@ -215,6 +228,11 @@ export default function OrderCard({
                                     : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800'
                                     }`}>
                                     {order.deliveryType === 'Final' ? '✨ Final' : '🦷 Try In'}
+                                </span>
+                            )}
+                            {order.isArchived && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-600 border border-gray-300 flex items-center gap-1">
+                                    <ArchiveIcon size={9} /> مؤرشف
                                 </span>
                             )}
                             {order.workflowType === 'split' && (
@@ -517,19 +535,27 @@ export default function OrderCard({
                                 <ChevronRight size={14} className="absolute inset-y-0 right-2 my-auto text-surface-400 pointer-events-none rotate-90" />
                             </div>
 
-                            {/* Archive Action for Rejected/Returned/LabRejected */}
-                            {(order.status === 'Rejected' || order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected') && (
+                            {/* Archive Action for Cancelled/Rejected */}
+                            {(isRedStatus) && !order.isArchived && (
                                 <button
-                                    onClick={() => {
-                                        if (confirm('هل أنت متأكد من أرشفة هذه الحالة؟ ستختفي من القائمة.')) {
-                                            handleStatusChangeClick('Cancelled');
-                                        }
-                                    }}
-                                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300"
-                                    title="أرشفة (إلغاء) الحالة"
+                                    onClick={() => handleArchive(true)}
+                                    className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-red-200"
+                                    title="أرشفة الحالة (إخفاء)"
                                 >
-                                    <Trash2 size={14} />
+                                    <ArchiveIcon size={14} />
                                     <span>أرشفة</span>
+                                </button>
+                            )}
+
+                            {/* Unarchive Action */}
+                            {order.isArchived && (
+                                <button
+                                    onClick={() => handleArchive(false)}
+                                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300"
+                                    title="إلغاء الأرشفة"
+                                >
+                                    <RotateCcw size={14} />
+                                    <span>استعادة</span>
                                 </button>
                             )}
 

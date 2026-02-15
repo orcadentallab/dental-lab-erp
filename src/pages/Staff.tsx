@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
 import type { User, Transaction } from '../services/db';
 import { useAuth } from '../context/AuthContext';
-import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, MapPin, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, Coffee, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import clsx from 'clsx';
 
 // Helper: Calculate Commission Rate
@@ -15,13 +15,13 @@ const getCommissionRate = (totalSales: number) => {
 };
 
 const expenseCategories = [
-    { id: 'work_shipping', label: 'شحن شغل', icon: Truck },      // Work Shipping
-    { id: 'transport', label: 'انتقالات', icon: MapPin },       // Transportation
-    { id: 'supplies', label: 'مستلزمات', icon: Package },       // Supplies
-    { id: 'bonus', label: 'منحة/مكافأة', icon: DollarSign },    // Bonus
-    { id: 'deduction', label: 'خصم/جزاء', icon: AlertCircle },  // Deduction
-    { id: 'other', label: 'أخرى', icon: Banknote },             // Other
-    { id: 'salaries', label: 'مرتبات وأجور', icon: UsersIcon }, // Internal for Payouts
+    { id: 'shipping', label: 'شحن وتوصيل', icon: Truck },
+    { id: 'meetings', label: 'اجتماعات ونثريات', icon: Coffee },
+    { id: 'material', label: 'خامات ومستهلكات', icon: Package },
+    { id: 'other', label: 'مصروفات أخرى', icon: Banknote },
+    { id: 'bonus', label: 'منحة/مكافأة', icon: DollarSign },
+    { id: 'deduction', label: 'خصم/جزاء', icon: AlertCircle },
+    { id: 'salaries', label: 'مرتبات وأجور', icon: UsersIcon },
 ];
 
 interface RepresentativeStats {
@@ -204,9 +204,9 @@ export default function Staff() {
                 amount: parseFloat(newExpense.amount),
                 description: newExpense.description,
                 date: new Date().toISOString().split('T')[0],
-                category: newExpense.category || 'other',
+                category: newExpense.category || 'مصروفات أخرى',
                 entityId: currentUser.id,
-                entityType: 'general',
+                entityType: 'representative',
                 isRegistered: false
             });
 
@@ -280,8 +280,9 @@ export default function Staff() {
             // Append Rep Name to description for attribution
             await Promise.all(approvedExpenses.map(exp =>
                 db.updateTransaction(exp.id, {
-                    entityId: undefined, // Clear entityId - no longer a "staff" expense
-                    description: `${exp.description} - ${stat.user.name}`
+                    entityId: undefined,
+                    entityType: 'general',
+                    description: `${exp.description} (${stat.user.name})`
                 })
             ));
 

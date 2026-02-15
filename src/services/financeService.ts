@@ -115,11 +115,32 @@ export const financeService = {
         const { data, error } = await supabase
             .from('adjustments')
             .insert(adjustment)
-            .select() // Returning * helps confirm insertion
+            .select()
             .single();
 
         if (error) throw error;
         return data as Adjustment;
+    },
+
+    async updateAdjustment(id: string, updates: Partial<Omit<Adjustment, 'id' | 'created_at'>>) {
+        const { data, error } = await supabase
+            .from('adjustments')
+            .update(updates)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        return data as Adjustment;
+    },
+
+    async deleteAdjustment(id: string) {
+        const { error } = await supabase
+            .from('adjustments')
+            .delete()
+            .eq('id', id);
+
+        if (error) throw error;
     },
 
     // --- Financial Summary ---

@@ -26,7 +26,7 @@ export interface Transaction {
     date: string;
     description: string;
     entityId?: string; // Doctor or Supplier ID
-    entityType?: 'doctor' | 'supplier' | 'general' | 'designer';
+    entityType?: 'doctor' | 'supplier' | 'general' | 'designer' | 'representative';
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
     isApproved?: boolean; // Flag for individual expense approval
     createdAt?: string;
@@ -136,6 +136,7 @@ export interface Order {
     };
     isUrgent?: boolean;
     isRedo?: boolean;
+    isArchived?: boolean;
     originalOrderId?: string; // If this is a redo of another order
 
     // Status History for Time Tracking

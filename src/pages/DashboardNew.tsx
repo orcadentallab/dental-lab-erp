@@ -155,9 +155,9 @@ export default function DashboardNew() {
 
     const handleArchiveOrder = async (orderId: string) => {
         try {
-            await db.updateOrder(orderId, { status: 'Cancelled' });
-            // Update local state to remove the order from the list immediately
-            setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Cancelled' } : o));
+            await db.updateOrder(orderId, { isArchived: true });
+            // Remove from local state immediately to hide from alerts
+            setOrders(prev => prev.filter(o => o.id !== orderId));
         } catch (error) {
             console.error('Error archiving order:', error);
             alert('Failed to archive order');

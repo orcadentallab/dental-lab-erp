@@ -31,6 +31,10 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
     };
 }
 
+import { generateArabicSearchPattern } from '../../lib/searchUtils';
+
+// ... (existing code)
+
 export async function getDoctors(search?: string): Promise<Doctor[]> {
     let query = supabase
         .from('doctors')
@@ -38,12 +42,15 @@ export async function getDoctors(search?: string): Promise<Doctor[]> {
         .order('name', { ascending: true });
 
     // Only apply search if provided
-    if (search) {
-        query = query.or(`name.ilike.%${search}%,doctor_code.ilike.%${search}%`);
+    if (search && search.trim()) {
+        const regexBuilder = generateArabicSearchPattern(search.trim());
+        const regex = `"${regexBuilder}"`;
+        query = query.or(`name.imatch.${regex},doctor_code.imatch.${regex}`);
         query = query.limit(20);
     }
 
     const { data, error } = await query;
+
 
     if (error) {
         throw ErrorHandler.handle(error, 'getDoctors');

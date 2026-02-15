@@ -6,12 +6,33 @@ interface DoctorFormProps {
 }
 
 export default function DoctorForm({ onSuccess }: DoctorFormProps) {
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [phone2, setPhone2] = useState('');
-    const [address, setAddress] = useState('');
-    const [doctorCode, setDoctorCode] = useState('');
+    // Load initial state from localStorage if available
+    const [name, setName] = useState(() => localStorage.getItem('doctorForm_name') || '');
+    const [phone, setPhone] = useState(() => localStorage.getItem('doctorForm_phone') || '');
+    const [phone2, setPhone2] = useState(() => localStorage.getItem('doctorForm_phone2') || '');
+    const [address, setAddress] = useState(() => localStorage.getItem('doctorForm_address') || '');
+    const [doctorCode, setDoctorCode] = useState(() => localStorage.getItem('doctorForm_doctorCode') || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Persist changes
+    const handleChange = (key: string, value: string, setter: (v: string) => void) => {
+        setter(value);
+        localStorage.setItem(`doctorForm_${key}`, value);
+    };
+
+    const clearForm = () => {
+        setName('');
+        setPhone('');
+        setPhone2('');
+        setAddress('');
+        setDoctorCode('');
+
+        localStorage.removeItem('doctorForm_name');
+        localStorage.removeItem('doctorForm_phone');
+        localStorage.removeItem('doctorForm_phone2');
+        localStorage.removeItem('doctorForm_address');
+        localStorage.removeItem('doctorForm_doctorCode');
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -27,12 +48,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                 representativeName: '' // Optional field
             });
 
-            // Reset form
-            setName('');
-            setPhone('');
-            setPhone2('');
-            setAddress('');
-            setDoctorCode('');
+            clearForm();
 
             if (onSuccess) onSuccess();
         } catch (error) {
@@ -53,7 +69,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                     type="text"
                     required
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => handleChange('name', e.target.value, setName)}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="د. أحمد محمد"
                 />
@@ -67,7 +83,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                     type="tel"
                     required
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => handleChange('phone', e.target.value, setPhone)}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="01234567890"
                 />
@@ -80,7 +96,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                 <input
                     type="tel"
                     value={phone2}
-                    onChange={(e) => setPhone2(e.target.value)}
+                    onChange={(e) => handleChange('phone2', e.target.value, setPhone2)}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     placeholder="01234567890"
                 />
@@ -94,7 +110,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                     type="text"
                     required
                     value={doctorCode}
-                    onChange={(e) => setDoctorCode(e.target.value)}
+                    onChange={(e) => handleChange('doctorCode', e.target.value, setDoctorCode)}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white uppercase"
                     placeholder="AHM"
                 />
@@ -107,7 +123,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                 <textarea
                     required
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => handleChange('address', e.target.value, setAddress)}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                     rows={3}
                     placeholder="القاهرة، مصر"

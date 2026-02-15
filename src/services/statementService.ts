@@ -1,4 +1,5 @@
 import type { Order, Transaction } from './db';
+import type { Adjustment } from './financeService';
 
 export interface StatementItem {
     id: string;
@@ -9,6 +10,8 @@ export interface StatementItem {
     details?: string;
     status?: string;
     runningBalance?: number;
+    services?: string;
+    count?: number;
 }
 
 export interface StatementResult {
@@ -37,7 +40,8 @@ export const statementService = {
         allOrders: Order[],
         allTransactions: Transaction[],
         startDate: string,
-        endDate: string
+        endDate: string,
+        allAdjustments?: Adjustment[]
     ): StatementResult => {
         // 1. Calculate Opening Balance (Everything BEFORE startDate)
         let openingDebit = 0;
@@ -75,6 +79,19 @@ export const statementService = {
         );
         openingCredit = pastTransactions.reduce((sum, t) => sum + t.amount, 0);
 
+        // Adjustments before start date
+        if (allAdjustments) {
+            const pastAdjs = allAdjustments.filter(a =>
+                a.entity_type === 'doctor' &&
+                a.entity_id === doctorId &&
+                startDate && a.date < startDate
+            );
+            for (const adj of pastAdjs) {
+                if (adj.type === 'charge') openingDebit += adj.amount;
+                else openingCredit += adj.amount;
+            }
+        }
+
         const openingBalance = openingDebit - openingCredit;
 
         // 2. Calculate Period Items (Between startDate and endDate)
@@ -101,15 +118,22 @@ export const statementService = {
             return ['delivered', 'completed', 'ready', 'cancelled'].includes(status);
         });
 
-        items = items.concat(periodOrders.map(o => ({
-            id: o.id,
-            date: o.deliveryDate || o.createdAt.split('T')[0],
-            description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
-            details: o.items.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
-            type: 'debit',
-            amount: (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0)),
-            status: o.status
-        })));
+        items = items.concat(periodOrders.map(o => {
+            const orderItems = o.items || [];
+            const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
+            const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
+            return {
+                id: o.id,
+                date: o.deliveryDate || o.createdAt.split('T')[0],
+                description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
+                details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
+                type: 'debit' as const,
+                amount: (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0)),
+                status: o.status,
+                services,
+                count
+            };
+        }));
 
         // Current Period Transactions
         const periodTransactions = allTransactions.filter(t =>
@@ -127,6 +151,23 @@ export const statementService = {
             type: 'credit',
             amount: t.amount
         })));
+
+        // Period Adjustments
+        if (allAdjustments) {
+            const periodAdjs = allAdjustments.filter(a =>
+                a.entity_type === 'doctor' &&
+                a.entity_id === doctorId &&
+                (!startDate || a.date >= startDate) &&
+                (!endDate || a.date <= endDate)
+            );
+            items = items.concat(periodAdjs.map(a => ({
+                id: a.id,
+                date: a.date,
+                description: `تسوية - ${a.reason || 'قيد محاسبي'}`,
+                type: a.type === 'charge' ? 'debit' as const : 'credit' as const,
+                amount: a.amount
+            })));
+        }
 
         // Sort by Date
         items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());

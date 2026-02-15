@@ -355,7 +355,299 @@ export default function Settings() {
             )}
 
             {/* Danger Zone - Restored specific for re-import */}
-            {/* Danger Zone - Restored specific for re-import */}
+            {isAdmin && (
+                <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4">أدوات إصلاح البيانات</h3>
+                    <div className="space-y-4">
+                        {/* Migrate Old Delegate Expenses */}
+                        <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
+                            <h4 className="font-semibold text-orange-800 mb-2">ترحيل مصاريف المناديب القديمة</h4>
+                            <p className="text-sm text-orange-700 mb-4">
+                                هذا الزر سيقوم بنقل مصاريف المناديب التي سُجلت خطأ في المصروفات العامة إلى قسم المناديب، وتغيير نوعها إلى "شحن وتوصيل".
+                            </p>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        const [allTransactions, allUsers] = await Promise.all([
+                                            db.getTransactions(),
+                                            db.getUsers()
+                                        ]);
+                                        const reps = allUsers.filter(u =>
+                                            u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')
+                                        );
+                                        const repIds = new Set(reps.map(r => r.id));
+
+                                        const oldRepExpenses = allTransactions.filter(t =>
+                                            t.type === 'expense' &&
+                                            (t.entityType === 'general' || !t.entityType) &&
+                                            t.entityId &&
+                                            repIds.has(t.entityId) &&
+                                            !t.description?.includes('راتب شهر') &&
+                                            t.date >= '2026-02-10'
+                                        );
+
+                                        if (oldRepExpenses.length === 0) {
+                                            alert('لا توجد مصاريف مناديب قديمة للترحيل.');
+                                            return;
+                                        }
+
+                                        const total = oldRepExpenses.reduce((s, e) => s + e.amount, 0);
+                                        if (!window.confirm(`سيتم ترحيل ${oldRepExpenses.length} مصروف بإجمالي ${total} ج.م إلى قسم المناديب مع تغيير النوع لـ "شحن وتوصيل". متأكد؟`)) return;
+
+                                        let count = 0;
+                                        for (const exp of oldRepExpenses) {
+                                            await db.updateTransaction(exp.id, {
+                                                entityType: 'representative',
+                                                category: 'شحن وتوصيل',
+                                            });
+                                            count++;
+                                        }
+                                        alert(`تم ترحيل ${count} مصروف بنجاح ✅`);
+                                        window.location.reload();
+                                    } catch (error) {
+                                        alert('حدث خطأ: ' + error);
+                                    }
+                                }}
+                                className="bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 transition-colors"
+                            >
+                                ترحيل مصاريف المناديب
+                            </button>
+                        </div>
+
+                        {/* Service Name Normalization Tool */}
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <h4 className="font-semibold text-blue-800 mb-2">توحيد أسماء الخدمات</h4>
+                            <p className="text-sm text-blue-700 mb-4">
+                                يوحد أسماء الخدمات بناءً على القائمة الرسمية المعتمدة. يعالج اختلاف الحروف (Capital/Small) والأخطاء الإملائية المعروفة.
+                            </p>
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        // Helper for robust normalization
+                                        const normalizeName = (name: string) => {
+                                            return name
+                                                .toLowerCase()
+                                                .replace(/[\u200B-\u200D\uFEFF]/g, '') // Remove zero-width spaces
+                                                .replace(/\s+/g, ' ')                   // Collapse multiple spaces
+                                                .trim();
+                                        };
+
+                                        // 1. HARDCODED CORRECT NAMES (The Source of Truth)
+                                        const OFFICIAL_NAMES = [
+                                            "Crown Lengthening Guide",
+                                            "Custom Abutment Ti",
+                                            "Custom Abutment Zr",
+                                            "Cut Back",
+                                            "Each Implant Extra in Guide",
+                                            "Emax Anterior",
+                                            "Emax Posterior",
+                                            "Emax Ivoclar Anterior",
+                                            "Emax Ivoclar Posterior",
+                                            "Full Arch Denture Print",
+                                            "Full Denture Acrylic (Hard)",
+                                            "Gingiva for Framework",
+                                            "Mock Up Cast (Smile Design)",
+                                            "Orthodontic Retainer & Night Guard",
+                                            "Permanent Resin",
+                                            "PFM vm13",
+                                            "PMMA Milled",
+                                            "Print Cast only",
+                                            "Print Guide only",
+                                            "Printed PMMA",
+                                            "Removable",
+                                            "Removable Partial by tooth",
+                                            "Scan Appliance Full Arch",
+                                            "Scan Appliance Half Arch",
+                                            "Scanner Rent",
+                                            "Surgical Guide One Tooth",
+                                            "Temporary Crown Print",
+                                            "Toronto Metal Framework (Print)",
+                                            "Toronto TI Framework (Mill)",
+                                            "Zircomax",
+                                            "Zircomax Elite",
+                                            "Zr Elite Multi Layer",
+                                            "Zr Elite Preshade",
+                                            "Zr Multi Layer",
+                                            "Zr Post",
+                                            "Zr Preshade"
+                                        ];
+
+                                        // Lookup map: normalized key -> Official Name
+                                        const officialMap = new Map<string, string>();
+                                        OFFICIAL_NAMES.forEach(name => {
+                                            officialMap.set(normalizeName(name), name);
+                                        });
+
+                                        // Manual aliases for stubborn cases (keys must be normalized)
+                                        const MANUAL_ALIASES: Record<string, string> = {
+                                            'cutback': 'Cut Back',
+                                            'pfm vm 13': 'PFM vm13',
+                                            'pfm vm13': 'PFM vm13',
+                                            'pmma milled': 'PMMA Milled',
+                                            'toronto ti framework (mill)': 'Toronto TI Framework (Mill)',
+                                            // Specific user examples just in case
+                                            'emax ivoclar anterior': 'Emax Ivoclar Anterior',
+                                        };
+
+                                        // 2. Fetch ALL order_items
+                                        const { data: allItems, error: fetchError } = await supabase
+                                            .from('order_items')
+                                            .select('product_type');
+                                        if (fetchError) throw fetchError;
+
+                                        // Count occurrences
+                                        const countMap = new Map<string, number>();
+                                        (allItems || []).forEach((row: any) => {
+                                            if (row.product_type) {
+                                                const name = row.product_type; // Keep raw string to detect whitespace issues
+                                                countMap.set(name, (countMap.get(name) || 0) + 1);
+                                            }
+                                        });
+
+                                        // 3. Build rename map
+                                        const renameMap: { from: string; to: string; reason: string }[] = [];
+
+                                        countMap.forEach((_count, name) => {
+                                            const normalized = normalizeName(name);
+
+                                            // A. Check against Official List (Normalized Match)
+                                            const official = officialMap.get(normalized);
+                                            if (official) {
+                                                if (official !== name) {
+                                                    renameMap.push({ from: name, to: official, reason: 'Official List Match' });
+                                                }
+                                                return;
+                                            }
+
+                                            // B. Check Manual Aliases (Normalized Keys)
+                                            if (MANUAL_ALIASES[normalized]) {
+                                                if (MANUAL_ALIASES[normalized] !== name) {
+                                                    renameMap.push({ from: name, to: MANUAL_ALIASES[normalized], reason: 'Manual Alias' });
+                                                }
+                                                return;
+                                            }
+                                        });
+
+
+                                        // 5. Execute Relational Updates
+                                        let updatedCount = 0;
+                                        for (const rename of renameMap) {
+                                            const { data: updated, error: updateError } = await supabase
+                                                .from('order_items')
+                                                .update({ product_type: rename.to })
+                                                .eq('product_type', rename.from)
+                                                .select('id');
+
+                                            if (updateError) {
+                                                console.error(`Error: "${rename.from}":`, updateError);
+                                            } else {
+                                                updatedCount += updated?.length || 0;
+                                            }
+                                        }
+
+                                        // 6. Update Legacy JSON (orders.items)
+                                        // Fetch orders with non-empty items
+                                        const { data: legacyOrders, error: legacyError } = await supabase
+                                            .from('orders')
+                                            .select('id, items')
+                                            .not('items', 'is', null);
+
+                                        let jsonUpdatedCount = 0;
+                                        if (legacyOrders && !legacyError) {
+                                            for (const order of legacyOrders) {
+                                                const items = order.items;
+                                                if (Array.isArray(items)) {
+                                                    let changed = false;
+                                                    const newItems = items.map((item: any) => {
+                                                        if (item.serviceType) {
+                                                            const normalized = normalizeName(item.serviceType);
+                                                            // Check official map
+                                                            const official = officialMap.get(normalized);
+                                                            if (official && official !== item.serviceType) {
+                                                                changed = true;
+                                                                return { ...item, serviceType: official };
+                                                            }
+                                                            // Check manual aliases
+                                                            if (MANUAL_ALIASES[normalized] && MANUAL_ALIASES[normalized] !== item.serviceType) {
+                                                                changed = true;
+                                                                return { ...item, serviceType: MANUAL_ALIASES[normalized] };
+                                                            }
+                                                        }
+                                                        return item;
+                                                    });
+
+                                                    if (changed) {
+                                                        const { error: jsonUpdateError } = await supabase
+                                                            .from('orders')
+                                                            .update({ items: newItems })
+                                                            .eq('id', order.id);
+
+                                                        if (!jsonUpdateError) {
+                                                            jsonUpdatedCount++;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        alert(`تم توحيد ${updatedCount} سجل (Relational) و ${jsonUpdatedCount} سجل (Legacy JSON) بنجاح ✅`);
+                                        window.location.reload();
+                                    } catch (error) {
+                                        alert('حدث خطأ: ' + error);
+                                        console.error(error);
+                                    }
+                                }}
+                                className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                            >
+                                توحيد أسماء الخدمات
+                            </button>
+                        </div>
+
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <h4 className="font-semibold text-yellow-800 mb-2">حذف الحالات المستوردة اليوم</h4>
+                            <p className="text-sm text-yellow-700 mb-4">
+                                هذا الزر سيقوم بحذف جميع الحالات التي تم استيرادها اليوم (التي تحتوي على ملاحظة 'Imported / استيراد تلقائي').
+                                يرجى استخدام هذا الزر بحذر وفقط إذا كنت متأكداً من رغبتك في حذف هذه الحالات.
+                            </p>
+                            <button
+                                onClick={async () => {
+                                    if (window.confirm('هل أنت متأكد تماماً من رغبتك في حذف جميع الحالات المستوردة اليوم؟ لا يمكن التراجع عن هذا الإجراء.')) {
+                                        try {
+                                            const today = new Date().toISOString().split('T')[0];
+                                            const result = await db.getOrders(1, 1000); // Fetch recent orders
+                                            const importedOrders = result.data.filter(o =>
+                                                o.feedback?.notes === 'Imported / استيراد تلقائي' &&
+                                                o.createdAt.startsWith(today)
+                                            );
+
+                                            if (importedOrders.length === 0) {
+                                                alert('لا توجد حالات مستوردة اليوم.');
+                                                return;
+                                            }
+
+                                            if (window.confirm(`سيتم حذف ${importedOrders.length} حالة. هل أنت متأكد؟`)) {
+                                                let deletedCount = 0;
+                                                for (const order of importedOrders) {
+                                                    await db.deleteOrder(order.id);
+                                                    deletedCount++;
+                                                }
+                                                alert(`تم حذف ${deletedCount} حالة بنجاح.`);
+                                                window.location.reload();
+                                            }
+                                        } catch (error) {
+                                            alert('حدث خطأ أثناء الحذف: ' + error);
+                                        }
+                                    }
+                                }}
+                                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+                            >
+                                حذف الحالات المستوردة
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )
+            }
 
         </div >
     );

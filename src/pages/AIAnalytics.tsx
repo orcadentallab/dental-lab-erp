@@ -51,10 +51,10 @@ export default function AIAnalytics() {
 
             // Calculate stats for analysis context (including Delivered as completed)
             const completedOrders = orders.filter(o =>
-                o.status === 'Completed' || o.status === 'Delivered'
+                ['completed', 'delivered'].includes((o.status || '').toLowerCase())
             );
             const pendingOrders = orders.filter(o =>
-                !['Completed', 'Delivered', 'Rejected'].includes(o.status)
+                !['completed', 'delivered', 'rejected'].includes((o.status || '').toLowerCase())
             );
 
             const revenue = transactions
@@ -88,14 +88,23 @@ export default function AIAnalytics() {
                 };
             }).sort((a, b) => b.orderCount - a.orderCount); // All doctors, sorted by order count
 
+            // Helper: count actual units from teethNumbers
+            const getUnitCount = (teethNumbers: unknown): number => {
+                if (Array.isArray(teethNumbers) && teethNumbers.length > 0) return teethNumbers.length;
+                if (typeof teethNumbers === 'string' && teethNumbers.trim()) {
+                    return teethNumbers.split(',').filter(s => s.trim()).length || 1;
+                }
+                return 1;
+            };
+
             // Top Services - count teeth (units) from completed orders only
             const serviceStats: Record<string, { count: number; revenue: number }> = {};
             completedOrders.forEach(order => {
-                order.items?.forEach((item: { serviceType: string; price: number; teethNumbers?: string[] }) => {
+                order.items?.forEach((item: { serviceType: string; price: number; teethNumbers?: unknown }) => {
                     if (!serviceStats[item.serviceType]) {
                         serviceStats[item.serviceType] = { count: 0, revenue: 0 };
                     }
-                    const unitCount = item.teethNumbers?.length || 1;
+                    const unitCount = getUnitCount(item.teethNumbers);
                     serviceStats[item.serviceType].count += unitCount;
                     serviceStats[item.serviceType].revenue += (item.price || 0) * unitCount;
                 });
