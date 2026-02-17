@@ -255,6 +255,14 @@ class MockDB {
     }
 
     /**
+     * LIGHTWEIGHT fetch for Finance Summary (Accounts Page)
+     */
+    async getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
+        const { getOrdersForFinanceSummary } = await import('./supabase/orders');
+        return getOrdersForFinanceSummary();
+    }
+
+    /**
      * Dedicated fetch for Individual Account Statements.
      * Fetches all orders for a specific entity ID without truncation.
      */
@@ -341,6 +349,11 @@ class MockDB {
     async getTransactions(): Promise<Transaction[]> {
         const { getTransactions } = await import('./supabase/transactions');
         return getTransactions();
+    }
+
+    async getTransactionsForFinanceSummary(): Promise<Partial<Transaction>[]> {
+        const { getTransactionsForFinanceSummary } = await import('./supabase/transactions');
+        return getTransactionsForFinanceSummary();
     }
 
     async addTransaction(tx: Omit<Transaction, 'id'>): Promise<Transaction> {

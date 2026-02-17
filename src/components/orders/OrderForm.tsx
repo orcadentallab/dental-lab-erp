@@ -31,7 +31,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
-    const [existingOrders, setExistingOrders] = useState<Order[]>([]);
+    // removed: existingOrders state
+
 
     // const [doctorSearchTerm, setDoctorSearchTerm] = useState(''); // REPLACED BY DOCTOR SELECT
     // const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false); // REPLACED BY DOCTOR SELECT
@@ -93,7 +94,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
         serviceType: i.serviceType,
-        teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (i.teethNumbers as string).split(',').map(s => s.trim()).filter(Boolean),
+        teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (typeof i.teethNumbers === 'string' ? (i.teethNumbers as string).split(',') : []),
         price: i.price,
         customPrice: undefined
     })) : [{ serviceType: '', teethNumbers: [], price: 0 }]);
@@ -103,12 +104,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [doctorsData, servicesData, suppliersData, usersData, ordersData] = await Promise.all([
+                const [doctorsData, servicesData, suppliersData, usersData] = await Promise.all([
                     db.getDoctors(),
                     db.getServices(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    db.getAllOrdersUnpaginated()
+                    // removed: db.getAllOrdersUnpaginated()
+
                 ]);
                 setDoctors(doctorsData);
                 const sortedServices = servicesData.sort((a, b) => b.name.localeCompare(a.name));
@@ -134,7 +136,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                         setRepresentativeId(currentRep.id);
                     }
                 }
-                setExistingOrders(ordersData);
+                // removed: setExistingOrders(ordersData);
+
             } catch (error) {
                 console.error('Error loading form data:', error);
             }
@@ -229,7 +232,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
         }
 
         onSubmit({
-            caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode, existingOrders) : 'UNKNOWN'),
+            caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode) : 'UNKNOWN'),
             doctorId,
             patientName,
             items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers })),

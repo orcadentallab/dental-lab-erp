@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
 import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, FileSpreadsheet, Trash2, Edit2, Printer } from 'lucide-react';
 import { db, type Service, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
+import { analyticsService } from '../services/supabase/analyticsService';
+import type { FinanceDashboard } from '../services/supabase/analyticsService';
 import clsx from 'clsx';
 import { exportToExcel } from '../lib/exportUtils';
 import { generateGenericTablePDF } from '../services/pdfService';
@@ -63,16 +65,19 @@ export default function Finance() {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, ordersData, adjustmentsData, capitalData, assetsData] = await Promise.all([
+                // PERFORMANCE: Removed getAllOrdersUnpaginated() from eager load.
+                // Orders are now loaded lazily when entity tabs are opened.
+                // Dashboard metrics use server-side RPC instead.
+                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, adjustmentsData, capitalData, assetsData, dashboardData] = await Promise.all([
                     db.getServices(),
                     db.getTransactions(),
                     db.getDoctors(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    db.getAllOrdersUnpaginated(),
                     financeService.getAdjustments(),
                     canExport ? financeService.getCapitalEntries() : Promise.resolve([]),
-                    canExport ? financeService.getFixedAssets() : Promise.resolve([])
+                    canExport ? financeService.getFixedAssets() : Promise.resolve([]),
+                    analyticsService.getFinanceDashboard()
                 ]);
                 setServices(servicesData);
                 setTransactions(transactionsData);
@@ -80,10 +85,10 @@ export default function Finance() {
                 setSuppliers(suppliersData);
                 setDesigners(usersData.filter(u => u.role === 'designer'));
                 setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
-                setOrders(ordersData);
                 setAdjustments(adjustmentsData);
                 setCapitalEntries(capitalData);
                 setFixedAssets(assetsData);
+                setDashboardMetrics(dashboardData);
             } catch (error) {
                 console.error('Error loading finance data:', error);
             } finally {
@@ -93,19 +98,42 @@ export default function Finance() {
         loadData();
     }, [user?.role]); // Load data when role is available
 
-    // Financial Metrics - memoized to prevent recalculation
+    // Lazy-load orders when entity tabs are activated
+    const [ordersLoaded, setOrdersLoaded] = useState(false);
+    useEffect(() => {
+        if (['doctors', 'suppliers', 'designers'].includes(activeTab) && !ordersLoaded) {
+            db.getAllOrdersUnpaginated().then(data => {
+                setOrders(data);
+                setOrdersLoaded(true);
+            }).catch(err => console.error('Error lazy-loading orders:', err));
+        }
+    }, [activeTab, ordersLoaded]);
+
+    // Dashboard Metrics from server-side RPC
+    const [dashboardMetrics, setDashboardMetrics] = useState<FinanceDashboard | null>(null);
+
+    // Financial Metrics - sourced from server-side RPC when available, fallback to client-side
     const { totalOperatingExpenses, totalProductionCosts, totalIncome, currentBalance } = useMemo(() => {
+        // Use server-side RPC data when available (fast path, no order iteration)
+        if (dashboardMetrics) {
+            return {
+                totalOperatingExpenses: dashboardMetrics.operating_expenses,
+                totalProductionCosts: dashboardMetrics.production_costs,
+                totalIncome: dashboardMetrics.total_income,
+                currentBalance: dashboardMetrics.current_balance
+            };
+        }
+
+        // Fallback: client-side calculation from transactions (for edge cases)
         let opEx = 0;
         let prodCosts = 0;
 
         transactions.forEach(t => {
             if (t.type === 'expense') {
                 const isRepExpense = representatives.some(r => r.id === t.entityId);
-                // Production costs are payments to suppliers or designers
                 if (t.entityType === 'supplier' || t.entityType === 'designer') {
                     prodCosts += t.amount;
                 } else {
-                    // Everything else is operating expense
                     if (isRepExpense && !t.isRegistered) return;
                     opEx += t.amount;
                 }
@@ -123,7 +151,7 @@ export default function Finance() {
             totalIncome: income,
             currentBalance: startingBalance + income - (opEx + prodCosts)
         };
-    }, [transactions, representatives, capitalEntries, fixedAssets]);
+    }, [dashboardMetrics, transactions, representatives, capitalEntries, fixedAssets]);
 
     // Memoized filtered transactions for different tabs
     const generalExpenses = useMemo(() =>

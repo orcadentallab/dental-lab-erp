@@ -95,7 +95,6 @@ export default function Orders() {
         if (designerFilter) filters.designerId = designerFilter;
         if (searchQuery.trim()) filters.search = searchQuery.trim();
         if (hideDelivered) filters.hideDelivered = true;
-
         if (showArchived) filters.showArchived = true;
 
         return filters;
@@ -106,17 +105,9 @@ export default function Orders() {
         setIsLoading(true);
         try {
             const filters = buildFilters();
-            const [ordersResult, doctorsData, suppliersData, usersData] = await Promise.all([
-                db.getOrders(page, PAGE_SIZE, filters),
-                db.getDoctors(),
-                db.getSuppliers(),
-                db.getUsers()
-            ]);
+            const ordersResult = await db.getOrders(page, PAGE_SIZE, filters);
             setOrders(ordersResult.data);
             setTotalCount(ordersResult.count);
-            setDoctors(doctorsData);
-            setSuppliers(suppliersData);
-            setUsers(usersData);
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -124,16 +115,30 @@ export default function Orders() {
         }
     };
 
+    // Initial Load of Aux Data (once on mount - fast)
+    useEffect(() => {
+        const loadAux = async () => {
+            const [docs, sups, usrs] = await Promise.all([
+                db.getDoctors(),
+                db.getSuppliers(),
+                db.getUsers()
+            ]);
+            setDoctors(docs);
+            setSuppliers(sups);
+            setUsers(usrs);
+        };
+        loadAux();
+    }, []);
+
     // CONSOLIDATED: Single debounced effect for all filter and search changes
-    // Debounces all filter changes to prevent multiple rapid fetches
     useEffect(() => {
         const timer = setTimeout(() => {
             setCurrentPage(1);
             refreshOrders(1);
-        }, 150); // Shorter debounce for filter changes, still prevents rapid calls
+        }, 150);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]); // Removed searchQuery from here
+    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived, searchQuery]);
 
     // Page change handler
     const handlePageChange = (page: number) => {

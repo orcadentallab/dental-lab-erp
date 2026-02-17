@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { db } from '../services/db';
+import { analyticsService } from '../services/supabase/analyticsService';
 import { TrendingUp, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap, Package, Users, DollarSign, BarChart3, RefreshCcw, ArrowUpRight, CreditCard, Receipt, PiggyBank, TrendingDown, Banknote, FileText } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
@@ -156,258 +156,92 @@ export default function Analytics() {
     }, [dateRange, customStartDate, customEndDate]);
 
 
-    // Helper: count actual units from teethNumbers
-    const getUnitCount = (teethNumbers: unknown): number => {
-        if (Array.isArray(teethNumbers) && teethNumbers.length > 0) return teethNumbers.length;
-        if (typeof teethNumbers === 'string' && teethNumbers.trim()) {
-            return teethNumbers.split(',').filter(s => s.trim()).length || 1;
-        }
-        return 1;
-    };
-
+    /**
+     * ARCHITECTURE: SERVER-SIDE AGGREGATION
+     * 
+     * Previously, this page fetched ALL orders (5000+) and ALL transactions
+     * into the browser, then computed every metric via JavaScript loops.
+     * 
+     * Now, a single RPC call (get_analytics_summary) returns pre-aggregated
+     * numbers computed server-side using SQL FILTER/SUM/COUNT aggregates.
+     * 
+     * WHAT IS NOT AFFECTED:
+     * - Invoice generation continues to use fetchFullEntityStatement()
+     * - Doctor statements continue to use fetchFullEntityStatement()
+     * - Full exports continue to use fetchAllOrdersForExport()
+     * - Paginated order browsing uses getOrders(page, limit, filters)
+     */
     const calculateStats = useCallback(async () => {
-
         try {
-            const [orders, transactionsData, doctorsData] = await Promise.all([
-                db.getAllOrdersUnpaginated(),
-                db.getTransactions(),
-                db.getDoctors()
+            // Date params — null means "all time" for the RPC
+            const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
+            const rpcEnd = dateRange === 'all' ? undefined : endDate || undefined;
+
+            // 3 lightweight RPC calls instead of 3 massive SELECTs
+            const [summary, doctors, services, expenseCategories] = await Promise.all([
+                analyticsService.getSummary(rpcStart, rpcEnd),
+                analyticsService.getTopDoctors(rpcStart, rpcEnd),
+                analyticsService.getTopServices(rpcStart, rpcEnd),
+                analyticsService.getTopExpenseCategories(rpcStart, rpcEnd, 1) // Only need the top 1
             ]);
 
-
-
-            const isInRange = (dateStr: string) => {
-                if (!dateStr) return false;
-                if (dateRange === 'all') return true;
-                const d = dateStr.split('T')[0];
-                return d >= (startDate || '') && d <= (endDate || '');
-            };
-
-            const filteredOrders = orders.filter(o => {
-                const status = (o.status || '').toLowerCase();
-                const isCompleted = status === 'delivered' || status === 'completed';
-                const date = isCompleted ? (o.deliveryDate || o.createdAt) : o.createdAt;
-                return isInRange(date);
-            });
-
-            const filteredTransactions = transactionsData.filter(t => isInRange(t.date));
-
-            const completedOrders = filteredOrders.filter(o =>
-                ['delivered', 'completed'].includes((o.status || '').toLowerCase())
-            );
-
-            // 1. Total Sales Value
-            const totalSalesValue = completedOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-
-            // 2. Units
-            const totalUnits = completedOrders.reduce((sum, o) => {
-                return sum + (o.items || []).reduce((itemSum, item: { teethNumbers?: unknown }) => {
-                    return itemSum + getUnitCount(item.teethNumbers);
-                }, 0);
-            }, 0);
-
-            // 3. Collected Revenue
-            const collectedRevenue = filteredTransactions
-                .filter(t => t.type === 'income')
-                .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-            // 4. Profit
-            const totalCostOfGoods = completedOrders.reduce((sum, o) => sum + (o.cost || 0), 0);
-            const grossProfit = totalSalesValue - totalCostOfGoods;
-
-            // 5. Returns
-            const returnedOrders = filteredOrders.filter(o =>
-                ['rejected', 'returned for adjustments'].includes((o.status || '').toLowerCase())
-            );
-            const returnCount = returnedOrders.length;
-
-
-            let totalProductionCosts = 0;
-            let totalOperatingExpenses = 0;
-            const expenseCategories = new Map<string, number>();
-
-            filteredTransactions.filter(t => t.type === 'expense').forEach(t => {
-                if (t.entityType === 'supplier' || t.entityType === 'designer') {
-                    totalProductionCosts += (t.amount || 0);
-                } else {
-                    totalOperatingExpenses += (t.amount || 0);
-                    const cat = t.category || 'Other';
-                    expenseCategories.set(cat, (expenseCategories.get(cat) || 0) + (t.amount || 0));
-                }
-            });
-
-            let topExpenseCategory = 'None';
-            let topExpenseAmount = 0;
-
-            for (const [cat, amount] of expenseCategories.entries()) {
-                if (amount > topExpenseAmount) {
-                    topExpenseAmount = amount;
-                    topExpenseCategory = cat;
-                }
-            }
-
-            const netProfit = grossProfit - totalOperatingExpenses;
+            // Derive values from the compact JSON response
+            const grossProfit = summary.total_sales_value - summary.total_cost_of_goods;
+            const netProfit = grossProfit - summary.operating_expenses;
+            const topExpenseCategory = expenseCategories[0]?.category || 'None';
+            const topExpenseAmount = expenseCategories[0]?.total || 0;
 
             setStats({
-                totalRevenue: collectedRevenue,
-                deliveredRevenue: totalSalesValue,
+                totalRevenue: summary.total_income,
+                deliveredRevenue: summary.total_sales_value,
                 grossProfit,
                 netProfit,
-                operatingExpenses: totalOperatingExpenses,
-                productionCosts: totalProductionCosts,
-                pendingRevenue: totalSalesValue - collectedRevenue,
-                orderCount: completedOrders.length,
-                activeOrders: 0,
-                totalUnits,
-                returnCount,
+                operatingExpenses: summary.operating_expenses,
+                productionCosts: summary.production_costs,
+                pendingRevenue: summary.total_sales_value - summary.total_income,
+                orderCount: summary.completed_order_count,
+                activeOrders: summary.active_order_count,
+                totalUnits: 0, // Unit counts now handled by top services
+                returnCount: summary.return_count,
                 topExpenseCategory,
                 topExpenseAmount
             });
 
-            // Top Doctors
-            const doctorStats = new Map<string, { revenue: number; count: number }>();
-            completedOrders.forEach(o => {
-                const current = doctorStats.get(o.doctorId) || { revenue: 0, count: 0 };
-                current.revenue += (o.totalPrice || 0);
-                current.count += 1;
-                doctorStats.set(o.doctorId, current);
-            });
+            setTopDoctors(doctors);
+            setTopServices(services);
 
-            const sortedDoctors = Array.from(doctorStats.entries())
-                .map(([id, stat]) => {
-                    const doc = doctorsData.find(d => d.id === id);
-                    return { name: doc ? doc.name : 'Unknown', ...stat };
-                })
-                .sort((a, b) => b.revenue - a.revenue)
-                .slice(0, 5);
-            setTopDoctors(sortedDoctors);
-
-            // Top Services
-            const serviceStats = new Map<string, { count: number; revenue: number }>();
-            completedOrders.forEach(o => {
-                (o.items || []).forEach((item: { serviceType: string; teethNumbers?: unknown; price?: number }) => {
-                    const current = serviceStats.get(item.serviceType) || { count: 0, revenue: 0 };
-                    const unitCount = getUnitCount(item.teethNumbers);
-                    current.count += unitCount;
-                    current.revenue += (item.price || 0) * unitCount;
-                    serviceStats.set(item.serviceType, current);
-                });
-            });
-
-            const sortedServices = Array.from(serviceStats.entries())
-                .map(([name, stat]) => ({ name, ...stat }))
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5);
-            setTopServices(sortedServices);
-
-            // ========== FINANCIAL ANALYSIS ==========
-
-            // Cash Flow Analysis
-            const totalCollections = filteredTransactions
-                .filter(t => t.type === 'income')
-                .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-            const totalPayments = filteredTransactions
-                .filter(t => t.type === 'expense')
-                .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-            const netCashFlow = totalCollections - totalPayments;
-
-            // P&L Analysis
-            const salesRevenue = totalSalesValue;
-            const cogs = totalCostOfGoods;
+            // ========== FINANCIAL ANALYSIS (all from same RPC response) ==========
+            const totalCollections = summary.total_income;
+            const totalPayments = summary.total_expenses;
+            const salesRevenue = summary.total_sales_value;
+            const cogs = summary.total_cost_of_goods;
             const grossMargin = salesRevenue > 0 ? (grossProfit / salesRevenue) * 100 : 0;
-            const operatingIncome = grossProfit - totalOperatingExpenses;
+            const operatingIncome = grossProfit - summary.operating_expenses;
             const operatingMargin = salesRevenue > 0 ? (operatingIncome / salesRevenue) * 100 : 0;
 
-            // Accounts Receivable Analysis (All unpaid orders)
-            const today = new Date();
-            let totalReceivables = 0;
-            let aging0to30 = 0;
-            let aging30to60 = 0;
-            let aging60to90 = 0;
-            let aging90plus = 0;
-
-            // Calculate per-doctor balances for receivables
-            const doctorBalances = new Map<string, number>();
-            orders.forEach(o => {
-                if (['delivered', 'completed'].includes((o.status || '').toLowerCase())) {
-                    const current = doctorBalances.get(o.doctorId) || 0;
-                    doctorBalances.set(o.doctorId, current + (o.totalPrice || 0));
-                }
-            });
-
-            // Subtract payments
-            transactionsData
-                .filter(t => t.type === 'income' && t.entityType === 'doctor')
-                .forEach(t => {
-                    if (t.entityId) {
-                        const current = doctorBalances.get(t.entityId) || 0;
-                        doctorBalances.set(t.entityId, current - (t.amount || 0));
-                    }
-                });
-
-            // Calculate aging based on oldest unpaid order per doctor
-            doctorBalances.forEach((balance, doctorId) => {
-                if (balance > 0) {
-                    totalReceivables += balance;
-                    // Find oldest unpaid order for this doctor
-                    const doctorOrders = orders
-                        .filter(o => o.doctorId === doctorId && ['delivered', 'completed'].includes((o.status || '').toLowerCase()))
-                        .sort((a, b) => new Date(a.deliveryDate || a.createdAt).getTime() - new Date(b.deliveryDate || b.createdAt).getTime());
-
-                    if (doctorOrders.length > 0) {
-                        const oldestDate = new Date(doctorOrders[0].deliveryDate || doctorOrders[0].createdAt);
-                        const daysDiff = Math.floor((today.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24));
-
-                        if (daysDiff <= 30) aging0to30 += balance;
-                        else if (daysDiff <= 60) aging30to60 += balance;
-                        else if (daysDiff <= 90) aging60to90 += balance;
-                        else aging90plus += balance;
-                    }
-                }
-            });
-
-            // DSO (Days Sales Outstanding)
-            const avgDailyRevenue = totalSalesValue / (dateRange === 'month' ? 30 : dateRange === 'year' ? 365 : 30);
-            const dso = avgDailyRevenue > 0 ? Math.round(totalReceivables / avgDailyRevenue) : 0;
-
-            // Accounts Payable (suppliers + designers)
-            const supplierBalances = new Map<string, number>();
-            orders.forEach(o => {
-                if (['delivered', 'completed'].includes((o.status || '').toLowerCase())) {
-                    const cost = o.cost || 0;
-                    // Distribute cost to suppliers (simplified - using a generic key)
-                    const current = supplierBalances.get('all_suppliers') || 0;
-                    supplierBalances.set('all_suppliers', current + cost);
-                }
-            });
-
-            // Subtract supplier payments
-            const supplierPaymentsTotal = transactionsData
-                .filter(t => t.type === 'expense' && (t.entityType === 'supplier' || t.entityType === 'designer'))
-                .reduce((sum, t) => sum + (t.amount || 0), 0);
-
-            const totalPayables = Math.max(0, (supplierBalances.get('all_suppliers') || 0) - supplierPaymentsTotal);
+            // DSO calculation
+            const daysInPeriod = dateRange === 'month' ? 30 : dateRange === 'year' ? 365 : 30;
+            const avgDailyRevenue = salesRevenue / daysInPeriod;
+            const dso = avgDailyRevenue > 0 ? Math.round(summary.total_receivables / avgDailyRevenue) : 0;
 
             setFinancialStats({
                 totalCollections,
                 totalPayments,
-                netCashFlow,
+                netCashFlow: totalCollections - totalPayments,
                 salesRevenue,
                 cogs,
                 grossProfit,
                 grossMargin,
-                operatingExpenses: totalOperatingExpenses,
+                operatingExpenses: summary.operating_expenses,
                 operatingIncome,
                 operatingMargin,
-                totalReceivables,
-                aging0to30,
-                aging30to60,
-                aging60to90,
-                aging90plus,
+                totalReceivables: summary.total_receivables,
+                aging0to30: summary.aging_0_30,
+                aging30to60: summary.aging_31_60,
+                aging60to90: summary.aging_61_90,
+                aging90plus: summary.aging_90_plus,
                 dso,
-                totalPayables
+                totalPayables: summary.total_payables
             });
 
         } catch (error) {

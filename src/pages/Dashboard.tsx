@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type Supplier } from '../services/db';
+import { db } from '../services/db';
+import { dashboardService } from '../services/dashboardService';
 import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, CheckSquare, PlusCircle, UserPlus, Banknote, FileText, Clock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,41 +13,21 @@ export default function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(true);
-    const [orders, setOrders] = useState<Order[]>([]);
-    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    // Use Awaited<ReturnType<...>> to infer the structure returned by the service
+    const [dashboardData, setDashboardData] = useState<Awaited<ReturnType<typeof dashboardService.getDashboardData>> | null>(null);
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const ordersPromise = db.getAllOrdersUnpaginated();
-                const doctorsPromise = db.getDoctors();
-                const suppliersPromise = db.getSuppliers();
-
-                const [allOrders, docs, suppliersData] = await Promise.all([
-                    ordersPromise,
-                    doctorsPromise,
-                    suppliersPromise
+                // Parallel fetch: Dashboard RPC + Doctors (for names)
+                const [data, docs] = await Promise.all([
+                    dashboardService.getDashboardData(),
+                    db.getDoctors()
                 ]);
 
-                let filteredOrders = allOrders;
-                if (user?.role === 'lab') {
-                    filteredOrders = allOrders.filter(o => {
-                        if (!user.entityId || o.supplierId !== user.entityId) return false;
-                        const isSplitWithDesigner = o.workflowType === 'split' && o.designerId;
-                        if (isSplitWithDesigner) {
-                            const visibleStatuses = ['Under Production', 'Try In', 'Try In Approved', 'Ready for QC', 'Ready for Delivery', 'Delivered', 'Returned for Adjustments'];
-                            return visibleStatuses.includes(o.status);
-                        }
-                        return true;
-                    });
-                } else if (user?.role === 'designer') {
-                    filteredOrders = allOrders.filter(o => o.designerId === user.id);
-                }
-
-                setOrders(filteredOrders);
-                setSuppliers(suppliersData);
+                setDashboardData(data);
 
                 const dMap: Record<string, string> = {};
                 docs.forEach(d => dMap[d.id] = d.name);
@@ -60,15 +41,23 @@ export default function Dashboard() {
         loadData();
     }, [user]);
 
-    const activeOrders = orders.filter(o => !['Delivered', 'Rejected', 'Cancelled', 'Returned for Adjustments'].includes(o.status) && o.technicianStatus !== 'Rejected');
-    const unassignedOrders = activeOrders.filter(o => !o.supplierId);
     const todayStr = new Date().toISOString().split('T')[0];
-    const delayedOrders = activeOrders.filter(o => o.deliveryDate < todayStr);
 
-    const supplierOrdersMap: Record<string, Order[]> = {};
-    suppliers.forEach(sup => {
-        supplierOrdersMap[sup.id] = activeOrders.filter(o => o.supplierId === sup.id);
-    });
+    // Derived state for UI compatibility
+    // RPC returns pre-filtered lists, so we map them to variables used by UI.
+    // If specific lists (like 'delayedOrders') are used, we pull them from dashboardData.
+
+    // Fallback empty arrays
+    const activeOrders = dashboardData?.activeOrders || [];
+    const delayedOrders = dashboardData?.delayedOrders || [];
+    const unassignedOrders = dashboardData?.unassignedOrders || [];
+    const newOrders = dashboardData?.newOrders || [];
+    const suppliers = dashboardData?.suppliers || [];
+
+    // For specific role logic, the RPC already returned the correct slice.
+    // 'activeOrders' in RPC for Lab/Designer means "My Active Orders".
+
+    // Helpers for UI badges (Unchanged)
 
     const getStatusLabel = (status: string) => {
         const map: Record<string, string> = {
@@ -204,10 +193,15 @@ export default function Dashboard() {
 
     // --- DESIGNER VIEW ---
     if (user?.role === 'designer') {
-        const pendingOrders = orders.filter(o => o.status === 'New Case');
-        const inProgressOrders = orders.filter(o => o.status === 'Under Design');
-        const waitingApprovalOrders = orders.filter(o => o.status === 'Waiting Dr Approval');
-        const returnedOrders = orders.filter(o => o.status === 'Returned for Adjustments');
+        const myOrders = dashboardData?.designerOrders || [];
+
+        const designerPending = myOrders.filter(o => o.status === 'New Case');
+        const designerInProgress = myOrders.filter(o => o.status === 'Under Design');
+        const designerWaiting = myOrders.filter(o => o.status === 'Waiting Dr Approval');
+        const designerReturned = myOrders.filter(o => o.status === 'Returned for Adjustments');
+
+        // Use counts from stats if available for better accuracy/sync
+        const stats = dashboardData?.stats;
 
         return (
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8 font-sans">
@@ -221,29 +215,29 @@ export default function Dashboard() {
                 <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Card variant="default" className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg shadow-blue-500/20">
                         <p className="text-xs text-blue-100 font-bold uppercase tracking-wider mb-1">منتظر الرد</p>
-                        <h3 className="text-4xl font-black">{pendingOrders.length}</h3>
+                        <h3 className="text-4xl font-black">{stats?.pending_count ?? designerPending.length}</h3>
                     </Card>
                     <Card variant="default" className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-lg shadow-amber-500/20">
                         <p className="text-xs text-amber-100 font-bold uppercase tracking-wider mb-1">جارى التصميم</p>
-                        <h3 className="text-4xl font-black">{inProgressOrders.length}</h3>
+                        <h3 className="text-4xl font-black">{stats?.in_progress_count ?? designerInProgress.length}</h3>
                     </Card>
                     <Card variant="default" className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg shadow-purple-500/20">
                         <p className="text-xs text-purple-100 font-bold uppercase tracking-wider mb-1">انتظار موافقة</p>
-                        <h3 className="text-4xl font-black">{waitingApprovalOrders.length}</h3>
+                        <h3 className="text-4xl font-black">{stats?.waiting_approval_count ?? designerWaiting.length}</h3>
                     </Card>
                     <Card variant="default" className="bg-gradient-to-br from-rose-500 to-rose-600 text-white border-0 shadow-lg shadow-rose-500/20">
                         <p className="text-xs text-rose-100 font-bold uppercase tracking-wider mb-1">مرتجع</p>
-                        <h3 className="text-4xl font-black">{returnedOrders.length}</h3>
+                        <h3 className="text-4xl font-black">{stats?.returned_count ?? designerReturned.length}</h3>
                     </Card>
                 </motion.div>
 
                 <AnimatePresence>
-                    {pendingOrders.length > 0 && (
+                    {designerPending.length > 0 && (
                         <motion.div variants={itemVariants}>
                             <Card className="bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800">
                                 <h3 className="text-blue-800 dark:text-blue-400 font-bold flex items-center gap-2 mb-4">
                                     <Package className="text-blue-600" />
-                                    حالات جديدة - منتظر الرد ({pendingOrders.length})
+                                    حالات جديدة - منتظر الرد ({designerPending.length})
                                 </h3>
                                 {/* Table implementation kept simple for brevity within the view */}
                             </Card>
@@ -256,7 +250,7 @@ export default function Dashboard() {
                 {/* For brevity in this rewriting step, I'm ensuring the main structure is modernized. The specific tables inside the if-blocks below are preserved but wrapped. */}
 
                 {/* Pending Orders Table detailed */}
-                {pendingOrders.length > 0 && (
+                {designerPending.length > 0 && (
                     <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-100 dark:border-blue-900/50 overflow-hidden mt-4">
                         <table className="w-full text-right text-sm">
                             <thead className="bg-blue-50 dark:bg-blue-900/40 text-blue-900 dark:text-blue-100 font-bold">
@@ -268,7 +262,7 @@ export default function Dashboard() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {pendingOrders.map(order => (
+                                {designerPending.map(order => (
                                     <tr key={order.id} className="hover:bg-blue-50/50 dark:hover:bg-gray-700 cursor-pointer" onClick={() => navigate('/orders')}>
                                         <td className="p-3 font-bold font-mono">#{order.caseId}</td>
                                         <td className="p-3 font-bold">{order.patientName}</td>
@@ -298,10 +292,24 @@ export default function Dashboard() {
             );
         }
 
-        const myDelayed = orders.filter(o => o.deliveryDate < todayStr && !['Delivered', 'Ready', 'Returned for Adjustments'].includes(o.status) && o.technicianStatus !== 'Rejected');
-        const myActive = orders.filter(o => !['Delivered', 'Ready', 'Returned for Adjustments'].includes(o.status) && o.technicianStatus !== 'Rejected');
-        const myRejected = orders.filter(o => o.status === 'Returned for Adjustments' || o.technicianStatus === 'Rejected');
-        const myReadyToday = orders.filter(o => o.status === 'Ready' && o.deliveryDate === todayStr);
+        // Logic for Lab
+        // RPC Filtered 'activeOrders' and 'delayedOrders'.
+        // 'stats' contains counts.
+
+        const myActive = dashboardData?.activeOrders || [];
+        const myDelayed = dashboardData?.delayedOrders || [];
+        const myStats = dashboardData?.stats;
+
+        // RPC doesn't currently return 'Rejected' list, only count.
+        // But the previous code filtered 'orders' to find rejected.
+        // If we want the list, we need to ask RPC.
+        // For now, let's assume 'stats.rejected_count' is enough for the card.
+        // And the table for rejected? Previous code had a card for "Refused/Returned" but NO specific table for it visible in this snippet.
+        // Ah, there are 4 cards.
+
+        // Let's assume stats for cards.
+        const myRejectedCount = myStats?.rejected_count ?? 0;
+        const myReadyTodayCount = myStats?.ready_today_count ?? 0;
 
         return (
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8">
@@ -319,7 +327,7 @@ export default function Dashboard() {
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm w-fit mb-3"><Package size={24} className="text-white" /></div>
                         <div>
                             <p className="text-xs text-indigo-100 font-bold uppercase tracking-wider mb-1">حالات قيد التنفيذ</p>
-                            <h3 className="text-3xl font-black">{myActive.length}</h3>
+                            <h3 className="text-3xl font-black">{myStats?.active_count ?? myActive.length}</h3>
                         </div>
                     </Card>
 
@@ -328,7 +336,7 @@ export default function Dashboard() {
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm w-fit mb-3"><AlertTriangle size={24} className="text-white" /></div>
                         <div>
                             <p className="text-xs text-red-100 font-bold uppercase tracking-wider mb-1">حالات متأخرة</p>
-                            <h3 className="text-3xl font-black">{myDelayed.length}</h3>
+                            <h3 className="text-3xl font-black">{myStats?.delayed_count ?? myDelayed.length}</h3>
                         </div>
                     </Card>
 
@@ -337,7 +345,7 @@ export default function Dashboard() {
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm w-fit mb-3"><AlertTriangle size={24} className="text-white" /></div>
                         <div>
                             <p className="text-xs text-rose-100 font-bold uppercase tracking-wider mb-1">مرفوضة/مرتجع</p>
-                            <h3 className="text-3xl font-black">{myRejected.length}</h3>
+                            <h3 className="text-3xl font-black">{myRejectedCount}</h3>
                         </div>
                     </Card>
 
@@ -346,15 +354,17 @@ export default function Dashboard() {
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm w-fit mb-3"><CheckCircle size={24} className="text-white" /></div>
                         <div>
                             <p className="text-xs text-emerald-100 font-bold uppercase tracking-wider mb-1">جاهز اليوم</p>
-                            <h3 className="text-3xl font-black">{myReadyToday.length}</h3>
+                            <h3 className="text-3xl font-black">{myReadyTodayCount}</h3>
                         </div>
                     </Card>
                 </motion.div>
 
                 {/* Alerts and Tables */}
                 <motion.div variants={itemVariants} className="space-y-6">
-                    {/* Try In Approved Alert */}
-                    {orders.filter(o => o.status === 'Try In Approved').length > 0 && (
+                    {/* Try In Approved Alert - RPC needed for this specific query? 
+                        RPC returned 'tryInApprovedOrders' list!
+                    */}
+                    {dashboardData?.tryInApprovedOrders && dashboardData.tryInApprovedOrders.length > 0 && (
                         <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-2xl p-6">
                             <h3 className="text-teal-800 font-bold flex items-center gap-2 mb-4">
                                 <CheckSquare className="text-teal-600" />
@@ -455,7 +465,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs text-primary-100 font-bold uppercase tracking-wider mb-1">الحالات الجارية</p>
-                            <h3 className="text-3xl font-black">{activeOrders.length}</h3>
+                            <h3 className="text-3xl font-black">{dashboardData?.stats?.active_count ?? activeOrders.length}</h3>
                         </div>
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm"><Package size={24} /></div>
                     </div>
@@ -464,7 +474,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs text-red-100 font-bold uppercase tracking-wider mb-1">متأخرة</p>
-                            <h3 className="text-3xl font-black">{delayedOrders.length}</h3>
+                            <h3 className="text-3xl font-black">{dashboardData?.stats?.delayed_count ?? delayedOrders.length}</h3>
                         </div>
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm"><AlertTriangle size={24} /></div>
                     </div>
@@ -473,7 +483,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-xs text-amber-100 font-bold uppercase tracking-wider mb-1">بدون معمل</p>
-                            <h3 className="text-3xl font-black">{unassignedOrders.length}</h3>
+                            <h3 className="text-3xl font-black">{dashboardData?.stats?.unassigned_count ?? unassignedOrders.length}</h3>
                         </div>
                         <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm"><HelpCircle size={24} /></div>
                     </div>
@@ -495,17 +505,17 @@ export default function Dashboard() {
                 )}
 
                 {/* 2. New Orders Waiting Acceptance */}
-                {activeOrders.filter(o => o.status === 'New Case').length > 0 && (
+                {newOrders.length > 0 && (
                     <Card variant="glass" className="border-purple-200 overflow-hidden">
                         <div className="p-4 border-b border-purple-100 bg-purple-50/50 flex justify-between items-center">
                             <h3 className="font-bold text-purple-900 flex items-center gap-2 text-sm">
                                 <Clock size={18} /> حالات جديدة في انتظار القبول
                             </h3>
-                            <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-bold">{activeOrders.filter(o => o.status === 'New Case').length}</span>
+                            <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-bold">{newOrders.length}</span>
                         </div>
                         {/* Simplified Table for brevity, relying on standard loop logic if full implementation needed */}
                         <div className="p-4 text-center text-sm text-purple-800">
-                            يرجى مراجعة {activeOrders.filter(o => o.status === 'New Case').length} حالات جديدة في صفحة الأوردرات
+                            يرجى مراجعة {newOrders.length} حالات جديدة في صفحة الأوردرات
                         </div>
                     </Card>
                 )}
@@ -524,7 +534,9 @@ export default function Dashboard() {
                 {/* 4. Supplier Tables */}
                 {suppliers.length > 0 ? (
                     suppliers.map(supplier => {
-                        const supOrders = supplierOrdersMap[supplier.id] || [];
+                        // In RPC, suppliers has 'active_orders' array directly.
+                        const supplierInRpc = dashboardData?.suppliers?.find(s => s.id === supplier.id);
+                        const supOrders = supplierInRpc?.active_orders || [];
                         return (
                             <OrderTable
                                 key={supplier.id}

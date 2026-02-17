@@ -315,6 +315,37 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 }
 
 /**
+ * LIGHTWEIGHT fetch for Finance Summary (Accounts Page)
+ * Fetches only ID, Status, Prices, Dates to calculate totals.
+ * Range: 0-9999 (Should be enough for summary, or we can paginate later)
+ */
+export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
+    const { data, error } = await supabase
+        .from('orders')
+        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, workflow_type, created_at, delivery_date, is_archived')
+        .order('created_at', { ascending: false })
+        .range(0, 9999);
+
+    if (error) throw ErrorHandler.handle(error, 'getOrdersForFinanceSummary');
+
+    // Map to Partial<Order> - manually to avoid heavy dbToOrder overhead
+    return (data || []).map(d => ({
+        id: d.id,
+        doctorId: d.doctor_id,
+        supplierId: d.supplier_id || undefined,
+        designerId: d.designer_id || undefined,
+        status: d.status,
+        totalPrice: d.total_price,
+        cost: d.cost,
+        designPrice: d.design_price || undefined,
+        workflowType: d.workflow_type || undefined,
+        createdAt: d.created_at,
+        deliveryDate: d.delivery_date,
+        isArchived: d.is_archived || undefined
+    }));
+}
+
+/**
  * Fetch all data for a single entity statement.
  * FIXED: Now fetches transactions by entity_id only at DB level,
  * then filters by entity_type in JS to handle legacy records where
@@ -551,82 +582,34 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     }
 
     // dbUpdates might contain items/comments from legacy mapping
-    // We should remove them before updating orders table
+    // We should remove them before updating orders table typings
     const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as any;
 
-    // Only update if there are actual changes to the orders table
-    if (Object.keys(cleanUpdates).length > 0) {
-        const { data, error } = await supabase
-            .from('orders')
-            .update(cleanUpdates)
-            .eq('id', id)
-            .select();
-
-        if (error) {
-            if (error.code === 'PGRST116') return null;
-            throw ErrorHandler.handle(error, 'updateOrder');
-        }
-
-        // If no rows were updated, RLS might be blocking - log warning
-        if (!data || data.length === 0) {
-            console.warn('updateOrder: No rows updated. RLS might be blocking or order not found:', id);
-        }
-    }
-
-    // Handle Relations Updates (If provided in the Partial<Order>)
-    // CAUTION: This completely replaces items if provided
-    if (updates.items !== undefined) {
-        // Delete existing
-        await supabase.from('order_items').delete().eq('order_id', id);
-
-        // Insert new
-        if (updates.items.length > 0) {
-            const itemRows = updates.items.map(i => ({
-                order_id: id,
+    try {
+        const { error } = await supabase.rpc('update_order_atomic', {
+            p_order_id: id,
+            p_updates: cleanUpdates,
+            p_items: updates.items ? updates.items.map(i => ({
                 product_type: i.serviceType,
                 teeth_numbers: i.teethNumbers,
                 price: i.price,
                 shade: i.shade,
                 count: i.teethNumbers.length || 1
-            }));
-            await supabase.from('order_items').insert(itemRows);
+            })) : null,
+            p_comments: updates.comments ? updates.comments.map(c => ({
+                text: c.text,
+                userId: c.userId === 'system' ? null : c.userId,
+                userName: c.userName,
+                createdAt: c.createdAt
+            })) : null
+        });
+
+        if (error) {
+            console.error('update_order_atomic RPC failed:', error);
+            throw ErrorHandler.handle(error, 'updateOrder');
         }
-    }
-
-    // Handle Comments - FIXED: Proper error handling and logging
-    // Strategy: Delete all and Insert all (Safe for consistency)
-    if (updates.comments !== undefined) {
-        // Step 1: Delete existing comments
-        const { error: deleteError } = await supabase
-            .from('order_comments')
-            .delete()
-            .eq('order_id', id);
-
-        if (deleteError) {
-            console.error('Failed to delete existing comments:', deleteError);
-            // Don't throw - continue to try inserting new comments
-        }
-
-        // Step 2: Insert new comments
-        if (updates.comments.length > 0) {
-            const commentRows = updates.comments.map(c => ({
-                order_id: id,
-                content: c.text,
-                user_id: c.userId === 'system' ? null : c.userId,
-                user_name: c.userName,
-                created_at: c.createdAt
-            }));
-
-            const { error: insertError } = await supabase
-                .from('order_comments')
-                .insert(commentRows);
-
-            if (insertError) {
-                console.error('Failed to insert comments:', insertError);
-                // Log the actual error for debugging
-                console.error('Comment rows attempted:', JSON.stringify(commentRows, null, 2));
-            }
-        }
+    } catch (error) {
+        throw ErrorHandler.handle(error, 'updateOrder');
     }
 
     return getOrder(id);

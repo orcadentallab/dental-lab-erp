@@ -49,6 +49,28 @@ export async function getTransactions(): Promise<Transaction[]> {
     return (data || []).map(dbToTransaction);
 }
 
+/**
+ * LIGHTWEIGHT fetch for Finance Summary (Accounts Page)
+ */
+export async function getTransactionsForFinanceSummary(): Promise<Partial<Transaction>[]> {
+    const { data, error } = await supabase
+        .from('transactions')
+        .select('id, entity_id, entity_type, type, amount, date')
+        .order('date', { ascending: false });
+
+    if (error) throw ErrorHandler.handle(error, 'getTransactionsForFinanceSummary');
+
+    // Map to Partial<Transaction>
+    return (data || []).map(t => ({
+        id: t.id,
+        entityId: t.entity_id || undefined,
+        entityType: t.entity_type || undefined,
+        type: t.type,
+        amount: t.amount,
+        date: t.date
+    }));
+}
+
 export async function getTransaction(id: string): Promise<Transaction | null> {
     const { data, error } = await supabase
         .from('transactions')

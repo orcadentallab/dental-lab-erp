@@ -46,7 +46,7 @@ export default function AcceptOrderModal({
 
     useEffect(() => {
         if (doctor) {
-            const nextId = generateCaseId(doctor.doctorCode || 'UNK', existingOrders);
+            const nextId = generateCaseId(doctor.doctorCode || 'UNK');
             setCaseId(nextId);
         }
     }, [doctor, existingOrders]);
@@ -115,8 +115,8 @@ export default function AcceptOrderModal({
                                 title="Select Full Lab Workflow"
                                 onClick={() => setWorkflowType('full')}
                                 className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${workflowType === 'full'
-                                        ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                                    ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
                                     }`}
                             >
                                 <Building2 size={24} className="mb-2 mx-auto opacity-80" />
@@ -128,8 +128,8 @@ export default function AcceptOrderModal({
                                 title="Select Split Workflow"
                                 onClick={() => setWorkflowType('split')}
                                 className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${workflowType === 'split'
-                                        ? 'border-purple-600 bg-purple-50 text-purple-700'
-                                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                                    ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                    : 'border-gray-200 hover:border-gray-300 text-gray-600'
                                     }`}
                             >
                                 <div className="flex justify-center gap-1 mb-2 opacity-80">
