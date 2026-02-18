@@ -108,7 +108,7 @@ export const TransactionSchema = z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صحيح'),
     description: z.string().min(1).max(500),
     entityId: z.string().uuid().optional().nullable(),
-    entityType: z.enum(['doctor', 'supplier', 'general', 'designer']).optional().nullable(),
+    entityType: z.enum(['doctor', 'supplier', 'general', 'designer', 'representative']).optional().nullable(),
     isRegistered: z.boolean().default(false)
 });
 
