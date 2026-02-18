@@ -583,8 +583,8 @@ export default function Staff() {
                                                                 </div>
                                                             )}
 
-                                                            {/* Admin Delete Button for Approved Expenses */}
-                                                            {isApproved && isAdmin && (
+                                                            {/* Admin Delete Button for Approved/Rejected Expenses */}
+                                                            {(isApproved || isRejected) && isAdmin && (
                                                                 <button
                                                                     onClick={() => handleDeleteTransaction(expense)}
                                                                     className="p-1.5 text-red-500 hover:bg-red-50 rounded"
