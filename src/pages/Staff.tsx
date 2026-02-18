@@ -100,7 +100,7 @@ export default function Staff() {
                 // We keep expenses cumulative as they are irrelevant to the month of Salary
                 // Only count APPROVED expenses (awaiting settlement)
                 const unpaidExpenses = staffExpenses
-                    .filter(e => e.entityId === rep.id && e.isApproved && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
+                    .filter(e => e.entityId === rep.id && e.status === 'approved' && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
 
                 const approvedExpensesAmount = unpaidExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -207,7 +207,8 @@ export default function Staff() {
                 category: newExpense.category || 'مصروفات أخرى',
                 entityId: currentUser.id,
                 entityType: 'representative',
-                isRegistered: false
+                isRegistered: false,
+                status: 'pending'
             });
 
             setNewExpense({ amount: '', description: '', category: '' });
@@ -267,7 +268,7 @@ export default function Staff() {
     // 2. Settle Expenses
     const handleSettleExpenses = async (stat: RepresentativeStats) => {
         // Only settle APPROVED expenses
-        const approvedExpenses = expenses.filter(e => e.entityId === stat.user.id && e.isApproved && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
+        const approvedExpenses = expenses.filter(e => e.entityId === stat.user.id && e.status === 'approved' && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
         if (approvedExpenses.length === 0) {
             alert('لا توجد مصاريف معتمدة للتسوية');
             return;
@@ -297,7 +298,7 @@ export default function Staff() {
     // 3. Approve Individual Expense
     const handleApproveExpense = async (expense: Transaction) => {
         try {
-            await db.updateTransaction(expense.id, { isApproved: true });
+            await db.updateTransaction(expense.id, { status: 'approved', isApproved: true });
             await loadData();
         } catch (error) {
             console.error(error);
@@ -307,13 +308,13 @@ export default function Staff() {
 
     // 4. Reject (Delete) Expense
     const handleRejectExpense = async (expense: Transaction) => {
-        if (!confirm(`هل أنت متأكد من رفض وحذف هذا المصروف؟\n${expense.description} - ${expense.amount} ج.م`)) return;
+        if (!confirm(`هل أنت متأكد من رفض هذا المصروف؟\n${expense.description} - ${expense.amount} ج.م`)) return;
         try {
-            await db.deleteTransaction(expense.id);
+            await db.updateTransaction(expense.id, { status: 'rejected', isApproved: false });
             await loadData();
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء حذف المصروف');
+            alert('حدث خطأ أثناء رفض المصروف');
         }
     };
 
@@ -526,13 +527,19 @@ export default function Staff() {
                                             {repExpenses.map(expense => {
                                                 const cat = expenseCategories.find(c => c.label === expense.category);
                                                 const Icon = cat?.icon || Banknote;
-                                                const isPending = !expense.isApproved;
-                                                const isApproved = expense.isApproved && !expense.isRegistered;
+                                                const isPending = expense.status === 'pending' || (!expense.status && !expense.isApproved);
+                                                const isApproved = expense.status === 'approved' || (!expense.status && expense.isApproved && !expense.isRegistered);
+                                                const isRejected = expense.status === 'rejected';
 
                                                 return (
                                                     <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
                                                         <div className="flex items-center gap-4">
-                                                            <div className={clsx("w-10 h-10 rounded-full flex items-center justify-center", isPending ? "bg-amber-100 text-amber-600" : "bg-green-100 text-green-600")}>
+                                                            <div className={clsx(
+                                                                "w-10 h-10 rounded-full flex items-center justify-center",
+                                                                isPending ? "bg-amber-100 text-amber-600" :
+                                                                    isRejected ? "bg-red-100 text-red-600" :
+                                                                        "bg-green-100 text-green-600"
+                                                            )}>
                                                                 <Icon size={20} />
                                                             </div>
                                                             <div>
@@ -551,6 +558,9 @@ export default function Staff() {
                                                             )}
                                                             {isApproved && (
                                                                 <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
+                                                            )}
+                                                            {isRejected && (
+                                                                <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100">مرفوض</span>
                                                             )}
 
                                                             {/* Action Buttons */}
@@ -590,7 +600,8 @@ export default function Staff() {
                                         </div>
                                     );
                                 })
-                            )}
+                            )
+                            }
                         </div>
                     </div>
                 </div>
@@ -647,9 +658,13 @@ export default function Staff() {
                                         <span className={clsx(
                                             "text-xs px-2 py-0.5 rounded-full",
                                             expense.isRegistered ? "bg-blue-100 text-blue-700" :
-                                                "bg-green-100 text-green-700"
+                                                expense.status === 'rejected' ? "bg-red-100 text-red-700" :
+                                                    expense.status === 'approved' || expense.isApproved ? "bg-green-100 text-green-700" :
+                                                        "bg-amber-100 text-amber-700"
                                         )}>
-                                            {expense.isRegistered ? 'تم الصرف (Settled)' : 'بانتظار الصرف'}
+                                            {expense.isRegistered ? 'تم الصرف (Settled)' :
+                                                expense.status === 'rejected' ? 'مرفوض' :
+                                                    expense.status === 'approved' || expense.isApproved ? 'بانتظار الصرف' : 'قيد المراجعة'}
                                         </span>
                                     </div>
                                 </div>

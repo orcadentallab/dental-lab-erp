@@ -92,6 +92,7 @@ export interface DbTransaction {
     entity_type?: 'doctor' | 'supplier' | 'general' | 'designer' | 'representative' | null;
     is_registered: boolean;
     is_approved?: boolean;
+    status?: 'pending' | 'approved' | 'rejected';
     created_at: string;
     updated_at: string;
 }

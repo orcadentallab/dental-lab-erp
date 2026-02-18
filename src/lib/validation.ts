@@ -109,7 +109,8 @@ export const TransactionSchema = z.object({
     description: z.string().min(1).max(500),
     entityId: z.string().uuid().optional().nullable(),
     entityType: z.enum(['doctor', 'supplier', 'general', 'designer', 'representative']).optional().nullable(),
-    isRegistered: z.boolean().default(false)
+    isRegistered: z.boolean().default(false),
+    status: z.enum(['pending', 'approved', 'rejected']).optional().default('pending')
 });
 
 export const TransactionCreateSchema = TransactionSchema.omit({ id: true });

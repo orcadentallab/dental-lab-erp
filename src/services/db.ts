@@ -28,7 +28,8 @@ export interface Transaction {
     entityId?: string; // Doctor or Supplier ID
     entityType?: 'doctor' | 'supplier' | 'general' | 'designer' | 'representative';
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
-    isApproved?: boolean; // Flag for individual expense approval
+    isApproved?: boolean; // Flag for individual expense approval (DEPRECATED: Use status)
+    status?: 'pending' | 'approved' | 'rejected'; // New Status Field
     createdAt?: string;
 }
 

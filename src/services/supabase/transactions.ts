@@ -17,6 +17,7 @@ function dbToTransaction(dbTx: DbTransaction): Transaction {
         entityType: dbTx.entity_type || undefined,
         isRegistered: dbTx.is_registered || undefined,
         isApproved: dbTx.is_approved || undefined,
+        status: dbTx.status || (dbTx.is_approved ? 'approved' : 'pending'), // Fallback for backward compatibility
         createdAt: dbTx.created_at,
     };
 }
@@ -32,7 +33,8 @@ function transactionToDb(tx: Omit<Transaction, 'id'>): DbTransactionInsert {
         entity_id: tx.entityId || null,
         entity_type: tx.entityType || null,
         is_registered: tx.isRegistered || false,
-        is_approved: tx.isApproved || false,
+        is_approved: tx.status === 'approved' || tx.isApproved || false,
+        status: tx.status || (tx.isApproved ? 'approved' : 'pending'),
     };
 }
 
@@ -121,6 +123,12 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
     if (updates.entityType !== undefined) dbUpdates.entity_type = updates.entityType || null;
     if (updates.isRegistered !== undefined) dbUpdates.is_registered = updates.isRegistered;
     if (updates.isApproved !== undefined) dbUpdates.is_approved = updates.isApproved;
+    if (updates.status !== undefined) {
+        dbUpdates.status = updates.status;
+        // Sync is_approved for backward compatibility logic
+        if (updates.status === 'approved') dbUpdates.is_approved = true;
+        if (updates.status === 'pending' || updates.status === 'rejected') dbUpdates.is_approved = false;
+    }
 
     const { data, error } = await supabase
         .from('transactions')
