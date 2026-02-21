@@ -138,7 +138,7 @@ export default function Orders() {
         }, 150);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived, searchQuery]);
+    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]);
 
     // Page change handler
     const handlePageChange = (page: number) => {

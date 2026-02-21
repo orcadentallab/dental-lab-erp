@@ -12,7 +12,7 @@ import clsx from 'clsx';
 
 interface OrderFormProps {
     onCancel: () => void;
-    onSubmit: (order: Omit<Order, 'id'>) => void;
+    onSubmit: (order: Omit<Order, 'id'>) => any;
     initialData?: Order;
 }
 
@@ -42,6 +42,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
     const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
     const [discount, setDiscount] = useState(initialData?.discount || 0);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
@@ -178,8 +179,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
     const total = subTotal - discount;
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+
         if (!doctorId) {
             toastError('يرجى اختيار الطبيب');
             return;
@@ -231,34 +234,39 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
             }, 0);
         }
 
-        onSubmit({
-            caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode) : 'UNKNOWN'),
-            doctorId,
-            patientName,
-            items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers })),
-            shade,
-            instructions: instructions || undefined,
-            stlUrl: stlUrl || undefined,
-            imagesUrl: imagesUrl || undefined,
-            status: initialData?.status || 'New Case',
-            technicianStatus: initialData?.technicianStatus || 'Pending',
-            deliveryDate,
-            createdAt: new Date(receivedDate).toISOString(),
-            totalPrice: total,
-            cost: calculatedCost,
-            workflowType,
-            designerId: workflowType === 'split' ? designerId : undefined,
-            designStatus: workflowType === 'split' ? 'pending' : undefined,
-            designPrice: workflowType === 'split' ? totalDesignPrice : 0,
-            discount,
-            priority: isUrgent ? 'Urgent' : 'Normal',
-            deliveryType,
-            needsDesignReview: initialData?.needsDesignReview || false,
-            isUrgent,
-            supplierId: selectedSupplier || undefined,
-            representativeId: representativeId || undefined,
-            comments: initialData?.comments || []
-        });
+        setIsSubmitting(true);
+        try {
+            await onSubmit({
+                caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode) : 'UNKNOWN'),
+                doctorId,
+                patientName,
+                items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers })),
+                shade,
+                instructions: instructions || undefined,
+                stlUrl: stlUrl || undefined,
+                imagesUrl: imagesUrl || undefined,
+                status: initialData?.status || 'New Case',
+                technicianStatus: initialData?.technicianStatus || 'Pending',
+                deliveryDate,
+                createdAt: new Date(receivedDate).toISOString(),
+                totalPrice: total,
+                cost: calculatedCost,
+                workflowType,
+                designerId: workflowType === 'split' ? designerId : undefined,
+                designStatus: workflowType === 'split' ? 'pending' : undefined,
+                designPrice: workflowType === 'split' ? totalDesignPrice : 0,
+                discount,
+                priority: isUrgent ? 'Urgent' : 'Normal',
+                deliveryType,
+                needsDesignReview: initialData?.needsDesignReview || false,
+                isUrgent,
+                supplierId: selectedSupplier || undefined,
+                representativeId: representativeId || undefined,
+                comments: initialData?.comments || []
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -270,11 +278,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     {initialData ? 'تعديل بيانات الأوردر' : 'إنشاء أوردر جديد'}
                 </h2>
                 <div className="flex gap-2 w-full sm:w-auto">
-                    <Button type="button" variant="ghost" className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
+                    <Button type="button" variant="ghost" disabled={isSubmitting} className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
                         <span>إلغاء</span>
                     </Button>
-                    <Button type="submit" size="md" className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
-                        <span>{initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر'}</span>
+                    <Button type="submit" size="md" disabled={isSubmitting} className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
+                        <span>{isSubmitting ? 'جاري الحفظ...' : (initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر')}</span>
                     </Button>
                 </div>
             </div>

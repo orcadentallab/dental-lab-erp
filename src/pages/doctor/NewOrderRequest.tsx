@@ -73,6 +73,7 @@ export default function NewOrderRequest() {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
 
         if (!user?.entityId) {
             toastError('خطأ: حسابك غير مرتبط ببيانات طبيب. يرجى مراجعة الإدارة.');
