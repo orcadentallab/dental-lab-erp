@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -34,7 +34,7 @@ export default function Sidebar() {
             icon: LayoutDashboard,
             defaultOpen: true,
             items: [
-                { name: t.nav.dashboard, href: '/', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
+                { name: t.nav.dashboard, href: '/dashboard', icon: LayoutDashboard, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
                 { name: t.nav.orders, href: '/orders', icon: ShoppingBag, roles: ['admin', 'lab', 'representative', 'accountant', 'designer'] },
             ]
         },
@@ -48,6 +48,7 @@ export default function Sidebar() {
                 { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
+                { name: 'تحليلات التسويق', href: '/marketing-analytics', icon: Megaphone, roles: ['admin'] },
             ]
         },
         {

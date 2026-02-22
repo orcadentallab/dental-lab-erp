@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
-import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall } from 'lucide-react';
+import { contactService, type ContactInquiry } from '../services/contactService';
 import AlertCard from '../components/dashboard/AlertCard';
 import OrderForm from '../components/orders/OrderForm';
 import DoctorForm from '../components/doctors/DoctorForm';
@@ -26,17 +27,19 @@ export default function DashboardNew() {
     const [showDailySummary, setShowDailySummary] = useState(false);
     const [activeModal, setActiveModal] = useState<string | null>(null);
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
+    const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
     const { t } = useTranslation();
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [ordersData, suppliersData, usersData, doctorsData] = await Promise.all([
+                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData] = await Promise.all([
                     db.getDashboardActiveOrders(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    db.getDoctors()
+                    db.getDoctors(),
+                    contactService.getInquiries('new').catch(() => [] as ContactInquiry[]),
                 ]);
 
                 // Apply role-based filtering
@@ -59,6 +62,7 @@ export default function DashboardNew() {
                 setSuppliers(suppliersData);
                 setUsers(usersData);
                 setDoctors(doctorsData);
+                setContactInquiries(inquiriesData);
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             } finally {
@@ -454,6 +458,51 @@ export default function DashboardNew() {
                 )}
 
             </div>
+
+            {/* Contact Inquiries from Marketing Page */}
+            {contactInquiries.length > 0 && (user?.role === 'admin' || user?.role === 'representative') && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-teal-200 dark:border-teal-800 overflow-hidden shadow-sm">
+                    <div className="p-4 border-b border-teal-100 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20 flex justify-between items-center">
+                        <h3 className="font-bold text-teal-900 dark:text-teal-100 flex items-center gap-2 text-sm">
+                            <MessageSquare size={18} className="text-teal-600" />
+                            رسائل جديدة من صفحة التسويق
+                        </h3>
+                        <span className="bg-teal-600 text-white px-2.5 py-1 rounded-full text-xs font-bold">{contactInquiries.length}</span>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {contactInquiries.slice(0, 5).map((inq) => (
+                            <div key={inq.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="font-bold text-sm text-gray-800 dark:text-white">{inq.doctor_name}</span>
+                                            {inq.clinic_name && <span className="text-xs text-gray-400">— {inq.clinic_name}</span>}
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{inq.message || 'No message'}</p>
+                                        <div className="flex items-center gap-3">
+                                            <a href={`https://wa.me/${inq.phone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 font-medium hover:underline">
+                                                <PhoneCall size={12} />
+                                                {inq.phone}
+                                            </a>
+                                            <span className="text-[10px] text-gray-400">{new Date(inq.created_at).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            if (!user?.name) return;
+                                            await contactService.markAsContacted(inq.id, user.name);
+                                            setContactInquiries(prev => prev.filter(i => i.id !== inq.id));
+                                        }}
+                                        className="shrink-0 px-3 py-1.5 bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 rounded-lg text-xs font-bold hover:bg-teal-200 dark:hover:bg-teal-800 cursor-pointer transition-colors"
+                                    >
+                                        تم التواصل ✓
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Lab Specific */}
             {user?.role === 'lab' && (

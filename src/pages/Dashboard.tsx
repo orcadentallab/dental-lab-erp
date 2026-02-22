@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../services/db';
 import { dashboardService } from '../services/dashboardService';
-import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, CheckSquare, PlusCircle, UserPlus, Banknote, FileText, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Package, Building2, HelpCircle, CheckSquare, PlusCircle, UserPlus, Banknote, FileText, Clock, MessageSquare, PhoneCall } from 'lucide-react';
+import { contactService, type ContactInquiry } from '../services/contactService';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '../components/ui/Card';
@@ -16,15 +17,17 @@ export default function Dashboard() {
     // Use Awaited<ReturnType<...>> to infer the structure returned by the service
     const [dashboardData, setDashboardData] = useState<Awaited<ReturnType<typeof dashboardService.getDashboardData>> | null>(null);
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
+    const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
                 // Parallel fetch: Dashboard RPC + Doctors (for names)
-                const [data, docs] = await Promise.all([
+                const [data, docs, inquiries] = await Promise.all([
                     dashboardService.getDashboardData(),
-                    db.getDoctors()
+                    db.getDoctors(),
+                    (user?.role === 'admin' || user?.role === 'representative') ? contactService.getInquiries('new') : Promise.resolve([]),
                 ]);
 
                 setDashboardData(data);
@@ -32,6 +35,7 @@ export default function Dashboard() {
                 const dMap: Record<string, string> = {};
                 docs.forEach(d => dMap[d.id] = d.name);
                 setDoctorsMap(dMap);
+                setContactInquiries(inquiries);
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             } finally {
@@ -489,6 +493,53 @@ export default function Dashboard() {
                     </div>
                 </Card>
             </motion.div>
+
+            {/* Contact Inquiries from Marketing Page */}
+            {contactInquiries.length > 0 && (
+                <motion.div variants={itemVariants}>
+                    <Card variant="glass" className="border-teal-200 dark:border-teal-800 overflow-hidden">
+                        <div className="p-4 border-b border-teal-100 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-900/20 flex justify-between items-center">
+                            <h3 className="font-bold text-teal-900 dark:text-teal-100 flex items-center gap-2 text-sm">
+                                <MessageSquare size={18} className="text-teal-600" />
+                                {`\u0631\u0633\u0627\u0626\u0644 \u062c\u062f\u064a\u062f\u0629 \u0645\u0646 \u0635\u0641\u062d\u0629 \u0627\u0644\u062a\u0633\u0648\u064a\u0642`}
+                            </h3>
+                            <span className="bg-teal-100 dark:bg-teal-800 text-teal-800 dark:text-teal-200 px-2.5 py-1 rounded-full text-xs font-bold">{contactInquiries.length}</span>
+                        </div>
+                        <div className="divide-y divide-surface-100 dark:divide-surface-700">
+                            {contactInquiries.slice(0, 5).map((inq) => (
+                                <div key={inq.id} className="p-4 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-bold text-sm text-surface-800 dark:text-surface-100">{inq.doctor_name}</span>
+                                                {inq.clinic_name && <span className="text-xs text-surface-400">— {inq.clinic_name}</span>}
+                                            </div>
+                                            <p className="text-xs text-surface-500 dark:text-surface-400 mb-2 truncate">{inq.message || 'No message'}</p>
+                                            <div className="flex items-center gap-3">
+                                                <a href={`tel:${inq.phone}`} className="inline-flex items-center gap-1 text-xs text-teal-600 dark:text-teal-400 font-medium hover:underline">
+                                                    <PhoneCall size={12} />
+                                                    {inq.phone}
+                                                </a>
+                                                <span className="text-[10px] text-surface-400">{new Date(inq.created_at).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                if (!user?.name) return;
+                                                await contactService.markAsContacted(inq.id, user.name);
+                                                setContactInquiries(prev => prev.filter(i => i.id !== inq.id));
+                                            }}
+                                            className="shrink-0 px-3 py-1.5 bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 rounded-lg text-xs font-bold hover:bg-teal-200 dark:hover:bg-teal-800 cursor-pointer transition-colors"
+                                        >
+                                            {`\u062a\u0645 \u0627\u0644\u062a\u0648\u0627\u0635\u0644`}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </motion.div>
+            )}
 
             {/* SECTIONS */}
             <motion.div variants={itemVariants} className="space-y-6">

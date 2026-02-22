@@ -19,7 +19,10 @@ import DoctorFinance from './pages/doctor/DoctorFinance';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
+import { lazy, Suspense } from 'react';
 
+const MarketingPage = lazy(() => import('./marketing/MarketingPage'));
+const MarketingAnalytics = lazy(() => import('./pages/MarketingAnalytics'));
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
@@ -37,10 +40,12 @@ function App() {
                   <Route path="/login" element={<Login />} />
 
 
+                  <Route path="/" element={<Suspense fallback={<div className="min-h-screen bg-brand-offwhite" />}><MarketingPage /></Suspense>} />
+
                   <Route element={<ProtectedRoute />}>
                     <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'representative', 'accountant', 'designer']} />}>
                       <Route element={<DashboardLayout />}>
-                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/orders" element={<Orders />} />
                         <Route element={<ProtectedRoute allowedRoles={['admin', 'representative']} />}>
                           <Route path="/doctors" element={<Doctors />} />
@@ -87,6 +92,7 @@ function App() {
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/ai-analytics" element={<AIAnalytics />} />
                       <Route path="/users" element={<UsersPage />} />
+                      <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
 
 
                     </Route>

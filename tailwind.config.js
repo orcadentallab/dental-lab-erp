@@ -36,6 +36,16 @@ export default {
           800: '#1e293b',
           900: '#0f172a',
           950: '#020617',
+        },
+        brand: {
+          black: '#0f0f0f',
+          slate: '#1f2e3c',
+          'slate-light': '#42565a',
+          'slate-lighter': '#78a0a5',
+          sky: '#6ba9dc',
+          blue: '#2a70ab',
+          offwhite: '#f2f2f2',
+          'offwhite-dark': '#dce1e6',
         }
       },
       animation: {
@@ -43,6 +53,7 @@ export default {
         'slide-up': 'slideUp 0.5s ease-out',
         'slide-in-right': 'slideInRight 0.3s ease-out',
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'fadeInUp': 'fadeInUp 0.4s ease-out',
       },
       keyframes: {
         fadeIn: {
@@ -56,6 +67,10 @@ export default {
         slideInRight: {
           '0%': { transform: 'translateX(20px)', opacity: '0' },
           '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        fadeInUp: {
+          '0%': { transform: 'translateY(12px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
         }
       }
     },

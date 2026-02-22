@@ -14,6 +14,8 @@ Supports:
 import subprocess
 import sys
 import json
+import platform
+import shutil
 from pathlib import Path
 from datetime import datetime
 
@@ -76,22 +78,16 @@ def run_linter(linter: dict, cwd: Path) -> dict:
         "error": ""
     }
     
-    cmd = linter["cmd"]
-    
-    # Resolve executable on Windows (e.g., npm -> npm.cmd)
-    import shutil
-    if sys.platform == "win32":
-        executable = shutil.which(cmd[0])
-        if executable:
-            cmd[0] = executable
-        else:
-            # Fallback: try appending .cmd if not present
-            if not cmd[0].lower().endswith(".cmd") and not cmd[0].lower().endswith(".exe"):
-                candidate = shutil.which(f"{cmd[0]}.cmd")
-                if candidate:
-                    cmd[0] = candidate
-    
     try:
+        cmd = linter["cmd"]
+        
+        # Windows compatibility for npm/npx
+        if platform.system() == "Windows":
+            if cmd[0] in ["npm", "npx"]:
+                # Force .cmd extension on Windows
+                if not cmd[0].lower().endswith(".cmd"):
+                    cmd[0] = f"{cmd[0]}.cmd"
+        
         proc = subprocess.run(
             cmd,
             cwd=str(cwd),
@@ -99,7 +95,8 @@ def run_linter(linter: dict, cwd: Path) -> dict:
             text=True,
             encoding='utf-8',
             errors='replace',
-            timeout=120
+            timeout=120,
+            shell=platform.system() == "Windows" # Shell=True often helps with path resolution on Windows
         )
         
         result["output"] = proc.stdout[:2000] if proc.stdout else ""
@@ -107,7 +104,7 @@ def run_linter(linter: dict, cwd: Path) -> dict:
         result["passed"] = proc.returncode == 0
         
     except FileNotFoundError:
-        result["error"] = f"Command not found: {cmd[0]}"
+        result["error"] = f"Command not found: {linter['cmd'][0]}"
     except subprocess.TimeoutExpired:
         result["error"] = "Timeout after 120s"
     except Exception as e:
@@ -159,8 +156,6 @@ def main():
             print(f"  [FAIL] {linter['name']}")
             if result["error"]:
                 print(f"  Error: {result['error'][:200]}")
-            if result["output"]:
-                print(f"  Output: {result['output'][:500]}...")
             all_passed = False
     
     # Summary

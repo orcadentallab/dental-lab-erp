@@ -16,7 +16,7 @@ export default function Login() {
             if (user.role === 'doctor') {
                 navigate('/doctor/my-orders', { replace: true });
             } else {
-                navigate('/', { replace: true });
+                navigate('/dashboard', { replace: true });
             }
         }
     }, [isAuthenticated, user, navigate]);
