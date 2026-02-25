@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateCaseId } from '../../utils/caseId';
-import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
@@ -92,6 +92,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(initialData?.deliveryType || 'Final');
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [manualCost, setManualCost] = useState<number | null>(null);
+    const isAdmin = user?.role === 'admin';
 
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
         serviceType: i.serviceType,
@@ -250,7 +252,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 deliveryDate,
                 createdAt: new Date(receivedDate).toISOString(),
                 totalPrice: total,
-                cost: calculatedCost,
+                cost: (isAdmin && manualCost !== null) ? manualCost : calculatedCost,
                 workflowType,
                 designerId: workflowType === 'split' ? designerId : undefined,
                 designStatus: workflowType === 'split' ? 'pending' : undefined,
@@ -560,6 +562,60 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 />
                             </div>
                         </div>
+
+                        {/* Admin-only: Manual Cost Override */}
+                        {isAdmin && (
+                            <div className="mt-3 pt-3 border-t border-surface-700">
+                                <div className="flex items-center gap-1.5 mb-2">
+                                    <Lock size={12} className="text-amber-400" />
+                                    <span className="text-[10px] font-bold text-amber-400">تعديل التكلفة يدوياً (أدمن فقط)</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-surface-400">التكلفة</span>
+                                    <div className="flex items-center gap-1 bg-surface-800 px-2 py-1 rounded-lg border border-amber-500/30 w-28">
+                                        <DollarSign size={12} className="text-amber-400" />
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            className="w-full bg-transparent text-right text-sm font-bold outline-none text-amber-300 placeholder-surface-600"
+                                            value={manualCost ?? ''}
+                                            onChange={(e) => setManualCost(e.target.value === '' ? null : Number(e.target.value))}
+                                            placeholder="تلقائي"
+                                        />
+                                    </div>
+                                </div>
+                                {manualCost !== null && (
+                                    <p className="text-[10px] text-surface-500 mt-1 text-left">التكلفة التلقائية: {(() => {
+                                        let auto = 0;
+                                        if (workflowType === 'full') {
+                                            auto = items.reduce((sum, item) => {
+                                                const count = item.teethNumbers ? item.teethNumbers.length : 0;
+                                                const svc = services.find(s => s.name === item.serviceType);
+                                                let unitCost = svc ? svc.costPrice : 0;
+                                                if (selectedSupplier) {
+                                                    const sup = suppliers.find(s => s.id === selectedSupplier);
+                                                    if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
+                                                }
+                                                return sum + (unitCost * count);
+                                            }, 0);
+                                        } else {
+                                            const designer = designers.find(d => d.id === designerId);
+                                            const sup = suppliers.find(s => s.id === selectedSupplier);
+                                            auto = items.reduce((sum, item) => {
+                                                const count = item.teethNumbers ? item.teethNumbers.length : 0;
+                                                const svc = services.find(s => s.name === item.serviceType);
+                                                const dCost = (designer?.unitRate || 0) * count;
+                                                let mCost = 0;
+                                                if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+                                                else if (svc) mCost = (svc.costPrice * 0.5) * count;
+                                                return sum + dCost + mCost;
+                                            }, 0);
+                                        }
+                                        return auto.toLocaleString();
+                                    })()}</p>
+                                )}
+                            </div>
+                        )}
                     </Card>
 
                 </div>
