@@ -551,9 +551,10 @@ export default function Accounts() {
                 return {
                     id: o.id || '',
                     date: o.deliveryDate || (o.createdAt ? o.createdAt.split('T')[0] : ''),
-                    description: `طلب خارجي #${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
+                    description: `#${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
                     type: 'credit' as const,
                     amount: cost,
+                    status: o.status,
                     services,
                     count
                 };
@@ -580,9 +581,10 @@ export default function Accounts() {
                 return {
                     id: o.id || '',
                     date: o.deliveryDate || (o.createdAt ? o.createdAt.split('T')[0] : ''),
-                    description: `تصميم #${o.caseId} - ${o.patientName}${o.status === 'Rejected' ? ' (مرفوض)' : ''}${o.status === 'Cancelled' ? ' (ملغي)' : ''} `,
+                    description: `تصميم #${o.caseId} - ${o.patientName}`,
                     type: 'credit' as const,
                     amount: (o.status === 'Rejected' || o.status === 'Cancelled') ? 0 : (o.designPrice || 0),
+                    status: o.status,
                     services,
                     count
                 };
