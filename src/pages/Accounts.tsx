@@ -1398,10 +1398,13 @@ export default function Accounts() {
                                 exportData.push({
                                     date: dateRange.start,
                                     description: 'رصيد سابق',
+                                    services: '',
+                                    count: '',
                                     debit: individualStatement.totals.openingBalance > 0 ? individualStatement.totals.openingBalance : 0,
                                     credit: individualStatement.totals.openingBalance < 0 ? Math.abs(individualStatement.totals.openingBalance) : 0,
                                     runningBalance: individualStatement.totals.openingBalance,
-                                    details: 'الرصيد المرحل من الفترة السابقة'
+                                    details: 'الرصيد المرحل من الفترة السابقة',
+                                    status: ''
                                 });
                             }
 
@@ -1409,10 +1412,13 @@ export default function Accounts() {
                             exportData.push(...individualStatement.items.map(i => ({
                                 date: i.date,
                                 description: i.description,
+                                services: i.services || '',
+                                count: i.count || '',
                                 debit: i.type === 'debit' ? i.amount : 0,
                                 credit: i.type === 'credit' ? i.amount : 0,
                                 runningBalance: i.runningBalance || 0,
-                                details: i.details || ''
+                                details: i.details || '',
+                                status: i.status === 'Cancelled' ? 'ملغي' : i.status === 'Rejected' ? 'مرفوض' : ''
                             })));
 
                             exportToExcelWithHeaders(
@@ -1420,10 +1426,13 @@ export default function Accounts() {
                                 {
                                     date: 'التاريخ',
                                     description: 'البيان',
+                                    services: 'الخدمات',
+                                    count: 'العدد',
                                     debit: 'مدين',
                                     credit: 'دائن',
                                     runningBalance: 'الرصيد',
-                                    details: 'التفاصيل'
+                                    details: 'التفاصيل',
+                                    status: 'الحالة'
                                 },
                                 fileName
                             );
@@ -1590,11 +1599,12 @@ export default function Accounts() {
                                     </tr>
                                 ) : (
                                     filteredItems.map((item, idx) => (
-                                        <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", item.status === 'Rejected' && "bg-red-50")}>
+                                        <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800")}>
                                             <td className="p-3">
-                                                <div className="font-medium text-gray-800">{item.description}</div>
-                                                {item.details && <div className="text-gray-500 text-xs mt-0.5 truncate max-w-xs">{item.details}</div>}
-                                                {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded mt-1">مرفوض</span>}
+                                                <div className={clsx("font-medium", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-700 line-through decoration-red-300" : "text-gray-800")}>{item.description}</div>
+                                                {item.details && <div className={clsx("text-xs mt-0.5 truncate max-w-xs", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-400" : "text-gray-500")}>{item.details}</div>}
+                                                {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">❌ مرفوض</span>}
+                                                {item.status === 'Cancelled' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">🚫 ملغي</span>}
                                             </td>
                                             <td className="p-3 text-gray-600 text-xs">{item.services || '-'}</td>
                                             <td className="p-3 text-gray-600 font-medium text-center">{item.count ? `(${item.count})` : '-'}</td>
