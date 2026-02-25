@@ -466,7 +466,7 @@ export default function OrderCard({
                                 <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800/50 rounded-xl p-3">
                                     <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1">الإجمالي</span>
                                     <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
-                                        {((order.totalPrice || 0) - (order.discount || 0)).toLocaleString('en-EG')}
+                                        {(order.totalPrice || 0).toLocaleString('en-EG')}
                                     </span>
                                     <span className="text-[10px] font-bold text-green-600 dark:text-green-400 mt-0.5">ج.م</span>
                                 </div>
