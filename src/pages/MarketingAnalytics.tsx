@@ -124,14 +124,16 @@ function DeviceBar({ mobile, desktop, totalEvents }: DeviceBarProps) {
                 <span className="flex items-center gap-1"><Smartphone size={12} /> موبايل {mCount} ({mPct}%)</span>
                 <span className="flex items-center gap-1">ديسكتوب {dCount} ({dPct}%) <Monitor size={12} /></span>
             </div>
-            <div className="h-3 rounded-full bg-gray-100 overflow-hidden flex">
+            <div className="h-3 rounded-full bg-gray-100 overflow-hidden flex" role="progressbar" aria-label="Device breakdown">
                 <div
                     className="bg-sky-500 h-full transition-all duration-500 rounded-l-full"
                     style={{ width: `${mPct}%` }}
+                    aria-label={`Mobile ${mPct}%`}
                 />
                 <div
                     className="bg-blue-600 h-full transition-all duration-500 rounded-r-full"
                     style={{ width: `${dPct}%` }}
+                    aria-label={`Desktop ${dPct}%`}
                 />
             </div>
             <p className="text-xs text-gray-400 mt-1">

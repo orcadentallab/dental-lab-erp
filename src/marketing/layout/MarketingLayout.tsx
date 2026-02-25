@@ -79,7 +79,7 @@ export default function MarketingLayout({ children }: MarketingLayoutProps) {
                             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                             className="md:hidden p-2 rounded-lg text-brand-slate hover:bg-gray-100 transition-colors cursor-pointer"
                             aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-                            aria-expanded={mobileMenuOpen}
+                            aria-expanded={mobileMenuOpen ? "true" : "false"}
                         >
                             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                         </button>

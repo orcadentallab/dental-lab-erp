@@ -382,12 +382,14 @@ export default function Finance() {
                             { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
                         ] as const;
 
-                        const adminTabs = user?.username === 'admin' ? [
+                        const superAdminTabs = user?.username === 'admin' ? [
                             { id: 'capital', label: 'رأس المال والأصول', color: 'indigo' },
+                        ] as const : [];
+                        const adminTabs = user?.role === 'admin' ? [
                             { id: 'adjustments', label: 'القيود والتسويات', color: 'teal' }
                         ] as const : [];
 
-                        return [...tabs, ...adminTabs].map((tab) => (
+                        return [...tabs, ...superAdminTabs, ...adminTabs].map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id as any)}

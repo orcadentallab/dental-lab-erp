@@ -39,7 +39,7 @@ function AccordionItem({ item, isOpen, onToggle }: {
             'rounded-2xl border transition-[border-color,background-color] duration-300 overflow-hidden',
             isOpen ? 'border-brand-sky/40 bg-brand-slate shadow-lg' : 'border-brand-slate-light/30 bg-brand-slate/40 hover:border-brand-sky/20'
         )}>
-            <button onClick={onToggle} className="w-full flex items-center justify-between p-5 text-left gap-4 cursor-pointer transition-colors duration-300 hover:bg-brand-slate-light/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/50" aria-expanded={isOpen}>
+            <button onClick={onToggle} className="w-full flex items-center justify-between p-5 text-left gap-4 cursor-pointer transition-colors duration-300 hover:bg-brand-slate-light/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-sky/50" aria-expanded={isOpen ? "true" : "false"}>
                 <div className="flex-1">
                     <p className="font-bold text-white text-sm">{item.question}</p>
                     {item.questionAr && <p className="text-brand-sky text-xs mt-0.5 font-medium" dir="rtl">{item.questionAr}</p>}
