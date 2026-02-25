@@ -584,36 +584,34 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                         />
                                     </div>
                                 </div>
-                                {manualCost !== null && (
-                                    <p className="text-[10px] text-surface-500 mt-1 text-left">التكلفة التلقائية: {(() => {
-                                        let auto = 0;
-                                        if (workflowType === 'full') {
-                                            auto = items.reduce((sum, item) => {
-                                                const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                                                const svc = services.find(s => s.name === item.serviceType);
-                                                let unitCost = svc ? svc.costPrice : 0;
-                                                if (selectedSupplier) {
-                                                    const sup = suppliers.find(s => s.id === selectedSupplier);
-                                                    if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
-                                                }
-                                                return sum + (unitCost * count);
-                                            }, 0);
-                                        } else {
-                                            const designer = designers.find(d => d.id === designerId);
-                                            const sup = suppliers.find(s => s.id === selectedSupplier);
-                                            auto = items.reduce((sum, item) => {
-                                                const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                                                const svc = services.find(s => s.name === item.serviceType);
-                                                const dCost = (designer?.unitRate || 0) * count;
-                                                let mCost = 0;
-                                                if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
-                                                else if (svc) mCost = (svc.costPrice * 0.5) * count;
-                                                return sum + dCost + mCost;
-                                            }, 0);
-                                        }
-                                        return auto.toLocaleString();
-                                    })()}</p>
-                                )}
+                                <p className="text-[10px] text-surface-500 mt-1 text-left">التكلفة التلقائية: {(() => {
+                                    let auto = 0;
+                                    if (workflowType === 'full') {
+                                        auto = items.reduce((sum, item) => {
+                                            const count = item.teethNumbers ? item.teethNumbers.length : 0;
+                                            const svc = services.find(s => s.name === item.serviceType);
+                                            let unitCost = svc ? svc.costPrice : 0;
+                                            if (selectedSupplier) {
+                                                const sup = suppliers.find(s => s.id === selectedSupplier);
+                                                if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
+                                            }
+                                            return sum + (unitCost * count);
+                                        }, 0);
+                                    } else {
+                                        const designer = designers.find(d => d.id === designerId);
+                                        const sup = suppliers.find(s => s.id === selectedSupplier);
+                                        auto = items.reduce((sum, item) => {
+                                            const count = item.teethNumbers ? item.teethNumbers.length : 0;
+                                            const svc = services.find(s => s.name === item.serviceType);
+                                            const dCost = (designer?.unitRate || 0) * count;
+                                            let mCost = 0;
+                                            if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+                                            else if (svc) mCost = (svc.costPrice * 0.5) * count;
+                                            return sum + dCost + mCost;
+                                        }, 0);
+                                    }
+                                    return auto.toLocaleString();
+                                })()}</p>
                             </div>
                         )}
                     </Card>
