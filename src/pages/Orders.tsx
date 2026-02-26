@@ -381,18 +381,33 @@ export default function Orders() {
                         <Button
                             variant="outline"
                             onClick={() => {
-                                const exportData = orders.map((order: Order) => ({
-                                    'رقم الحالة': order.caseId,
-                                    'الطبيب': doctors.find(d => d.id === order.doctorId)?.name || '-',
-                                    'المريض': order.patientName,
-                                    'الحالة': order.status,
-                                    'السعر': order.totalPrice,
-                                    'تاريخ التسليم': order.deliveryDate,
-                                    'الأولوية': order.priority === 'Urgent' ? 'عاجل' : 'عادي'
-                                }));
+                                const exportData = orders.map((order: Order) => {
+                                    const doctor = doctors.find(d => d.id === order.doctorId);
+                                    const supplier = suppliers.find(s => s.id === order.supplierId);
+                                    const servicesText = (order.items || []).map(i => `${i.serviceType} (${i.teethNumbers?.length || 0})`).join(' | ');
+                                    const servicesPrices = (order.items || []).map(i => `${i.price || 0}`).join(' | ');
+                                    const isReturned = ['Returned for Adjustments', 'Rejected', 'Cancelled'].includes(order.status);
+                                    return {
+                                        'رقم الحالة': order.caseId,
+                                        'الطبيب': doctor?.name || '-',
+                                        'المريض': order.patientName,
+                                        'الخدمات (عدد)': servicesText,
+                                        'أسعار الخدمات': servicesPrices,
+                                        'إجمالي الفاتورة': order.totalPrice,
+                                        'الخصم': order.discount || 0,
+                                        'الحالة': order.status,
+                                        'مرتجع': isReturned ? 'نعم' : 'لا',
+                                        'المعمل': supplier?.name || 'داخلي',
+                                        'تاريخ الاستلام': order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : '-',
+                                        'تاريخ التسليم': order.deliveryDate || '-',
+                                    };
+                                });
                                 const headers = {
                                     'رقم الحالة': 'رقم الحالة', 'الطبيب': 'الطبيب', 'المريض': 'المريض',
-                                    'الحالة': 'الحالة', 'السعر': 'السعر', 'تاريخ التسليم': 'تاريخ التسليم', 'الأولوية': 'الأولوية'
+                                    'الخدمات (عدد)': 'الخدمات (عدد)', 'أسعار الخدمات': 'أسعار الخدمات',
+                                    'إجمالي الفاتورة': 'إجمالي الفاتورة', 'الخصم': 'الخصم',
+                                    'الحالة': 'الحالة', 'مرتجع': 'مرتجع', 'المعمل': 'المعمل',
+                                    'تاريخ الاستلام': 'تاريخ الاستلام', 'تاريخ التسليم': 'تاريخ التسليم'
                                 };
                                 exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
                             }}

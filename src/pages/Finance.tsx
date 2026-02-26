@@ -12,6 +12,7 @@ import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
 import { DoctorSelect } from '../components/orders/DoctorSelect';
 import FinancialSetup from '../components/finance/FinancialSetup';
 import AdjustmentsPanel from '../components/finance/AdjustmentsPanel';
+import StatementTab from '../components/finance/StatementTab';
 import { financeService } from '../services/financeService';
 import type { Adjustment, CapitalEntry, FixedAsset } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
@@ -21,7 +22,7 @@ export default function Finance() {
     const { user } = useAuth();
     const canExport = ['admin', 'accountant', 'lab'].includes(user?.role || '');
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'services' | 'capital' | 'adjustments'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'services' | 'statements' | 'capital' | 'adjustments'>('dashboard');
     const [services, setServices] = useState<Service[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
@@ -101,7 +102,7 @@ export default function Finance() {
     // Lazy-load orders when entity tabs are activated
     const [ordersLoaded, setOrdersLoaded] = useState(false);
     useEffect(() => {
-        if (['doctors', 'suppliers', 'designers'].includes(activeTab) && !ordersLoaded) {
+        if (['doctors', 'suppliers', 'designers', 'statements'].includes(activeTab) && !ordersLoaded) {
             db.getAllOrdersUnpaginated().then(data => {
                 setOrders(data);
                 setOrdersLoaded(true);
@@ -379,6 +380,7 @@ export default function Finance() {
                             { id: 'doctors', label: 'حسابات الأطباء', color: 'blue' },
                             { id: 'suppliers', label: 'حسابات الموردين', color: 'purple' },
                             { id: 'designers', label: 'حسابات المصممين', color: 'pink' },
+                            { id: 'statements', label: 'كشوفات الحساب', color: 'teal' },
                             { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
                         ] as const;
 
@@ -906,6 +908,18 @@ export default function Finance() {
                         </table>
                     </div>
                 </div>
+            )}
+
+            {/* STATEMENTS TAB */}
+            {activeTab === 'statements' && (
+                <StatementTab
+                    orders={orders}
+                    transactions={transactions}
+                    doctors={doctors}
+                    suppliers={suppliers}
+                    designers={designers}
+                    services={services}
+                />
             )}
 
             {/* SERVICES */}

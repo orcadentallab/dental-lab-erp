@@ -92,7 +92,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
     const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(initialData?.deliveryType || 'Final');
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-    const [manualCost, setManualCost] = useState<number | null>(null);
+    const [manualCost, setManualCost] = useState<number | null>(initialData?.cost ?? null);
     const isAdmin = user?.role === 'admin';
 
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
