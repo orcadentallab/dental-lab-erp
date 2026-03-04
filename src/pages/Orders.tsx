@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
+import OrderBoard from '../components/orders/OrderBoard';
 import OrderForm from '../components/orders/OrderForm';
+
 import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
-import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User as UserIcon, ChevronDown } from 'lucide-react';
+import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User as UserIcon, ChevronDown, LayoutList, Columns } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcelWithHeaders } from '../lib/exportUtils';
 import { generateDoctorInvoicePDF, generateOrdersListPDF } from '../services/pdfService';
@@ -23,6 +25,7 @@ export default function Orders() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
 
     const highlightedOrderId = searchParams.get('highlight');
 
@@ -455,6 +458,24 @@ export default function Orders() {
                                     </Button>
                                 )}
 
+                                {/* View Mode Toggle */}
+                                <div className="flex bg-surface-100 dark:bg-surface-800 p-0.5 rounded-xl border border-surface-200 dark:border-surface-700 h-9 shrink-0">
+                                    <button
+                                        onClick={() => setViewMode('list')}
+                                        className={`px-2.5 rounded-lg text-xs font-bold flex items-center justify-center transition-all ${viewMode === 'list' ? 'bg-white dark:bg-surface-700 shadow-sm text-primary-700 dark:text-primary-400' : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 hover:bg-surface-200/50 dark:hover:bg-surface-700/50'}`}
+                                        title="قائمة (List)"
+                                    >
+                                        <LayoutList size={16} />
+                                    </button>
+                                    <button
+                                        onClick={() => setViewMode('board')}
+                                        className={`px-2.5 rounded-lg text-xs font-bold flex items-center justify-center transition-all ${viewMode === 'board' ? 'bg-white dark:bg-surface-700 shadow-sm text-primary-700 dark:text-primary-400' : 'text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 hover:bg-surface-200/50 dark:hover:bg-surface-700/50'}`}
+                                        title="لوحة (Board)"
+                                    >
+                                        <Columns size={16} />
+                                    </button>
+                                </div>
+
                                 {/* Search Input */}
                                 <div className="relative flex-1 group min-w-[200px]">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -631,20 +652,30 @@ export default function Orders() {
                 </Card>
             </div>
 
-            {/* Order List */}
-            <OrderList
-                orders={orders}
-                onStatusChange={handleStatusUpdate}
-                userRole={user?.role}
-                onEdit={openFullEdit}
-                onAddNote={openAddNote}
-                onDelete={handleDeleteOrder}
-                onUpdateDesignUrl={openDesignLinkModal}
-                highlightedOrderId={highlightedOrderId}
-                onAccept={(order) => setAcceptingOrder(order)}
-                onExportInvoice={handleExportInvoice}
-                currentUser={user || undefined}
-            />
+            {/* Order Content based on View Mode */}
+            {viewMode === 'list' ? (
+                <OrderList
+                    orders={orders}
+                    onStatusChange={handleStatusUpdate}
+                    userRole={user?.role}
+                    onEdit={openFullEdit}
+                    onAddNote={openAddNote}
+                    onDelete={handleDeleteOrder}
+                    onUpdateDesignUrl={openDesignLinkModal}
+                    highlightedOrderId={highlightedOrderId}
+                    onAccept={(order) => setAcceptingOrder(order)}
+                    onExportInvoice={handleExportInvoice}
+                    currentUser={user || undefined}
+                />
+            ) : (
+                <OrderBoard
+                    orders={orders}
+                    onStatusChange={handleStatusUpdate}
+                    userRole={user?.role}
+                    onEdit={openFullEdit}
+                    onAddNote={openAddNote}
+                />
+            )}
 
 
             {/* Pagination */}

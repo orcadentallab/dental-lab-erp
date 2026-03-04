@@ -243,7 +243,7 @@ export default function OrderCard({
                         </div>
 
                         {/* Actions */}
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 flex-1 min-w-[150px]">
                             {/* Designer Action */}
                             {onUpdateDesignUrl && (userRole === 'designer' || userRole === 'admin' || userRole === 'lab') && (
                                 <Button
@@ -340,34 +340,34 @@ export default function OrderCard({
                     </div>
 
                     {/* Content */}
-                    <div className="p-3 grid grid-cols-1 md:grid-cols-12 gap-3">
+                    <div className="p-3 grid grid-cols-2 md:grid-cols-12 gap-3">
                         {/* Patient Info */}
-                        <div className={`${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-4'} flex flex-col gap-2 border-l-0 md:border-l border-surface-100 dark:border-surface-700 pl-0 md:pl-3`}>
-                            <div className="flex items-center gap-2">
+                        <div className={`col-span-2 ${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-4'} flex flex-col sm:flex-row md:flex-col gap-2 border-l-0 md:border-l border-surface-100 dark:border-surface-700 pl-0 md:pl-3`}>
+                            <div className="flex items-center gap-2 flex-1">
                                 <div className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 shrink-0">
                                     <User size={16} />
                                 </div>
-                                <div>
-                                    <p className="font-bold text-lg text-surface-900 dark:text-surface-100 leading-tight">{order.patientName}</p>
-                                    <p className="text-xs text-surface-500">اسم المريض</p>
+                                <div className="min-w-0">
+                                    <p className="font-bold text-base md:text-lg text-surface-900 dark:text-surface-100 leading-tight truncate">{order.patientName}</p>
+                                    <p className="text-[10px] sm:text-xs text-surface-500">اسم المريض</p>
                                 </div>
                             </div>
 
                             {!hideSensitiveInfo && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-1">
                                     <div className="p-1.5 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-500 shrink-0">
                                         <User size={14} />
                                     </div>
-                                    <div>
-                                        <p className="font-semibold text-base text-surface-700 dark:text-surface-300 leading-tight">d. {doctors[order.doctorId] || 'غير معروف'}</p>
-                                        <p className="text-xs text-surface-400">الطبيب المعالج</p>
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-sm md:text-base text-surface-700 dark:text-surface-300 leading-tight truncate">d. {doctors[order.doctorId] || 'غير معروف'}</p>
+                                        <p className="text-[10px] sm:text-xs text-surface-400">الطبيب المعالج</p>
                                     </div>
                                 </div>
                             )}
                         </div>
 
                         {/* Order Details */}
-                        <div className={`${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-8'} flex flex-col gap-2`}>
+                        <div className={`col-span-2 ${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-8'} flex flex-col gap-2`}>
                             <div>
                                 <span className="text-[9px] font-bold text-surface-400 uppercase tracking-wider mb-1 block">الخدمات المطلوبة</span>
                                 <div className="flex flex-wrap gap-1.5">
@@ -409,7 +409,7 @@ export default function OrderCard({
 
                         {/* Supplier/Designer Box - Admin Only */}
                         {userRole === 'admin' && (
-                            <div className="md:col-span-2 flex items-center justify-center">
+                            <div className="col-span-1 md:col-span-2 flex items-center justify-center min-h-[80px]">
                                 <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 border border-purple-200 dark:border-purple-800/50 rounded-xl p-2">
                                     {/* Split Workflow: Designer + Supplier */}
                                     {order.workflowType === 'split' ? (
@@ -462,7 +462,7 @@ export default function OrderCard({
 
                         {/* Invoice Total - Admin Only - Far Right Column */}
                         {userRole === 'admin' && (
-                            <div className="md:col-span-2 flex items-center justify-center">
+                            <div className="col-span-1 md:col-span-2 flex items-center justify-center min-h-[80px]">
                                 <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800/50 rounded-xl p-3">
                                     <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1">الإجمالي</span>
                                     <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
@@ -499,18 +499,18 @@ export default function OrderCard({
                     )}
 
                     {/* Footer Actions */}
-                    <div className="bg-black/5 dark:bg-white/5 px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-2">
+                    <div className="bg-black/5 dark:bg-white/5 px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-3">
                         {/* Left: Quick Actions */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1">
                             {/* Status Dropdown */}
-                            <div className="relative group">
+                            <div className="relative group w-full sm:w-auto min-w-[150px]">
                                 <select
                                     title="Order Status"
                                     aria-label="Change Order Status"
                                     value={order.status || 'New Case'}
                                     onChange={(e) => handleStatusChangeClick(e.target.value as Order['status'])}
                                     className={clsx(
-                                        "appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-full sm:w-[150px] focus:ring-2",
+                                        "appearance-none pl-3 pr-8 py-2 sm:py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-full focus:ring-2",
                                         order.status === 'Delivered'
                                             ? 'bg-green-100 text-green-800 border-green-300 ring-green-200'
                                             : order.status === 'Rejected'
@@ -605,7 +605,7 @@ export default function OrderCard({
                         </div>
 
                         {/* Right: Admin Tools */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
                             {(userRole === 'admin' || currentUser?.customPermissions?.edit_orders) && onEdit && (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />

@@ -12,6 +12,12 @@
 }
 
 @layer base {
+
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
   body {
     @apply bg-surface-50 text-surface-900 font-sans antialiased selection:bg-primary-500/20 selection:text-primary-700;
     text-align: right;
@@ -22,7 +28,7 @@
   .glass-panel {
     @apply bg-white/70 backdrop-blur-xl border border-white/50 shadow-sm transition-all;
   }
-  
+
   .glass-card {
     @apply bg-white/60 backdrop-blur-lg border border-white/40 shadow-sm hover:shadow-md transition-all hover:bg-white/80;
   }
@@ -30,7 +36,7 @@
   .btn-primary {
     @apply bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 transition-colors duration-200 shadow-sm shadow-primary-500/30;
   }
-  
+
   .input-field {
     @apply bg-white/50 border border-surface-200 focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 transition-all duration-200 rounded-lg;
   }
@@ -40,20 +46,26 @@
 .sidebar-scroll::-webkit-scrollbar {
   width: 3px;
 }
+
 .sidebar-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.3);
+  background: #5d7b804d;
+  /* surface-500 at 30% opacity */
   border-radius: 10px;
 }
+
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.5);
+  background: #5d7b8080;
+  /* surface-500 at 50% opacity */
 }
 
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;

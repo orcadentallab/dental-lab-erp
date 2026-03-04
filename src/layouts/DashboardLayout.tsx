@@ -13,7 +13,7 @@ export default function DashboardLayout() {
             <div className="relative z-10 flex w-full h-full">
                 <Sidebar />
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 pt-20 md:pt-8 scrollbar-thin scrollbar-thumb-surface-300 dark:scrollbar-thumb-surface-700">
+                    <main className="flex-1 overflow-x-hidden overflow-y-auto overscroll-none p-4 md:p-8 pt-20 md:pt-8 scrollbar-thin scrollbar-thumb-surface-300 dark:scrollbar-thumb-surface-700">
                         <div className="max-w-7xl mx-auto space-y-6">
                             <Outlet />
                         </div>
