@@ -29,7 +29,7 @@ export interface Transaction {
     entityType?: 'doctor' | 'supplier' | 'general' | 'designer' | 'representative';
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
     isApproved?: boolean; // Flag for individual expense approval (DEPRECATED: Use status)
-    status?: 'pending' | 'approved' | 'rejected'; // New Status Field
+    status?: 'pending' | 'approved' | 'rejected' | 'settled'; // New Status Field
     createdAt?: string;
 }
 

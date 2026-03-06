@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../services/db';
 import type { User, Transaction } from '../services/db';
 import { useAuth } from '../context/AuthContext';
-import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, Coffee, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, Coffee, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
 
 // Helper: Calculate Commission Rate
@@ -44,11 +44,17 @@ export default function Staff() {
     const { user: currentUser } = useAuth();
     const [stats, setStats] = useState<RepresentativeStats[]>([]);
     const [expenses, setExpenses] = useState<Transaction[]>([]);
+    const [expandedReps, setExpandedReps] = useState<Record<string, boolean>>({});
+
+    const toggleRepDetails = (repId: string) => setExpandedReps(prev => ({ ...prev, [repId]: !prev[repId] }));
 
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
     // KPI State
-    const [kpiMap, setKpiMap] = useState<Record<string, number>>({});
+    const [kpiMap, setKpiMap] = useState<Record<string, string | number>>({});
+
+    // Commission Override State
+    const [commissionMap, setCommissionMap] = useState<Record<string, number>>({});
 
     // Expense Form
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -88,13 +94,15 @@ export default function Staff() {
 
                 const totalSales = repOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
                 const baseSalary = rep.baseSalary || 0;
-                const fixedPart = baseSalary * (2 / 3);
+                const fixedPart = Math.round(baseSalary * (2 / 3));
 
-                const kpi = kpiMap[rep.id] ?? 100;
-                const variablePart = (baseSalary * (1 / 3)) * (kpi / 100);
+                const kpiVal = kpiMap[rep.id] ?? 100;
+                const kpi = typeof kpiVal === 'string' ? (parseInt(kpiVal) || 0) : kpiVal;
+                const variablePart = Math.round((baseSalary * (1 / 3)) * (kpi / 100));
 
                 const rate = getCommissionRate(totalSales);
-                const commission = totalSales * rate;
+                const calculatedCommission = Math.round(totalSales * rate);
+                const commission = commissionMap[rep.id] ?? calculatedCommission;
 
                 // Pending Expenses (All time, or just this month? Usually all pending need distinct settlement)
                 // We keep expenses cumulative as they are irrelevant to the month of Salary
@@ -138,7 +146,7 @@ export default function Staff() {
                     approvedExpenses: approvedExpensesAmount,
                     totalBonuses,
                     totalDeductions,
-                    netPayout: fixedPart + variablePart + commission + totalBonuses - totalDeductions, // Salary Payout Only
+                    netPayout: Math.round(fixedPart + variablePart + commission + totalBonuses - totalDeductions), // Salary Payout Only
                     isSalaryPaid // New Flag
                 };
             });
@@ -148,7 +156,7 @@ export default function Staff() {
         } finally {
             // Loading finished
         }
-    }, [kpiMap, selectedMonth]);
+    }, [kpiMap, commissionMap, selectedMonth]);
 
     useEffect(() => {
         loadData();
@@ -156,8 +164,27 @@ export default function Staff() {
 
     // Handlers
     const handleKpiChange = (userId: string, val: string) => {
+        setKpiMap(prev => ({ ...prev, [userId]: val }));
+    };
+
+    const handleKpiBlur = (userId: string, val: string) => {
         const num = Math.min(100, Math.max(0, parseInt(val) || 0));
         setKpiMap(prev => ({ ...prev, [userId]: num }));
+    };
+
+    const handleCommissionChange = (userId: string, val: string) => {
+        if (val === '') {
+            setCommissionMap(prev => {
+                const next = { ...prev };
+                delete next[userId];
+                return next;
+            });
+        } else {
+            const num = parseFloat(val);
+            if (!isNaN(num)) {
+                setCommissionMap(prev => ({ ...prev, [userId]: num }));
+            }
+        }
     };
 
     // Adjustment Modal
@@ -267,25 +294,64 @@ export default function Staff() {
 
     // 2. Settle Expenses
     const handleSettleExpenses = async (stat: RepresentativeStats) => {
-        // Only settle APPROVED expenses
-        const approvedExpenses = expenses.filter(e => e.entityId === stat.user.id && e.status === 'approved' && !e.isRegistered && !['bonus', 'deduction'].includes(e.category));
+        // Fix: catch both status='approved' and legacy isApproved=true, skip already-settled
+        const approvedExpenses = expenses.filter(e =>
+            e.entityId === stat.user.id &&
+            (e.status === 'approved' || (e.isApproved && e.status !== 'settled')) &&
+            !e.isRegistered &&
+            !['bonus', 'deduction'].includes(e.category)
+        );
         if (approvedExpenses.length === 0) {
             alert('لا توجد مصاريف معتمدة للتسوية');
             return;
         }
         const totalAmount = approvedExpenses.reduce((sum, e) => sum + e.amount, 0);
-        if (!confirm(`هل أنت متأكد من تسوية المصاريف المعتمدة للمندوب ${stat.user.name}؟\nعدد المصاريف: ${approvedExpenses.length}\nالمبلغ الإجمالي: ${totalAmount.toFixed(0)} ج.م`)) return;
+
+        const settledAmountStr = prompt(
+            `المبلغ الإجمالي للمصاريف: ${totalAmount.toFixed(0)} ج.م\nأدخل المبلغ النهائي لتسوية كل هذه المصاريف معاً (يمكنك كتابة رقم أصغر لتسوية مجمعة):`,
+            totalAmount.toFixed(0)
+        );
+
+        if (settledAmountStr === null) return;
+
+        const settledAmount = parseFloat(settledAmountStr);
+        if (isNaN(settledAmount) || settledAmount < 0) {
+            alert('مبلغ غير صحيح');
+            return;
+        }
+
+        if (settledAmount !== totalAmount) {
+            if (!confirm(`هل أنت متأكد من تسوية المصاريف المعتمدة للمندوب ${stat.user.name} بمبلغ ${settledAmount} ج.م بدلاً من ${totalAmount.toFixed(0)} ج.م؟`)) return;
+        } else {
+            if (!confirm(`هل أنت متأكد من تسوية المصاريف المعتمدة للمندوب ${stat.user.name} بمبلغ ${totalAmount.toFixed(0)} ج.م؟`)) return;
+        }
 
         try {
-            // Clear entityId to move it out of "staff expenses" and into "general expenses" for accountant to register
-            // Append Rep Name to description for attribution
-            await Promise.all(approvedExpenses.map(exp =>
-                db.updateTransaction(exp.id, {
-                    entityId: undefined,
-                    entityType: 'general',
-                    description: `${exp.description} (${stat.user.name})`
-                })
-            ));
+            const today = new Date().toISOString().split('T')[0];
+            const combinedDescription = approvedExpenses.map(e => `${e.description} (${e.amount} ج.م)`).join('، ');
+
+            // Always mark ALL individual expenses as 'settled' — they leave pending but stay as audit history
+            await Promise.all(approvedExpenses.map(exp => {
+                const settledDesc = `${exp.description} (تمت التسوية بتاريخ ${today} - إجمالي: ${settledAmount} ج.م)`;
+                return db.updateTransaction(exp.id, {
+                    status: 'settled',
+                    description: settledDesc.slice(0, 500)
+                });
+            }));
+
+            // Always add one consolidated general expense for accountant to register
+            const fullDesc = `مصاريف شحن المندوب ${stat.user.name} لشهر ${selectedMonth} - التفاصيل: ${combinedDescription}`;
+            await db.addTransaction({
+                type: 'expense',
+                amount: settledAmount,
+                category: 'شحن وتوصيل',
+                description: fullDesc.slice(0, 500),
+                date: today,
+                entityId: undefined,
+                entityType: 'general',
+                isRegistered: false,
+                status: 'approved'
+            });
 
             await loadData();
             alert('تم تسوية المصاريف بنجاح ✅');
@@ -318,6 +384,32 @@ export default function Staff() {
         }
     };
 
+    // Appove All Expenses for a rep
+    const handleApproveAllExpenses = async (repExpenses: Transaction[]) => {
+        if (!confirm('هل أنت متأكد من اعتماد جميع المصاريف المعلقة لهذا المندوب؟')) return;
+        try {
+            const pending = repExpenses.filter(e => e.status === 'pending' || (!e.status && !e.isApproved));
+            await Promise.all(pending.map(e => db.updateTransaction(e.id, { status: 'approved', isApproved: true })));
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء اعتماد المصاريف');
+        }
+    };
+
+    // Reject All Expenses for a rep
+    const handleRejectAllExpenses = async (repExpenses: Transaction[]) => {
+        if (!confirm('هل أنت متأكد من رفض وتجاهل جميع المصاريف المعلقة لهذا المندوب؟')) return;
+        try {
+            const pending = repExpenses.filter(e => e.status === 'pending' || (!e.status && !e.isApproved));
+            await Promise.all(pending.map(e => db.updateTransaction(e.id, { status: 'rejected', isApproved: false })));
+            await loadData();
+        } catch (error) {
+            console.error(error);
+            alert('حدث خطأ أثناء رفض المصاريف');
+        }
+    };
+
     // 5. Delete Any Transaction (Admin Only)
     const handleDeleteTransaction = async (tx: Transaction) => {
         if (!confirm(`هل أنت متأكد من حذف هذه العملية المالية؟\n${tx.description} - ${tx.amount} ج.م`)) return;
@@ -336,9 +428,16 @@ export default function Staff() {
 
     // Memoize expensive filtering operations
     const pendingExpenses = useMemo(() =>
-        expenses.filter(e => !e.isRegistered && !['bonus', 'deduction'].includes(e.category)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        expenses.filter(e => !e.isRegistered && e.status !== 'settled' && !['bonus', 'deduction'].includes(e.category)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
         [expenses]
     );
+
+    const settledExpenses = useMemo(() =>
+        expenses.filter(e => e.status === 'settled' && !['bonus', 'deduction'].includes(e.category)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        [expenses]
+    );
+
+    const [expenseTab, setExpenseTab] = useState<'pending' | 'settled'>('pending');
 
     const myExpenses = useMemo(() =>
         expenses.filter(e => e.entityId === currentUser?.id && !['bonus', 'deduction'].includes(e.category)).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
@@ -425,8 +524,9 @@ export default function Staff() {
                                                         <input
                                                             type="number"
                                                             min="0" max="100"
-                                                            value={stat.kpiPercent}
+                                                            value={kpiMap[stat.user.id] !== undefined ? kpiMap[stat.user.id] : stat.kpiPercent}
                                                             onChange={(e) => handleKpiChange(stat.user.id, e.target.value)}
+                                                            onBlur={(e) => handleKpiBlur(stat.user.id, e.target.value)}
                                                             aria-label="نسبة المتغير"
                                                             className="w-12 px-1 py-0.5 border rounded text-center text-xs"
                                                         />
@@ -454,7 +554,19 @@ export default function Staff() {
                                             </td>
                                             <td className="p-4 text-green-600">
                                                 <div className="flex flex-col text-xs">
-                                                    <span className="font-bold">{stat.commissionAmount.toFixed(0)}</span>
+                                                    {!stat.isSalaryPaid ? (
+                                                        <div className="flex items-center gap-1">
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={commissionMap[stat.user.id] !== undefined ? commissionMap[stat.user.id] : stat.commissionAmount.toFixed(0)}
+                                                                onChange={(e) => handleCommissionChange(stat.user.id, e.target.value)}
+                                                                className="w-16 px-1 py-0.5 border rounded text-center text-xs text-green-600 font-bold"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <span className="font-bold">{stat.commissionAmount.toFixed(0)}</span>
+                                                    )}
                                                     <span className="text-gray-400">{(stat.commissionRate * 100).toFixed(0)}%</span>
                                                 </div>
                                             </td>
@@ -498,111 +610,205 @@ export default function Staff() {
                         </div>
                     </div>
 
-                    {/* Expenses List */}
+                    {/* Expenses Panel — Tabs */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-                        <div className="p-4 border-b border-gray-100 bg-gray-50">
-                            <h2 className="font-bold text-gray-700 flex items-center gap-2">
-                                <AlertCircle size={18} />
-                                سجل المصاريف (المعلقة والمعتمدة)
-                            </h2>
+                        {/* Tab Header */}
+                        <div className="flex border-b border-gray-100">
+                            <button
+                                onClick={() => setExpenseTab('pending')}
+                                className={clsx(
+                                    "flex-1 p-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors",
+                                    expenseTab === 'pending' ? "text-blue-600 border-b-2 border-blue-500 bg-blue-50/50" : "text-gray-500 hover:bg-gray-50"
+                                )}
+                            >
+                                <AlertCircle size={16} />
+                                المصاريف المعلقة والمعتمدة
+                                {pendingExpenses.length > 0 && (
+                                    <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs">{pendingExpenses.length}</span>
+                                )}
+                            </button>
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setExpenseTab('settled')}
+                                    className={clsx(
+                                        "flex-1 p-4 text-sm font-bold flex items-center justify-center gap-2 transition-colors",
+                                        expenseTab === 'settled' ? "text-indigo-600 border-b-2 border-indigo-500 bg-indigo-50/50" : "text-gray-500 hover:bg-gray-50"
+                                    )}
+                                >
+                                    <CheckCircle size={16} />
+                                    السجل التاريخي (متسوية)
+                                    {settledExpenses.length > 0 && (
+                                        <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs">{settledExpenses.length}</span>
+                                    )}
+                                </button>
+                            )}
                         </div>
-                        <div className="divide-y divide-gray-100">
-                            {pendingExpenses.length === 0 ? (
-                                <p className="p-8 text-center text-gray-400">لا يوجد مصاريف معلقة أو غير مسواة</p>
-                            ) : (
-                                Object.entries(pendingExpenses.reduce((acc, expense) => {
-                                    const repId = expense.entityId || 'unknown';
-                                    if (!acc[repId]) acc[repId] = [];
-                                    acc[repId].push(expense);
-                                    return acc;
-                                }, {} as Record<string, typeof pendingExpenses>)).map(([repId, repExpenses]) => {
-                                    const repName = stats.find(s => s.user.id === repId)?.user.name || 'مندوب غير معروف';
 
-                                    return (
-                                        <div key={repId} className="border-b last:border-0">
-                                            <div className="bg-gray-50/80 px-4 py-2 text-sm font-bold text-gray-700 flex items-center gap-2">
-                                                <UsersIcon size={16} className="text-blue-500" />
-                                                {repName}
-                                            </div>
-                                            {repExpenses.map(expense => {
-                                                const cat = expenseCategories.find(c => c.label === expense.category);
-                                                const Icon = cat?.icon || Banknote;
-                                                const isPending = expense.status === 'pending' || (!expense.status && !expense.isApproved);
-                                                const isApproved = expense.status === 'approved' || (!expense.status && expense.isApproved && !expense.isRegistered);
-                                                const isRejected = expense.status === 'rejected';
+                        {/* Pending Tab */}
+                        {expenseTab === 'pending' && (
+                            <div className="divide-y divide-gray-100">
+                                {pendingExpenses.length === 0 ? (
+                                    <p className="p-8 text-center text-gray-400">لا يوجد مصاريف معلقة أو غير مسواة</p>
+                                ) : (
+                                    Object.entries(pendingExpenses.reduce<Record<string, typeof pendingExpenses>>((acc, expense) => {
+                                        const repId = expense.entityId || 'unknown';
+                                        if (!acc[repId]) acc[repId] = [];
+                                        acc[repId].push(expense);
+                                        return acc;
+                                    }, {})).map(([repId, repExpenses]) => {
+                                        const repName = stats.find(s => s.user.id === repId)?.user.name || 'مندوب غير معروف';
+                                        const totalRepExpenses = repExpenses.reduce((sum, e) => sum + e.amount, 0);
+                                        const pendingRepExpenses = repExpenses.filter(e => e.status === 'pending' || (!e.status && !e.isApproved));
+                                        const isExpanded = !!expandedReps[repId];
 
-                                                return (
-                                                    <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className={clsx(
-                                                                "w-10 h-10 rounded-full flex items-center justify-center",
-                                                                isPending ? "bg-amber-100 text-amber-600" :
-                                                                    isRejected ? "bg-red-100 text-red-600" :
-                                                                        "bg-green-100 text-green-600"
-                                                            )}>
-                                                                <Icon size={20} />
-                                                            </div>
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
-                                                                </div>
-                                                                <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="font-bold text-lg">{expense.amount} ج.م</span>
-
-                                                            {/* Status Badge */}
-                                                            {isPending && (
-                                                                <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
-                                                            )}
-                                                            {isApproved && (
-                                                                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
-                                                            )}
-                                                            {isRejected && (
-                                                                <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100">مرفوض</span>
-                                                            )}
-
-                                                            {/* Action Buttons */}
-                                                            {isPending && (
-                                                                <div className="flex items-center gap-1">
-                                                                    <button
-                                                                        onClick={() => handleApproveExpense(expense)}
-                                                                        className="p-1.5 text-green-600 hover:bg-green-50 rounded"
-                                                                        title="اعتماد المصروف"
-                                                                    >
-                                                                        <CheckCircle size={18} />
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => handleRejectExpense(expense)}
-                                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                                        title="رفض وحذف المصروف"
-                                                                    >
-                                                                        <XCircle size={18} />
-                                                                    </button>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Admin Delete Button for Approved/Rejected Expenses */}
-                                                            {(isApproved || isRejected) && isAdmin && (
-                                                                <button
-                                                                    onClick={() => handleDeleteTransaction(expense)}
-                                                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded"
-                                                                    title="حذف المصروف"
-                                                                >
-                                                                    <Trash2 size={18} />
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                        return (
+                                            <div key={repId} className="border-b last:border-0">
+                                                <div
+                                                    className="bg-gray-50/80 px-4 py-3 text-sm font-bold text-gray-700 flex items-center justify-between cursor-pointer hover:bg-gray-100"
+                                                    onClick={() => toggleRepDetails(repId)}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <UsersIcon size={16} className="text-blue-500" />
+                                                        {repName}
+                                                        <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs ml-2">
+                                                            الإجمالي: {totalRepExpenses} ج.م
+                                                        </span>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
-                                    );
-                                })
-                            )
-                            }
-                        </div>
+                                                    <div className="flex items-center gap-3">
+                                                        {pendingRepExpenses.length > 0 && isAdminOrAccountant && (
+                                                            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                                                                <button
+                                                                    onClick={() => handleApproveAllExpenses(pendingRepExpenses)}
+                                                                    className="text-xs flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+                                                                >
+                                                                    <CheckCircle size={14} /> قبول الكل
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleRejectAllExpenses(pendingRepExpenses)}
+                                                                    className="text-xs flex items-center gap-1 bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200"
+                                                                >
+                                                                    <XCircle size={14} /> رفض الكل
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                    </div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="divide-y divide-gray-100 bg-white">
+                                                        {repExpenses.map(expense => {
+                                                            const cat = expenseCategories.find(c => c.label === expense.category);
+                                                            const Icon = cat?.icon || Banknote;
+                                                            const isPending = expense.status === 'pending' || (!expense.status && !expense.isApproved);
+                                                            const isApproved = expense.status === 'approved' || (!expense.status && expense.isApproved && !expense.isRegistered);
+                                                            const isRejected = expense.status === 'rejected';
+
+                                                            return (
+                                                                <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className={clsx(
+                                                                            "w-10 h-10 rounded-full flex items-center justify-center",
+                                                                            isPending ? "bg-amber-100 text-amber-600" :
+                                                                                isRejected ? "bg-red-100 text-red-600" :
+                                                                                    "bg-green-100 text-green-600"
+                                                                        )}>
+                                                                            <Icon size={20} />
+                                                                        </div>
+                                                                        <div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{expense.category || 'أخرى'}</span>
+                                                                            </div>
+                                                                            <p className="text-sm text-gray-500">{expense.description} • {new Date(expense.date).toLocaleDateString('ar-EG')}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="font-bold text-lg">{expense.amount} ج.م</span>
+                                                                        {isPending && (
+                                                                            <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">في انتظار الموافقة</span>
+                                                                        )}
+                                                                        {isApproved && (
+                                                                            <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded border border-green-100">معتمد - في انتظار التسوية</span>
+                                                                        )}
+                                                                        {isRejected && (
+                                                                            <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100">مرفوض</span>
+                                                                        )}
+                                                                        {isPending && (
+                                                                            <div className="flex items-center gap-1">
+                                                                                <button onClick={() => handleApproveExpense(expense)} className="p-1.5 text-green-600 hover:bg-green-50 rounded" title="اعتماد المصروف"><CheckCircle size={18} /></button>
+                                                                                <button onClick={() => handleRejectExpense(expense)} className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="رفض المصروف"><XCircle size={18} /></button>
+                                                                            </div>
+                                                                        )}
+                                                                        {(isApproved || isRejected) && isAdmin && (
+                                                                            <button onClick={() => handleDeleteTransaction(expense)} className="p-1.5 text-red-500 hover:bg-red-50 rounded" title="حذف المصروف"><Trash2 size={18} /></button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        )}
+
+                        {/* Settled History Tab — Admin Only */}
+                        {expenseTab === 'settled' && isAdmin && (
+                            <div className="divide-y divide-gray-100">
+                                {settledExpenses.length === 0 ? (
+                                    <p className="p-8 text-center text-gray-400">لا توجد مصاريف مسواة بعد</p>
+                                ) : (
+                                    Object.entries(settledExpenses.reduce<Record<string, typeof settledExpenses>>((acc, expense) => {
+                                        const repId = expense.entityId || 'unknown';
+                                        if (!acc[repId]) acc[repId] = [];
+                                        acc[repId].push(expense);
+                                        return acc;
+                                    }, {})).map(([repId, repExpenses]) => {
+                                        const repName = stats.find(s => s.user.id === repId)?.user.name || 'مندوب غير معروف';
+                                        const totalSettled = repExpenses.reduce((sum, e) => sum + e.amount, 0);
+                                        const isExpanded = !!expandedReps[`settled_${repId}`];
+                                        return (
+                                            <div key={repId} className="border-b last:border-0">
+                                                <div
+                                                    className="bg-indigo-50/60 px-4 py-3 text-sm font-bold text-indigo-800 flex items-center justify-between cursor-pointer hover:bg-indigo-50"
+                                                    onClick={() => toggleRepDetails(`settled_${repId}`)}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <UsersIcon size={16} className="text-indigo-500" />
+                                                        {repName}
+                                                        <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs ml-2">
+                                                            إجمالي متسوى: {totalSettled} ج.م
+                                                        </span>
+                                                    </div>
+                                                    {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className="divide-y divide-gray-100 bg-white">
+                                                        {repExpenses.map(expense => (
+                                                            <div key={expense.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                                                                <div>
+                                                                    <p className="text-sm font-medium text-gray-700">{expense.description}</p>
+                                                                    <p className="text-xs text-gray-400">{new Date(expense.date).toLocaleDateString('ar-EG')} • {expense.category}</p>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="font-bold text-gray-700">{expense.amount} ج.م</span>
+                                                                    <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100">تمت التسوية</span>
+                                                                    {isAdmin && (
+                                                                        <button onClick={() => handleDeleteTransaction(expense)} className="p-1.5 text-red-400 hover:bg-red-50 rounded" title="حذف"><Trash2 size={16} /></button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -612,28 +818,14 @@ export default function Staff() {
                 <div className="space-y-6">
                     {/* My Stats Cards */}
                     {myStat && (
-                        <div key="my-stats" className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div key="my-stats" className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                                <p className="text-sm text-gray-500 mb-1">صافي الراتب (الحالي)</p>
-                                <p className="text-2xl font-bold text-blue-600">{myStat.netPayout.toFixed(0)} ج.م</p>
-                                <p className="text-xs text-blue-400 mt-1">بانتظار الصرف: {myStat.approvedExpenses} ج.م مصاريف</p>
+                                <p className="text-sm text-gray-500 mb-1">الراتب الأساسي (الثابت)</p>
+                                <p className="text-2xl font-bold text-blue-600">{myStat.baseSalary.toLocaleString()} ج.م</p>
                             </div>
                             <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
                                 <p className="text-sm text-gray-500 mb-1">إجمالي المبيعات</p>
                                 <p className="text-2xl font-bold text-gray-900">{myStat.totalSales.toLocaleString()} ج.م</p>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                                <p className="text-sm text-gray-500 mb-1">العمولة الحالية</p>
-                                <div className="flex items-baseline gap-2">
-                                    <p className="text-2xl font-bold text-green-600">{myStat.commissionAmount.toFixed(0)}</p>
-                                    <span className="text-xs text-green-500 bg-green-50 px-2 py-0.5 rounded-full">
-                                        {(myStat.commissionRate * 100).toFixed(0)}%
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
-                                <p className="text-sm text-gray-500 mb-1">تقييم الأداء (KPI)</p>
-                                <p className="text-2xl font-bold text-purple-600">{myStat.kpiPercent}%</p>
                             </div>
                         </div>
                     )}
@@ -659,12 +851,14 @@ export default function Staff() {
                                             "text-xs px-2 py-0.5 rounded-full",
                                             expense.isRegistered ? "bg-blue-100 text-blue-700" :
                                                 expense.status === 'rejected' ? "bg-red-100 text-red-700" :
-                                                    expense.status === 'approved' || expense.isApproved ? "bg-green-100 text-green-700" :
-                                                        "bg-amber-100 text-amber-700"
+                                                    expense.status === 'settled' ? "bg-indigo-100 text-indigo-700" :
+                                                        expense.status === 'approved' || expense.isApproved ? "bg-green-100 text-green-700" :
+                                                            "bg-amber-100 text-amber-700"
                                         )}>
                                             {expense.isRegistered ? 'تم الصرف (Settled)' :
                                                 expense.status === 'rejected' ? 'مرفوض' :
-                                                    expense.status === 'approved' || expense.isApproved ? 'بانتظار الصرف' : 'قيد المراجعة'}
+                                                    expense.status === 'settled' ? 'تمت التسوية إجمالياً' :
+                                                        expense.status === 'approved' || expense.isApproved ? 'بانتظار الصرف' : 'قيد المراجعة'}
                                         </span>
                                     </div>
                                 </div>

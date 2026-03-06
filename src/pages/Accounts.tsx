@@ -20,6 +20,7 @@ interface StatementItem {
     runningBalance?: number;
     services?: string;
     count?: number;
+    isHidden?: boolean;
 }
 
 // Time filter presets
@@ -363,10 +364,21 @@ export default function Accounts() {
     const [detailOrders, setDetailOrders] = useState<Order[]>([]);
     const [detailTransactions, setDetailTransactions] = useState<Transaction[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const [hiddenTransactionIds, setHiddenTransactionIds] = useState<Set<string>>(new Set());
+
+    const toggleTransactionVisibility = (id: string) => {
+        setHiddenTransactionIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
 
     useEffect(() => {
         if (viewMode === 'detail' && selectedEntityId) {
             setLoadingDetails(true);
+            setHiddenTransactionIds(new Set());
             const typeMap: Record<string, 'doctor' | 'supplier' | 'designer'> = {
                 doctors: 'doctor',
                 suppliers: 'supplier',
@@ -629,16 +641,20 @@ export default function Accounts() {
         // Calculate running balance
         let runningBalance = dateRange.start ? calculateOpeningBalance : 0;
         items = items.map(item => {
-            if (activeTab === 'doctors') {
-                runningBalance += item.type === 'debit' ? item.amount : -item.amount;
-            } else {
-                runningBalance += item.type === 'credit' ? item.amount : -item.amount;
+            const isHidden = hiddenTransactionIds.has(item.id);
+            if (!isHidden) {
+                if (activeTab === 'doctors') {
+                    runningBalance += item.type === 'debit' ? item.amount : -item.amount;
+                } else {
+                    runningBalance += item.type === 'credit' ? item.amount : -item.amount;
+                }
             }
-            return { ...item, runningBalance };
+            return { ...item, runningBalance: isHidden ? 0 : runningBalance, isHidden };
         });
 
-        const totalDebit = items.filter(i => i.type === 'debit').reduce((sum, i) => sum + i.amount, 0);
-        const totalCredit = items.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
+        const visibleItems = items.filter(i => !i.isHidden);
+        const totalDebit = visibleItems.filter(i => i.type === 'debit').reduce((sum, i) => sum + i.amount, 0);
+        const totalCredit = visibleItems.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
         const periodBalance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
         const finalBalance = (dateRange.start ? calculateOpeningBalance : 0) + periodBalance;
 
@@ -651,7 +667,7 @@ export default function Accounts() {
                 openingBalance: dateRange.start ? calculateOpeningBalance : 0
             }
         };
-    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance]);
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds]);
 
 
     const handlePrint = async () => {
@@ -661,6 +677,7 @@ export default function Accounts() {
 
         const statementForPdf: StatementResult = {
             ...individualStatement,
+            items: individualStatement.items.filter(i => !i.isHidden),
             doctorName: entityName,
             doctorCode: doctor?.doctorCode
         };
@@ -675,6 +692,7 @@ export default function Accounts() {
 
         const statementForPdf: StatementResult = {
             ...individualStatement,
+            items: individualStatement.items.filter(i => !i.isHidden),
             doctorName: entityName,
             doctorCode: doctor?.doctorCode
         };
@@ -1411,7 +1429,7 @@ export default function Accounts() {
                             }
 
                             // Add statement items
-                            exportData.push(...individualStatement.items.map(i => ({
+                            exportData.push(...individualStatement.items.filter(i => !i.isHidden).map(i => ({
                                 date: i.date,
                                 description: i.description,
                                 services: i.services || '',
@@ -1554,7 +1572,8 @@ export default function Accounts() {
                     <table className="w-full text-right">
                         <thead className="bg-slate-800 text-white">
                             <tr>
-                                <th className="p-3 rounded-tr-lg font-semibold text-sm">البيان</th>
+                                <th className="p-3 rounded-tr-lg font-semibold text-sm w-12 text-center print-hidden">تضمين</th>
+                                <th className="p-3 font-semibold text-sm">البيان</th>
                                 <th className="p-3 font-semibold text-sm w-40">الخدمات</th>
                                 <th className="p-3 font-semibold text-sm w-16">العدد</th>
                                 <th className="p-3 font-semibold text-sm w-28">التاريخ</th>
@@ -1566,6 +1585,7 @@ export default function Accounts() {
                             {/* Opening Balance Row */}
                             {dateRange.start && individualStatement.totals.openingBalance !== 0 && (
                                 <tr className="bg-amber-50 border-b border-amber-100">
+                                    <td className="p-3 print-hidden"></td>
                                     <td className="p-3">
                                         <div className="font-bold text-amber-800">رصيد سابق (مرحّل)</div>
                                         <div className="text-xs text-amber-600">الرصيد من الفترات السابقة</div>
@@ -1592,7 +1612,7 @@ export default function Accounts() {
                                     : individualStatement.items;
                                 return filteredItems.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="p-12 text-center text-gray-400">
+                                        <td colSpan={7} className="p-12 text-center text-gray-400">
                                             <div className="flex flex-col items-center gap-2">
                                                 <Search size={32} className="text-gray-300" />
                                                 <span>{statementSearch ? `لا توجد نتائج لـ "${statementSearch}"` : 'لا توجد معاملات في هذه الفترة'}</span>
@@ -1601,7 +1621,16 @@ export default function Accounts() {
                                     </tr>
                                 ) : (
                                     filteredItems.map((item, idx) => (
-                                        <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800")}>
+                                        <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800", item.isHidden && "opacity-50 grayscale")}>
+                                            <td className="p-3 text-center print-hidden">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={!item.isHidden}
+                                                    onChange={() => toggleTransactionVisibility(item.id)}
+                                                    className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                                                    title="تضمين في كشف الحساب والطباعة"
+                                                />
+                                            </td>
                                             <td className="p-3">
                                                 <div className={clsx("font-medium", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-700 line-through decoration-red-300" : "text-gray-800")}>{item.description}</div>
                                                 {item.details && <div className={clsx("text-xs mt-0.5 truncate max-w-xs", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-400" : "text-gray-500")}>{item.details}</div>}
@@ -1624,7 +1653,7 @@ export default function Accounts() {
                         </tbody>
                         <tfoot className="bg-gray-100 font-bold border-t-2 border-gray-300">
                             <tr>
-                                <td colSpan={4} className="p-3 text-gray-700">الإجمالي</td>
+                                <td colSpan={5} className="p-3 text-gray-700">الإجمالي</td>
                                 <td className="p-3 text-rose-600 font-mono">{individualStatement.totals.totalDebit.toLocaleString()}</td>
                                 <td className="p-3 text-emerald-600 font-mono">{individualStatement.totals.totalCredit.toLocaleString()}</td>
                             </tr>
