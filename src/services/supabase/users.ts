@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../../lib/supabase';
 import type { DbUser, DbUserInsert, DbUserUpdate } from './types';
 import type { User } from '../db';
@@ -66,9 +67,10 @@ export async function addUser(user: User & { password?: string }): Promise<void>
         try {
             // Removed sensitive console.log
             authId = await createAuthUser(user.email, user.password);
-        } catch (e: any) {
+        } catch (e: unknown) {
             // Check for duplicate user error
-            if (e.message?.includes('User already registered') || e.code === '422') {
+            const err = e as { message?: string; code?: string };
+            if (err.message?.includes('User already registered') || err.code === '422') {
                 throw new ValidationError(
                     'هذا البريد الإلكتروني مسجل بالفعل. بما أن العملية السابقة فشلت، يرجى حذف المستخدم من لوحة تحكم Supabase (Authentication) ثم المحاولة مرة أخرى.',
                     'هذا البريد الإلكتروني مسجل بالفعل. يرجى حذف المستخدم من قائمة Authentication في Supabase ثم المحاولة.'

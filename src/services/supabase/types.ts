@@ -93,6 +93,7 @@ export interface DbTransaction {
     is_registered: boolean;
     is_approved?: boolean;
     status?: 'pending' | 'approved' | 'rejected' | 'settled';
+    effective_date?: string | null;
     created_at: string;
     updated_at: string;
 }

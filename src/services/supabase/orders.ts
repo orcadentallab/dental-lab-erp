@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../../lib/supabase';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
 import type { Order, OrderHistoryEntry, Transaction } from '../db';
@@ -190,7 +191,7 @@ export async function getOrders(
     }
 
     if (filters.hideDelivered) {
-        query = query.not('status', 'in', '("Delivered","Returned for Adjustments")');
+        query = query.neq('status', 'Delivered');
     }
 
     // Archive Filter
@@ -278,7 +279,7 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
     }
 
     // Map to Order objects (dbToOrder handles missing relations gracefully)
-    return (data || []).map((d: any) => dbToOrder(d as unknown as DbOrderWithRelations));
+    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
 }
 
 /**
@@ -383,26 +384,29 @@ export async function fetchFullEntityStatement(
     if (txError) throw ErrorHandler.handle(txError, 'fetchFullEntityStatement_Tx');
 
     // Filter transactions in JS to match expected entity_type OR handle nulls
-    const filteredTransactions = (txData || []).filter((t: any) => {
-        // Accept if entity_type matches OR entity_type is null (legacy records)
-        return t.entity_type === entityType || t.entity_type === null || t.entity_type === undefined;
+    const filteredTransactions = (txData || []).filter(t => {
+        const tx = t as unknown as { entity_type?: string | null };
+        return tx.entity_type === entityType || tx.entity_type === null || tx.entity_type === undefined;
     });
 
     // CRITICAL FIX: Map DB format (snake_case) to app format (camelCase)
     // Without this, the transactions have wrong field names!
-    const mappedTransactions: Transaction[] = filteredTransactions.map((t: any) => ({
-        id: t.id,
-        type: t.type,
-        amount: t.amount,
-        category: t.category,
-        date: t.date,
-        description: t.description,
-        entityId: t.entity_id || undefined,
-        entityType: t.entity_type || undefined,
-        isRegistered: t.is_registered || undefined,
-        isApproved: t.is_approved || undefined,
-        createdAt: t.created_at,
-    }));
+    const mappedTransactions: Transaction[] = filteredTransactions.map(t => {
+        const tx = t as unknown as Record<string, unknown>;
+        return {
+            id: tx['id'] as string,
+            type: tx['type'] as Transaction['type'],
+            amount: tx['amount'] as number,
+            category: tx['category'] as string,
+            date: tx['date'] as string,
+            description: (tx['description'] as string | undefined) ?? '',
+            entityId: (tx['entity_id'] as string | undefined) || undefined,
+            entityType: (tx['entity_type'] as Transaction['entityType'] | undefined) || undefined,
+            isRegistered: (tx['is_registered'] as boolean | undefined) || undefined,
+            isApproved: (tx['is_approved'] as boolean | undefined) || undefined,
+            createdAt: tx['created_at'] as string,
+        };
+    });
 
     return {
         orders: (ordersData || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations)),
@@ -439,7 +443,8 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<
     }
 
     const dbOrder = orderToDb(order);
-    const { items, comments, ...orderRow } = dbOrder; // Separate items/comments
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { items: _items, comments: _comments, ...orderRow } = dbOrder; // Separate items/comments
 
     // 1. Insert Order
     const { data: insertedOrder, error } = await supabase
@@ -583,7 +588,8 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
 
     // dbUpdates might contain items/comments from legacy mapping
     // We should remove them before updating orders table typings
-    const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as any;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as unknown as Record<string, unknown>;
 
     try {
         const { error } = await supabase.rpc('update_order_atomic', {

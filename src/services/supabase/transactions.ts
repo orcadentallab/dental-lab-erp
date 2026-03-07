@@ -18,6 +18,7 @@ function dbToTransaction(dbTx: DbTransaction): Transaction {
         isRegistered: dbTx.is_registered || undefined,
         isApproved: dbTx.is_approved || undefined,
         status: dbTx.status || (dbTx.is_approved ? 'approved' : 'pending'), // Fallback for backward compatibility
+        effectiveDate: dbTx.effective_date || undefined,
         createdAt: dbTx.created_at,
     };
 }
@@ -35,6 +36,7 @@ function transactionToDb(tx: Omit<Transaction, 'id'>): DbTransactionInsert {
         is_registered: tx.isRegistered || false,
         is_approved: tx.status === 'approved' || tx.isApproved || false,
         status: tx.status || (tx.isApproved ? 'approved' : 'pending'),
+        effective_date: tx.effectiveDate || null,
     };
 }
 
@@ -129,6 +131,7 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
         if (updates.status === 'approved') dbUpdates.is_approved = true;
         if (updates.status === 'pending' || updates.status === 'rejected') dbUpdates.is_approved = false;
     }
+    if (updates.effectiveDate !== undefined) dbUpdates.effective_date = updates.effectiveDate || null;
 
     const { data, error } = await supabase
         .from('transactions')

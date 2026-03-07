@@ -2,9 +2,12 @@
 // Handles chat requests from the frontend and proxies to Gemini API
 // API Key is stored in Supabase secrets (never exposed to frontend)
 
+// @ts-ignore: Deno URL imports
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+// @ts-ignore: Deno URL imports
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// @ts-ignore: Deno global
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
 
@@ -30,6 +33,8 @@ interface ChatRequest {
     context: {
         orderCount: number
         revenue: number
+        productionCosts: number
+        operatingExpenses: number
         expenses: number
         profit: number
         topDoctors: { name: string; orderCount: number }[]
@@ -39,7 +44,8 @@ interface ChatRequest {
     conversationHistory?: { role: string; content: string }[]
 }
 
-serve(async (req) => {
+// @ts-ignore: Deno serve
+serve(async (req: any) => {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -57,7 +63,9 @@ serve(async (req) => {
 
         // Create Supabase client (Environment variables only)
         const supabaseClient = createClient(
+            // @ts-ignore: Deno global
             Deno.env.get('SUPABASE_URL') ?? '',
+            // @ts-ignore: Deno global
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
@@ -89,8 +97,8 @@ serve(async (req) => {
 - مصاريف التشغيل: ${(context.operatingExpenses || 0).toLocaleString()} ج.م
 - إجمالي المصروفات: ${((context.productionCosts || 0) + (context.operatingExpenses || 0) || context.expenses || 0).toLocaleString()} ج.م
 - صافي الربح: ${(context.profit || 0).toLocaleString()} ج.م
-- أعلى الأطباء: ${context.topDoctors?.map((d: any) => `${d.name} (${d.orderCount} طلب)`).join('، ') || 'غير متاح'}
-- أعلى الخدمات: ${context.topServices?.map((s: any) => `${s.name} (${s.count})`).join('، ') || 'غير متاح'}
+- أعلى الأطباء: ${context.topDoctors?.map((d) => `${d.name} (${d.orderCount} طلب)`).join('، ') || 'غير متاح'}
+- أعلى الخدمات: ${context.topServices?.map((s) => `${s.name} (${s.count})`).join('، ') || 'غير متاح'}
 `
 
         // Build conversation for Gemini

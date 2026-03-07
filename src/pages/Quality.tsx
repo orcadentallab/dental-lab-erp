@@ -368,7 +368,7 @@ export default function QualityDashboard() {
                                     <span className="text-gray-500 font-mono">{item.count} حالة</span>
                                 </div>
                                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                    {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
+                                    {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
                                     <div
                                         className="h-full bg-red-400 rounded-full"
                                         style={{ width: `${(item.count / ratedOrders.length) * 100}%` }}

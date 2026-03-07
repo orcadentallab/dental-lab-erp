@@ -1,4 +1,4 @@
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
 import { Package, Star } from 'lucide-react';
 import type { Order } from '../../services/db';

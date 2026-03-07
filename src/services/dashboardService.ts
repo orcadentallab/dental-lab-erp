@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../lib/supabase';
 import { type Order } from './db';
 

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
+/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
@@ -80,7 +80,7 @@ export default function OrderCard({
     const handleStatusChangeClick = (newStatus: Order['status']) => {
         if (newStatus === order.status) return;
 
-        // Risky statuses requiring confirmation
+        // Risky statuses requiring confirmation (terminal actions)
         const riskyStatuses = ['Delivered', 'Rejected', 'Cancelled', 'Returned for Adjustments'];
 
         if (riskyStatuses.includes(newStatus)) {
@@ -91,7 +91,7 @@ export default function OrderCard({
             switch (newStatus) {
                 case 'Delivered':
                     message = 'هل أنت متأكد من تسليم هذا الأوردر؟ سيتم نقله إلى الأرشيف ولن يظهر في القائمة النشطة.';
-                    variant = 'warning'; // Greenish warning usually, but warning works
+                    variant = 'warning';
                     break;
                 case 'Rejected':
                     message = 'هل أنت متأكد من رفض الأوردر؟ هذا الإجراء قد يرسل إشعاراً للطبيب.';
@@ -102,7 +102,8 @@ export default function OrderCard({
                     variant = 'danger';
                     break;
                 case 'Returned for Adjustments':
-                    message = 'هل أنت متأكد من إرجاع الأوردر للتعديل؟';
+                    // Not terminal — the case comes back to life for rework
+                    message = 'سيتم إرجاع الأوردر للتعديل وسيبقى نشطاً حتى يتم تسليمه مجدداً.';
                     variant = 'warning';
                     break;
             }
@@ -159,7 +160,10 @@ export default function OrderCard({
         ? order.comments[order.comments.length - 1]
         : null;
 
-    const isRedStatus = order.status === 'Returned for Adjustments' || order.status === 'Rejected' || order.status === 'Cancelled' || order.technicianStatus === 'Rejected';
+    // Terminal statuses (red): Rejected/Cancelled only — these get archive button and red styling
+    const isRedStatus = order.status === 'Rejected' || order.status === 'Cancelled' || order.technicianStatus === 'Rejected';
+    // Active-but-returned: amber styling, NO archive button — case needs rework before delivery
+    const isReturnedStatus = order.status === 'Returned for Adjustments';
     const isDelivered = order.status === 'Delivered';
 
     const handleArchive = async (archive: boolean) => {
@@ -190,9 +194,11 @@ export default function OrderCard({
                         ? 'bg-gray-50 dark:bg-gray-800/50 border-l-gray-400 border-gray-200 opacity-75'
                         : isDelivered
                             ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
-                            : isRedStatus
-                                ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
-                                : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
+                            : isReturnedStatus
+                                ? 'bg-amber-50 dark:bg-amber-900/20 border-l-amber-500 border-amber-200 dark:border-amber-800'
+                                : isRedStatus
+                                    ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
+                                    : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
                 )}
             >
                 {/* Urgent Strip */}
@@ -535,8 +541,8 @@ export default function OrderCard({
                                 <ChevronRight size={14} className="absolute inset-y-0 right-2 my-auto text-surface-400 pointer-events-none rotate-90" />
                             </div>
 
-                            {/* Archive Action for Cancelled/Rejected */}
-                            {(isRedStatus) && !order.isArchived && (
+                            {/* Archive Action for Cancelled/Rejected only — NOT for Returned orders */}
+                            {isRedStatus && !order.isArchived && (
                                 <button
                                     onClick={() => handleArchive(true)}
                                     className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-red-200"

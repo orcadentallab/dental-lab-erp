@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 /**
  * Gemini Service - Frontend client for AI Analytics
  * Calls Supabase Edge Functions (NOT Gemini directly for security)
@@ -18,22 +19,46 @@ export interface ChatContext {
 }
 
 export interface AnalyzeContext {
-    orderCount: number;
-    completedOrders: number;
-    pendingOrders: number;
-    revenue: number;
-    productionCosts: number;
-    operatingExpenses: number;
+    // Current Monthly Data
+    currentMonth?: {
+        revenue: number;
+        profit: number;
+        productionCosts: number;
+        operatingExpenses: number;
+        completedOrders: number;
+        pendingOrders: number;
+    };
+    // Previous Monthly Data
+    previousMonth?: {
+        revenue: number;
+        profit: number;
+        completedOrders: number;
+    };
+    // All-time Totals
+    allTime?: {
+        revenue: number;
+        profit: number;
+        pendingPayments: number;
+        collectionRate: number;
+    };
+
+    // Legacy flat fields (kept for backward compatibility with old local saved contexts)
+    orderCount?: number;
+    completedOrders?: number;
+    pendingOrders?: number;
+    revenue?: number;
+    productionCosts?: number;
+    operatingExpenses?: number;
     expenses?: number;
-    profit: number;
-    profitMargin: number;
-    grossMargin: number;
+    profit?: number;
+    profitMargin?: number;
+    grossMargin?: number;
     topDoctors: { name: string; orderCount: number; revenue: number }[];
     topServices: { name: string; count: number; revenue: number }[];
     ordersByStatus: { status: string; count: number }[];
-    revenueByMonth: { month: string; revenue: number }[];
-    collectionRate: number;
-    pendingPayments: number;
+    revenueByMonth?: { month: string; revenue: number }[];
+    collectionRate?: number;
+    pendingPayments?: number;
 }
 
 export interface ChatMessage {
@@ -350,7 +375,8 @@ export async function getConversationMessages(conversationId: string): Promise<{
         throw new Error('فشل جلب الرسائل');
     }
 
-    return (data || []) as { id: string; role: 'user' | 'assistant'; content: string; created_at: string }[];
+    type ChatMessage = { id: string; role: 'user' | 'assistant'; content: string; created_at: string };
+    return (data || []).map(d => d as unknown as ChatMessage);
 }
 
 /**

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
@@ -83,9 +84,11 @@ export default function DashboardNew() {
         return false;
     });
 
-    const rejectedOrders = orders.filter(o =>
-        o.status === 'Rejected' || o.status === 'Returned for Adjustments'
-    );
+    // Truly rejected (terminal) — gets archive action
+    const rejectedOrders = orders.filter(o => o.status === 'Rejected');
+
+    // Returned for rework — still active, will go back to Delivered when done
+    const returnedOrders = orders.filter(o => o.status === 'Returned for Adjustments');
 
     const overdueOrders = orders.filter(o =>
         o.deliveryDate < today &&
@@ -114,7 +117,7 @@ export default function DashboardNew() {
     const doctorRequests = orders.filter(o => o.status === 'Pending Review');
 
     // --- Statistics Data ---
-    const activeOrdersCount = orders.filter(o => !['Delivered', 'Cancelled', 'Rejected', 'Returned for Adjustments'].includes(o.status)).length;
+    const activeOrdersCount = orders.filter(o => !['Delivered', 'Cancelled', 'Rejected'].includes(o.status)).length;
     const ordersTodayCount = orders.filter(o => o.createdAt.startsWith(today)).length;
     const readyOrdersCount = orders.filter(o => o.status === 'Ready').length;
 
@@ -312,7 +315,7 @@ export default function DashboardNew() {
             <div className="space-y-6">
 
                 {/* 1. URGENT / ATTENTION (Red/Orange) */}
-                {(rejectedOrders.length > 0 || overdueOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0) && (
+                {(rejectedOrders.length > 0 || returnedOrders.length > 0 || overdueOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <AlertTriangle size={16} />
@@ -339,11 +342,11 @@ export default function DashboardNew() {
                                     onExpand={() => setActiveModal('rejected-doctor')}
                                 />
                             )}
-                            {/* Lab Rejections Card */}
-                            {rejectedOrders.some(o => o.status === 'Returned for Adjustments') && (
+                            {/* Returned orders — active, need rework */}
+                            {returnedOrders.length > 0 && (
                                 <AlertCard
                                     title="مرتجع للتعديل"
-                                    count={rejectedOrders.filter(o => o.status === 'Returned for Adjustments').length}
+                                    count={returnedOrders.length}
                                     icon={Clock}
                                     colorClass="yellow"
                                     useModal
@@ -706,13 +709,13 @@ export default function DashboardNew() {
                 isOpen={activeModal === 'returned'}
                 onClose={() => setActiveModal(null)}
             >
-                {rejectedOrders.filter(o => o.status === 'Returned for Adjustments').map(order => (
+                {returnedOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
-                        onArchive={handleArchiveOrder}
+                    // No onArchive — returned cases must be reworked and delivered, not archived
                     />
                 ))}
             </OrderListModal>
@@ -915,6 +918,7 @@ export default function DashboardNew() {
             {/* Accept Order Workflow Modal */}
             {acceptingOrder && (
                 <AcceptOrderModal
+                    isOpen={!!acceptingOrder}
                     order={acceptingOrder}
                     doctors={doctors}
                     suppliers={suppliers}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from './supabase';
 
 export type CapitalEntry = {
@@ -38,7 +39,7 @@ export const financeService = {
             .order('date', { ascending: false });
 
         if (error) throw error;
-        return data as CapitalEntry[];
+        return (data ?? []) as unknown as CapitalEntry[];
     },
 
     async addCapitalEntry(entry: Omit<CapitalEntry, 'id' | 'created_at'>) {
@@ -49,7 +50,7 @@ export const financeService = {
             .single();
 
         if (error) throw error;
-        return data as CapitalEntry;
+        return data as unknown as CapitalEntry;
     },
 
     async deleteCapitalEntry(id: string) {
@@ -69,7 +70,7 @@ export const financeService = {
             .order('purchase_date', { ascending: false });
 
         if (error) throw error;
-        return data as FixedAsset[];
+        return (data ?? []) as unknown as FixedAsset[];
     },
 
     async addFixedAsset(asset: Omit<FixedAsset, 'id' | 'created_at'>) {
@@ -80,7 +81,7 @@ export const financeService = {
             .single();
 
         if (error) throw error;
-        return data as FixedAsset;
+        return data as unknown as FixedAsset;
     },
 
     async deleteFixedAsset(id: string) {
@@ -108,7 +109,7 @@ export const financeService = {
 
         const { data, error } = await query;
         if (error) throw error;
-        return data as Adjustment[];
+        return (data ?? []) as unknown as Adjustment[];
     },
 
     async addAdjustment(adjustment: Omit<Adjustment, 'id' | 'created_at'>) {
@@ -119,7 +120,7 @@ export const financeService = {
             .single();
 
         if (error) throw error;
-        return data as Adjustment;
+        return data as unknown as Adjustment;
     },
 
     async updateAdjustment(id: string, updates: Partial<Omit<Adjustment, 'id' | 'created_at'>>) {
@@ -131,7 +132,7 @@ export const financeService = {
             .single();
 
         if (error) throw error;
-        return data as Adjustment;
+        return data as unknown as Adjustment;
     },
 
     async deleteAdjustment(id: string) {

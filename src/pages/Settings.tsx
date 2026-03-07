@@ -16,6 +16,7 @@ export default function Settings() {
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+
     const handlePasswordChange = async () => {
         if (!oldPassword) {
             setImportStatus({ success: false, message: 'يرجى إدخال كلمة المرور الحالية' });
@@ -173,6 +174,8 @@ export default function Settings() {
                     </div>
                 </div>
             )}
+
+
 
             {/* Password Change Section */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">

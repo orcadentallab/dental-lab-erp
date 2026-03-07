@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { type Order, type Supplier, type User, type Doctor } from '../../services/db';
+import React, { useState, useMemo, useEffect } from 'react';
+import { type Order, type User, type Doctor, type Supplier } from '../../services/db';
 import { generateCaseId } from '../../utils/caseId';
 import { X, Check, Building2, User as UserIcon, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/Button';
@@ -11,6 +11,7 @@ interface AcceptOrderModalProps {
     suppliers: Supplier[];
     designers: User[];
     existingOrders: Order[];
+    isOpen: boolean;
     onClose: () => void;
     onConfirm: (data: {
         caseId: string;
@@ -28,33 +29,45 @@ export default function AcceptOrderModal({
     suppliers,
     designers,
     existingOrders,
+    isOpen,
     onClose,
     onConfirm
 }: AcceptOrderModalProps) {
-    const [workflowType, setWorkflowType] = useState<'full' | 'split'>('full');
     const [supplierId, setSupplierId] = useState('');
     const [designerId, setDesignerId] = useState('');
-    const [caseId, setCaseId] = useState('');
-    const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [workflowType, setWorkflowType] = useState<'full' | 'split'>('full');
+
+    // Calculate recommended case ID
+    const doctor = doctors.find(d => d.id === order.doctorId);
+    const recommendedCaseId = useMemo(() => {
+        if (!doctor) return '';
+        return generateCaseId(doctor.doctorCode || 'UNK');
+    }, [doctor, existingOrders]);
+
+    const [caseId, setCaseId] = useState(recommendedCaseId);
+
+    // Update caseId when recommended changes (e.g. initial load or doctor change)
+    useEffect(() => {
+        setCaseId(recommendedCaseId);
+    }, [recommendedCaseId]);
+
+    const [receivedDate, setReceivedDate] = useState(() => {
+        const d = new Date();
+        return d.toISOString().split('T')[0];
+    });
     const [deliveryDate, setDeliveryDate] = useState(() => {
         const d = new Date();
-        d.setDate(d.getDate() + 3);
+        d.setDate(d.getDate() + 7);
         return d.toISOString().split('T')[0];
     });
 
-    const doctor = doctors.find(d => d.id === order.doctorId);
-
-    useEffect(() => {
-        if (doctor) {
-            const nextId = generateCaseId(doctor.doctorCode || 'UNK');
-            setCaseId(nextId);
-        }
-    }, [doctor, existingOrders]);
+    if (!isOpen) return null;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!supplierId) return;
         if (workflowType === 'split' && !designerId) return;
+        if (!caseId) return;
 
         onConfirm({
             caseId,
@@ -64,6 +77,7 @@ export default function AcceptOrderModal({
             receivedDate,
             deliveryDate
         });
+        onClose();
     };
 
     return (

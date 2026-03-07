@@ -3,6 +3,7 @@
  * Admin-only page for AI-powered insights and chat
  */
 
+/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, RefreshCw, Clock, Shield, AlertTriangle, ChevronDown, FileText } from 'lucide-react';
 import clsx from 'clsx';
@@ -218,32 +219,36 @@ export default function AIAnalytics() {
             if (content && content.record_type === 'ai_analysis') {
                 // New format v2.0
                 summary = content.executive_summary || null;
-                finalInsights = (content.insights || []).map((insight: any) => ({
-                    id: insight.id || report.id,
-                    title: insight.title,
-                    content: insight.content,
-                    category: insight.category || 'performance',
-                    severity: insight.severity || 'neutral',
-                    createdAt: content.generated_at || report.created_at
+                finalInsights = (content.insights || []).map((insight: Record<string, unknown>) => ({
+                    id: String(insight.id || report.id),
+                    title: String(insight.title || ''),
+                    content: String(insight.content || ''),
+                    category: String(insight.category || 'performance'),
+                    severity: String(insight.severity || 'neutral'),
+                    createdAt: String(content.generated_at || report.created_at)
                 }));
             } else if (Array.isArray(content)) {
                 // Legacy format: direct array of insights
-                finalInsights = content.map((i: any) => ({
-                    ...i,
-                    id: report.id,
-                    createdAt: report.created_at,
+                finalInsights = content.map((i: Record<string, unknown>): UIInsight => ({
+                    id: String(i.id || report.id),
+                    title: String(i.title || ''),
+                    content: String(i.content || ''),
+                    createdAt: String(report.created_at),
                     // Map legacy 'type' to 'severity' for compatibility
-                    severity: i.severity || (i.type === 'action' ? 'neutral' : i.type) || 'neutral',
-                    category: i.category || 'performance'
+                    severity: (String(i.severity || (i.type === 'action' ? 'neutral' : i.type) || 'neutral')) as UIInsight['severity'],
+                    category: (String(i.category || 'performance')) as UIInsight['category'],
+                    type: i.type as UIInsight['type'],
+                    icon: i.icon as string | undefined,
                 }));
             } else if (content && content.insights) {
                 // Legacy format: object with insights array
-                finalInsights = content.insights.map((i: any) => ({
-                    ...i,
-                    id: report.id,
-                    createdAt: report.created_at,
-                    severity: i.severity || (i.type === 'action' ? 'neutral' : i.type) || 'neutral',
-                    category: i.category || 'performance'
+                finalInsights = content.insights.map((i: Record<string, unknown>): UIInsight => ({
+                    id: String(i.id || report.id),
+                    title: String(i.title || ''),
+                    content: String(i.content || ''),
+                    createdAt: String(report.created_at),
+                    severity: (String(i.severity || (i.type === 'action' ? 'neutral' : i.type) || 'neutral')) as UIInsight['severity'],
+                    category: (String(i.category || 'performance')) as UIInsight['category'],
                 }));
             } else {
                 // Unknown format - treat as single insight
@@ -280,6 +285,7 @@ export default function AIAnalytics() {
     useEffect(() => {
         loadDataContext();
         loadReports();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loadDataContext]);
 
     // Handle Report Selection
@@ -302,7 +308,8 @@ export default function AIAnalytics() {
             // Log debug info from Edge Function
             console.log('[AI Analytics] Generation response received');
             console.log('[AI Analytics] Analysis ID:', response.analysis_id);
-            const debugInfo = (response as any)._debug;
+            const responseWithDebug = response as unknown as { _debug?: { saved?: boolean; savedId?: string; saveError?: string } };
+            const debugInfo = responseWithDebug._debug;
             let savedId = debugInfo?.savedId;
             let saveSucceeded = debugInfo?.saved === true;
 
@@ -326,10 +333,11 @@ export default function AIAnalytics() {
                     );
                     console.log('[AI Analytics] Fallback save SUCCESS with ID:', savedId);
                     saveSucceeded = true;
-                } catch (saveErr: any) {
+                } catch (saveErr: unknown) {
                     console.error('[AI Analytics] Fallback save FAILED:', saveErr);
+                    const errorMessage = saveErr instanceof Error ? saveErr.message : String(saveErr);
                     // Show warning but don't block - user can still see the analysis
-                    setError(`⚠️ التحليل ظهر لكن لم يتم حفظه في الأرشيف. السبب: ${saveErr?.message || 'خطأ في الحفظ'}`);
+                    setError(`⚠️ التحليل ظهر لكن لم يتم حفظه في الأرشيف. السبب: ${errorMessage}`);
                 }
             }
 

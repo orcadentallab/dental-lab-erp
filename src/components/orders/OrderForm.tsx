@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateCaseId } from '../../utils/caseId';

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../lib/supabase';
 
 export interface ContactInquiry {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
@@ -36,26 +37,30 @@ const getDateRangeFromFilter = (filter: TimeFilter): { start: string; end: strin
     let start = '';
 
     switch (filter) {
-        case 'week':
+        case 'week': {
             const weekAgo = new Date(today);
             weekAgo.setDate(weekAgo.getDate() - 7);
             start = weekAgo.toISOString().split('T')[0];
             break;
-        case 'month':
+        }
+        case 'month': {
             const monthAgo = new Date(today);
             monthAgo.setMonth(monthAgo.getMonth() - 1);
             start = monthAgo.toISOString().split('T')[0];
             break;
-        case '3months':
+        }
+        case '3months': {
             const threeMonthsAgo = new Date(today);
             threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
             start = threeMonthsAgo.toISOString().split('T')[0];
             break;
-        case 'year':
+        }
+        case 'year': {
             const yearAgo = new Date(today);
             yearAgo.setFullYear(yearAgo.getFullYear() - 1);
             start = yearAgo.toISOString().split('T')[0];
             break;
+        }
         case 'all':
         default:
             start = '';

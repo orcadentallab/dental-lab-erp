@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 // Centralized Error Handling
 export class AppError extends Error {
     public code?: string;

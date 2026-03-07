@@ -16,6 +16,7 @@ export interface Service {
     sellingPrice: number;
     costPrice: number;
     millingPrice?: number; // Default milling price (can be overridden per supplier)
+    sortOrder?: number; // Manual display order
 }
 
 export interface Transaction {
@@ -30,6 +31,7 @@ export interface Transaction {
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
     isApproved?: boolean; // Flag for individual expense approval (DEPRECATED: Use status)
     status?: 'pending' | 'approved' | 'rejected' | 'settled'; // New Status Field
+    effectiveDate?: string;
     createdAt?: string;
 }
 
@@ -344,6 +346,10 @@ class MockDB {
     async deleteService(id: string): Promise<void> {
         const { deleteService } = await import('./supabase/services');
         return deleteService(id);
+    }
+    async reorderServices(orderedIds: string[]): Promise<void> {
+        const { reorderServices } = await import('./supabase/services');
+        return reorderServices(orderedIds);
     }
 
     // --- TRANSACTIONS ---

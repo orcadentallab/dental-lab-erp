@@ -116,29 +116,32 @@ serve(async (req) => {
         const dataSummary = `
 DATA CONTEXT (Dental Lab - Period: ${periodFrom} to ${periodTo}):
 
-📊 ORDER STATISTICS:
-- Total Orders: ${context.orderCount || 0}
-- Completed Orders: ${context.completedOrders || 0}
-- Pending Orders: ${context.pendingOrders || 0}
+📊 ALL-TIME TOTALS (منذ بداية النظام):
+- إجمالي الأرباح التاريخية: ${(context.allTime?.profit || context.profit || 0).toLocaleString()} EGP
+- إجمالي الديون المعلقة (لكامل الفترات): ${(context.allTime?.pendingPayments || context.pendingPayments || 0).toLocaleString()} EGP
+- إجمالي الإيرادات التاريخية: ${(context.allTime?.revenue || context.revenue || 0).toLocaleString()} EGP
 
-💰 FINANCIAL STATISTICS:
-- Total Revenue: ${(context.revenue || 0).toLocaleString()} EGP
-- Production Costs: ${(context.productionCosts || 0).toLocaleString()} EGP
-- Operating Expenses: ${(context.operatingExpenses || 0).toLocaleString()} EGP
-- Total Expenses: ${((context.productionCosts || 0) + (context.operatingExpenses || 0) || context.expenses || 0).toLocaleString()} EGP
-- Net Profit: ${(context.profit || 0).toLocaleString()} EGP
-- Profit Margin: ${(context.profitMargin || 0).toFixed(1)}%
-- Collection Rate: ${(context.collectionRate || 0).toFixed(1)}%
-- Pending Payments: ${(context.pendingPayments || 0).toLocaleString()} EGP
+📅 CURRENT MONTH PERFORMANCE (أداء الشهر الحالي):
+- إيرادات الشهر: ${(context.currentMonth?.revenue || context.revenue || 0).toLocaleString()} EGP
+- أرباح الشهر: ${(context.currentMonth?.profit || context.profit || 0).toLocaleString()} EGP
+- تكاليف التشغيل: ${(context.currentMonth?.operatingExpenses || context.operatingExpenses || 0).toLocaleString()} EGP
+- تكاليف الإنتاج: ${(context.currentMonth?.productionCosts || context.productionCosts || 0).toLocaleString()} EGP
+- الطلبات المكتملة: ${context.currentMonth?.completedOrders || context.completedOrders || 0}
+- الطلبات المعلقة: ${context.currentMonth?.pendingOrders || context.pendingOrders || 0}
 
-👨‍⚕️ TOP DOCTORS:
-${context.topDoctors.map((d: any, i: number) => `${i + 1}. ${d.name}: ${d.orderCount} orders (${d.revenue.toLocaleString()} EGP)`).join('\n')}
+📆 PREVIOUS MONTH PERFORMANCE (أداء الشهر السابق للمقارنة):
+- إيرادات الشهر السابق: ${(context.previousMonth?.revenue || 0).toLocaleString()} EGP
+- أرباح الشهر السابق: ${(context.previousMonth?.profit || 0).toLocaleString()} EGP
+- الطلبات المكتملة السابق: ${context.previousMonth?.completedOrders || 0}
 
-🦷 TOP SERVICES:
-${context.topServices.map((s: any, i: number) => `${i + 1}. ${s.name}: ${s.count} units (${s.revenue.toLocaleString()} EGP)`).join('\n')}
+👨‍⚕️ TOP DOCTORS (CURRENT MONTH):
+${(context.topDoctors || []).map((d: { name: string; orderCount: number; revenue: number }, i: number) => `${i + 1}. ${d.name}: ${d.orderCount} orders (${d.revenue.toLocaleString()} EGP)`).join('\n')}
 
-📈 ORDERS BY STATUS:
-${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')}
+🦷 TOP SERVICES (CURRENT MONTH):
+${(context.topServices || []).map((s: { name: string; count: number; revenue: number }, i: number) => `${i + 1}. ${s.name}: ${s.count} units (${s.revenue.toLocaleString()} EGP)`).join('\n')}
+
+📈 ORDERS BY STATUS (CURRENT MONTH):
+${(context.ordersByStatus || []).map((s: { status: string; count: number }) => `- ${s.status}: ${s.count}`).join('\n')}
 `
 
         const prompt = `${ANALYSIS_PROMPT}\n\n${dataSummary}`
@@ -162,10 +165,14 @@ ${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')
         const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
         // Parse JSON response
-        let parsedResponse = {
+        const parsedResponse: {
+            executive_summary: string;
+            insights: { id: string; title: string; content: string; category: string; severity: string }[];
+            confidence_level: string;
+        } = {
             executive_summary: '',
-            insights: [] as any[],
-            confidence_level: 'medium' as string
+            insights: [],
+            confidence_level: 'medium'
         }
 
         try {
@@ -184,12 +191,12 @@ ${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')
             parsedResponse.confidence_level = parsed.confidence_level || 'medium'
 
             // Add unique ID to each insight
-            parsedResponse.insights = (parsed.insights || []).map((insight: any) => ({
+            parsedResponse.insights = (parsed.insights || []).map((insight: Record<string, unknown>) => ({
                 id: generateUUID(),
-                title: insight.title || 'Insight',
-                content: insight.content || '',
-                category: insight.category || 'performance',
-                severity: insight.severity || 'neutral'
+                title: String(insight.title || 'Insight'),
+                content: String(insight.content || ''),
+                category: String(insight.category || 'performance'),
+                severity: String(insight.severity || 'neutral')
             }))
         } catch (parseError) {
             console.error('Failed to parse Gemini response:', parseError)
@@ -201,15 +208,15 @@ ${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')
                     const parsed = JSON.parse(jsonMatch[0])
                     parsedResponse.executive_summary = parsed.executive_summary || 'Analysis completed.'
                     parsedResponse.confidence_level = parsed.confidence_level || 'medium'
-                    parsedResponse.insights = (parsed.insights || []).map((insight: any) => ({
+                    parsedResponse.insights = (parsed.insights || []).map((insight: Record<string, unknown>) => ({
                         id: generateUUID(),
-                        title: insight.title || 'Insight',
-                        content: insight.content || '',
-                        category: insight.category || 'performance',
-                        severity: insight.severity || 'neutral'
+                        title: String(insight.title || 'Insight'),
+                        content: String(insight.content || ''),
+                        category: String(insight.category || 'performance'),
+                        severity: String(insight.severity || 'neutral')
                     }))
                 }
-            } catch (e) {
+            } catch {
                 // Final Fallback: Return raw text as single insight
                 parsedResponse.executive_summary = 'Unable to parse structured response.'
                 parsedResponse.confidence_level = 'low'
@@ -269,7 +276,7 @@ ${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')
 
         // Include database ID and debug info in response
         fullResponse.analysis_id = savedData?.id || analysisId
-        // @ts-ignore - debug field
+        // @ts-expect-error - debug field
         fullResponse._debug = {
             saved: !saveError,
             savedId: savedData?.id,
@@ -281,11 +288,12 @@ ${context.ordersByStatus.map((s: any) => `- ${s.status}: ${s.count}`).join('\n')
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error('Edge function error:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error);
         return new Response(
             JSON.stringify({
-                error: `Internal Error: ${error.message || error}`,
+                error: `Internal Error: ${errorMessage}`,
             }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )

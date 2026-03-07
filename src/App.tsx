@@ -10,6 +10,7 @@ import Suppliers from './pages/Suppliers';
 import Accounts from './pages/Accounts';
 import UsersPage from './pages/Users';
 import Settings from './pages/Settings';
+import ServicesPage from './pages/Services';
 import QualityDashboard from './pages/Quality';
 import AIAnalytics from './pages/AIAnalytics';
 import Staff from './pages/Staff';
@@ -92,6 +93,7 @@ function App() {
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/ai-analytics" element={<AIAnalytics />} />
                       <Route path="/users" element={<UsersPage />} />
+                      <Route path="/services" element={<ServicesPage />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
 
 

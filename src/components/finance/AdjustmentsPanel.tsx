@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useRef } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -42,12 +43,12 @@ export default function AdjustmentsPanel() {
         reason: ''
     });
 
-    if (!isAdmin) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
-
     useEffect(() => {
-        loadData();
-    }, []);
+        if (isAdmin) loadData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAdmin]);
 
+    if (!isAdmin) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
     async function loadData() {
         try {
             const [adjs, docs, sups] = await Promise.all([
@@ -72,10 +73,10 @@ export default function AdjustmentsPanel() {
         try {
             if (editingId) {
                 await financeService.updateAdjustment(editingId, {
-                    entity_type: newAdj.entityType as any,
+                    entity_type: newAdj.entityType as 'doctor' | 'supplier',
                     entity_id: newAdj.entityId,
                     amount: parseFloat(newAdj.amount),
-                    type: newAdj.type as any,
+                    type: newAdj.type as 'charge' | 'credit',
                     date: newAdj.date,
                     reason: newAdj.reason
                 });
@@ -83,10 +84,10 @@ export default function AdjustmentsPanel() {
                 alert('تم تعديل القيد بنجاح');
             } else {
                 await financeService.addAdjustment({
-                    entity_type: newAdj.entityType as any,
+                    entity_type: newAdj.entityType as 'doctor' | 'supplier',
                     entity_id: newAdj.entityId,
                     amount: parseFloat(newAdj.amount),
-                    type: newAdj.type as any,
+                    type: newAdj.type as 'charge' | 'credit',
                     date: newAdj.date,
                     reason: newAdj.reason
                 });

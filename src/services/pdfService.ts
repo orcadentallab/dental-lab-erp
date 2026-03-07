@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import JSZip from 'jszip';
@@ -447,7 +447,7 @@ function buildInvoiceHTML(
     _labInfo: LabInfo,
     previousBalance?: number
 ): string {
-    const items = (order.items || []).map((item: any) => {
+    const items = (order.items || []).map((item: { serviceType?: string; teethNumbers?: string[]; price?: number; sellingPrice?: number; unitPrice?: number }) => {
         const teethCount = Array.isArray(item.teethNumbers) && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
         const teethDisplay = Array.isArray(item.teethNumbers) && item.teethNumbers.length > 0 ? item.teethNumbers.join(', ') : '-';
 
@@ -595,7 +595,7 @@ export async function generateDoctorStatementPDF(
         doc.autoPrint();
         window.open(doc.output('bloburl'), '_blank');
     } else {
-        const safeName = (statement.doctorName || 'doctor').replace(/[\/\\?%*:|"<>]/g, '_');
+        const safeName = (statement.doctorName || 'doctor').replace(/[/\\?%*:|"<>]/g, '_');
         doc.save(`statement_${safeName}.pdf`);
     }
 }
@@ -603,7 +603,8 @@ export async function generateDoctorStatementPDF(
 function buildStatementHTML(
     statement: StatementResult,
     dateRange: { start: string; end: string },
-    _labInfo: LabInfo
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _labInfo?: LabInfo
 ): string {
     const startLabel = dateRange.start || '-';
     const endLabel = dateRange.end || '-';
@@ -759,7 +760,7 @@ async function generateStatementsZip(
         await htmlToPdfPage(doc, html);
 
         const pdfBlob = doc.output('arraybuffer');
-        const safeName = (statement.doctorName || 'unknown').replace(/[\/\\?%*:|"<>]/g, '_');
+        const safeName = (statement.doctorName || 'unknown').replace(/[/\\?%*:|"<>]/g, '_');
         zip.file(`${safeName}.pdf`, pdfBlob);
     }
 

@@ -1,22 +1,24 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 
+import type { LucideIcon } from 'lucide-react';
+
 interface NavItem {
     name: string;
     href: string;
-    icon: any;
+    icon: LucideIcon;
     roles: string[];
 }
 
 interface NavGroup {
     id: string;
     label: string;
-    icon: any;
+    icon: LucideIcon;
     items: NavItem[];
     defaultOpen?: boolean;
 }
@@ -70,6 +72,7 @@ export default function Sidebar() {
             defaultOpen: false,
             items: [
                 { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
+                { name: 'الخدمات وأسعارها', href: '/services', icon: Layers, roles: ['admin'] },
                 { name: t.nav.settings, href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
             ]
         },

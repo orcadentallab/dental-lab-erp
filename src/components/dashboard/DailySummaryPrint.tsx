@@ -22,12 +22,12 @@ export default function DailySummaryPrint({ orders, doctors, suppliers, onClose 
     const today = new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     // Group orders by Supplier
-    const groupedOrders = orders.reduce((acc, order) => {
+    const groupedOrders = orders.reduce<Record<string, Order[]>>((acc, order) => {
         const key = order.supplierId || 'unknown';
         if (!acc[key]) acc[key] = [];
         acc[key].push(order);
         return acc;
-    }, {} as Record<string, Order[]>);
+    }, {});
 
     const supplierIds = Object.keys(groupedOrders);
 

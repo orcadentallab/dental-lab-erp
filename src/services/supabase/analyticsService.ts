@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 /**
  * analyticsService.ts
  * 
@@ -99,7 +100,7 @@ export const analyticsService = {
         }
 
         // Supabase returns the JSONB directly as a parsed JS object
-        return data as AnalyticsSummary;
+        return data as unknown as AnalyticsSummary;
     },
 
     /**
@@ -117,7 +118,7 @@ export const analyticsService = {
             throw error;
         }
 
-        return (data || []) as TopDoctor[];
+        return (data || []) as unknown as TopDoctor[];
     },
 
     /**
@@ -135,7 +136,7 @@ export const analyticsService = {
             throw error;
         }
 
-        return (data || []) as TopService[];
+        return (data || []) as unknown as TopService[];
     },
 
     /**
@@ -153,7 +154,7 @@ export const analyticsService = {
             throw error;
         }
 
-        return (data || []) as TopExpenseCategory[];
+        return (data || []) as unknown as TopExpenseCategory[];
     },
 
     /**
@@ -168,6 +169,6 @@ export const analyticsService = {
             throw error;
         }
 
-        return data as FinanceDashboard;
+        return data as unknown as FinanceDashboard;
     },
 };

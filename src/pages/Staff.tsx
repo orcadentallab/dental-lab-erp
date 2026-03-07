@@ -208,7 +208,8 @@ export default function Staff() {
                 category: adjustmentType,
                 entityId: selectedRepForAdjustment,
                 entityType: 'general',
-                isRegistered: false // Not registered yet, will be "settled" upon salary payment
+                isRegistered: false, // Not registered yet, will be "settled" upon salary payment
+                effectiveDate: selectedMonth + '-01'
             });
 
             setNewExpense({ amount: '', description: '', category: '' });
@@ -235,7 +236,8 @@ export default function Staff() {
                 entityId: currentUser.id,
                 entityType: 'representative',
                 isRegistered: false,
-                status: 'pending'
+                status: 'pending',
+                effectiveDate: selectedMonth + '-01'
             });
 
             setNewExpense({ amount: '', description: '', category: '' });
@@ -276,7 +278,8 @@ export default function Staff() {
                 date: new Date().toISOString().split('T')[0], // Pay Date = Today
                 entityId: stat.user.id,
                 entityType: 'general',
-                isRegistered: true
+                isRegistered: true,
+                effectiveDate: selectedMonth + '-01'
             });
 
             // Delete the individual adjustment transactions so they don't count twice
@@ -350,7 +353,8 @@ export default function Staff() {
                 entityId: undefined,
                 entityType: 'general',
                 isRegistered: false,
-                status: 'approved'
+                status: 'approved',
+                effectiveDate: selectedMonth + '-01'
             });
 
             await loadData();
@@ -462,6 +466,7 @@ export default function Staff() {
                     {isAdminOrAccountant && (
                         <div className="flex items-center gap-2 bg-white p-2 rounded-lg border shadow-sm">
                             <span className="text-sm text-gray-500 font-bold">شهر:</span>
+                            {/* eslint-disable-next-line -- month type not supported in all browsers */}
                             <input
                                 type="month"
                                 aria-label="اختر الشهر"
@@ -559,6 +564,7 @@ export default function Staff() {
                                                             <input
                                                                 type="number"
                                                                 min="0"
+                                                                aria-label="Commission amount"
                                                                 value={commissionMap[stat.user.id] !== undefined ? commissionMap[stat.user.id] : stat.commissionAmount.toFixed(0)}
                                                                 onChange={(e) => handleCommissionChange(stat.user.id, e.target.value)}
                                                                 className="w-16 px-1 py-0.5 border rounded text-center text-xs text-green-600 font-bold"

@@ -18,11 +18,11 @@ export default function FinancialSetup() {
     const [newCapital, setNewCapital] = useState({ source: '', amount: '', date: new Date().toISOString().split('T')[0], notes: '' });
     const [newAsset, setNewAsset] = useState({ name: '', value: '', purchase_date: new Date().toISOString().split('T')[0], notes: '' });
 
-    if (!isAdmin) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
-
     useEffect(() => {
-        loadData();
-    }, []);
+        if (isAdmin) loadData();
+    }, [isAdmin]);
+
+    if (!isAdmin) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
 
     async function loadData() {
         // setLoading(true);
@@ -251,7 +251,7 @@ export default function FinancialSetup() {
     );
 }
 
-function WalletIcon(props: any) {
+function WalletIcon(props: React.SVGProps<SVGSVGElement>) {
     return (
         <svg
             {...props}
@@ -271,7 +271,7 @@ function WalletIcon(props: any) {
     )
 }
 
-function Building2Icon(props: any) {
+function Building2Icon(props: React.SVGProps<SVGSVGElement>) {
     return (
         <svg
             {...props}
@@ -296,7 +296,7 @@ function Building2Icon(props: any) {
     )
 }
 
-function PlusCircleIcon(props: any) {
+function PlusCircleIcon(props: React.SVGProps<SVGSVGElement>) {
     return (
         <svg
             {...props}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useMemo } from 'react';
 import {
     FileText,
@@ -7,9 +8,10 @@ import {
 import { type Order, type Transaction, type Doctor, type Supplier, type User, type Service } from '../../services/db';
 import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
-import { format } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 
 interface StatementTabProps {
+    type: 'service' | 'expense';
     orders: Partial<Order>[]; // Using Partial to support Account.tsx fallback logic
     transactions: Partial<Transaction>[];
     doctors: Doctor[];
@@ -18,10 +20,10 @@ interface StatementTabProps {
     services: Service[];
 }
 
-type StatementTarget = 'service' | 'expense' | 'doctor' | 'supplier' | 'expense_category';
-type TimeFilter = 'today' | 'week' | 'month' | '3months' | 'year' | 'all' | 'custom';
+type TimeFilter = 'today' | 'week' | 'month' | 'current_month' | 'prev_month' | 'prev_prev_month' | '3months' | 'year' | 'all' | 'custom';
 
 export default function StatementTab({
+    type: targetType,
     orders,
     transactions,
     doctors,
@@ -29,7 +31,6 @@ export default function StatementTab({
     designers,
     services
 }: StatementTabProps) {
-    const [targetType, setTargetType] = useState<StatementTarget>('service');
     const [selectedServiceId, setSelectedServiceId] = useState<string>('');
     const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
     const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('');
@@ -38,7 +39,7 @@ export default function StatementTab({
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
 
-    // Predefined Expense Categories
+    // Predefined Expense Categories - operational only (no supplier/designer payments)
     const expenseCategories = [
         'مرتبات وأجور',
         'دعايا وسوشيال ميديا',
@@ -46,54 +47,107 @@ export default function StatementTab({
         'اجتماعات ونثريات',
         'خامات ومستهلكات',
         'مصروفات أخرى',
-        'supplier_payment',
-        'designer_payment'
     ];
 
-    // Helper: Get Dates based on Filter
-    const getDateRange = () => {
-        if (timeFilter === 'custom') return customDateRange;
+    // Categories to exclude from operational expense analysis
+    const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
 
-        const end = new Date();
-        const start = new Date();
-
-        switch (timeFilter) {
-            case 'today':
-                start.setHours(0, 0, 0, 0);
-                break;
-            case 'week':
-                start.setDate(start.getDate() - 7);
-                break;
-            case 'month':
-                start.setMonth(start.getMonth() - 1);
-                break;
-            case '3months':
-                start.setMonth(start.getMonth() - 3);
-                break;
-            case 'year':
-                start.setFullYear(start.getFullYear() - 1);
-                break;
-            case 'all':
-                return { start: '', end: '' };
-        }
-
-        return {
-            start: start.toISOString().split('T')[0],
-            end: end.toISOString().split('T')[0]
-        };
+    // Map of all known alternative category names to canonical names
+    // This handles legacy data where categories were stored differently
+    const CATEGORY_ALIASES: Record<string, string> = {
+        'salaries': 'مرتبات وأجور',
+        'مرتبات واجور': 'مرتبات وأجور',
+        'shipping': 'شحن وتوصيل',
+        'meetings': 'اجتماعات ونثريات',
+        'material': 'خامات ومستهلكات',
+        'other': 'مصروفات أخرى',
+        'bonus': 'منحة/مكافأة',
+        'deduction': 'خصم/جزاء',
     };
 
-    // Calculate Data Data based on filters
+    // Normalize category name to its canonical form
+    const normalizeCategory = (cat: string | undefined): string => {
+        if (!cat) return 'أخرى';
+        return CATEGORY_ALIASES[cat] || cat;
+    };
+
+
+    // Calculate Data based on filters
     const statementData = useMemo(() => {
-        const { start, end } = getDateRange();
-        let items: any[] = [];
+        // Inline date range calculation to ensure reactivity with timeFilter state
+        let start = '';
+        let end = '';
+
+        if (timeFilter === 'custom') {
+            start = customDateRange.start;
+            end = customDateRange.end;
+        } else if (timeFilter !== 'all') {
+            const today = new Date();
+            const formatDate = (d: Date) => format(d, 'yyyy-MM-dd');
+
+            let startDateStr = '';
+            let endDateStr = formatDate(today);
+
+            switch (timeFilter) {
+                case 'today':
+                    startDateStr = formatDate(today);
+                    break;
+                case 'week': {
+                    const weekStart = new Date(today);
+                    weekStart.setDate(today.getDate() - 7);
+                    startDateStr = formatDate(weekStart);
+                    break;
+                }
+                case 'month': { // Last 30 days
+                    const monthAgo = new Date(today);
+                    monthAgo.setDate(today.getDate() - 30);
+                    startDateStr = formatDate(monthAgo);
+                    break;
+                }
+                case 'current_month':
+                    startDateStr = formatDate(startOfMonth(today));
+                    endDateStr = formatDate(endOfMonth(today));
+                    break;
+                case 'prev_month': {
+                    const prevDate = subMonths(today, 1);
+                    startDateStr = formatDate(startOfMonth(prevDate));
+                    endDateStr = formatDate(endOfMonth(prevDate));
+                    break;
+                }
+                case 'prev_prev_month': {
+                    const prevPrevDate = subMonths(today, 2);
+                    startDateStr = formatDate(startOfMonth(prevPrevDate));
+                    endDateStr = formatDate(endOfMonth(prevPrevDate));
+                    break;
+                }
+                case '3months': {
+                    const threeMonthsAgo = new Date(today);
+                    threeMonthsAgo.setMonth(today.getMonth() - 3);
+                    startDateStr = formatDate(threeMonthsAgo);
+                    break;
+                }
+                case 'year': {
+                    const yearStart = new Date(today.getFullYear(), 0, 1);
+                    const yearEnd = new Date(today.getFullYear(), 11, 31);
+                    startDateStr = formatDate(yearStart);
+                    endDateStr = formatDate(yearEnd);
+                    break;
+                }
+            }
+
+            start = startDateStr;
+            end = endDateStr;
+        }
+        // 'all' => start and end remain empty strings (no filter)
+
+        const items: any[] = [];
         let totalAmount = 0;
         let totalCount = 0;
 
         // --- SERVICES STATEMENT ---
         if (targetType === 'service') {
             const filteredOrders = orders.filter(o => {
-                // Must have items, must not be rejected, mostly delivered/completed
+                // Must have items, must not be rejected or cancelled
                 if (!o.items || (o.status as string) === 'Rejected' || (o.status as string) === 'Cancelled') return false;
 
                 // Date filter
@@ -138,7 +192,7 @@ export default function StatementTab({
                         serviceName: item.serviceType,
                         teeth: Array.isArray(item.teethNumbers) ? item.teethNumbers.join(',') : '',
                         count: count,
-                        unitPrice: price / count, // Approximate if bundled
+                        unitPrice: price / count,
                         totalPrice: price
                     });
 
@@ -149,16 +203,35 @@ export default function StatementTab({
 
             items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         }
-        // --- EXPENSES STATEMENT ---
+        // --- OPERATIONAL EXPENSES STATEMENT ---
+        // Match Analytics RPC: Includes general expenses AND staff/representative salaries/expenses.
+        // Excludes supplier/designer payments.
         else if (targetType === 'expense') {
             const filteredTx = transactions.filter(t => {
                 if (t.type !== 'expense') return false;
 
-                const txDate = (t.date || '').split('T')[0];
+                // Match Analytics RPC: Everything EXCEPT supplier, designer, and representative
+                if (t.entityType === 'supplier' || t.entityType === 'designer' || t.entityType === 'representative') return false;
+
+                // Exclude non-operational categories (supplier/designer payments stored as general)
+                if (NON_OPERATIONAL_CATEGORIES.includes(t.category || '')) return false;
+
+                // Exclude zero or negative amount transactions (invalid data)
+                if (!t.amount || t.amount <= 0) return false;
+
+                // Exclude rejected expenses (Analytics ignores rejected ones too in practice as they aren't real)
+                if (t.status === 'rejected') return false;
+
+                // Exclude transactions whose category looks like a caseId (starts with #)
+                // These are data integrity issues from other workflows
+                if ((t.category || '').startsWith('#')) return false;
+
+                // For Operational Expenses, we filter by the financial period (effectiveDate)
+                const txDate = (t.effectiveDate || t.date || '').split('T')[0];
                 if (start && txDate < start) return false;
                 if (end && txDate > end) return false;
 
-                if (selectedExpenseCategory && t.category !== selectedExpenseCategory) return false;
+                if (selectedExpenseCategory && normalizeCategory(t.category) !== selectedExpenseCategory) return false;
 
                 return true;
             });
@@ -167,18 +240,14 @@ export default function StatementTab({
                 const txDate = (t.date || '').split('T')[0];
                 let beneficiaryName = 'عام';
 
-                if (t.entityType === 'supplier') {
-                    beneficiaryName = suppliers.find(s => s.id === t.entityId)?.name || 'مورد غير معروف';
-                } else if (t.entityType === 'designer') {
-                    beneficiaryName = designers.find(d => d.id === t.entityId)?.name || 'مصمم غير معروف';
-                } else if (t.entityType === 'representative') {
-                    beneficiaryName = 'مندوب'; // Requires representative lookup if detailed
+                if (t.entityType === 'representative') {
+                    beneficiaryName = 'مندوب';
                 }
 
                 items.push({
                     id: t.id,
                     date: txDate,
-                    category: t.category || 'أخرى',
+                    category: normalizeCategory(t.category),
                     description: t.description || '',
                     beneficiary: beneficiaryName,
                     amount: t.amount || 0
@@ -251,28 +320,8 @@ export default function StatementTab({
                             كشوفات الحساب التحليلية
                         </h2>
                         <p className="text-sm text-gray-500 mt-1">
-                            تحليل مفصل للتشغيل (بالخدمات) أو المصروفات لفترة محددة
+                            {targetType === 'service' ? 'تحليل مفصل للتشغيل (بالخدمات) لفترة محددة' : 'تحليل مفصل للمصروفات التشغيلية لفترة محددة'}
                         </p>
-                    </div>
-
-                    {/* Primary Target Toggle */}
-                    <div className="flex p-1 bg-gray-100 rounded-xl h-12 w-full md:w-auto">
-                        <button
-                            onClick={() => setTargetType('service')}
-                            className={clsx(
-                                "flex-1 px-6 rounded-lg font-bold text-sm transition-all",
-                                targetType === 'service' ? "bg-white text-teal-700 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                            )}>
-                            كشف خدمات
-                        </button>
-                        <button
-                            onClick={() => setTargetType('expense')}
-                            className={clsx(
-                                "flex-1 px-6 rounded-lg font-bold text-sm transition-all",
-                                targetType === 'expense' ? "bg-white text-rose-700 shadow-sm" : "text-gray-600 hover:text-gray-900"
-                            )}>
-                            كشف مصروفات
-                        </button>
                     </div>
                 </div>
 
@@ -282,13 +331,17 @@ export default function StatementTab({
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">الفترة الزمنية</label>
                         <select
+                            aria-label="الفترة الزمنية"
                             value={timeFilter}
                             onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
                             className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5"
                         >
                             <option value="today">اليوم</option>
                             <option value="week">آخر 7 أيام</option>
-                            <option value="month">الشهر الحالي (آخر 30 يوم)</option>
+                            <option value="month">آخر 30 يوم</option>
+                            <option value="current_month">{format(new Date(), 'MMMM')} (الشهر الحالي)</option>
+                            <option value="prev_month">{format(subMonths(new Date(), 1), 'MMMM')} (الشهر السابق)</option>
+                            <option value="prev_prev_month">{format(subMonths(new Date(), 2), 'MMMM')}</option>
                             <option value="3months">آخر 3 شهور</option>
                             <option value="year">هذا العام</option>
                             <option value="custom">فترة مخصصة...</option>
@@ -303,6 +356,7 @@ export default function StatementTab({
                             <div className="flex gap-2">
                                 <input
                                     type="date"
+                                    aria-label="تاريخ البداية"
                                     value={customDateRange.start}
                                     onChange={e => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
                                     className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5"
@@ -310,6 +364,7 @@ export default function StatementTab({
                                 <span className="self-center text-gray-400">-</span>
                                 <input
                                     type="date"
+                                    aria-label="تاريخ النهاية"
                                     value={customDateRange.end}
                                     onChange={e => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
                                     className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5"
@@ -324,6 +379,7 @@ export default function StatementTab({
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">الخدمة</label>
                                 <select
+                                    aria-label="الخدمة"
                                     value={selectedServiceId}
                                     onChange={(e) => setSelectedServiceId(e.target.value)}
                                     className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5"
@@ -337,6 +393,7 @@ export default function StatementTab({
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">الطبيب</label>
                                 <select
+                                    aria-label="الطبيب"
                                     value={selectedDoctorId}
                                     onChange={(e) => setSelectedDoctorId(e.target.value)}
                                     className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5"
@@ -352,6 +409,7 @@ export default function StatementTab({
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">فئة المصروف</label>
                             <select
+                                aria-label="فئة المصروف"
                                 value={selectedExpenseCategory}
                                 onChange={(e) => setSelectedExpenseCategory(e.target.value)}
                                 className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-rose-500 focus:border-rose-500 block p-2.5"
@@ -412,7 +470,7 @@ export default function StatementTab({
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-right">
+                    <table key={`table-${targetType}`} className="w-full text-sm text-right">
                         <thead className="bg-gray-50/80 text-gray-500">
                             {targetType === 'service' ? (
                                 <tr>
@@ -434,7 +492,7 @@ export default function StatementTab({
                                 </tr>
                             )}
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody key={`tbody-${targetType}-${statementData.items.length}`} className="divide-y divide-gray-100">
                             {statementData.items.length === 0 ? (
                                 <tr>
                                     <td colSpan={10} className="p-8 text-center text-gray-400">

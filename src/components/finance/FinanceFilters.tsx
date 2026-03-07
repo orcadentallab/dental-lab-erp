@@ -53,22 +53,18 @@ export function filterEntries<T extends { date: string }>(entries: T[], filter: 
         const entryTime = entryDate.getTime();
 
         switch (filter) {
-            case 'day':
-                // Match today
+            case 'day': {
                 const entryStartOfDay = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate()).getTime();
                 return entryStartOfDay === startOfDay;
-            case 'week':
-                // Last 7 days? Or Current Week? 
-                // Let's do Current 'Week' relative to now? 
-                // Let's do "Last 7 Days" for simplicity and utility.
+            }
+            case 'week': {
                 const weekAgo = new Date(now);
                 weekAgo.setDate(now.getDate() - 7);
                 return entryTime >= weekAgo.getTime();
+            }
             case 'month':
-                // Current Month
                 return entryDate.getMonth() === now.getMonth() && entryDate.getFullYear() === now.getFullYear();
             case 'year':
-                // Current Year
                 return entryDate.getFullYear() === now.getFullYear();
             case 'all':
             default:

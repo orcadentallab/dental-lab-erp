@@ -33,7 +33,7 @@ function parseDate(value: unknown): string {
         }
 
         // Try dd/mm/yyyy format (common in Arabic Excel)
-        const ddmmyyyy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        const ddmmyyyy = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
         if (ddmmyyyy) {
             const day = ddmmyyyy[1].padStart(2, '0');
             const month = ddmmyyyy[2].padStart(2, '0');
@@ -42,7 +42,7 @@ function parseDate(value: unknown): string {
         }
 
         // Try mm/dd/yyyy format - if first number > 12, treat as dd/mm/yyyy
-        const mmddyyyy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        const mmddyyyy = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
         if (mmddyyyy && parseInt(mmddyyyy[1]) > 12) {
             const day = mmddyyyy[1].padStart(2, '0');
             const month = mmddyyyy[2].padStart(2, '0');
@@ -51,7 +51,7 @@ function parseDate(value: unknown): string {
         }
 
         // Try yyyy/mm/dd format
-        const yyyymmdd = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        const yyyymmdd = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
         if (yyyymmdd) {
             const year = yyyymmdd[1];
             const month = yyyymmdd[2].padStart(2, '0');
@@ -130,8 +130,8 @@ export function importDoctorsFromExcel(file: File): Promise<Doctor[]> {
                             representativeName: representativeName || 'غير محدد',
                             representativeId: (representativeId as string) || undefined
                         });
-                    } catch (err: any) {
-                        errors.push(`الصف ${index + 2}: ${err.message}`);
+                    } catch (err: unknown) {
+                        errors.push(`الصف ${index + 2}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 });
 
@@ -192,8 +192,8 @@ export function importServicesFromExcel(file: File): Promise<Service[]> {
                             costPrice: costPrice || 0,
                             millingPrice: millingPrice || 0
                         });
-                    } catch (err: any) {
-                        errors.push(`الصف ${index + 2}: ${err.message}`);
+                    } catch (err: unknown) {
+                        errors.push(`الصف ${index + 2}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 });
 
@@ -342,7 +342,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             const priceKeys = [`سعر ${i}`, `Price ${i}`, `Price${i}`, `Unit Price ${i}`];
                             if (i === 1) priceKeys.push('سعر للواحدة', 'سعر الوحدة', 'السعر', 'Unit Price', 'price');
 
-                            let rawPrice = getVal(priceKeys);
+                            const rawPrice = getVal(priceKeys);
                             let unitPrice = 0;
 
                             // Price Lookup
@@ -490,8 +490,8 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             },
                             createdAt: new Date().toISOString()
                         } as Order);
-                    } catch (err: any) {
-                        errors.push(`الصف ${index + 2}: ${err.message}`);
+                    } catch (err: unknown) {
+                        errors.push(`الصف ${index + 2}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 });
 
@@ -651,8 +651,8 @@ export function importTransactionsFromExcel(
                             isRegistered: false,
                             isApproved: true
                         } as Transaction);
-                    } catch (err: any) {
-                        errors.push(`الصف ${index + 2}: ${err.message}`);
+                    } catch (err: unknown) {
+                        errors.push(`الصف ${index + 2}: ${err instanceof Error ? err.message : String(err)}`);
                     }
                 });
 
@@ -722,8 +722,8 @@ export function parseLabAssignments(file: File, suppliers: Supplier[]): Promise<
                 });
 
                 resolve(assignments);
-            } catch (err: any) {
-                reject(new Error(`Error parsing file: ${err.message}`));
+            } catch (err: unknown) {
+                reject(new Error(`Error parsing file: ${err instanceof Error ? err.message : String(err)}`));
             }
         };
         reader.readAsArrayBuffer(file);

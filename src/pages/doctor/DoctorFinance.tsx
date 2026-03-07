@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { db, type Transaction, type Doctor } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';

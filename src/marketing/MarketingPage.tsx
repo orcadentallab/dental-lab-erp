@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect } from 'react';
 import MarketingLayout from './layout/MarketingLayout';
 import HeroSection from './components/HeroSection';

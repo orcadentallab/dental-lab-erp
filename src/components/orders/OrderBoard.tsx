@@ -1,7 +1,8 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import React, { useState, useEffect } from 'react';
 import type { Order } from '../../services/db';
 import { db } from '../../services/db';
-import { Clock, User, MessageCircle } from 'lucide-react';
+import { Clock, User, MessageCircle, Building2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
 
@@ -27,12 +28,20 @@ interface OrderBoardProps {
 
 export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }: OrderBoardProps) {
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
+    const [suppliersMap, setSuppliersMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
-        db.getDoctors().then(docs => {
-            const map: Record<string, string> = {};
-            docs.forEach(d => map[d.id] = d.name);
-            setDoctorsMap(map);
+        Promise.all([
+            db.getDoctors(),
+            db.getSuppliers()
+        ]).then(([docs, sups]) => {
+            const dMap: Record<string, string> = {};
+            docs.forEach(d => dMap[d.id] = d.name);
+            setDoctorsMap(dMap);
+
+            const sMap: Record<string, string> = {};
+            sups.forEach(s => sMap[s.id] = s.name);
+            setSuppliersMap(sMap);
         });
     }, []);
 
@@ -100,11 +109,19 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                                         )}
                                     </div>
                                     <h4 className="font-bold text-sm text-surface-900 dark:text-surface-100 truncate">{order.patientName}</h4>
-                                    <div className="flex items-center gap-1 mt-1 mb-2">
-                                        <User size={12} className="text-surface-400" />
-                                        <span className="text-xs text-surface-600 dark:text-surface-400 truncate">
-                                            {doctorsMap[order.doctorId] || 'غير معروف'}
-                                        </span>
+                                    <div className="flex items-center justify-between mt-1 mb-2 gap-2">
+                                        <div className="flex items-center gap-1 truncate min-w-0">
+                                            <User size={12} className="text-surface-400 shrink-0" />
+                                            <span className="text-xs text-surface-600 dark:text-surface-400 truncate">
+                                                {doctorsMap[order.doctorId] || 'غير معروف'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0 bg-surface-50 dark:bg-surface-800 text-surface-500 border border-surface-200 dark:border-surface-700 text-[9px] px-1.5 py-0.5 rounded-md" title="المعمل المنفذ">
+                                            <Building2 size={10} className="text-surface-400" />
+                                            <span className="truncate max-w-[70px]">
+                                                {order.supplierId ? (suppliersMap[order.supplierId] || 'خارجي') : 'داخلي'}
+                                            </span>
+                                        </div>
                                     </div>
                                     <div className="flex flex-wrap gap-1 mb-2">
                                         {(order.items || []).map((item, idx) => (

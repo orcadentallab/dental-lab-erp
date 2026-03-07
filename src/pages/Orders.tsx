@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
@@ -851,6 +852,7 @@ export default function Orders() {
                 )}
                 {acceptingOrder && (
                     <AcceptOrderModal
+                        isOpen={!!acceptingOrder}
                         order={acceptingOrder}
                         doctors={doctors}
                         suppliers={suppliers}

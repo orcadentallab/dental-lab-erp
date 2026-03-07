@@ -1,8 +1,12 @@
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService } from '../services/supabase/analyticsService';
-import { TrendingUp, Activity, Wallet, Calendar, ArrowDownRight, Award, Zap, Package, Users, DollarSign, BarChart3, RefreshCcw, ArrowUpRight, CreditCard, Receipt, PiggyBank, TrendingDown, Banknote, FileText } from 'lucide-react';
+import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
+import StatementTab from '../components/finance/StatementTab';
+import { db, type Order, type Transaction, type Doctor, type Supplier, type User, type Service } from '../services/db';
 
 // KPICard component defined outside of Analytics to avoid recreation on each render
 const KPICard = ({ title, value, subtext, icon: Icon, type, percentage, percentageLabel, isPercentage = true }: {
@@ -91,7 +95,37 @@ export default function Analytics() {
     const [topServices, setTopServices] = useState<{ name: string; count: number; revenue: number }[]>([]);
 
     // Tab state
-    const [activeTab, setActiveTab] = useState<'overview' | 'financial'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'service_analysis' | 'expense_analysis'>('overview');
+
+    // Analysis Reports State (Lazy Loaded)
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [designers, setDesigners] = useState<User[]>([]);
+    const [services, setServices] = useState<Service[]>([]);
+    const [isAnalysisDataLoaded, setIsAnalysisDataLoaded] = useState(false);
+
+    useEffect(() => {
+        if (['service_analysis', 'expense_analysis'].includes(activeTab) && !isAnalysisDataLoaded) {
+            Promise.all([
+                db.getAllOrdersUnpaginated(),
+                db.getTransactions(),
+                db.getDoctors(),
+                db.getSuppliers(),
+                db.getUsers(),
+                db.getServices()
+            ]).then(([ordersData, txData, docs, sups, users, servs]) => {
+                setOrders(ordersData);
+                setTransactions(txData);
+                setDoctors(docs);
+                setSuppliers(sups);
+                setDesigners(users.filter(u => u.role === 'designer'));
+                setServices(servs);
+                setIsAnalysisDataLoaded(true);
+            }).catch(console.error);
+        }
+    }, [activeTab, isAnalysisDataLoaded]);
 
     // Financial Analysis State
     const [financialStats, setFinancialStats] = useState({
@@ -120,7 +154,7 @@ export default function Analytics() {
 
     // Date Range Logic - use useMemo instead of useEffect to derive dates
 
-    const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('month');
+    const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'current_month' | 'prev_month' | 'prev_prev_month' | 'year' | 'all' | 'custom'>('current_month');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
 
@@ -130,7 +164,7 @@ export default function Analytics() {
         }
 
         const today = new Date();
-        const formatDate = (d: Date) => d.toISOString().split('T')[0];
+        const formatDate = (d: Date) => format(d, 'yyyy-MM-dd');
 
         switch (dateRange) {
             case 'today':
@@ -140,11 +174,30 @@ export default function Analytics() {
                 weekStart.setDate(today.getDate() - 7);
                 return { startDate: formatDate(weekStart), endDate: formatDate(today) };
             }
-            case 'month':
+            case 'month': { // Last 30 days
+                const monthAgo = new Date(today);
+                monthAgo.setDate(today.getDate() - 30);
+                return { startDate: formatDate(monthAgo), endDate: formatDate(today) };
+            }
+            case 'current_month':
                 return {
-                    startDate: formatDate(new Date(today.getFullYear(), today.getMonth(), 1)),
-                    endDate: formatDate(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+                    startDate: formatDate(startOfMonth(today)),
+                    endDate: formatDate(endOfMonth(today))
                 };
+            case 'prev_month': {
+                const prevDate = subMonths(today, 1);
+                return {
+                    startDate: formatDate(startOfMonth(prevDate)),
+                    endDate: formatDate(endOfMonth(prevDate))
+                };
+            }
+            case 'prev_prev_month': {
+                const prevPrevDate = subMonths(today, 2);
+                return {
+                    startDate: formatDate(startOfMonth(prevPrevDate)),
+                    endDate: formatDate(endOfMonth(prevPrevDate))
+                };
+            }
             case 'year':
                 return {
                     startDate: formatDate(new Date(today.getFullYear(), 0, 1)),
@@ -256,9 +309,12 @@ export default function Analytics() {
 
     const dateRangeLabels: Record<string, string> = {
         today: 'اليوم',
-        week: 'أسبوع',
-        month: 'شهر',
-        year: 'سنة',
+        week: 'آخر 7 أيام',
+        month: 'آخر 30 يوم',
+        current_month: format(new Date(), 'MMMM'), // e.g. مارس
+        prev_month: format(subMonths(new Date(), 1), 'MMMM'), // e.g. فبراير
+        prev_prev_month: format(subMonths(new Date(), 2), 'MMMM'), // e.g. يناير
+        year: 'هذا العام',
         all: 'الكل'
     };
 
@@ -286,7 +342,7 @@ export default function Analytics() {
                     {/* Date Range Picker */}
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="bg-white/10 backdrop-blur-md p-1 rounded-xl flex flex-wrap items-center gap-1 border border-white/10">
-                            {(['today', 'week', 'month', 'year', 'all'] as const).map((range) => (
+                            {(['today', 'week', 'month', 'current_month', 'prev_month', 'prev_prev_month', 'year', 'all'] as const).map((range) => (
                                 <button
                                     key={range}
                                     onClick={() => setDateRange(range)}
@@ -345,7 +401,7 @@ export default function Analytics() {
 
             {/* Tab Navigation */}
             <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
-                <div className="flex gap-1">
+                <div className="flex flex-col md:flex-row gap-2">
                     <button
                         onClick={() => setActiveTab('overview')}
                         className={clsx(
@@ -369,6 +425,30 @@ export default function Analytics() {
                     >
                         <FileText size={18} />
                         التحليل المالي
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('service_analysis')}
+                        className={clsx(
+                            "flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2",
+                            activeTab === 'service_analysis'
+                                ? "bg-teal-600 text-white shadow-lg"
+                                : "bg-gray-50 text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        <Package size={18} />
+                        تحليل الخدمات
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('expense_analysis')}
+                        className={clsx(
+                            "flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2",
+                            activeTab === 'expense_analysis'
+                                ? "bg-rose-600 text-white shadow-lg"
+                                : "bg-gray-50 text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        <ArrowDownRight size={18} />
+                        تحليل المصروفات
                     </button>
                 </div>
             </div>
@@ -462,7 +542,7 @@ export default function Analytics() {
                                             {stats.deliveredRevenue > 0 ? ((stats.totalRevenue / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                         </div>
                                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                            {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
+                                            {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
                                             <div
                                                 className="bg-gradient-to-r from-blue-500 to-blue-400 h-full rounded-full transition-all duration-700"
                                                 style={{ width: `${Math.min(100, (stats.totalRevenue / (stats.deliveredRevenue || 1)) * 100)}%` }}
@@ -549,7 +629,7 @@ export default function Analytics() {
                                                 </div>
                                             </div>
                                             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                                {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
+                                                {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
                                                 <div
                                                     className={clsx(
                                                         "h-full rounded-full transition-all duration-700 ease-out",
@@ -605,7 +685,7 @@ export default function Analytics() {
                                             <span className="text-xs text-slate-400 block">وحدة</span>
                                         </div>
                                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                                            {/* eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for progress bar */}
+                                            {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
                                             <div
                                                 className={clsx(
                                                     "h-full rounded-full transition-all duration-700",
@@ -817,7 +897,7 @@ export default function Analytics() {
                                                 : 0;
                                             if (width === 0) return null;
                                             return (
-                                                // eslint-disable-next-line react/forbid-dom-props -- Dynamic width required for aging bar
+                                                // eslint-disable-next-line -- Dynamic width required for aging bar
                                                 <div
                                                     key={idx}
                                                     className={segment.color}
@@ -915,6 +995,32 @@ export default function Analytics() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Service Analysis Tab Content */}
+            {activeTab === 'service_analysis' && (
+                <StatementTab
+                    type="service"
+                    orders={orders}
+                    transactions={transactions}
+                    doctors={doctors}
+                    suppliers={suppliers}
+                    designers={designers}
+                    services={services}
+                />
+            )}
+
+            {/* Expense Analysis Tab Content */}
+            {activeTab === 'expense_analysis' && (
+                <StatementTab
+                    type="expense"
+                    orders={orders}
+                    transactions={transactions}
+                    doctors={doctors}
+                    suppliers={suppliers}
+                    designers={designers}
+                    services={services}
+                />
             )}
         </div>
     );

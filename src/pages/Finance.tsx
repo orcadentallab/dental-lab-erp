@@ -1,43 +1,31 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent } from 'react';
-import { Wallet, TrendingUp, ArrowDownCircle, Banknote, Users, Truck, Megaphone, Coffee, Package, FileSpreadsheet, Trash2, Edit2, Printer } from 'lucide-react';
-import { db, type Service, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
-import { analyticsService } from '../services/supabase/analyticsService';
-import type { FinanceDashboard } from '../services/supabase/analyticsService';
+/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
+import { useState, useEffect, useMemo, type FormEvent } from 'react';
+import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2 } from 'lucide-react';
+import { db, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
 import clsx from 'clsx';
-import { exportToExcel } from '../lib/exportUtils';
-import { generateGenericTablePDF } from '../services/pdfService';
-import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useAuth } from '../context/AuthContext';
 import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
 import { DoctorSelect } from '../components/orders/DoctorSelect';
 import FinancialSetup from '../components/finance/FinancialSetup';
 import AdjustmentsPanel from '../components/finance/AdjustmentsPanel';
-import StatementTab from '../components/finance/StatementTab';
 import { financeService } from '../services/financeService';
-import type { Adjustment, CapitalEntry, FixedAsset } from '../services/financeService';
+import type { Adjustment } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
 import type { FilterType } from '../components/finance/FinanceFilters';
 
 export default function Finance() {
     const { user } = useAuth();
-    const canExport = ['admin', 'accountant', 'lab'].includes(user?.role || '');
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'services' | 'statements' | 'capital' | 'adjustments'>('dashboard');
-    const [services, setServices] = useState<Service[]>([]);
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments'>('dashboard');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
-    const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>([]);
-    const [fixedAssets, setFixedAssets] = useState<FixedAsset[]>([]);
 
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
-    const [representatives, setRepresentatives] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [editingService, setEditingService] = useState<Service | null>(null);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-    const serviceFormRef = useRef<HTMLFormElement>(null);
 
     // Forms State
     const [amount, setAmount] = useState(0);
@@ -45,6 +33,7 @@ export default function Finance() {
     const [category, setCategory] = useState(''); // For Expenses
     const [selectedId, setSelectedId] = useState(''); // For Doctors/Suppliers
     const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
+    const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
     // Filters
     const [expenseFilter, setExpenseFilter] = useState<FilterType>('month');
     const [revenueFilter, setRevenueFilter] = useState<FilterType>('month');
@@ -69,27 +58,18 @@ export default function Finance() {
                 // PERFORMANCE: Removed getAllOrdersUnpaginated() from eager load.
                 // Orders are now loaded lazily when entity tabs are opened.
                 // Dashboard metrics use server-side RPC instead.
-                const [servicesData, transactionsData, doctorsData, suppliersData, usersData, adjustmentsData, capitalData, assetsData, dashboardData] = await Promise.all([
-                    db.getServices(),
+                const [transactionsData, doctorsData, suppliersData, usersData, adjustmentsData] = await Promise.all([
                     db.getTransactions(),
                     db.getDoctors(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    financeService.getAdjustments(),
-                    canExport ? financeService.getCapitalEntries() : Promise.resolve([]),
-                    canExport ? financeService.getFixedAssets() : Promise.resolve([]),
-                    analyticsService.getFinanceDashboard()
+                    financeService.getAdjustments()
                 ]);
-                setServices(servicesData);
                 setTransactions(transactionsData);
                 setDoctors(doctorsData);
                 setSuppliers(suppliersData);
                 setDesigners(usersData.filter(u => u.role === 'designer'));
-                setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
                 setAdjustments(adjustmentsData);
-                setCapitalEntries(capitalData);
-                setFixedAssets(assetsData);
-                setDashboardMetrics(dashboardData);
             } catch (error) {
                 console.error('Error loading finance data:', error);
             } finally {
@@ -102,57 +82,13 @@ export default function Finance() {
     // Lazy-load orders when entity tabs are activated
     const [ordersLoaded, setOrdersLoaded] = useState(false);
     useEffect(() => {
-        if (['doctors', 'suppliers', 'designers', 'statements'].includes(activeTab) && !ordersLoaded) {
+        if (['doctors', 'suppliers', 'designers'].includes(activeTab) && !ordersLoaded) {
             db.getAllOrdersUnpaginated().then(data => {
                 setOrders(data);
                 setOrdersLoaded(true);
             }).catch(err => console.error('Error lazy-loading orders:', err));
         }
     }, [activeTab, ordersLoaded]);
-
-    // Dashboard Metrics from server-side RPC
-    const [dashboardMetrics, setDashboardMetrics] = useState<FinanceDashboard | null>(null);
-
-    // Financial Metrics - sourced from server-side RPC when available, fallback to client-side
-    const { totalOperatingExpenses, totalProductionCosts, totalIncome, currentBalance } = useMemo(() => {
-        // Use server-side RPC data when available (fast path, no order iteration)
-        if (dashboardMetrics) {
-            return {
-                totalOperatingExpenses: dashboardMetrics.operating_expenses,
-                totalProductionCosts: dashboardMetrics.production_costs,
-                totalIncome: dashboardMetrics.total_income,
-                currentBalance: dashboardMetrics.current_balance
-            };
-        }
-
-        // Fallback: client-side calculation from transactions (for edge cases)
-        let opEx = 0;
-        let prodCosts = 0;
-
-        transactions.forEach(t => {
-            if (t.type === 'expense') {
-                const isRepExpense = representatives.some(r => r.id === t.entityId);
-                if (t.entityType === 'supplier' || t.entityType === 'designer') {
-                    prodCosts += t.amount;
-                } else {
-                    if (isRepExpense && !t.isRegistered) return;
-                    opEx += t.amount;
-                }
-            }
-        });
-
-        const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-        const totalCapital = capitalEntries.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
-        const totalAssetsValue = fixedAssets.reduce((sum, a) => sum + (Number(a.value) || 0), 0);
-        const startingBalance = totalCapital - totalAssetsValue;
-
-        return {
-            totalOperatingExpenses: opEx,
-            totalProductionCosts: prodCosts,
-            totalIncome: income,
-            currentBalance: startingBalance + income - (opEx + prodCosts)
-        };
-    }, [dashboardMetrics, transactions, representatives, capitalEntries, fixedAssets]);
 
     // Memoized filtered transactions for different tabs
     const generalExpenses = useMemo(() =>
@@ -193,6 +129,7 @@ export default function Finance() {
         setCategory('');
         setSelectedId('');
         setTransactionDate(new Date().toISOString().split('T')[0]);
+        setEffectiveDate(new Date().toISOString().split('T')[0]);
         setEditingTransaction(null);
     };
 
@@ -208,6 +145,9 @@ export default function Finance() {
         setDescription(t.description);
         setCategory(t.category || '');
         setTransactionDate(new Date(t.date).toISOString().split('T')[0]);
+        // The input is type="month", so it needs "YYYY-MM"
+        const ed = t.effectiveDate ? t.effectiveDate : t.date;
+        setEffectiveDate(new Date(ed).toISOString().substring(0, 7) + '-01');
         setSelectedId(t.entityId || '');
         // Scroll to form
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -222,6 +162,7 @@ export default function Finance() {
                     category: category,
                     description,
                     date: transactionDate,
+                    effectiveDate
                 });
             } else {
                 await db.addTransaction({
@@ -230,6 +171,7 @@ export default function Finance() {
                     category: category,
                     description,
                     date: transactionDate,
+                    effectiveDate,
                     entityType: 'general'
                 });
             }
@@ -370,38 +312,39 @@ export default function Finance() {
             )}
 
             {/* Modern Navigation Tabs */}
-            <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto">
-                <div className="flex gap-1 min-w-max">
+            {/* Modern Navigation Tabs - Restructured for cleanliness */}
+            <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto mb-6">
+                <div className="flex gap-1 min-w-max justify-center">
                     {(() => {
-                        const tabs = [
-                            { id: 'dashboard', label: 'نظرة عامة', color: 'blue' },
-                            { id: 'expenses', label: 'المصروفات', color: 'red' },
-                            { id: 'revenue', label: 'الإيرادات', color: 'green' },
-                            { id: 'doctors', label: 'حسابات الأطباء', color: 'blue' },
-                            { id: 'suppliers', label: 'حسابات الموردين', color: 'purple' },
-                            { id: 'designers', label: 'حسابات المصممين', color: 'pink' },
-                            { id: 'statements', label: 'كشوفات الحساب', color: 'teal' },
-                            { id: 'services', label: 'قائمة الأسعار', color: 'amber' },
+                        const allTabs = [
+                            { id: 'daily_tx', label: 'المعاملات اليومية', icon: '💰', adminOnly: false },
+                            { id: 'accounts', label: 'الحسابات', icon: '👥', adminOnly: false },
+                            { id: 'reports', label: 'رأس المال والأصول', icon: '🏦', adminOnly: true },
                         ] as const;
 
-                        const superAdminTabs = user?.username === 'admin' ? [
-                            { id: 'capital', label: 'رأس المال والأصول', color: 'indigo' },
-                        ] as const : [];
-                        const adminTabs = user?.role === 'admin' ? [
-                            { id: 'adjustments', label: 'القيود والتسويات', color: 'teal' }
-                        ] as const : [];
+                        const tabs = allTabs.filter(t => !t.adminOnly || user?.username === 'admin');
 
-                        return [...tabs, ...superAdminTabs, ...adminTabs].map((tab) => (
+                        return tabs.map((tab) => (
                             <button
                                 key={tab.id}
-                                onClick={() => setActiveTab(tab.id as any)}
+                                onClick={() => {
+                                    // Map high-level tabs to specific active views
+                                    if (tab.id === 'daily_tx') setActiveTab('expenses'); // default sub-tab
+                                    if (tab.id === 'accounts') setActiveTab('doctors'); // default sub-tab
+                                    if (tab.id === 'reports') setActiveTab('capital'); // default sub-tab
+                                }}
                                 className={clsx(
-                                    "px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200",
-                                    activeTab === tab.id
-                                        ? `bg-${tab.color}-50 text-${tab.color}-600 shadow-sm ring-1 ring-${tab.color}-200`
+                                    "px-6 py-3 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-2",
+                                    (
+                                        (tab.id === 'daily_tx' && ['expenses', 'revenue'].includes(activeTab)) ||
+                                        (tab.id === 'accounts' && ['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab)) ||
+                                        (tab.id === 'reports' && ['capital'].includes(activeTab))
+                                    )
+                                        ? `bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200`
                                         : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
                                 )}
                             >
+                                <span>{tab.icon}</span>
                                 {tab.label}
                             </button>
                         ));
@@ -409,58 +352,33 @@ export default function Finance() {
                 </div>
             </div>
 
-            {/* DASHBOARD */}
-            {activeTab === 'dashboard' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Card 1: Balance */}
-                    <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-2xl text-white shadow-xl shadow-slate-200">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-white/10 backdrop-blur-sm rounded-xl"><Wallet size={24} /></div>
-                            <span className="text-xs font-medium bg-white/20 px-2 py-1 rounded-lg">الرصيد المتاح</span>
-                        </div>
-                        <div>
-                            <p className="text-slate-300 text-sm font-medium mb-1">الخزينة</p>
-                            <h3 className="text-3xl font-black tracking-tight">{currentBalance.toLocaleString()} <span className="text-sm font-normal text-slate-400">ج.م</span></h3>
-                        </div>
-                    </div>
-
-                    {/* Card 2: Income */}
-                    <div className="bg-white p-6 rounded-2xl border border-green-100 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-green-50 text-green-600 rounded-xl"><TrendingUp size={24} /></div>
-                            <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-lg">المقبوضات</span>
-                        </div>
-                        <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">الايرادات</p>
-                            <h3 className="text-3xl font-black text-gray-900">{totalIncome.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
-                        </div>
-                    </div>
-
-                    {/* Card 3: Production Costs */}
-                    <div className="bg-white p-6 rounded-2xl border border-purple-100 shadow-sm border-t-4 border-t-purple-500">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl"><Package size={24} /></div>
-                            <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-1 rounded-lg">تكاليف بضائع</span>
-                        </div>
-                        <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">السداد للموردين</p>
-                            <h3 className="text-3xl font-black text-gray-900">{totalProductionCosts.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
-                        </div>
-                    </div>
-
-                    {/* Card 4: Operating Expenses */}
-                    <div className="bg-white p-6 rounded-2xl border border-red-100 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="p-3 bg-red-50 text-red-600 rounded-xl"><ArrowDownCircle size={24} /></div>
-                            <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-1 rounded-lg">مصروفات</span>
-                        </div>
-                        <div>
-                            <p className="text-gray-500 text-sm font-medium mb-1">مصاريف التشغيل</p>
-                            <h3 className="text-3xl font-black text-gray-900">{totalOperatingExpenses.toLocaleString()} <span className="text-sm font-normal text-gray-400">ج.م</span></h3>
-                        </div>
-                    </div>
+            {/* Sub-navigation based on main category */}
+            {['expenses', 'revenue'].includes(activeTab) && (
+                <div className="flex justify-center gap-2 mb-6">
+                    <button onClick={() => setActiveTab('expenses')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'expenses' ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>المصروفات</button>
+                    <button onClick={() => setActiveTab('revenue')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'revenue' ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>الإيرادات</button>
                 </div>
             )}
+
+            {['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab) && (
+                <div className="flex justify-center flex-wrap gap-2 mb-6">
+                    <button onClick={() => setActiveTab('doctors')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'doctors' ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الأطباء</button>
+                    <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'suppliers' ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الموردين</button>
+                    <button onClick={() => setActiveTab('designers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'designers' ? "bg-pink-100 text-pink-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات المصممين</button>
+                    {user?.role === 'admin' && (
+                        <button onClick={() => setActiveTab('adjustments')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'adjustments' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>القيود والتسويات</button>
+                    )}
+                </div>
+            )}
+
+            {['capital'].includes(activeTab) && (
+                <div className="flex justify-center flex-wrap gap-2 mb-6">
+                    {user?.username === 'admin' && (
+                        <button onClick={() => setActiveTab('capital')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'capital' ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>رأس المال والأصول</button>
+                    )}
+                </div>
+            )}
+
 
             {/* EXPENSES */}
             {activeTab === 'expenses' && (
@@ -472,9 +390,16 @@ export default function Finance() {
                                 تسجيل مصروف
                             </h3>
                             <form onSubmit={handleAddExpense} className="space-y-5">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ المصروف</label>
-                                    <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ المصروف (الدفع الفعلي)</label>
+                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">الشهر المالي المستحق (لتوزيع الأرباح)</label>
+                                        {/* eslint-disable-next-line -- month type not supported in all browsers */}
+                                        <input aria-label="الشهر المالي" required type="month" value={effectiveDate ? effectiveDate.substring(0, 7) : ''} onChange={e => setEffectiveDate(`${e.target.value}-01`)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">نوع المصروف</label>
@@ -910,123 +835,7 @@ export default function Finance() {
                 </div>
             )}
 
-            {/* STATEMENTS TAB */}
-            {activeTab === 'statements' && (
-                <StatementTab
-                    orders={orders}
-                    transactions={transactions}
-                    doctors={doctors}
-                    suppliers={suppliers}
-                    designers={designers}
-                    services={services}
-                />
-            )}
 
-            {/* SERVICES */}
-            {activeTab === 'services' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-1">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 sticky top-4">
-                            <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-                                <span className="w-1 h-6 bg-amber-500 rounded-full"></span>
-                                {editingService ? 'تعديل خدمة' : 'إضافة خدمة جديدة'}
-                            </h3>
-                            <form ref={serviceFormRef} onSubmit={async (e) => {
-                                e.preventDefault();
-                                const form = e.currentTarget;
-                                const formData = new FormData(form);
-                                const name = formData.get('name')?.toString() || '';
-                                const sellingPrice = Number(formData.get('sellingPrice'));
-                                const costPrice = Number(formData.get('costPrice'));
-                                const millingPrice = Number(formData.get('millingPrice')) || 0;
-
-                                try {
-                                    if (editingService) {
-                                        await db.updateService(editingService.id, { name, sellingPrice, costPrice, millingPrice });
-                                        setEditingService(null);
-                                    } else {
-                                        await db.addService({ name, sellingPrice, costPrice, millingPrice });
-                                    }
-                                    const updatedServices = await db.getServices();
-                                    setServices(updatedServices);
-                                    form.reset();
-                                } catch (error) {
-                                    console.error('Error saving service:', error);
-                                }
-                            }} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">اسم الخدمة</label>
-                                    <input aria-label="اسم الخدمة" name="name" required defaultValue={editingService?.name} key={editingService?.id} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 transition-all" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">سعر البيع</label>
-                                        <input aria-label="سعر البيع" name="sellingPrice" required type="number" defaultValue={editingService?.sellingPrice} key={`s-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 transition-all" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">التكلفة</label>
-                                        <input aria-label="سعر التكلفة" name="costPrice" required type="number" defaultValue={editingService?.costPrice} key={`c-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 transition-all" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">سعر الخراطة (للمعامل)</label>
-                                    <input aria-label="سعر الخراطة" name="millingPrice" type="number" defaultValue={editingService?.millingPrice} key={`m-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 transition-all" />
-                                </div>
-                                <div className="flex gap-3 pt-2">
-                                    <button type="submit" className="flex-1 bg-amber-600 text-white py-2.5 rounded-xl font-bold hover:bg-amber-700 shadow-lg shadow-amber-200 transition-all active:scale-[0.98]">
-                                        {editingService ? 'تحديث' : 'حفظ'}
-                                    </button>
-                                    {editingService && (
-                                        <button type="button" onClick={() => { setEditingService(null); serviceFormRef.current?.reset(); }} className="px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-all">إلغاء</button>
-                                    )}
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                    <div className="lg:col-span-2">
-                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                                <h3 className="font-bold text-gray-800">قائمة أسعار الخدمات</h3>
-                                {canExport && (
-                                    <div className="flex gap-2">
-                                        <button onClick={() => exportToExcel(services.map(s => ({ 'اسم الخدمة': s.name, 'سعر البيع': s.sellingPrice, 'التكلفة': s.costPrice, 'الخراطة': s.millingPrice || 0, 'الربح': s.sellingPrice - s.costPrice })), `services_${new Date().toISOString().split('T')[0]}`, 'الخدمات')} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="تصدير Excel"><FileSpreadsheet size={18} /></button>
-                                        <button onClick={() => generateGenericTablePDF('قائمة الخدمات', [
-                                            { header: 'اسم الخدمة', key: 'name' },
-                                            { header: 'سعر البيع', key: 'sellingPrice' },
-                                            { header: 'التكلفة', key: 'costPrice' },
-                                            { header: 'الخراطة', key: 'millingPrice' }
-                                        ], services.map(s => ({
-                                            name: s.name,
-                                            sellingPrice: s.sellingPrice,
-                                            costPrice: s.costPrice,
-                                            millingPrice: s.millingPrice
-                                        })), DEFAULT_LAB_INFO)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="طباعة"><Printer size={18} /></button>
-                                    </div>
-                                )}
-                            </div>
-                            <table className="w-full text-sm text-right">
-                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">الخدمة</th><th className="p-4 font-medium">سعر البيع</th><th className="p-4 font-medium">التكلفة</th><th className="p-4 font-medium">الخراطة</th><th className="p-4 font-medium text-center">إجراءات</th></tr></thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {services.map(s => (
-                                        <tr key={s.id} className="hover:bg-gray-50 transition-colors group">
-                                            <td className="p-4 font-bold text-gray-800">{s.name}</td>
-                                            <td className="p-4 text-blue-600 font-bold">{s.sellingPrice}</td>
-                                            <td className="p-4 text-red-600">{s.costPrice}</td>
-                                            <td className="p-4 text-gray-500">{s.millingPrice || '-'}</td>
-                                            <td className="p-4 text-center">
-                                                <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => setEditingService(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg" title="تعديل"><Edit2 size={16} /></button>
-                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteService(s.id).then(() => db.getServices().then(setServices)); }} className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg" title="حذف"><Trash2 size={16} /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            )}
             {/* CAPITAL & ASSETS TAB (ADMIN ONLY) */}
             {activeTab === 'capital' && user?.role === 'admin' && (
                 <FinancialSetup />

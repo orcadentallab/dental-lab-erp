@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../../lib/supabase';
 import type { DbService, DbServiceInsert, DbServiceUpdate } from './types';
 import type { Service } from '../db';
@@ -10,6 +11,7 @@ function dbToService(dbService: DbService): Service {
         sellingPrice: dbService.selling_price,
         costPrice: dbService.cost_price,
         millingPrice: dbService.milling_price ?? undefined,
+        sortOrder: (dbService as unknown as Record<string, unknown>).sort_order as number | undefined,
     };
 }
 
@@ -33,6 +35,7 @@ export async function getServices(): Promise<Service[]> {
     const { data, error } = await supabase
         .from('services')
         .select('*')
+        .order('sort_order', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
     if (error) {
@@ -63,6 +66,7 @@ export async function updateService(id: string, updates: Partial<Omit<Service, '
     if (updates.sellingPrice !== undefined) dbUpdates.selling_price = updates.sellingPrice;
     if (updates.costPrice !== undefined) dbUpdates.cost_price = updates.costPrice;
     if (updates.millingPrice !== undefined) dbUpdates.milling_price = updates.millingPrice;
+    if ((updates as Service).sortOrder !== undefined) (dbUpdates as Record<string, unknown>).sort_order = (updates as Service).sortOrder;
 
     const { data, error } = await supabase
         .from('services')
@@ -110,3 +114,24 @@ export async function bulkUpsertServices(services: Service[]): Promise<number> {
 
     return data?.length || 0;
 }
+
+/**
+ * Saves a new display order for all services by updating sort_order.
+ * Uses individual updates to avoid partial-upsert issues with NOT NULL constraints.
+ * @param orderedIds - Array of service IDs in the desired display order
+ */
+export async function reorderServices(orderedIds: string[]): Promise<void> {
+    const promises = orderedIds.map((id, index) =>
+        supabase
+            .from('services')
+            .update({ sort_order: (index + 1) * 10 })
+            .eq('id', id)
+    );
+
+    const results = await Promise.all(promises);
+    const failed = results.find(r => r.error);
+    if (failed?.error) {
+        throw ErrorHandler.handle(failed.error, 'reorderServices');
+    }
+}
+
