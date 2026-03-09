@@ -117,11 +117,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
 
                 ]);
                 setDoctors(doctorsData);
-                const sortedServices = servicesData.sort((a, b) => b.name.localeCompare(a.name));
-                setServices(sortedServices);
+                setServices(servicesData);
 
                 if (!initialData && servicesData.length > 0) {
-                    setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: sortedServices[0].name } : i));
+                    setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: servicesData[0].name } : i));
                 }
 
                 if (initialData && initialData.doctorId) {
