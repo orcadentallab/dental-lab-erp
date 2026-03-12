@@ -79,6 +79,7 @@ export interface DbOrder {
     created_at: string;
     updated_at: string;
     is_archived?: boolean;
+    rejected_lab_cost?: number | null;
 }
 
 export interface DbTransaction {

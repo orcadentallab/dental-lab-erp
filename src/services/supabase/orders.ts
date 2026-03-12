@@ -77,6 +77,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         originalOrderId: dbOrder.original_order_id || undefined,
         statusHistory: dbOrder.status_history || undefined,
         isArchived: dbOrder.is_archived || false,
+        rejectedLabCost: dbOrder.rejected_lab_cost || undefined,
     };
 }
 
@@ -117,6 +118,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         original_order_id: order.originalOrderId || null,
         status_history: order.statusHistory || [],
         is_archived: order.isArchived || false,
+        rejected_lab_cost: order.rejectedLabCost || null,
     };
 }
 
@@ -183,7 +185,11 @@ export async function getOrders(
     }
 
     if (filters.supplierId) {
-        query = query.eq('supplier_id', filters.supplierId);
+        if (filters.supplierId === 'internal') {
+            query = query.is('supplier_id', null);
+        } else {
+            query = query.eq('supplier_id', filters.supplierId);
+        }
     }
 
     if (filters.designerId) {
@@ -323,7 +329,7 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
-        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, workflow_type, created_at, delivery_date, is_archived')
+        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, workflow_type, created_at, delivery_date, is_archived, rejected_lab_cost')
         .order('created_at', { ascending: false })
         .range(0, 9999);
 
@@ -342,7 +348,8 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         workflowType: d.workflow_type || undefined,
         createdAt: d.created_at,
         deliveryDate: d.delivery_date,
-        isArchived: d.is_archived || undefined
+        isArchived: d.is_archived || undefined,
+        rejectedLabCost: d.rejected_lab_cost || undefined
     }));
 }
 
@@ -542,6 +549,17 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
 
     if (updates.originalOrderId !== undefined) dbUpdates.original_order_id = updates.originalOrderId;
     if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
+    if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost || null;
+
+    // --- SENSITIVE CHANGE DETECTION ---
+    // If a sensitive financial or identity field changes, we reset registration status
+    // so the accountant can review and re-register if necessary.
+    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost'];
+    const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
+
+    if (hasSensitiveUpdate && updates.isRegistered === undefined) {
+        dbUpdates.is_registered = false;
+    }
 
     // --- TIME TRACKING LOGIC ---
     if (updates.status !== undefined) {
@@ -683,6 +701,7 @@ export interface StatusUpdateContext {
     comment?: string;        // Optional comment to add
     userId?: string;         // User making the change
     userName?: string;       // User name for comment attribution
+    rejectedLabCost?: number; // Cost to lab when rejected
 }
 
 /**
@@ -755,6 +774,10 @@ export async function updateOrderStatus(
             createdAt: new Date().toISOString()
         };
         updates.comments = [...(currentOrder.comments || []), newComment];
+    }
+
+    if (context.rejectedLabCost !== undefined) {
+        updates.rejectedLabCost = context.rejectedLabCost;
     }
 
     // Use existing updateOrder for the actual update (handles history tracking)

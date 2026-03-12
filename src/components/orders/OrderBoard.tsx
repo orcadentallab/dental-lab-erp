@@ -7,7 +7,7 @@ import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
 
 const statuses = [
-    { id: 'New Case', label: 'حالة جديدة (New)', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+    { id: 'New Case', label: 'حالة جديدة (New)', color: 'bg-teal-100 text-teal-700 border-teal-200' },
     { id: 'Under Design', label: 'تصميم (Design)', color: 'bg-blue-100 text-blue-700 border-blue-200' },
     { id: 'Waiting Dr Approval', label: 'انتظار الموافقة (Approval)', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
     { id: 'Under Production', label: 'جاري التصنيع (Production)', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
@@ -20,7 +20,7 @@ const statuses = [
 
 interface OrderBoardProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same') => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => void;
     userRole?: string;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;

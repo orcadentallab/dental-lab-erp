@@ -242,26 +242,29 @@ export default function Accounts() {
                     if (o.createdAt && o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
                 }
             } else if (activeTab === 'suppliers' && o.supplierId) {
-                const isRelevant = o.status !== 'Rejected' &&
-                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled');
+                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+                const isRelevant = (o.status !== 'Rejected' || hasRejectionCost) &&
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled' || hasRejectionCost);
 
                 if (isRelevant) {
                     const stats = getStats(o.supplierId);
                     stats.count++;
                     let cost = (o.status === 'Cancelled' ? 0 : (o.cost || 0));
-                    if (o.workflowType === 'split' && o.designPrice && o.status !== 'Cancelled') cost -= o.designPrice;
+                    if (hasRejectionCost) cost = o.rejectedLabCost!;
+                    if (o.workflowType === 'split' && o.designPrice && o.status !== 'Cancelled' && !hasRejectionCost) cost -= o.designPrice;
                     stats.totalCredit += cost;
                     stats.totalSales += cost;
                 }
             } else if (activeTab === 'designers' && o.designerId) {
+                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const isRelevant = o.workflowType === 'split' &&
-                    o.status !== 'Rejected' &&
-                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled');
+                    (o.status !== 'Rejected' || hasRejectionCost) &&
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled' || hasRejectionCost);
 
                 if (isRelevant) {
                     const stats = getStats(o.designerId);
                     stats.count++;
-                    const price = (o.status === 'Cancelled' ? 0 : (o.designPrice || 0));
+                    const price = hasRejectionCost ? o.rejectedLabCost! : (o.status === 'Cancelled' ? 0 : (o.designPrice || 0));
                     stats.totalCredit += price;
                     stats.totalSales += price;
                 }
@@ -555,11 +558,15 @@ export default function Accounts() {
         } else if (activeTab === 'suppliers') {
             const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = supOrders.map(o => {
+                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 let cost = o.cost || 0;
-                if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
+                if (o.workflowType === 'split' && o.designPrice && !hasRejectionCost) cost -= o.designPrice;
 
-                // If Rejected or Cancelled, set cost to 0
-                if (o.status === 'Rejected' || o.status === 'Cancelled') cost = 0;
+                // If Rejected or Cancelled, set cost to 0 (unless it has a rejection cost)
+                if (o.status === 'Cancelled') cost = 0;
+                else if (o.status === 'Rejected') {
+                    cost = hasRejectionCost ? o.rejectedLabCost! : 0;
+                }
 
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
@@ -592,15 +599,23 @@ export default function Accounts() {
         } else if (activeTab === 'designers') {
             const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = desOrders.map(o => {
+                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
+                
+                let price = o.designPrice || 0;
+                if (o.status === 'Cancelled') price = 0;
+                else if (o.status === 'Rejected') {
+                    price = hasRejectionCost ? o.rejectedLabCost! : 0;
+                }
+
                 return {
                     id: o.id || '',
                     date: o.deliveryDate || (o.createdAt ? o.createdAt.split('T')[0] : ''),
                     description: `تصميم #${o.caseId} - ${o.patientName}`,
                     type: 'credit' as const,
-                    amount: (o.status === 'Rejected' || o.status === 'Cancelled') ? 0 : (o.designPrice || 0),
+                    amount: price,
                     status: o.status,
                     services,
                     count
@@ -836,7 +851,7 @@ export default function Accounts() {
                                 <UserIcon className="text-blue-600" size={20} />
                             </div>
                             <div>
-                                <h1 className="text-lg font-bold text-gray-800">العملاء</h1>
+                                <h2 className="text-lg font-bold text-gray-800">العملاء</h2>
                                 <p className="text-sm text-gray-500">البحث عن عميل لعرض كشف حسابه</p>
                             </div>
                         </div>

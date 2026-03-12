@@ -363,7 +363,7 @@ export default function Finance() {
             {['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab) && (
                 <div className="flex justify-center flex-wrap gap-2 mb-6">
                     <button onClick={() => setActiveTab('doctors')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'doctors' ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الأطباء</button>
-                    <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'suppliers' ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الموردين</button>
+                    <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'suppliers' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الموردين</button>
                     <button onClick={() => setActiveTab('designers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'designers' ? "bg-pink-100 text-pink-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات المصممين</button>
                     {user?.role === 'admin' && (
                         <button onClick={() => setActiveTab('adjustments')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'adjustments' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>القيود والتسويات</button>
@@ -663,32 +663,32 @@ export default function Finance() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                             <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-                                <span className="w-1 h-6 bg-purple-500 rounded-full"></span>
+                                <span className="w-1 h-6 bg-teal-500 rounded-full"></span>
                                 تسجيل سداد لمورد
                             </h3>
                             <form onSubmit={handleAddSupplierPayment} className="space-y-5">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="col-span-2">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المورد</label>
-                                        <select aria-label="اختر من القائمة" required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 transition-all">
+                                        <select aria-label="اختر من القائمة" required value={selectedId} onChange={e => setSelectedId(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 transition-all">
                                             <option value="">-- اختر المورد --</option>
                                             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" />
+                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>
-                                        <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 font-bold" />
+                                        <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 font-bold" />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
-                                    <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="مثال: فاتورة رقم..." />
+                                    <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="مثال: فاتورة رقم..." />
                                 </div>
-                                <button type="submit" className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 shadow-lg shadow-purple-200 transition-all active:scale-[0.98]">
+                                <button type="submit" className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all active:scale-[0.98]">
                                     {editingTransaction ? 'تحديث السداد' : 'تسجيل السداد'}
                                 </button>
                             </form>
@@ -717,7 +717,7 @@ export default function Finance() {
                                 {filteredSupplierPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
-                                        <td className="p-4 font-bold text-purple-700">{suppliers.find(s => s.id === t.entityId)?.name || 'غير معروف'}</td>
+                                        <td className="p-4 font-bold text-teal-700">{suppliers.find(s => s.id === t.entityId)?.name || 'غير معروف'}</td>
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
                                         <td className="p-4 text-center">

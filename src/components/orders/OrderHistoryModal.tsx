@@ -49,7 +49,7 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading 
                                 <div key={item.id} className="relative flex gap-4 pr-10">
                                     {/* Timeline Dot */}
                                     <div className={`absolute right-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm z-10 ${item.action_type === 'CREATE' ? 'bg-green-100 text-green-600' :
-                                        item.action_type === 'STATUS_CHANGE' ? 'bg-purple-100 text-purple-600' :
+                                        item.action_type === 'STATUS_CHANGE' ? 'bg-teal-100 text-teal-600' :
                                             item.action_type === 'UPDATE' ? 'bg-blue-100 text-blue-600' :
                                                 'bg-gray-100 text-gray-600'
                                         }`}>

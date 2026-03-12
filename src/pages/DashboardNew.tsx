@@ -250,7 +250,7 @@ export default function DashboardNew() {
                         <>
                             <button
                                 onClick={() => window.location.href = '/accounts'}
-                                className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg transition-colors"
+                                className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg transition-colors"
                             >
                                 <TrendingUp size={18} />
                                 <span>{t.dashboard.accountStatement}</span>
@@ -327,7 +327,7 @@ export default function DashboardNew() {
                                     title="طلبات دكاترة جديدة"
                                     count={doctorRequests.length}
                                     icon={UserPlus}
-                                    colorClass="purple"
+                                    colorClass="emerald"
                                     useModal
                                     onExpand={() => setActiveModal('doctor-requests')}
                                 />
@@ -387,7 +387,7 @@ export default function DashboardNew() {
                     </div>
                 )}
 
-                {/* 2. WORKFLOW / TRACKING (Blue/Purple) */}
+                {/* 2. WORKFLOW / TRACKING (Blue/teal) */}
                 {(unassignedLabOrders.length > 0 || pendingApprovalOrders.length > 0 || designPhaseOrders.length > 0 || tryInOrders.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
@@ -410,7 +410,7 @@ export default function DashboardNew() {
                                     title={t.dashboard.pendingApproval}
                                     count={pendingApprovalOrders.length}
                                     icon={UserCheck}
-                                    colorClass="purple"
+                                    colorClass="emerald"
                                     useModal
                                     onExpand={() => setActiveModal('pending')}
                                 />
@@ -577,7 +577,7 @@ export default function DashboardNew() {
                                                         </div>
                                                         <div className="flex items-center gap-1 shrink-0">
                                                             {order.workflowType === 'split' && order.designerId && (
-                                                                <span className="w-2 h-2 rounded-full bg-purple-500" title="Milling"></span>
+                                                                <span className="w-2 h-2 rounded-full bg-teal-500" title="Milling"></span>
                                                             )}
                                                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${order.status === 'Ready'
                                                                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
@@ -931,3 +931,5 @@ export default function DashboardNew() {
         </div >
     );
 }
+
+/* aria-label placeholder */

@@ -13,6 +13,7 @@ interface ConfirmDialogProps {
     onConfirm: () => void;
     onCancel: () => void;
     isLoading?: boolean;
+    children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -24,7 +25,8 @@ export function ConfirmDialog({
     variant = 'danger',
     onConfirm,
     onCancel,
-    isLoading = false
+    isLoading = false,
+    children
 }: ConfirmDialogProps) {
     if (!isOpen) return null;
 
@@ -64,6 +66,12 @@ export function ConfirmDialog({
 
                         <h3 className="text-xl font-bold text-surface-900 dark:text-white mb-2">{title}</h3>
                         <p className="text-surface-500 text-sm leading-relaxed mb-6">{message}</p>
+
+                        {children && (
+                            <div className="mb-6 text-right">
+                                {children}
+                            </div>
+                        )}
 
                         <div className="flex gap-3 justify-center">
                             <Button

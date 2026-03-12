@@ -48,6 +48,7 @@ export default function Sidebar() {
             items: [
                 { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer', 'representative'] },
                 { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
+                { name: t.nav.caseRegistration, href: '/case-registration', icon: FileText, roles: ['admin', 'accountant'] },
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
                 { name: 'تحليلات التسويق', href: '/marketing-analytics', icon: Megaphone, roles: ['admin'] },
@@ -307,3 +308,5 @@ export default function Sidebar() {
         </>
     );
 }
+
+/* aria-label placeholder */

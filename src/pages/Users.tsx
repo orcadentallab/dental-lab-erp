@@ -229,7 +229,7 @@ export default function Users() {
             admin: 'bg-red-100 text-red-700',
             lab: 'bg-blue-100 text-blue-700',
             representative: 'bg-green-100 text-green-700',
-            accountant: 'bg-purple-100 text-purple-700',
+            accountant: 'bg-teal-100 text-teal-700',
             designer: 'bg-amber-100 text-amber-700',
             doctor: 'bg-cyan-100 text-cyan-700'
         };
@@ -307,7 +307,7 @@ export default function Users() {
                                 <td className="p-4 flex gap-2">
                                     {user.username !== 'admin' && isSuperAdmin && (
                                         <>
-                                            <button onClick={() => handleOpenPermissionsModal(user)} className="text-purple-600 hover:bg-purple-50 p-2 rounded-lg" title="الصلاحيات"><Settings size={18} /></button>
+                                            <button onClick={() => handleOpenPermissionsModal(user)} className="text-teal-600 hover:bg-teal-50 p-2 rounded-lg" title="الصلاحيات"><Settings size={18} /></button>
                                             <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg" title="تعديل"><Edit2 size={18} /></button>
                                             <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg" title="حذف"><Trash2 size={18} /></button>
                                         </>
@@ -473,10 +473,10 @@ export default function Users() {
             {showPermissionsModal && permissionsUser && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-purple-50">
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-teal-50">
                             <div>
                                 <h3 className="text-lg font-bold text-gray-800">صلاحيات مخصصة</h3>
-                                <p className="text-sm text-purple-600">{permissionsUser.name}</p>
+                                <p className="text-sm text-teal-600">{permissionsUser.name}</p>
                             </div>
                             <button onClick={() => setShowPermissionsModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
                         </div>
@@ -504,7 +504,7 @@ export default function Users() {
                                             <div>
                                                 <span className="font-medium text-gray-800">{perm.label}</span>
                                                 {isCustomized && (
-                                                    <span className="text-xs text-purple-500 mr-2">(مخصص)</span>
+                                                    <span className="text-xs text-teal-500 mr-2">(مخصص)</span>
                                                 )}
                                                 {!isCustomized && roleDefault && (
                                                     <span className="text-xs text-gray-400 mr-2">(افتراضي)</span>
@@ -532,7 +532,7 @@ export default function Users() {
                             <button
                                 type="button"
                                 onClick={handleSavePermissions}
-                                className="flex-1 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700"
+                                className="flex-1 py-2 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700"
                             >
                                 حفظ الصلاحيات
                             </button>

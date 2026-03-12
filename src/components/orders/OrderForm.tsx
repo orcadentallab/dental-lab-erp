@@ -502,25 +502,25 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     </Card>
 
                     {/* Workflow */}
-                    <Card className="p-4 bg-purple-50/20 border-purple-100">
+                    <Card className="p-4 bg-teal-50/20 border-teal-100">
                         <h3 className="font-bold text-surface-700 text-xs mb-3 flex items-center gap-2">
-                            <Settings size={14} className="text-purple-600" /> تنفيذ العمل
+                            <Settings size={14} className="text-teal-600" /> تنفيذ العمل
                         </h3>
-                        <div className="flex bg-white rounded-lg border border-purple-200 p-0.5 mb-3">
-                            <button type="button" onClick={() => setWorkflowType('full')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'full' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Full Lab</button>
-                            <button type="button" onClick={() => setWorkflowType('split')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'split' ? 'bg-purple-100 text-purple-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Split</button>
+                        <div className="flex bg-white rounded-lg border border-teal-200 p-0.5 mb-3">
+                            <button type="button" onClick={() => setWorkflowType('full')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'full' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Full Lab</button>
+                            <button type="button" onClick={() => setWorkflowType('split')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'split' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Split</button>
                         </div>
 
                         {workflowType === 'split' ? (
                             <div className="space-y-2 animate-in slide-in-from-top-2 fade-in">
-                                <select title="Designer" aria-label="Select Designer" className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none" value={designerId} onChange={e => setDesignerId(e.target.value)}>
+                                <select title="Designer" aria-label="Select Designer" className="w-full p-2 bg-white border border-teal-100 rounded-lg text-xs outline-none" value={designerId} onChange={e => setDesignerId(e.target.value)}>
                                     <option value="">اختر المصمم...</option>
                                     {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </select>
                                 <select
                                     title="Supplier (Split)"
                                     aria-label="Select Supplier for Split Workflow"
-                                    className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none"
+                                    className="w-full p-2 bg-white border border-teal-100 rounded-lg text-xs outline-none"
                                     value={selectedSupplier}
                                     onChange={e => setSelectedSupplier(e.target.value)}
                                 >
@@ -532,7 +532,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                             <select
                                 title="Supplier (Full)"
                                 aria-label="Select Supplier for Full Lab Workflow"
-                                className="w-full p-2 bg-white border border-purple-100 rounded-lg text-xs outline-none"
+                                className="w-full p-2 bg-white border border-teal-100 rounded-lg text-xs outline-none"
                                 value={selectedSupplier}
                                 onChange={e => setSelectedSupplier(e.target.value)}
                             >

@@ -155,3 +155,5 @@ export default function PricingSection() {
         </section>
     );
 }
+
+/* aria-label placeholder */

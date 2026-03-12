@@ -149,6 +149,7 @@ export interface Order {
         exitedAt?: string; // ISO timestamp
         durationMinutes?: number;
     }[];
+    rejectedLabCost?: number;
 }
 
 export interface OrderHistoryEntry {
@@ -301,7 +302,7 @@ class MockDB {
     async updateOrderStatus(
         orderId: string,
         newStatus: Order['status'],
-        context?: { designUrl?: string; comment?: string; userId?: string; userName?: string }
+        context?: { designUrl?: string; comment?: string; userId?: string; userName?: string; rejectedLabCost?: number }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);

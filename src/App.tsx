@@ -13,6 +13,7 @@ import Settings from './pages/Settings';
 import ServicesPage from './pages/Services';
 import QualityDashboard from './pages/Quality';
 import AIAnalytics from './pages/AIAnalytics';
+import CaseRegistration from './pages/CaseRegistration';
 import Staff from './pages/Staff';
 import NewOrderRequest from './pages/doctor/NewOrderRequest';
 import DoctorOrders from './pages/doctor/DoctorOrders';
@@ -84,6 +85,7 @@ function App() {
                     <Route element={<DashboardLayout />}>
                       <Route path="/finance" element={<Finance />} />
                       <Route path="/suppliers" element={<Suppliers />} />
+                      <Route path="/case-registration" element={<CaseRegistration />} />
                     </Route>
                   </Route>
 

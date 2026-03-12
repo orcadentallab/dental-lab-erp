@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -47,6 +46,7 @@ async function mergeServices() {
                 .from('services')
                 .update({ name: 'Removable' })
                 .eq('id', oldService.id);
+            if (renameErr) console.error('Rename error:', renameErr);
             console.log('Renamed old service to Removable instead of full merge.');
             console.log('Done.');
             return;
@@ -94,7 +94,7 @@ async function mergeServices() {
         if (!Array.isArray(order.items)) continue;
 
         let needsUpdate = false;
-        const newItems = order.items.map((item: any) => {
+        const newItems = order.items.map((item: Record<string, unknown> & { serviceType?: string }) => {
             if (item.serviceType === oldService.name || item.serviceType?.includes('Removable Partial by tooth')) {
                 needsUpdate = true;
                 return { ...item, serviceType: targetService.name };

@@ -120,7 +120,7 @@ const OrderListItem = React.memo(function OrderListItem({
                 {onAccept && (
                     <button
                         onClick={() => onAccept(order)}
-                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm shadow-purple-200"
+                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm shadow-teal-200"
                     >
                         قبول الحالة
                     </button>

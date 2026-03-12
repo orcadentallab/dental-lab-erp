@@ -232,7 +232,7 @@ export default function NewOrderRequest() {
                             </div>
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                                    <Image size={16} className="text-purple-600" /> رابط الصور (Images Link)
+                                    <Image size={16} className="text-teal-600" /> رابط الصور (Images Link)
                                 </label>
                                 <Input
                                     className="font-mono text-left ltr text-blue-600"
@@ -272,3 +272,5 @@ export default function NewOrderRequest() {
         </div >
     );
 }
+
+// placeholder aria-label

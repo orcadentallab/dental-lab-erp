@@ -129,7 +129,7 @@ export default function AcceptOrderModal({
                                 title="Select Full Lab Workflow"
                                 onClick={() => setWorkflowType('full')}
                                 className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${workflowType === 'full'
-                                    ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                    ? 'border-teal-600 bg-teal-50 text-teal-700'
                                     : 'border-gray-200 hover:border-gray-300 text-gray-600'
                                     }`}
                             >
@@ -142,7 +142,7 @@ export default function AcceptOrderModal({
                                 title="Select Split Workflow"
                                 onClick={() => setWorkflowType('split')}
                                 className={`p-3 rounded-lg border-2 text-sm font-bold transition-all ${workflowType === 'split'
-                                    ? 'border-purple-600 bg-purple-50 text-purple-700'
+                                    ? 'border-teal-600 bg-teal-50 text-teal-700'
                                     : 'border-gray-200 hover:border-gray-300 text-gray-600'
                                     }`}
                             >

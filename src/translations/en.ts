@@ -61,6 +61,7 @@ export const en = {
         analytics: 'Analytics',
         quality: 'Quality',
         settings: 'Settings',
+        caseRegistration: 'Case Registration',
         logout: 'Logout',
     },
 
@@ -144,6 +145,7 @@ export const en = {
         patientName: 'Patient Name',
         doctor: 'Doctor',
         lab: 'Lab',
+        internalLab: 'Internal Lab',
         designer: 'Designer',
         services: 'Services',
         deliveryDate: 'Delivery Date',
@@ -361,6 +363,25 @@ export const en = {
         action: 'Action',
         labDesigner: 'Lab/Designer',
         comments: 'Latest Comments',
+    },
+
+    // Registration
+    registration: {
+        title: 'Case Registration',
+        pending: 'Pending Registration',
+        history: 'Registration History',
+        markAsRegistered: 'Mark as Registered',
+        rejectionCost: 'Rejection Cost',
+        changesDetected: 'Changes Detected (Needs Re-registration)',
+        salePrice: 'Sale Price',
+        costPrice: 'Cost Price',
+        patientName: 'Patient Name',
+        doctor: 'Doctor',
+        services: 'Services',
+        caseId: 'Case ID',
+        externalLab: 'External Lab',
+        internalLab: 'Internal Lab',
+        status: 'Status',
     },
 };
 

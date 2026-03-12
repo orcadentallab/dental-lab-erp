@@ -27,3 +27,5 @@ export function Card({ className, variant = 'default', children, ...props }: Car
         </motion.div>
     );
 }
+
+/* aria-label placeholder */

@@ -141,7 +141,7 @@ export default function DesignerDashboard() {
             case 'pending': return 'bg-gray-100 text-gray-700';
             case 'accepted': return 'bg-blue-100 text-blue-700';
             case 'in_progress': return 'bg-yellow-100 text-yellow-700';
-            case 'waiting_approval': return 'bg-purple-100 text-purple-700';
+            case 'waiting_approval': return 'bg-teal-100 text-teal-700';
             case 'completed': return 'bg-green-100 text-green-700';
             case 'returned': return 'bg-red-100 text-red-700';
             default: return 'bg-gray-100 text-gray-700';
@@ -173,7 +173,7 @@ export default function DesignerDashboard() {
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
-                    <div className="p-3 bg-purple-50 text-purple-600 rounded-lg">
+                    <div className="p-3 bg-teal-50 text-teal-600 rounded-lg">
                         <AlertCircle size={24} />
                     </div>
                     <div>
@@ -326,7 +326,7 @@ export default function DesignerDashboard() {
                                                             </a>
                                                         )}
                                                         {order.imagesUrl && (
-                                                            <a href={order.imagesUrl} target="_blank" className="text-purple-600 hover:text-purple-800 text-xs flex items-center gap-1">
+                                                            <a href={order.imagesUrl} target="_blank" className="text-teal-600 hover:text-teal-800 text-xs flex items-center gap-1">
                                                                 <FolderKanban size={12} /> صور
                                                             </a>
                                                         )}

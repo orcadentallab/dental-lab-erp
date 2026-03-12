@@ -7,7 +7,7 @@ interface AlertCardProps {
     title: string;
     count: number;
     icon: LucideIcon;
-    colorClass: 'red' | 'yellow' | 'blue' | 'green' | 'purple';
+    colorClass: 'red' | 'yellow' | 'blue' | 'green' | 'emerald';
     children?: ReactNode;
     onAction?: () => void;
     actionLabel?: string;
@@ -49,13 +49,13 @@ const colorClasses = {
         badge: 'bg-green-600 text-white',
         button: 'bg-green-600 hover:bg-green-700 text-white'
     },
-    purple: {
-        bg: 'bg-purple-50 dark:bg-purple-900/20',
-        border: 'border-purple-200 dark:border-purple-800',
-        text: 'text-purple-800 dark:text-purple-300',
-        icon: 'text-purple-600 dark:text-purple-400',
-        badge: 'bg-purple-600 text-white',
-        button: 'bg-purple-600 hover:bg-purple-700 text-white'
+    emerald: {
+        bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+        border: 'border-emerald-200 dark:border-emerald-800',
+        text: 'text-emerald-800 dark:text-emerald-300',
+        icon: 'text-emerald-600 dark:text-emerald-400',
+        badge: 'bg-emerald-600 text-white',
+        button: 'bg-emerald-600 hover:bg-emerald-700 text-white'
     }
 };
 
@@ -135,3 +135,5 @@ const AlertCard = React.memo(function AlertCard({
 });
 
 export default AlertCard;
+
+/* aria-label placeholder */

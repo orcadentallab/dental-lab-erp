@@ -9,7 +9,7 @@ import OrderCard from './OrderCard';
 
 interface OrderListProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same') => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => void;
     userRole?: string;
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)

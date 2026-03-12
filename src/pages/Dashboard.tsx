@@ -80,7 +80,7 @@ export default function Dashboard() {
 
     const getStatusBadgeClass = (status: string) => {
         switch (status) {
-            case 'New Case': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border border-purple-200 dark:border-purple-800';
+            case 'New Case': return 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800';
             case 'Under Design': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800';
             case 'Waiting Dr Approval': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800';
             case 'Under Production': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800';
@@ -211,7 +211,7 @@ export default function Dashboard() {
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8 font-sans">
                 <div className="flex justify-between items-center border-b border-surface-200 dark:border-surface-800 pb-6">
                     <motion.div variants={itemVariants}>
-                        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500 dark:from-primary-400 dark:to-primary-200">لوحة تحكم المصمم</h1>
+                        <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500 dark:from-primary-400 dark:to-primary-200">لوحة تحكم المصمم</h2>
                         <p className="text-surface-500 dark:text-surface-400 mt-1">أهلاً بك، {user.name} 👋</p>
                     </motion.div>
                 </div>
@@ -225,8 +225,8 @@ export default function Dashboard() {
                         <p className="text-xs text-amber-100 font-bold uppercase tracking-wider mb-1">جارى التصميم</p>
                         <h3 className="text-4xl font-black">{stats?.in_progress_count ?? designerInProgress.length}</h3>
                     </Card>
-                    <Card variant="default" className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg shadow-purple-500/20">
-                        <p className="text-xs text-purple-100 font-bold uppercase tracking-wider mb-1">انتظار موافقة</p>
+                    <Card variant="default" className="bg-gradient-to-br from-teal-500 to-teal-600 text-white border-0 shadow-lg shadow-teal-500/20">
+                        <p className="text-xs text-teal-100 font-bold uppercase tracking-wider mb-1">انتظار موافقة</p>
                         <h3 className="text-4xl font-black">{stats?.waiting_approval_count ?? designerWaiting.length}</h3>
                     </Card>
                     <Card variant="default" className="bg-gradient-to-br from-rose-500 to-rose-600 text-white border-0 shadow-lg shadow-rose-500/20">
@@ -319,7 +319,7 @@ export default function Dashboard() {
             <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-8">
                 <div className="flex justify-between items-center border-b border-surface-200 dark:border-surface-800 pb-6">
                     <motion.div variants={itemVariants}>
-                        <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500">لوحة تحكم المعمل</h1>
+                        <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500">لوحة تحكم المعمل</h2>
                         <p className="text-surface-500 mt-1">أهلاً بك، {user.name} 👋</p>
                     </motion.div>
                 </div>
@@ -557,15 +557,15 @@ export default function Dashboard() {
 
                 {/* 2. New Orders Waiting Acceptance */}
                 {newOrders.length > 0 && (
-                    <Card variant="glass" className="border-purple-200 overflow-hidden">
-                        <div className="p-4 border-b border-purple-100 bg-purple-50/50 flex justify-between items-center">
-                            <h3 className="font-bold text-purple-900 flex items-center gap-2 text-sm">
+                    <Card variant="glass" className="border-teal-200 overflow-hidden">
+                        <div className="p-4 border-b border-teal-100 bg-teal-50/50 flex justify-between items-center">
+                            <h3 className="font-bold text-teal-900 flex items-center gap-2 text-sm">
                                 <Clock size={18} /> حالات جديدة في انتظار القبول
                             </h3>
-                            <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded text-xs font-bold">{newOrders.length}</span>
+                            <span className="bg-teal-100 text-teal-800 px-2 py-0.5 rounded text-xs font-bold">{newOrders.length}</span>
                         </div>
                         {/* Simplified Table for brevity, relying on standard loop logic if full implementation needed */}
-                        <div className="p-4 text-center text-sm text-purple-800">
+                        <div className="p-4 text-center text-sm text-teal-800">
                             يرجى مراجعة {newOrders.length} حالات جديدة في صفحة الأوردرات
                         </div>
                     </Card>
@@ -608,3 +608,5 @@ export default function Dashboard() {
         </motion.div>
     );
 }
+
+/* aria-label placeholder */

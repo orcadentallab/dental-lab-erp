@@ -187,14 +187,20 @@ export default function Orders() {
     };
 
     // CENTRALIZED STATUS UPDATE - ensures status/designStatus sync for Split Workflows
-    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same') => {
-        if (status === 'same') {
+    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => {
+        if (status === 'same' && !context) {
             await refreshOrders();
             return;
         }
         try {
             // Use centralized status update to ensure designStatus sync
-            await db.updateOrderStatus(id, status);
+            // If status is same, we might need a specific updateOrder call or make updateOrderStatus handle it.
+            // Let's check db.updateOrderStatus in db.ts
+            if (status === 'same' && context) {
+                await db.updateOrder(id, context as Partial<Order>);
+            } else if (status !== 'same') {
+                await db.updateOrderStatus(id, status, context);
+            }
             await refreshOrders();
         } catch (error) {
             alert(`فشل تحديث الحالة: ${error instanceof Error ? error.message : 'حدث خطأ غير متوقع'}`);
@@ -588,6 +594,7 @@ export default function Orders() {
                                                 className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
                                             >
                                                 <option value="">كل المعامل</option>
+                                                <option value="internal">{t.orders.internalLab}</option>
                                                 {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                                             </select>
                                             <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />

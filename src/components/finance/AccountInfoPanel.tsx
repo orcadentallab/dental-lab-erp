@@ -204,3 +204,5 @@ export function AccountInfoPanel({
         </div>
     );
 }
+
+/* aria-label placeholder */

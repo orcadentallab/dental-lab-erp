@@ -61,6 +61,7 @@ export const ar = {
         analytics: 'التقارير',
         quality: 'الجودة',
         settings: 'الإعدادات',
+        caseRegistration: 'تسجيل الحالات',
         logout: 'تسجيل الخروج',
     },
 
@@ -144,6 +145,7 @@ export const ar = {
         patientName: 'اسم المريض',
         doctor: 'الطبيب',
         lab: 'المعمل',
+        internalLab: 'معمل داخلي',
         designer: 'المصمم',
         services: 'الخدمات',
         deliveryDate: 'تاريخ التسليم',
@@ -361,6 +363,25 @@ export const ar = {
         action: 'الإجراء',
         labDesigner: 'المعمل/المصمم',
         comments: 'آخر ملاحظات',
+    },
+
+    // Registration / تسجيل الحالات
+    registration: {
+        title: 'تسجيل الحالات',
+        pending: 'بانتظار التسجيل',
+        history: 'سجل التسجيل',
+        markAsRegistered: 'تم التسجيل',
+        rejectionCost: 'تعديل تكلفة الرفض',
+        changesDetected: 'تم اكتشاف تعديلات (تحتاج إعادة تسجيل)',
+        salePrice: 'سعر البيع',
+        costPrice: 'سعر التكلفة',
+        patientName: 'اسم المريض',
+        doctor: 'الطبيب',
+        services: 'الخدمات',
+        caseId: 'رقم الحالة',
+        externalLab: 'معمل خارجي',
+        internalLab: 'معمل داخلي',
+        status: 'الحالة',
     },
 };
 

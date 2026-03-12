@@ -174,3 +174,5 @@ export default function DoctorFinance() {
         </div>
     );
 }
+
+// placeholder aria-label

@@ -673,7 +673,7 @@ export default function Analytics() {
                                                 "w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm",
                                                 idx === 0 ? "bg-emerald-100 text-emerald-600" :
                                                     idx === 1 ? "bg-blue-100 text-blue-600" :
-                                                        idx === 2 ? "bg-purple-100 text-purple-600" :
+                                                        idx === 2 ? "bg-teal-100 text-teal-600" :
                                                             "bg-slate-100 text-slate-500"
                                             )}>
                                                 {idx + 1}
@@ -717,14 +717,14 @@ export default function Analytics() {
                             <p className="text-indigo-600 text-xs font-bold uppercase mb-1">إجمالي الحالات</p>
                             <p className="text-2xl font-black text-indigo-900">{stats.orderCount}</p>
                         </div>
-                        <div className="bg-gradient-to-br from-purple-50 to-white p-5 rounded-xl border border-purple-100 text-center hover:shadow-md transition-shadow cursor-pointer">
+                        <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-xl border border-teal-100 text-center hover:shadow-md transition-shadow cursor-pointer">
                             <div className="flex justify-center mb-2">
-                                <div className="p-2 bg-purple-100 rounded-lg">
-                                    <Package size={16} className="text-purple-600" />
+                                <div className="p-2 bg-teal-100 rounded-lg">
+                                    <Package size={16} className="text-teal-600" />
                                 </div>
                             </div>
-                            <p className="text-purple-600 text-xs font-bold uppercase mb-1">إجمالي الوحدات</p>
-                            <p className="text-2xl font-black text-purple-900">{stats.totalUnits}</p>
+                            <p className="text-teal-600 text-xs font-bold uppercase mb-1">إجمالي الوحدات</p>
+                            <p className="text-2xl font-black text-teal-900">{stats.totalUnits}</p>
                         </div>
                         <div className="bg-gradient-to-br from-blue-50 to-white p-5 rounded-xl border border-blue-100 text-center hover:shadow-md transition-shadow cursor-pointer">
                             <div className="flex justify-center mb-2">
@@ -947,8 +947,8 @@ export default function Analytics() {
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
                             <div className="flex justify-between items-start mb-6">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2.5 bg-purple-100 rounded-xl">
-                                        <PiggyBank size={22} className="text-purple-600" />
+                                    <div className="p-2.5 bg-teal-100 rounded-xl">
+                                        <PiggyBank size={22} className="text-teal-600" />
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-lg text-slate-800">الذمم الدائنة</h3>
@@ -956,7 +956,7 @@ export default function Analytics() {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-3xl font-black text-purple-700">{financialStats.totalPayables.toLocaleString()}</p>
+                                    <p className="text-3xl font-black text-teal-700">{financialStats.totalPayables.toLocaleString()}</p>
                                     <p className="text-xs text-slate-400 font-medium mt-1">المستحق للموردين</p>
                                 </div>
                             </div>

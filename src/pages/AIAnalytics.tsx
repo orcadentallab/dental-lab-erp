@@ -385,7 +385,7 @@ export default function AIAnalytics() {
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex-shrink-0 relative z-20">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                            <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl text-white shadow-lg shadow-indigo-200">
+                            <div className="p-3 bg-gradient-to-br from-indigo-500 to-teal-600 rounded-xl text-white shadow-lg shadow-indigo-200">
                                 <Brain size={24} />
                             </div>
                             <div>
@@ -449,7 +449,7 @@ export default function AIAnalytics() {
                                     "flex items-center gap-2 px-5 py-2.5 rounded-xl text-white font-medium shadow-md transition-all hover:shadow-lg active:scale-95",
                                     (isGenerating || !analyzeContext)
                                         ? "bg-gray-300 cursor-not-allowed"
-                                        : "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                                        : "bg-gradient-to-r from-indigo-600 to-teal-600 hover:from-indigo-700 hover:to-teal-700"
                                 )}
                             >
                                 <RefreshCw size={18} className={clsx(isGenerating && "animate-spin")} />
@@ -470,7 +470,7 @@ export default function AIAnalytics() {
                 <div className="flex-1 overflow-y-auto pr-1 pb-4">
                     {/* Executive Summary Banner (new format) */}
                     {executiveSummary && (
-                        <div className="mb-4 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
+                        <div className="mb-4 p-4 bg-gradient-to-r from-indigo-50 to-teal-50 rounded-xl border border-indigo-100">
                             <div className="flex items-start gap-3">
                                 <FileText size={20} className="text-indigo-600 mt-0.5 flex-shrink-0" />
                                 <div>
@@ -526,3 +526,5 @@ export default function AIAnalytics() {
         </div>
     );
 }
+
+// placeholder aria-label

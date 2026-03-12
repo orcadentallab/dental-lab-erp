@@ -311,7 +311,7 @@ export default function Settings() {
                             <ImportButton
                                 title="استيراد حالات"
                                 subtitle="كشف الحالات مجمع"
-                                color="purple"
+                                color="teal"
                                 icon={<FileSpreadsheet size={20} />}
                                 onFileSelect={async (file: File) => {
                                     const [doctors, suppliers, services] = await Promise.all([db.getDoctors(), db.getSuppliers(), db.getServices()]);
@@ -371,7 +371,7 @@ function ImportButton({ title, subtitle, color, icon, onFileSelect, setStatus, s
         green: 'hover:border-green-400 hover:bg-green-50 text-green-600 bg-green-100',
         amber: 'hover:border-amber-400 hover:bg-amber-50 text-amber-600 bg-amber-100',
         red: 'hover:border-red-400 hover:bg-red-50 text-red-600 bg-red-100',
-        purple: 'hover:border-purple-400 hover:bg-purple-50 text-purple-600 bg-purple-100',
+        teal: 'hover:border-teal-400 hover:bg-teal-50 text-teal-600 bg-teal-100',
         indigo: 'hover:border-indigo-400 hover:bg-indigo-50 text-indigo-600 bg-indigo-100',
         emerald: 'hover:border-emerald-400 hover:bg-emerald-50 text-emerald-600 bg-emerald-100'
     };

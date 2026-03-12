@@ -23,7 +23,7 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
             {/* Avatar */}
             <div className={clsx(
                 'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center',
-                isUser ? 'bg-blue-500' : 'bg-gradient-to-br from-purple-500 to-indigo-600'
+                isUser ? 'bg-blue-500' : 'bg-gradient-to-br from-teal-500 to-indigo-600'
             )}>
                 {isUser ? (
                     <User size={18} className="text-white" />
@@ -64,7 +64,7 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
 export function TypingIndicator() {
     return (
         <div className="flex gap-3 mb-4">
-            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-gradient-to-br from-teal-500 to-indigo-600 flex items-center justify-center">
                 <Bot size={18} className="text-white" />
             </div>
             <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
