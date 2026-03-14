@@ -558,7 +558,29 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
 
     if (hasSensitiveUpdate && updates.isRegistered === undefined) {
-        dbUpdates.is_registered = false;
+        // Only reset if it was previously registered
+        const currentOrder = await getOrder(id);
+        if (currentOrder?.isRegistered) {
+            dbUpdates.is_registered = false;
+            
+            // Add a special system comment to notify the accountant
+            const editComment = {
+                id: crypto.randomUUID(),
+                text: '⚠️ تم تعديل بيانات الحالة بعد التسجيل المحاسبي (تحتاج مراجعة)',
+                userId: 'system',
+                userName: 'System',
+                createdAt: new Date().toISOString()
+            };
+            
+            // Note: We'll append this to existing comments if they are being updated, 
+            // or if not, we'll need to fetch and update.
+            // But update_order_atomic handles p_comments.
+            if (updates.comments) {
+                updates.comments = [...updates.comments, editComment];
+            } else {
+                updates.comments = [...(currentOrder.comments || []), editComment];
+            }
+        }
     }
 
     // --- TIME TRACKING LOGIC ---
@@ -601,6 +623,11 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
             });
 
             dbUpdates.status_history = history;
+
+            // 3. Set actual delivery date if status is 'Delivered'
+            if (updates.status === 'Delivered') {
+                dbUpdates.actual_delivery_date = timestamp;
+            }
         }
     }
 
