@@ -5,6 +5,7 @@ import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Facto
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
+import { db } from '../services/db';
 
 import type { LucideIcon } from 'lucide-react';
 
@@ -28,6 +29,24 @@ export default function Sidebar() {
     const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
     const { t } = useTranslation();
+    const [unregisteredCount, setUnregisteredCount] = useState(0);
+
+    useEffect(() => {
+        if (user?.role === 'admin' || user?.role === 'accountant') {
+            const checkUnregistered = async () => {
+                try {
+                    const response = await db.getOrders();
+                    const allOrders = Array.isArray(response) ? response : (response as any).data || [];
+                    const statuses = ['Delivered', 'Completed', 'Returned for Adjustments', 'Rejected'];
+                    const unreg = allOrders.filter((o: any) => !o.isRegistered && statuses.includes(o.status));
+                    setUnregisteredCount(unreg.length);
+                } catch (error) {
+                    console.error('Failed to fetch unregistered orders', error);
+                }
+            };
+            checkUnregistered();
+        }
+    }, [user?.role]);
 
     const navGroups: NavGroup[] = [
         {
@@ -253,19 +272,26 @@ export default function Sidebar() {
                                                                     />
                                                                 )}
                                                                 <div className={clsx(
-                                                                    "relative flex items-center gap-3 px-3.5 py-2 rounded-lg transition-all duration-200",
+                                                                    "relative flex items-center justify-between px-3.5 py-2 rounded-lg transition-all duration-200",
                                                                     isActive
                                                                         ? "text-cyan-900"
                                                                         : "text-slate-500 hover:text-cyan-700 hover:bg-slate-50/50"
                                                                 )}>
-                                                                    <Icon size={16} className={clsx(
-                                                                        "transition-colors flex-shrink-0",
-                                                                        isActive ? "text-cyan-600" : "text-slate-400 group-hover/item:text-cyan-500"
-                                                                    )} />
-                                                                    <span className={clsx(
-                                                                        "text-[13px]",
-                                                                        isActive ? "font-semibold" : "font-medium"
-                                                                    )}>{item.name}</span>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <Icon size={16} className={clsx(
+                                                                            "transition-colors flex-shrink-0",
+                                                                            isActive ? "text-cyan-600" : "text-slate-400 group-hover/item:text-cyan-500"
+                                                                        )} />
+                                                                        <span className={clsx(
+                                                                            "text-[13px]",
+                                                                            isActive ? "font-semibold" : "font-medium"
+                                                                        )}>{item.name}</span>
+                                                                    </div>
+                                                                    {item.href === '/case-registration' && unregisteredCount > 0 && (
+                                                                        <span className="flex h-5 min-w-[20px] px-1.5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm shadow-red-500/30 animate-pulse">
+                                                                            {unregisteredCount}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </Link>
                                                         );

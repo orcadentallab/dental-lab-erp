@@ -15,6 +15,7 @@ interface OrderFormProps {
     onCancel: () => void;
     onSubmit: (order: Omit<Order, 'id'>) => any;
     initialData?: Order;
+    readOnly?: boolean;
 }
 
 interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
@@ -24,7 +25,7 @@ interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
 
 import { DoctorSelect } from './DoctorSelect';
 
-export default function OrderForm({ onCancel, onSubmit, initialData }: OrderFormProps) {
+export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }: OrderFormProps) {
     const { user } = useAuth();
     const { error: toastError } = useToast();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -281,15 +282,17 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                 </h2>
                 <div className="flex gap-2 w-full sm:w-auto">
                     <Button type="button" variant="ghost" disabled={isSubmitting} className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
-                        <span>إلغاء</span>
+                        <span>{readOnly ? 'إغلاق' : 'إلغاء'}</span>
                     </Button>
-                    <Button type="submit" size="md" disabled={isSubmitting} className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
-                        <span>{isSubmitting ? 'جاري الحفظ...' : (initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر')}</span>
-                    </Button>
+                    {!readOnly && (
+                        <Button type="submit" size="md" disabled={isSubmitting} className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
+                            <span>{isSubmitting ? 'جاري الحفظ...' : (initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر')}</span>
+                        </Button>
+                    )}
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <fieldset disabled={readOnly} className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
                 {/* LEFT COLUMN: Main Inputs (8) */}
                 <div className="lg:col-span-8 space-y-4">
@@ -308,14 +311,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                             error={!doctorId ? 'مطلوب' : undefined}
                                         />
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDoctorModal(true)}
-                                        aria-label="Add New Doctor"
-                                        className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors"
-                                    >
-                                        <Plus size={20} />
-                                    </button>
+                                    {!readOnly && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowDoctorModal(true)}
+                                            aria-label="Add New Doctor"
+                                            className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors"
+                                        >
+                                            <Plus size={20} />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -351,9 +356,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                 <span className="p-1 bg-indigo-50 text-indigo-600 rounded-lg"><Box size={16} /></span>
                                 قائمة الأصناف المطلوبة
                             </h3>
-                            <Button size="sm" variant="secondary" onClick={handleAddItem} className="h-8 text-xs gap-1">
-                                <Plus size={14} /> إضافة صنف
-                            </Button>
+                            {!readOnly && (
+                                <Button size="sm" variant="secondary" onClick={handleAddItem} className="h-8 text-xs gap-1">
+                                    <Plus size={14} /> إضافة صنف
+                                </Button>
+                            )}
                         </div>
 
                         <div className="space-y-2">
@@ -404,7 +411,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                                                 />
                                             </div>
                                         )}
-                                        {items.length > 1 && (
+                                        {items.length > 1 && !readOnly && (
                                             <button onClick={() => handleRemoveItem(index)} aria-label="Remove Item" className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
                                         )}
                                     </div>
@@ -617,7 +624,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData }: OrderForm
                     </Card>
 
                 </div>
-            </div>
+            </fieldset>
 
             {/* Doctor Modal */}
             {showDoctorModal && (

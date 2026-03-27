@@ -444,7 +444,7 @@ export default function Finance() {
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {filteredExpenses.map(t => (
                                             <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -459,13 +459,15 @@ export default function Finance() {
                                                         <button onClick={() => { db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate); }} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded transition-colors">تسجيل</button>
                                                     )}
                                                 </td>
-                                                {user?.role === 'admin' && (
+                                                {['admin', 'accountant'].includes(user?.role || '') && (
                                                     <td className="p-4 text-center">
                                                         <div className="flex items-center justify-center gap-2">
-                                                            {user?.role === 'admin' && (
+                                                            {['admin', 'accountant'].includes(user?.role || '') && (
                                                                 <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
                                                             )}
-                                                            <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                            {user?.role === 'admin' && (
+                                                                <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 )}
@@ -521,7 +523,7 @@ export default function Finance() {
                                 <DateFilter activeFilter={revenueFilter} onFilterChange={setRevenueFilter} />
                             </div>
                             <table className="w-full text-sm text-right">
-                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filteredIncome.map(t => (
                                         <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -531,13 +533,15 @@ export default function Finance() {
                                             <td className="p-4 text-center">
                                                 {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                             </td>
-                                            {user?.role === 'admin' && (
+                                            {['admin', 'accountant'].includes(user?.role || '') && (
                                                 <td className="p-4 text-center">
                                                     <div className="flex items-center justify-center gap-2">
-                                                        {user?.role === 'admin' && (
+                                                        {['admin', 'accountant'].includes(user?.role || '') && (
                                                             <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
                                                         )}
-                                                        <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                        {user?.role === 'admin' && (
+                                                            <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                        )}
                                                     </div>
                                                 </td>
                                             )}
@@ -623,7 +627,7 @@ export default function Finance() {
                             <DateFilter activeFilter={doctorPaymentFilter} onFilterChange={setDoctorPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredDoctorPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -634,11 +638,15 @@ export default function Finance() {
                                         <td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                         </td>
-                                        {user?.role === 'admin' && (
+                                        {['admin', 'accountant'].includes(user?.role || '') && (
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
-                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    {['admin', 'accountant'].includes(user?.role || '') && (
+                                                        <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                    )}
+                                                    {user?.role === 'admin' && (
+                                                        <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    )}
                                                 </div>
                                             </td>
                                         )}
@@ -712,7 +720,7 @@ export default function Finance() {
                             <DateFilter activeFilter={supplierPaymentFilter} onFilterChange={setSupplierPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredSupplierPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -723,11 +731,15 @@ export default function Finance() {
                                         <td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                         </td>
-                                        {user?.role === 'admin' && (
+                                        {['admin', 'accountant'].includes(user?.role || '') && (
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
-                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    {['admin', 'accountant'].includes(user?.role || '') && (
+                                                        <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                    )}
+                                                    {user?.role === 'admin' && (
+                                                        <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    )}
                                                 </div>
                                             </td>
                                         )}
@@ -801,7 +813,7 @@ export default function Finance() {
                             <DateFilter activeFilter={designerPaymentFilter} onFilterChange={setDesignerPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{user?.role === 'admin' && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredDesignerPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -812,11 +824,15 @@ export default function Finance() {
                                         <td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                         </td>
-                                        {user?.role === 'admin' && (
+                                        {['admin', 'accountant'].includes(user?.role || '') && (
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
-                                                    <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    {['admin', 'accountant'].includes(user?.role || '') && (
+                                                        <button onClick={() => handleEditTransaction(t)} className="p-2 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="تعديل"><Edit2 size={16} /></button>
+                                                    )}
+                                                    {user?.role === 'admin' && (
+                                                        <button onClick={() => { if (confirm('حذف؟')) db.deleteTransaction(t.id).then(handleTransactionUpdate); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all" title="حذف" aria-label="حذف"><Trash2 size={16} /></button>
+                                                    )}
                                                 </div>
                                             </td>
                                         )}

@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
 import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown } from 'lucide-react';
@@ -9,6 +10,9 @@ import { statementService, type StatementResult } from '../services/statementSer
 import { generateDoctorStatementPDF, generateBulkStatementsPDF } from '../services/pdfService';
 import { financeService, type Adjustment } from '../services/financeService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
+import OrderForm from '../components/orders/OrderForm';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
 
 interface StatementItem {
     id: string;
@@ -76,23 +80,45 @@ export default function Accounts() {
     const isDesigner = user?.role === 'designer';
     const isRepresentative = user?.role === 'representative';
 
+    const [searchParams, setSearchParams] = useSearchParams();
+
     const [viewMode, setViewMode] = useState<'summary' | 'detail' | 'rep-search'>(() => {
+        const urlMode = searchParams.get('mode') as 'summary' | 'detail' | 'rep-search';
+        if (urlMode) return urlMode;
         if (isRepresentative) return 'rep-search'; // Representatives see search-only view
         if (isLab && user?.entityId) return 'detail';
         if (isDesigner && user?.id) return 'detail';
         return 'summary';
     });
     const [activeTab, setActiveTab] = useState<'doctors' | 'suppliers' | 'designers'>(() => {
+        const urlTab = searchParams.get('tab') as 'doctors' | 'suppliers' | 'designers';
+        if (urlTab) return urlTab;
         if (isRepresentative) return 'doctors'; // Representatives only see doctors
         if (isLab && user?.entityId) return 'suppliers';
         if (isDesigner && user?.id) return 'designers';
         return 'doctors';
     });
     const [selectedEntityId, setSelectedEntityId] = useState<string>(() => {
+        const urlEntity = searchParams.get('entity');
+        if (urlEntity) return urlEntity;
         if (isLab && user?.entityId) return user.entityId;
         if (isDesigner && user?.id) return user.id;
         return '';
     });
+
+    useEffect(() => {
+        const newParams = new URLSearchParams(searchParams);
+        if (viewMode !== 'summary') newParams.set('mode', viewMode);
+        else newParams.delete('mode');
+
+        newParams.set('tab', activeTab);
+
+        if (selectedEntityId) newParams.set('entity', selectedEntityId);
+        else newParams.delete('entity');
+
+        setSearchParams(newParams, { replace: true });
+    }, [viewMode, activeTab, selectedEntityId, setSearchParams]);
+
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
 
@@ -113,6 +139,12 @@ export default function Accounts() {
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
     const [error, setError] = useState<string | null>(null);
 
+    // Modal State
+    const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+    // Permissions
+    const canEditOrder = user?.role === 'admin' || !!user?.customPermissions?.edit_orders;
+
     // Handle time filter changes
     const handleTimeFilterChange = (filter: TimeFilter) => {
         setTimeFilter(filter);
@@ -120,42 +152,68 @@ export default function Accounts() {
         setDateRange(range);
     };
 
-    useEffect(() => {
-        const loadData = async () => {
-            // 1. Load Entities (Critical)
-            try {
-                const [docs, sups, users] = await Promise.all([
-                    db.getDoctors(),
-                    db.getSuppliers(),
-                    db.getUsers()
-                ]);
-                setDoctors(docs);
-                setSuppliers(sups);
-                setDesigners(users.filter(u => u.role === 'designer'));
-            } catch (error: unknown) {
-                const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
-                console.error('Error loading entities:', error);
-                setError(`فشل تحميل البيانات الأساسية: ${errorMessage} `);
-            }
+    const fetchData = async () => {
+        // 1. Load Entities (Critical)
+        try {
+            const [docs, sups, users] = await Promise.all([
+                db.getDoctors(),
+                db.getSuppliers(),
+                db.getUsers()
+            ]);
+            setDoctors(docs);
+            setSuppliers(sups);
+            setDesigners(users.filter(u => u.role === 'designer'));
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
+            console.error('Error loading entities:', error);
+            setError(`فشل تحميل البيانات الأساسية: ${errorMessage}`);
+        }
 
-            // 2. Load Financial Data (Heavy)
-            try {
-                const [ords, txs, adjs] = await Promise.all([
-                    db.getOrdersForFinanceSummary(),
-                    db.getTransactionsForFinanceSummary(),
-                    financeService.getAdjustments()
-                ]);
-                setOrders(ords);
-                setTransactions(txs);
-                setAdjustments(adjs);
-            } catch (error: unknown) {
-                const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
-                console.error('Error loading financial data:', error);
-                setError(`فشل تحميل البيانات المالية: ${errorMessage} `);
-            }
-        };
-        loadData();
+        // 2. Load Financial Data (Heavy)
+        try {
+            const [ords, txs, adjs] = await Promise.all([
+                db.getOrdersForFinanceSummary(),
+                db.getTransactionsForFinanceSummary(),
+                financeService.getAdjustments()
+            ]);
+            setOrders(ords);
+            setTransactions(txs);
+            setAdjustments(adjs);
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
+            console.error('Error loading financial data:', error);
+            setError(`فشل تحميل البيانات المالية: ${errorMessage}`);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
     }, []);
+
+    const handleStatementRowClick = async (item: StatementItem) => {
+        if (item.status && (item.description?.includes('حالة #') || item.description?.includes('#'))) {
+            try {
+                // Determine order ID using the case ID or item ID (item.id usually is the order ID)
+                const fullOrder = await db.getOrder(item.id);
+                if (fullOrder) {
+                    setEditingOrder({ ...fullOrder, id: item.id });
+                }
+            } catch (err) {
+                console.error('Error loading order details:', err);
+            }
+        }
+    };
+
+    const handleOrderSubmit = async (orderData: Omit<Order, 'id'>) => {
+        if (!editingOrder) return;
+        try {
+            await db.updateOrder(editingOrder.id, orderData);
+            setEditingOrder(null);
+            fetchData();
+        } catch (error) {
+            console.error('Error updating order:', error);
+        }
+    };
 
     // -- BULK PRINT LOGIC --
     const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
@@ -1641,7 +1699,16 @@ export default function Accounts() {
                                     </tr>
                                 ) : (
                                     filteredItems.map((item, idx) => (
-                                        <tr key={idx} className={clsx("border-b border-gray-50 hover:bg-gray-50 transition-colors", (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800", item.isHidden && "opacity-50 grayscale")}>
+                                        <tr 
+                                            key={idx} 
+                                            onClick={() => handleStatementRowClick(item)}
+                                            className={clsx(
+                                                "border-b border-gray-50 transition-colors", 
+                                                (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800", 
+                                                item.isHidden && "opacity-50 grayscale",
+                                                (item.description?.includes('حالة #') || (item.status && item.description?.includes('#'))) ? "cursor-pointer hover:bg-blue-50/50" : "hover:bg-gray-50"
+                                            )}
+                                        >
                                             <td className="p-3 text-center print-hidden">
                                                 <input
                                                     type="checkbox"
@@ -1689,6 +1756,36 @@ export default function Accounts() {
             </div>
             {/* Hidden Bulk Print Component */}
 
+            {/* Modals */}
+            <AnimatePresence>
+                {editingOrder && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
+                            <div className="p-8">
+                                <div className="flex justify-between items-center mb-8 border-b border-surface-100 pb-4">
+                                    <div className='flex items-center gap-4'>
+                                        <div className='bg-primary-100 p-3 rounded-xl text-primary-600'><FileSpreadsheet size={24} /></div>
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-surface-900">{canEditOrder ? 'تعديل بيانات الأوردر' : 'تفاصيل الأوردر'}</h2>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-surface-500 text-sm">رقم الحالة:</span>
+                                                <span className="bg-surface-100 px-2 py-0.5 rounded text-sm font-mono font-bold text-surface-700">#{editingOrder.caseId}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setEditingOrder(null)} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
+                                </div>
+                                <OrderForm 
+                                    onSubmit={handleOrderSubmit} 
+                                    onCancel={() => setEditingOrder(null)} 
+                                    initialData={editingOrder} 
+                                    readOnly={!canEditOrder} 
+                                />
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

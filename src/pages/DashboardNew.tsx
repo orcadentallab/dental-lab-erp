@@ -101,7 +101,7 @@ export default function DashboardNew() {
 
     const tryInOrders = orders.filter(o => o.status === 'Try In');
 
-    const unregisteredOrders = orders.filter(o => !o.isRegistered && o.status === 'Delivered');
+
 
     // Orders without assigned lab
     const unassignedLabOrders = orders.filter(o =>
@@ -151,14 +151,7 @@ export default function DashboardNew() {
         return users.find(u => u.id === designerId)?.name;
     };
 
-    const handleRegister = async (orderId: string) => {
-        try {
-            await db.updateOrder(orderId, { isRegistered: true });
-            setOrders(prev => prev.map(o => o.id === orderId ? { ...o, isRegistered: true } : o));
-        } catch (error) {
-            console.error('Error registering order:', error);
-        }
-    };
+
 
     const handleArchiveOrder = async (orderId: string) => {
         try {
@@ -214,7 +207,7 @@ export default function DashboardNew() {
         );
     }
 
-    const showFinancial = user?.role === 'admin' || user?.role === 'accountant';
+
 
 
     return (
@@ -440,25 +433,6 @@ export default function DashboardNew() {
                 )}
 
                 {/* 3. FINANCE / ADMIN (Green) */}
-                {/* 3. FINANCE / ADMIN (Green) */}
-                {showFinancial && unregisteredOrders.length > 0 && (
-                    <div>
-                        <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
-                            <TrendingUp size={16} />
-                            {t.dashboard.financialActions}
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <AlertCard
-                                title={t.dashboard.unregisteredOrders}
-                                count={unregisteredOrders.length}
-                                icon={TrendingUp}
-                                colorClass="green"
-                                useModal
-                                onExpand={() => setActiveModal('unregistered')}
-                            />
-                        </div>
-                    </div>
-                )}
 
             </div>
 
@@ -761,23 +735,6 @@ export default function DashboardNew() {
                         order={order}
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
-                    />
-                ))}
-            </OrderListModal>
-
-            <OrderListModal
-                title="أوردرات غير مسجلة"
-                isOpen={activeModal === 'unregistered'}
-                onClose={() => setActiveModal(null)}
-            >
-                {unregisteredOrders.map(order => (
-                    <OrderListItem
-                        key={order.id}
-                        order={order}
-                        labName={getLabName(order.supplierId)}
-                        designerName={getDesignerName(order.designerId)}
-                        showRegister
-                        onRegister={handleRegister}
                     />
                 ))}
             </OrderListModal>
