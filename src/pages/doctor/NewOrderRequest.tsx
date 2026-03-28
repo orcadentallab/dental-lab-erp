@@ -19,6 +19,7 @@ export default function NewOrderRequest() {
 
     const [services, setServices] = useState<Service[]>([]);
     const [loading, setLoading] = useState(false);
+    const [doctorInfo, setDoctorInfo] = useState<import('../../services/db').Doctor | null>(null);
 
     // Form State
     const [patientName, setPatientName] = useState('');
@@ -31,16 +32,17 @@ export default function NewOrderRequest() {
     const [items, setItems] = useState<FormOrderItem[]>([{ serviceType: '', teethNumbers: '', price: 0 }]);
 
     useEffect(() => {
-        const loadServices = async () => {
+        const loadInitialData = async () => {
             const data = await db.getServices();
             setServices(data.sort((a, b) => a.name.localeCompare(b.name)));
-            // Do not set default service automatically - force user to select
-            // if (data.length > 0) {
-            //     setItems([{ serviceType: data[0].name, teethNumbers: '', price: 0 }]);
-            // }
+            
+            if (user?.entityId) {
+                const doc = await db.getDoctor(user.entityId);
+                setDoctorInfo(doc);
+            }
         };
-        loadServices();
-    }, []);
+        loadInitialData();
+    }, [user]);
 
     const handleAddItem = () => {
         if (services.length > 0) {
@@ -65,9 +67,12 @@ export default function NewOrderRequest() {
     // Calculate Total Automatically (No Discount)
     const calculateTotal = () => {
         return items.reduce((sum, item) => {
-            const count = item.teethNumbers ? item.teethNumbers.split(',').length : 0;
+            const count = item.teethNumbers ? item.teethNumbers.split(',').filter(t => t.trim() !== '').length : 0;
             const svc = services.find(s => s.name === item.serviceType);
-            return sum + (count * (svc ? svc.sellingPrice : 0));
+            const unitPrice = doctorInfo?.customPrices?.[item.serviceType] !== undefined 
+                ? doctorInfo.customPrices[item.serviceType] 
+                : (svc ? svc.sellingPrice : 0);
+            return sum + (count * unitPrice);
         }, 0);
     };
 
@@ -106,11 +111,14 @@ export default function NewOrderRequest() {
                 caseId,
                 doctorId: user.entityId,
                 patientName,
-                items: items.map(i => ({
-                    ...i,
-                    teethNumbers: i.teethNumbers.split(',').map(s => s.trim()).filter(Boolean),
-                    price: services.find(s => s.name === i.serviceType)?.sellingPrice || 0
-                })),
+                items: items.map(i => {
+                    const defaultPrice = services.find(s => s.name === i.serviceType)?.sellingPrice || 0;
+                    return {
+                        ...i,
+                        teethNumbers: i.teethNumbers.split(',').map(s => s.trim()).filter(Boolean),
+                        price: doctor.customPrices?.[i.serviceType] !== undefined ? doctor.customPrices[i.serviceType] : defaultPrice
+                    };
+                }),
                 shade,
                 instructions,
                 stlUrl: stlUrl || undefined,

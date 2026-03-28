@@ -172,11 +172,22 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         setItems(newItems);
     };
 
+    const currentDoctor = doctors.find(d => d.id === doctorId);
+
     const subTotal = items.reduce((sum, item) => {
         const count = item.teethNumbers ? item.teethNumbers.length : 0;
         const svc = services.find(s => s.name === item.serviceType);
-        // Use custom price if set, else service price, else fallback to stored item price
-        const unitPrice = item.customPrice !== undefined ? item.customPrice : (svc ? svc.sellingPrice : (item.price || 0));
+        
+        let unitPrice = item.price || 0;
+        
+        if (item.customPrice !== undefined) {
+             unitPrice = item.customPrice; // Admin override
+        } else if (currentDoctor?.customPrices?.[item.serviceType] !== undefined) {
+             unitPrice = currentDoctor.customPrices[item.serviceType]; // Doctor special price
+        } else if (svc) {
+             unitPrice = svc.sellingPrice; // Default price
+        }
+
         return sum + (count * unitPrice);
     }, 0);
 
@@ -366,7 +377,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         <div className="space-y-2">
                             {items.map((item, index) => {
                                 const svc = services.find(s => s.name === item.serviceType);
-                                const displayPrice = item.customPrice !== undefined ? item.customPrice : (svc?.sellingPrice || 0);
+                                const doctorSpecialPrice = currentDoctor?.customPrices?.[item.serviceType];
+                                const fallbackPrice = doctorSpecialPrice !== undefined ? doctorSpecialPrice : (svc?.sellingPrice || 0);
+                                const displayPrice = item.customPrice !== undefined ? item.customPrice : fallbackPrice;
                                 return (
                                     <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
                                         <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">

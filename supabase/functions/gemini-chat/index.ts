@@ -9,7 +9,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // @ts-ignore: Deno global
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
 
 // System prompt with guardrails
 const SYSTEM_PROMPT = `أنت مساعد تحليل بيانات لمعمل أسنان فقط.
@@ -157,7 +157,7 @@ serve(async (req: any) => {
         return new Response(
             JSON.stringify({
                 response: responseText,
-                model_version: 'gemini-1.5-flash',
+                model_version: 'gemini-1.5-flash-latest',
                 prompt_version: 'v1.0'
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -8,6 +8,7 @@ export interface Doctor {
     doctorCode: string; // e.g., 'DR01'
     representativeName: string;
     representativeId?: string; // Link to User.id
+    customPrices?: Record<string, number>; // serviceName -> special sellingPrice
 }
 
 export interface Service {

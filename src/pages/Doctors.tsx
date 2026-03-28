@@ -12,6 +12,7 @@ export default function Doctors() {
     const { user } = useAuth();
     const { t } = useTranslation();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [services, setServices] = useState<import('../services/db').Service[]>([]);
     // const [representatives, setRepresentatives] = useState<User[]>([]); - REMOVED
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -25,7 +26,8 @@ export default function Doctors() {
         address: '',
         doctorCode: '',
         representativeName: '',
-        representativeId: ''
+        representativeId: '',
+        customPrices: {} as Record<string, number>
     });
     const [error, setError] = useState<string | null>(null);
 
@@ -42,10 +44,14 @@ export default function Doctors() {
 
     useEffect(() => {
         const loadData = async () => {
-            // Load Doctors
+            // Load Doctors and Services
             try {
-                const doctorsData = await db.getDoctors();
+                const [doctorsData, servicesData] = await Promise.all([
+                    db.getDoctors(),
+                    db.getServices()
+                ]);
                 setDoctors(doctorsData);
+                setServices(servicesData);
             } catch (error) {
                 console.error('Error loading doctors:', error);
             }
@@ -55,7 +61,7 @@ export default function Doctors() {
 
     const openAddModal = () => {
         setEditingId(null);
-        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
+        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {} });
         setError(null);
         setShowModal(true);
     };
@@ -69,7 +75,8 @@ export default function Doctors() {
             address: doc.address,
             doctorCode: doc.doctorCode,
             representativeName: doc.representativeName,
-            representativeId: doc.representativeId || ''
+            representativeId: doc.representativeId || '',
+            customPrices: doc.customPrices || {}
         });
         setError(null);
         setShowModal(true);
@@ -128,7 +135,7 @@ export default function Doctors() {
 
             setShowModal(false);
             setEditingId(null);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {} });
 
         } catch (err: unknown) {
             console.error('Save Doctor Error:', err);
@@ -308,6 +315,20 @@ export default function Doctors() {
                                 </div>
                             )} */}
                         </div>
+
+                        {doc.customPrices && Object.keys(doc.customPrices).length > 0 && (
+                            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 mb-3 text-left">أسعار خاصة (بيع)</h4>
+                                <div className="flex flex-col gap-1.5">
+                                    {Object.entries(doc.customPrices).map(([service, price]) => (
+                                        <div key={service} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 px-2 py-1.5 rounded-md">
+                                            <span className="text-xs font-bold text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded">{price}</span>
+                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{service}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -394,6 +415,41 @@ export default function Doctors() {
                                     onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}
                                 />
                             </div>
+
+                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2">أسعار بيع خاصة للطبيب</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">اترك الحقل فارغاً لاستخدام السعر الأساسي الافتراضي من القائمة.</p>
+                                
+                                <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                                    {services.map(service => (
+                                        <div key={service.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{service.name}</label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="السعر الأساسي"
+                                                    className="w-24 p-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                                                    value={newDoctor.customPrices[service.name] !== undefined ? newDoctor.customPrices[service.name] : ''}
+                                                    onChange={e => {
+                                                        const val = e.target.value;
+                                                        setNewDoctor(prev => {
+                                                            const updated = { ...prev.customPrices };
+                                                            if (val === '') {
+                                                                delete updated[service.name];
+                                                            } else {
+                                                                updated[service.name] = Number(val);
+                                                            }
+                                                            return { ...prev, customPrices: updated };
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
 
                             <div className="pt-4 flex gap-3">
                                 <button

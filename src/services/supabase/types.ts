@@ -10,6 +10,7 @@ export interface DbDoctor {
     doctor_code: string;
     representative_name: string;
     representative_id?: string | null;
+    custom_prices?: Record<string, number> | null; // JSONB
     created_at: string;
     updated_at: string;
 }

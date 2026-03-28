@@ -8,7 +8,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { crypto } from 'https://deno.land/std@0.168.0/crypto/mod.ts'
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -233,7 +233,7 @@ ${(context.ordersByStatus || []).map((s: { status: string; count: number }) => `
         // Build the full response object with new schema
         const analysisId = generateUUID()
         const generatedAt = new Date().toISOString()
-        const modelVersion = 'gemini-1.5-flash'
+        const modelVersion = 'gemini-1.5-flash-latest'
         const promptVersion = 'v2.0-strict-json'
 
         const fullResponse = {

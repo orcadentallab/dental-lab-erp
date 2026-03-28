@@ -15,6 +15,7 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
         doctorCode: dbDoctor.doctor_code,
         representativeName: dbDoctor.representative_name,
         representativeId: dbDoctor.representative_id || undefined,
+        customPrices: dbDoctor.custom_prices || undefined,
     };
 }
 
@@ -28,6 +29,7 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
         doctor_code: doctor.doctorCode,
         representative_name: doctor.representativeName,
         representative_id: doctor.representativeId || null,
+        custom_prices: doctor.customPrices || null,
     };
 }
 
@@ -126,6 +128,7 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     if (updates.doctorCode !== undefined) dbUpdates.doctor_code = updates.doctorCode;
     if (updates.representativeName !== undefined) dbUpdates.representative_name = updates.representativeName;
     if (updates.representativeId !== undefined) dbUpdates.representative_id = updates.representativeId || null;
+    if (updates.customPrices !== undefined) dbUpdates.custom_prices = updates.customPrices || null;
 
     const { data, error } = await supabase
         .from('doctors')
