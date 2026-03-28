@@ -172,6 +172,12 @@ export async function generateInsights(
         console.error('Analyze error:', response.error);
         throw new Error(response.error.message || 'حدث خطأ في التحليل');
     }
+    
+    // Check if the edge function returned a 200 but included an error field in the JSON
+    if (response.data && response.data.error) {
+        console.error('Analyze business error:', response.data.error);
+        throw new Error(response.data.error);
+    }
 
     return response.data;
 }

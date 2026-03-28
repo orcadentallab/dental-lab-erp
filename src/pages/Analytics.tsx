@@ -87,6 +87,7 @@ export default function Analytics() {
         orderCount: 0,
         activeOrders: 0,
         totalUnits: 0,
+        totalUnitsRevenue: 0,
         returnCount: 0,
         topExpenseCategory: '',
         topExpenseAmount: 0
@@ -230,11 +231,12 @@ export default function Analytics() {
             const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
             const rpcEnd = dateRange === 'all' ? undefined : endDate || undefined;
 
-            // 3 lightweight RPC calls instead of 3 massive SELECTs
-            const [summary, doctors, services, expenseCategories] = await Promise.all([
+            // 4 lightweight RPC calls instead of 3 massive SELECTs
+            const [summary, doctors, services, allServices, expenseCategories] = await Promise.all([
                 analyticsService.getSummary(rpcStart, rpcEnd),
                 analyticsService.getTopDoctors(rpcStart, rpcEnd),
-                analyticsService.getTopServices(rpcStart, rpcEnd),
+                analyticsService.getTopServices(rpcStart, rpcEnd, 5),
+                analyticsService.getTopServices(rpcStart, rpcEnd, 5000), // Fetch all active services to compute true totals
                 analyticsService.getTopExpenseCategories(rpcStart, rpcEnd, 1) // Only need the top 1
             ]);
 
@@ -243,6 +245,10 @@ export default function Analytics() {
             const netProfit = grossProfit - summary.operating_expenses;
             const topExpenseCategory = expenseCategories[0]?.category || 'None';
             const topExpenseAmount = expenseCategories[0]?.total || 0;
+            
+            // Calculate accurate unit metrics from all services
+            const totalUnits = allServices.reduce((sum, s) => sum + Number(s.count || 0), 0);
+            const totalUnitsRevenue = allServices.reduce((sum, s) => sum + Number(s.revenue || 0), 0);
 
             setStats({
                 totalRevenue: summary.total_income,
@@ -252,9 +258,10 @@ export default function Analytics() {
                 operatingExpenses: summary.operating_expenses,
                 productionCosts: summary.production_costs,
                 pendingRevenue: summary.total_sales_value - summary.total_income,
-                orderCount: summary.completed_order_count,
+                orderCount: summary.total_order_count, // Use total instead of just completed
                 activeOrders: summary.active_order_count,
-                totalUnits: 0, // Unit counts now handled by top services
+                totalUnits,
+                totalUnitsRevenue,
                 returnCount: summary.return_count,
                 topExpenseCategory,
                 topExpenseAmount
@@ -733,7 +740,7 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <p className="text-blue-600 text-xs font-bold uppercase mb-1">متوسط سعر الوحدة</p>
-                            <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.deliveredRevenue / stats.totalUnits) : 0}</p>
+                            <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.totalUnitsRevenue / stats.totalUnits) : 0}</p>
                         </div>
                         <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-xl border border-teal-100 text-center hover:shadow-md transition-shadow cursor-pointer">
                             <div className="flex justify-center mb-2">
@@ -744,8 +751,8 @@ export default function Analytics() {
                             <p className="text-teal-600 text-xs font-bold uppercase mb-1">نسبة الإرجاع</p>
                             <div className="flex flex-col items-center">
                                 <p className="text-2xl font-black text-teal-900">
-                                    {(stats.orderCount + stats.returnCount) > 0
-                                        ? ((stats.returnCount / (stats.orderCount + stats.returnCount)) * 100).toFixed(1)
+                                    {stats.orderCount > 0
+                                        ? ((stats.returnCount / stats.orderCount) * 100).toFixed(1)
                                         : 0}%
                                 </p>
                                 <span className="text-xs text-teal-600 font-medium bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full mt-1">

@@ -81,7 +81,7 @@ serve(async (req) => {
             console.error('GEMINI_API_KEY not configured')
             return new Response(
                 JSON.stringify({ error: 'Gemini API not configured' }),
-                { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 
@@ -135,10 +135,10 @@ DATA CONTEXT (Dental Lab - Period: ${periodFrom} to ${periodTo}):
 - الطلبات المكتملة السابق: ${context.previousMonth?.completedOrders || 0}
 
 👨‍⚕️ TOP DOCTORS (CURRENT MONTH):
-${(context.topDoctors || []).map((d: { name: string; orderCount: number; revenue: number }, i: number) => `${i + 1}. ${d.name}: ${d.orderCount} orders (${d.revenue.toLocaleString()} EGP)`).join('\n')}
+${(context.topDoctors || []).map((d: { name: string; orderCount: number; revenue: number }, i: number) => `${i + 1}. ${d.name}: ${d.orderCount} orders (${(Number(d.revenue) || 0).toLocaleString()} EGP)`).join('\n')}
 
 🦷 TOP SERVICES (CURRENT MONTH):
-${(context.topServices || []).map((s: { name: string; count: number; revenue: number }, i: number) => `${i + 1}. ${s.name}: ${s.count} units (${s.revenue.toLocaleString()} EGP)`).join('\n')}
+${(context.topServices || []).map((s: { name: string; count: number; revenue: number }, i: number) => `${i + 1}. ${s.name}: ${s.count} units (${(Number(s.revenue) || 0).toLocaleString()} EGP)`).join('\n')}
 
 📈 ORDERS BY STATUS (CURRENT MONTH):
 ${(context.ordersByStatus || []).map((s: { status: string; count: number }) => `- ${s.status}: ${s.count}`).join('\n')}
@@ -295,7 +295,7 @@ ${(context.ordersByStatus || []).map((s: { status: string; count: number }) => `
             JSON.stringify({
                 error: `Internal Error: ${errorMessage}`,
             }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     }
 })
