@@ -61,8 +61,12 @@ export function AccountInfoPanel({
     // Designer: Orders where he is the designer. Sum(designPrice)
 
     if (entityType === 'doctor') {
-        const entityOrders = orders.filter((o) => o.doctorId === entityId && o.status !== 'Rejected');
-        totalWork = entityOrders.reduce((sum, o) => sum + o.totalPrice, 0) + totalCharges;
+        const entityOrders = orders.filter((o) => {
+            if (o.doctorId !== entityId) return false;
+            if (o.status === 'Rejected') return false;
+            return ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
+        });
+        totalWork = entityOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0) + totalCharges;
         // Income from doctor
         totalPaid = entityTransactions
             .filter((t) => t.type === 'income')
@@ -71,10 +75,22 @@ export function AccountInfoPanel({
         balance = totalWork - totalPaid;
 
     } else if (entityType === 'supplier') {
-        // Assuming supplierId is on the order for external lab work
-        // Note: Order interface has `supplierId` and `cost`
         const entityOrders = orders.filter((o) => o.supplierId === entityId);
-        totalWork = entityOrders.reduce((sum, o) => sum + (o.cost || 0), 0) + totalCharges;
+        
+        let calculatedWork = 0;
+        entityOrders.forEach(o => {
+            const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+            const isRelevant = (o.status || '').toLowerCase() === 'delivered' || hasRejectionCost;
+            
+            if (isRelevant) {
+                let cost = o.cost || 0;
+                if (hasRejectionCost) cost = o.rejectedLabCost!;
+                if (o.workflowType === 'split' && o.designPrice && !hasRejectionCost) cost -= o.designPrice;
+                calculatedWork += cost;
+            }
+        });
+        totalWork = calculatedWork + totalCharges;
+
         // Expenses to supplier
         totalPaid = entityTransactions
             .filter((t) => t.type === 'expense')
@@ -84,7 +100,19 @@ export function AccountInfoPanel({
 
     } else if (entityType === 'designer') {
         const entityOrders = orders.filter((o) => o.designerId === entityId);
-        totalWork = entityOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0) + totalCharges;
+        
+        let calculatedWork = 0;
+        entityOrders.forEach(o => {
+            const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+            const isRelevant = o.workflowType === 'split' && ((o.status || '').toLowerCase() === 'delivered' || hasRejectionCost);
+
+            if (isRelevant) {
+                let price = hasRejectionCost ? o.rejectedLabCost! : (o.designPrice || 0);
+                calculatedWork += price;
+            }
+        });
+        totalWork = calculatedWork + totalCharges;
+
         // Expenses to designer
         totalPaid = entityTransactions
             .filter((t) => t.type === 'expense')

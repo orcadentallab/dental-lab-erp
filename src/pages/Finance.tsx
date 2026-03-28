@@ -12,9 +12,13 @@ import { financeService } from '../services/financeService';
 import type { Adjustment } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
 import type { FilterType } from '../components/finance/FinanceFilters';
+import { useToast } from '../context/ToastContext';
 
 export default function Finance() {
     const { user } = useAuth();
+    const { success: toastSuccess, error: toastError } = useToast();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const todayDate = new Date().toISOString().split('T')[0];
 
     const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments'>('dashboard');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -155,6 +159,8 @@ export default function Finance() {
 
     const handleAddExpense = async (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             if (editingTransaction) {
                 await db.updateTransaction(editingTransaction.id, {
@@ -175,15 +181,21 @@ export default function Finance() {
                     entityType: 'general'
                 });
             }
+            toastSuccess(editingTransaction ? 'تم تعديل المصروف بنجاح' : 'تم تسجيل المصروف بنجاح');
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
             console.error('Error adding expense:', error);
+            toastError('حدث خطأ أثناء تسجيل المصروف');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleAddRevenue = async (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             if (editingTransaction) {
                 await db.updateTransaction(editingTransaction.id, {
@@ -201,15 +213,21 @@ export default function Finance() {
                     entityType: 'general'
                 });
             }
+            toastSuccess(editingTransaction ? 'تم تعديل الإيراد بنجاح' : 'تم تسجيل الإيراد بنجاح');
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
             console.error('Error adding revenue:', error);
+            toastError('حدث خطأ أثناء تسجيل الإيراد');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleAddDoctorPayment = async (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const docName = doctors.find(d => d.id === selectedId)?.name;
             if (editingTransaction) {
@@ -230,15 +248,21 @@ export default function Finance() {
                     entityId: selectedId
                 });
             }
+            toastSuccess(editingTransaction ? 'تم تعديل التحصيل بنجاح' : 'تم تسجيل التحصيل بنجاح');
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
             console.error('Error adding payment:', error);
+            toastError('حدث خطأ أثناء تسجيل التحصيل');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleAddSupplierPayment = async (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const supName = suppliers.find(s => s.id === selectedId)?.name;
             if (editingTransaction) {
@@ -259,15 +283,21 @@ export default function Finance() {
                     entityId: selectedId
                 });
             }
+            toastSuccess(editingTransaction ? 'تم تعديل السداد بنجاح' : 'تم تسجيل السداد بنجاح');
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
             console.error('Error adding supplier payment:', error);
+            toastError('حدث خطأ أثناء تسجيل السداد');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     const handleAddDesignerPayment = async (e: FormEvent) => {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const desName = designers.find(d => d.id === selectedId)?.name;
             if (editingTransaction) {
@@ -288,10 +318,14 @@ export default function Finance() {
                     entityId: selectedId
                 });
             }
+            toastSuccess(editingTransaction ? 'تم تعديل السداد بنجاح' : 'تم تسجيل السداد بنجاح');
             await handleTransactionUpdate();
             handleResetForm();
         } catch (error) {
             console.error('Error adding designer payment:', error);
+            toastError('حدث خطأ أثناء تسجيل السداد');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -393,7 +427,7 @@ export default function Finance() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ المصروف (الدفع الفعلي)</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">الشهر المالي المستحق (لتوزيع الأرباح)</label>
@@ -430,8 +464,8 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">ملاحظات</label>
                                     <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 transition-all" placeholder="تفاصيل المصروف..." />
                                 </div>
-                                <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-[0.98]">
-                                    {editingTransaction ? 'تحديث المصروف' : 'تسجيل المصروف'}
+                                <button disabled={isSubmitting} type="submit" className={clsx("w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-[0.98]", isSubmitting && "opacity-50 cursor-not-allowed")}>
+                                    {isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث المصروف' : 'تسجيل المصروف')}
                                 </button>
                             </form>
                         </div>
@@ -500,7 +534,7 @@ export default function Finance() {
                             <form onSubmit={handleAddRevenue} className="space-y-5">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ الإيراد</label>
-                                    <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all" />
+                                    <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ (ج.م)</label>
@@ -510,8 +544,8 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">وصف الإيراد</label>
                                     <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all" placeholder="مصدر الإيراد..." />
                                 </div>
-                                <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all active:scale-[0.98]">
-                                    {editingTransaction ? 'تحديث الإيراد' : 'تسجيل الإيراد'}
+                                <button disabled={isSubmitting} type="submit" className={clsx("w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all active:scale-[0.98]", isSubmitting && "opacity-50 cursor-not-allowed")}>
+                                    {isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث الإيراد' : 'تسجيل الإيراد')}
                                 </button>
                             </form>
                         </div>
@@ -589,7 +623,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" />
+                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>
@@ -600,8 +634,8 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="مثال: دفعة من الحساب..." />
                                 </div>
-                                <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-[0.98]">
-                                    {editingTransaction ? 'تحديث التحصيل' : 'تسجيل التحصيل'}
+                                <button disabled={isSubmitting} type="submit" className={clsx("w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-[0.98]", isSubmitting && "opacity-50 cursor-not-allowed")}>
+                                    {isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث التحصيل' : 'تسجيل التحصيل')}
                                 </button>
                             </form>
                         </div>
@@ -685,7 +719,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" />
+                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>
@@ -696,8 +730,8 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="مثال: فاتورة رقم..." />
                                 </div>
-                                <button type="submit" className="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all active:scale-[0.98]">
-                                    {editingTransaction ? 'تحديث السداد' : 'تسجيل السداد'}
+                                <button disabled={isSubmitting} type="submit" className={clsx("w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 shadow-lg shadow-teal-200 transition-all active:scale-[0.98]", isSubmitting && "opacity-50 cursor-not-allowed")}>
+                                    {isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث السداد' : 'تسجيل السداد')}
                                 </button>
                             </form>
                         </div>
@@ -778,7 +812,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500" />
+                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>
@@ -789,8 +823,8 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500" placeholder="مثال: حساب الأسبوع..." />
                                 </div>
-                                <button type="submit" className="w-full bg-pink-600 text-white py-3 rounded-xl font-bold hover:bg-pink-700 shadow-lg shadow-pink-200 transition-all active:scale-[0.98]">
-                                    {editingTransaction ? 'تحديث السداد' : 'تسجيل السداد'}
+                                <button disabled={isSubmitting} type="submit" className={clsx("w-full bg-pink-600 text-white py-3 rounded-xl font-bold hover:bg-pink-700 shadow-lg shadow-pink-200 transition-all active:scale-[0.98]", isSubmitting && "opacity-50 cursor-not-allowed")}>
+                                    {isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث السداد' : 'تسجيل السداد')}
                                 </button>
                             </form>
                         </div>
