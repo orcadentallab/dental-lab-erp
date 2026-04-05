@@ -136,6 +136,7 @@ export interface OrderFilters {
 
     // hideRejected replaced by showArchived
     showArchived?: boolean;
+    includeArchived?: boolean; // Show both active and archived
 }
 
 export interface PaginatedOrdersResult {
@@ -203,7 +204,7 @@ export async function getOrders(
     // Archive Filter
     if (filters.showArchived) {
         query = query.eq('is_archived', true);
-    } else {
+    } else if (!filters.includeArchived) {
         // Default: Show active orders (false OR null)
         // Fix: Explicitly include NULLs because 'not.eq.true' excludes them in SQL
         query = query.or('is_archived.eq.false,is_archived.is.null');
@@ -554,7 +555,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     // --- SENSITIVE CHANGE DETECTION ---
     // If a sensitive financial or identity field changes, we reset registration status
     // so the accountant can review and re-register if necessary.
-    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost'];
+    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'status', 'isArchived'];
     const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
 
     if (hasSensitiveUpdate && updates.isRegistered === undefined) {
@@ -670,6 +671,20 @@ export async function deleteOrder(id: string): Promise<void> {
     // Validate UUID
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         throw new ValidationError('معرف الطلب غير صحيح');
+    }
+
+    // Check if the order is already registered
+    try {
+        const order = await getOrder(id);
+        if (order?.isRegistered) {
+            // Because the accountant needs to review "deleted" registered orders,
+            // we soft-delete it by marking it as archived. The update logic will
+            // catch the isArchived change and unregister the order, adding a note.
+            await updateOrder(id, { isArchived: true });
+            return;
+        }
+    } catch (e) {
+        console.error('Failed to get order before delete:', e);
     }
 
     const { error } = await supabase

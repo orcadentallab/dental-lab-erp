@@ -75,14 +75,15 @@ export default function CaseRegistration() {
     const fetchOrders = async () => {
         setLoading(true);
         try {
-            const statuses = ['Delivered', 'Completed', 'Returned for Adjustments', 'Rejected'];
+            const statuses = ['Delivered', 'Completed', 'Returned for Adjustments', 'Rejected', 'Cancelled'];
             
             const { data } = await db.getOrders(1, 1000, {
                 // Fetch recent orders, we'll filter locally for now to support complex search/filters easily
+                includeArchived: true
             });
 
             const filtered = data.filter(order => 
-                statuses.includes(order.status) && 
+                (statuses.includes(order.status) || order.isArchived) && 
                 (activeTab === 'pending' ? !order.isRegistered : order.isRegistered)
             ).sort((a, b) => {
                 const dateA = a.actualDeliveryDate || a.deliveryDate || a.createdAt;

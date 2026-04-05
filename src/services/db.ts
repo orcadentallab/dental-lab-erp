@@ -231,6 +231,8 @@ class MockDB {
             search?: string;
             hideDelivered?: boolean;
             hideRejected?: boolean;
+            showArchived?: boolean;
+            includeArchived?: boolean;
         } = {}
     ): Promise<{ data: Order[]; count: number }> {
         const { getOrders } = await import('./supabase/orders');
