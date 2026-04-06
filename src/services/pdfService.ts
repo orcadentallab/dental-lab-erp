@@ -471,9 +471,9 @@ function buildInvoiceHTML(
         </tr>`;
     }).join('');
 
-    const subtotal = order.totalPrice || 0;
     const discount = order.discount || 0;
-    const grandTotal = subtotal - discount;
+    const grandTotal = order.totalPrice || 0;           // Net price already stored after discount
+    const subtotal = grandTotal + discount;             // Gross before discount (for display)
     const totalWithBalance = grandTotal + (previousBalance || 0);
 
     const discountRow = discount > 0 ? `

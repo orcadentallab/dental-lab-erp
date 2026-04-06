@@ -177,15 +177,21 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const subTotal = items.reduce((sum, item) => {
         const count = item.teethNumbers ? item.teethNumbers.length : 0;
         const svc = services.find(s => s.name === item.serviceType);
-        
-        let unitPrice = item.price || 0;
-        
+
+        let unitPrice: number;
+
         if (item.customPrice !== undefined) {
-             unitPrice = item.customPrice; // Admin override
+            // Explicit override the admin entered in this form session
+            unitPrice = item.customPrice;
+        } else if (item.price > 0) {
+            // Previously saved price from DB — respect it (may differ from svc.sellingPrice)
+            unitPrice = item.price;
         } else if (currentDoctor?.customPrices?.[item.serviceType] !== undefined) {
-             unitPrice = currentDoctor.customPrices[item.serviceType]; // Doctor special price
+            unitPrice = currentDoctor.customPrices[item.serviceType];
         } else if (svc) {
-             unitPrice = svc.sellingPrice; // Default price
+            unitPrice = svc.sellingPrice;
+        } else {
+            unitPrice = 0;
         }
 
         return sum + (count * unitPrice);
@@ -258,7 +264,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     const svc = services.find(s => s.name === i.serviceType);
                     let resolvedUnitPrice: number;
                     if (i.customPrice !== undefined) {
+                        // Explicit override entered in this session
                         resolvedUnitPrice = i.customPrice;
+                    } else if (i.price > 0) {
+                        // Previously saved price — preserve it as-is
+                        resolvedUnitPrice = i.price;
                     } else if (doc?.customPrices?.[i.serviceType] !== undefined) {
                         resolvedUnitPrice = doc.customPrices[i.serviceType];
                     } else if (svc) {
@@ -391,8 +401,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             {items.map((item, index) => {
                                 const svc = services.find(s => s.name === item.serviceType);
                                 const doctorSpecialPrice = currentDoctor?.customPrices?.[item.serviceType];
-                                const fallbackPrice = doctorSpecialPrice !== undefined ? doctorSpecialPrice : (svc?.sellingPrice || 0);
-                                const displayPrice = item.customPrice !== undefined ? item.customPrice : fallbackPrice;
+                                // Priority: explicit customPrice → saved DB price → doctor price → service default
+                                const displayPrice = item.customPrice !== undefined
+                                    ? item.customPrice
+                                    : item.price > 0
+                                        ? item.price
+                                        : doctorSpecialPrice !== undefined
+                                            ? doctorSpecialPrice
+                                            : (svc?.sellingPrice || 0);
                                 return (
                                     <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
                                         <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">

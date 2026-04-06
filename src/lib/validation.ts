@@ -73,7 +73,7 @@ export const OrderSchema = z.object({
     comments: z.array(z.object({
         id: z.string(),
         text: z.string(),
-        userId: z.string().uuid(),
+        userId: z.union([z.string().uuid(), z.literal('system'), z.literal('System')]),
         userName: z.string(),
         createdAt: z.string()
     })).default([]),
