@@ -740,7 +740,7 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <p className="text-blue-600 text-xs font-bold uppercase mb-1">متوسط سعر الوحدة</p>
-                            <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.totalUnitsRevenue / stats.totalUnits) : 0}</p>
+                            <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.deliveredRevenue / stats.totalUnits).toLocaleString() : 0}</p>
                         </div>
                         <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-xl border border-teal-100 text-center hover:shadow-md transition-shadow cursor-pointer">
                             <div className="flex justify-center mb-2">

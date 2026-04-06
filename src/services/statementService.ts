@@ -56,11 +56,8 @@ export const statementService = {
             // Check if before start date
             if (startDate && sortDate >= startDate) return false;
 
-            // Only include valid statuses
-            if (o.status === 'Rejected') return false;
-            // Standard inclusion criteria from Accounts.tsx
             const status = (o.status || '').toLowerCase();
-            return ['delivered', 'completed', 'ready', 'cancelled'].includes(status);
+            return ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes(status);
         });
 
         openingDebit = pastOrders.reduce((sum, o) => {
@@ -111,11 +108,8 @@ export const statementService = {
             // Let's assume Standard View: valid statuses only.
             // Actually, Accounts.tsx logic for `individualStatement` includes Cancelled/Rejected if showAll is true.
             // For a formal statement, we usually only want billable items.
-            // Let's stick to the filtered list logic for safety:
-            if (o.status === 'Rejected') return false;
-
             const status = (o.status || '').toLowerCase();
-            return ['delivered', 'completed', 'ready', 'cancelled'].includes(status);
+            return ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes(status);
         });
 
         items = items.concat(periodOrders.map(o => {

@@ -448,7 +448,14 @@ export default function CaseRegistration() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-slate-400 text-[10px] group-hover:text-cyan-600 transition-colors tracking-tighter">#{order.caseId}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-400 text-[10px] group-hover:text-cyan-600 transition-colors tracking-tighter">#{order.caseId}</span>
+                                                        {order.status === 'Rejected' && (
+                                                            <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[8px] font-black rounded shadow-sm whitespace-nowrap">
+                                                                مرفوض
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="flex items-center gap-1 mt-0.5">
                                                         <span className="text-[9px] text-slate-300 font-mono">{order.id.split('-')[0]}</span>
                                                         {activeTab === 'pending' && order.comments?.some(c => c.text.includes('بعد التسجيل المحاسبي')) && (
@@ -497,16 +504,31 @@ export default function CaseRegistration() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1 bg-slate-50/50 p-2 rounded-xl border border-slate-100 w-fit">
-                                                    <div className="flex items-center justify-between gap-3 font-black text-emerald-600 text-sm">
-                                                        <span className="text-[10px] text-slate-400 font-bold">بيع:</span>
-                                                        <span>{order.totalPrice.toLocaleString()}</span>
-                                                    </div>
-                                                    <div className="flex items-center justify-between gap-3 font-black text-slate-700 text-sm">
-                                                        <span className="text-[10px] text-slate-400 font-bold">تكلفة:</span>
-                                                        <span>{order.cost.toLocaleString()}</span>
-                                                    </div>
-                                                    {order.discount > 0 && (
-                                                        <span className="text-[10px] text-red-500 font-black bg-red-50 px-1.5 py-0.5 rounded">خصم: {order.discount.toLocaleString()}</span>
+                                                    {order.status === 'Rejected' ? (
+                                                        <>
+                                                            <div className="flex items-center justify-between gap-3 font-black text-slate-400 text-sm line-through opacity-60">
+                                                                <span className="text-[10px] font-bold">بيع مقدر:</span>
+                                                                <span>{order.totalPrice.toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between gap-3 font-black text-rose-600 text-sm">
+                                                                <span className="text-[10px] font-bold">تكلفة رفض:</span>
+                                                                <span className="bg-rose-100 px-1.5 rounded">{order.rejectedLabCost?.toLocaleString() || 0}</span>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="flex items-center justify-between gap-3 font-black text-emerald-600 text-sm">
+                                                                <span className="text-[10px] text-slate-400 font-bold">بيع:</span>
+                                                                <span>{order.totalPrice.toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between gap-3 font-black text-slate-700 text-sm">
+                                                                <span className="text-[10px] text-slate-400 font-bold">تكلفة:</span>
+                                                                <span>{order.cost.toLocaleString()}</span>
+                                                            </div>
+                                                            {order.discount > 0 && (
+                                                                <span className="text-[10px] text-red-500 font-black bg-red-50 px-1.5 py-0.5 rounded">خصم: {order.discount.toLocaleString()}</span>
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             </td>
@@ -515,12 +537,6 @@ export default function CaseRegistration() {
                                                     <span className="whitespace-nowrap max-w-[120px] truncate">
                                                         {(order.supplierId && suppliers[order.supplierId]) || (order.supplierId === 'internal' ? 'داخلي' : 'داخلي')}
                                                     </span>
-                                                    {order.status === 'Rejected' && order.rejectedLabCost !== undefined && (
-                                                        <div className="flex items-center gap-1 px-2 py-1 bg-amber-500 text-white rounded-lg text-[10px] font-black shadow-lg shadow-amber-200 border border-amber-600 animate-bounce">
-                                                            <AlertCircle size={10} />
-                                                            <span>خصم: {order.rejectedLabCost}</span>
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4">

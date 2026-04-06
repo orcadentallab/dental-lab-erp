@@ -287,14 +287,12 @@ export default function Accounts() {
 
         for (const o of allOrders) {
             if (activeTab === 'doctors' && o.doctorId) {
-                if ((o.status as string) === 'Rejected') continue;
-                const isRelevant = (showAllOrders || o.status !== 'Rejected') &&
-                    (showAllOrders || ['delivered', 'completed', 'ready', 'cancelled'].includes((o.status || '').toLowerCase()));
+                const isRelevant = showAllOrders || ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes((o.status || '').toLowerCase());
 
                 if (isRelevant) {
                     const stats = getStats(o.doctorId);
                     stats.count++;
-                    const amount = (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0));
+                    const amount = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0));
                     stats.totalDebit += amount;
                     stats.totalSales += amount;
                     if (o.createdAt && o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
@@ -307,9 +305,9 @@ export default function Accounts() {
                 if (isRelevant) {
                     const stats = getStats(o.supplierId);
                     stats.count++;
-                    let cost = (o.status === 'Cancelled' ? 0 : (o.cost || 0));
+                    let cost = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.cost || 0));
                     if (hasRejectionCost) cost = o.rejectedLabCost!;
-                    if (o.workflowType === 'split' && o.designPrice && o.status !== 'Cancelled' && !hasRejectionCost) cost -= o.designPrice;
+                    if (o.workflowType === 'split' && o.designPrice && o.status !== 'Cancelled' && o.status !== 'Rejected' && !hasRejectionCost) cost -= o.designPrice;
                     stats.totalCredit += cost;
                     stats.totalSales += cost;
                 }
@@ -322,7 +320,8 @@ export default function Accounts() {
                 if (isRelevant) {
                     const stats = getStats(o.designerId);
                     stats.count++;
-                    const price = hasRejectionCost ? o.rejectedLabCost! : (o.status === 'Cancelled' ? 0 : (o.designPrice || 0));
+                    let price = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.designPrice || 0));
+                    if (hasRejectionCost) price = o.rejectedLabCost!;
                     stats.totalCredit += price;
                     stats.totalSales += price;
                 }
@@ -580,8 +579,7 @@ export default function Accounts() {
             const docOrders = relevantOrders.filter(o => {
                 if (o.doctorId !== selectedEntityId) return false;
                 if (showAllOrders) return true; // Show ALL (Including Rejected/Pending)
-                if (o.status === 'Rejected') return false;
-                return ['Delivered', 'Completed', 'Ready', 'Cancelled'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
+                return ['Delivered', 'Completed', 'Ready', 'Cancelled', 'Rejected'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
             });
 
             items = docOrders.map(o => {

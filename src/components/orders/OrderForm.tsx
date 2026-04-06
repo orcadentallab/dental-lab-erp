@@ -254,7 +254,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode) : 'UNKNOWN'),
                 doctorId,
                 patientName,
-                items: items.map(i => ({ ...i, teethNumbers: i.teethNumbers })),
+                items: items.map(i => {
+                    const svc = services.find(s => s.name === i.serviceType);
+                    let resolvedUnitPrice: number;
+                    if (i.customPrice !== undefined) {
+                        resolvedUnitPrice = i.customPrice;
+                    } else if (doc?.customPrices?.[i.serviceType] !== undefined) {
+                        resolvedUnitPrice = doc.customPrices[i.serviceType];
+                    } else if (svc) {
+                        resolvedUnitPrice = svc.sellingPrice;
+                    } else {
+                        resolvedUnitPrice = 0;
+                    }
+                    return { serviceType: i.serviceType, teethNumbers: i.teethNumbers, price: resolvedUnitPrice, shade: i.shade };
+                }),
                 shade,
                 instructions: instructions || undefined,
                 stlUrl: stlUrl || undefined,

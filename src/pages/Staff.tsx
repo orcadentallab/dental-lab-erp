@@ -54,7 +54,7 @@ export default function Staff() {
     const [kpiMap, setKpiMap] = useState<Record<string, string | number>>({});
 
     // Commission Override State
-    const [commissionMap, setCommissionMap] = useState<Record<string, number>>({});
+    const [commissionMap, setCommissionMap] = useState<Record<string, string | number>>({});
 
     // Expense Form
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -102,7 +102,12 @@ export default function Staff() {
 
                 const rate = getCommissionRate(totalSales);
                 const calculatedCommission = Math.round(totalSales * rate);
-                const commission = commissionMap[rep.id] ?? calculatedCommission;
+                let commission = calculatedCommission;
+                const commissionVal = commissionMap[rep.id];
+                if (commissionVal !== undefined && commissionVal !== '') {
+                    const parsed = typeof commissionVal === 'string' ? parseFloat(commissionVal) : commissionVal;
+                    if (!isNaN(parsed)) commission = parsed;
+                }
 
                 // Pending Expenses (All time, or just this month? Usually all pending need distinct settlement)
                 // We keep expenses cumulative as they are irrelevant to the month of Salary
@@ -173,6 +178,10 @@ export default function Staff() {
     };
 
     const handleCommissionChange = (userId: string, val: string) => {
+        setCommissionMap(prev => ({ ...prev, [userId]: val }));
+    };
+
+    const handleCommissionBlur = (userId: string, val: string) => {
         if (val === '') {
             setCommissionMap(prev => {
                 const next = { ...prev };
@@ -183,6 +192,12 @@ export default function Staff() {
             const num = parseFloat(val);
             if (!isNaN(num)) {
                 setCommissionMap(prev => ({ ...prev, [userId]: num }));
+            } else {
+                setCommissionMap(prev => {
+                    const next = { ...prev };
+                    delete next[userId];
+                    return next;
+                });
             }
         }
     };
@@ -567,6 +582,7 @@ export default function Staff() {
                                                                 aria-label="Commission amount"
                                                                 value={commissionMap[stat.user.id] !== undefined ? commissionMap[stat.user.id] : stat.commissionAmount.toFixed(0)}
                                                                 onChange={(e) => handleCommissionChange(stat.user.id, e.target.value)}
+                                                                onBlur={(e) => handleCommissionBlur(stat.user.id, e.target.value)}
                                                                 className="w-16 px-1 py-0.5 border rounded text-center text-xs text-green-600 font-bold"
                                                             />
                                                         </div>
