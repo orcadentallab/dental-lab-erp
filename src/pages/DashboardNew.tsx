@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
-import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare, Square } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare } from 'lucide-react';
 import { contactService, type ContactInquiry } from '../services/contactService';
 import AlertCard from '../components/dashboard/AlertCard';
 import OrderForm from '../components/orders/OrderForm';
@@ -459,56 +459,49 @@ export default function DashboardNew() {
                     </div>
                 )}
 
-                {/* 3. COMMENTS ALERT (Blue/Teal) */}
+                {/* 3. COMMENTS ALERT (Blue) */}
                 {unresolvedCommentItems.length > 0 && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <MessageSquare size={16} />
                             تعليقات تحتاج ردود
                         </h3>
-                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl shadow-sm overflow-hidden">
-                            {/* Header */}
-                            <div className="flex items-center justify-between p-4 border-b border-blue-100 dark:border-blue-800">
-                                <div className="flex items-center gap-2">
-                                    <MessageSquare className="text-blue-600 dark:text-blue-400 w-5 h-5" />
-                                    <h3 className="text-blue-800 dark:text-blue-300 font-bold text-sm">تعليقات على الحالات</h3>
-                                </div>
-                                <span className="bg-blue-600 text-white px-2.5 py-1 rounded-full text-xs font-bold">
-                                    {unresolvedCommentItems.length}
-                                </span>
-                            </div>
-                            {/* Comment List */}
-                            <div className="divide-y divide-blue-100 dark:divide-blue-800 max-h-80 overflow-y-auto">
-                                {unresolvedCommentItems.map(({ comment, order }) => (
-                                    <div
-                                        key={comment.id}
-                                        className="flex items-start gap-3 p-4 hover:bg-blue-100/50 dark:hover:bg-blue-900/30 transition-colors"
-                                    >
-                                        {/* Case Info */}
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                <span className="font-mono text-[10px] text-blue-500 dark:text-blue-400 font-bold">#{order.caseId}</span>
-                                                <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{order.patientName}</span>
-                                                <span className="text-[10px] text-gray-400">—</span>
-                                                <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">{comment.userName}</span>
-                                                <span className="text-[10px] text-gray-400 mr-auto">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <AlertCard
+                                title="تعليقات على الحالات"
+                                count={unresolvedCommentItems.length}
+                                icon={MessageSquare}
+                                colorClass="blue"
+                                expandable
+                            >
+                                <div className="divide-y divide-blue-100 dark:divide-blue-800 -mx-4 max-h-72 overflow-y-auto">
+                                    {unresolvedCommentItems.map(({ comment, order }) => (
+                                        <div
+                                            key={comment.id}
+                                            className="flex items-start gap-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                        >
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                                    <span className="font-mono text-[10px] text-blue-500 font-bold">#{order.caseId}</span>
+                                                    <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{order.patientName}</span>
+                                                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">— {comment.userName}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{comment.text}</p>
+                                                <span className="text-[10px] text-gray-400 mt-0.5 block">
                                                     {new Date(comment.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                                 </span>
                                             </div>
-                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{comment.text}</p>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); resolveComment(comment.id); }}
+                                                title="تم الرد ✓"
+                                                className="shrink-0 mt-1 p-1 rounded-md text-blue-300 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors"
+                                            >
+                                                <CheckSquare className="w-4 h-4" />
+                                            </button>
                                         </div>
-                                        {/* Dismiss Checkbox */}
-                                        <button
-                                            onClick={() => resolveComment(comment.id)}
-                                            title="تم الرد — إزالة من القائمة"
-                                            className="shrink-0 mt-0.5 p-1.5 rounded-lg text-blue-400 hover:text-blue-700 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors group"
-                                        >
-                                            <Square className="w-5 h-5 group-hover:hidden" />
-                                            <CheckSquare className="w-5 h-5 hidden group-hover:block text-blue-600" />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            </AlertCard>
                         </div>
                     </div>
                 )}
