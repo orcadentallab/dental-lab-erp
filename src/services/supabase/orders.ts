@@ -290,6 +290,36 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
 }
 
 /**
+ * Fetches orders that have at least one non-system comment.
+ * Used by Dashboard to show comment alerts.
+ * Looks at recent orders (last 60 days) with comments in order_comments table.
+ */
+export async function getOrdersWithComments(): Promise<Order[]> {
+    // We need to join with order_comments and filter those with content
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*), order_comments(*)')
+        .or('is_archived.eq.false,is_archived.is.null')
+        .order('created_at', { ascending: false })
+        .range(0, 999);
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'getOrdersWithComments');
+    }
+
+    // Filter in JS: only orders with at least one non-system comment
+    const ordersWithComments = (data || [])
+        .map(d => dbToOrder(d as unknown as DbOrderWithRelations))
+        .filter(order =>
+            order.comments &&
+            order.comments.length > 0 &&
+            order.comments.some(c => c.userId !== 'system' && c.userId !== 'System')
+        );
+
+    return ordersWithComments;
+}
+
+/**
  * @deprecated Use getOrders(page, limit, filters) instead.
  * This function fetches ALL orders and should only be used for exports or legacy code.
  */

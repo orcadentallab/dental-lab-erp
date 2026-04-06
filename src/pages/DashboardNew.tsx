@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
-import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare, Square } from 'lucide-react';
 import { contactService, type ContactInquiry } from '../services/contactService';
 import AlertCard from '../components/dashboard/AlertCard';
 import OrderForm from '../components/orders/OrderForm';
@@ -29,18 +29,29 @@ export default function DashboardNew() {
     const [activeModal, setActiveModal] = useState<string | null>(null);
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
     const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
+    const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
+    // Track which comment IDs have been resolved (dismissed) — stored in localStorage
+    const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
+        try {
+            const stored = localStorage.getItem('resolvedCommentIds');
+            return stored ? new Set(JSON.parse(stored) as string[]) : new Set<string>();
+        } catch {
+            return new Set<string>();
+        }
+    });
     const { t } = useTranslation();
 
     useEffect(() => {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData] = await Promise.all([
+                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData] = await Promise.all([
                     db.getDashboardActiveOrders(),
                     db.getSuppliers(),
                     db.getUsers(),
                     db.getDoctors(),
                     contactService.getInquiries('new').catch(() => [] as ContactInquiry[]),
+                    db.getOrdersWithComments().catch(() => [] as Order[]),
                 ]);
 
                 // Apply role-based filtering
@@ -64,6 +75,7 @@ export default function DashboardNew() {
                 setUsers(usersData);
                 setDoctors(doctorsData);
                 setContactInquiries(inquiriesData);
+                setOrdersWithComments(commentOrdersData);
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             } finally {
@@ -124,9 +136,24 @@ export default function DashboardNew() {
     // Quality Stats
     const labRejections = orders.filter(o => o.technicianStatus === 'Rejected');
 
+    // Helper to resolve (dismiss) a comment
+    const resolveComment = (commentId: string) => {
+        setResolvedCommentIds(prev => {
+            const next = new Set(prev);
+            next.add(commentId);
+            try {
+                localStorage.setItem('resolvedCommentIds', JSON.stringify([...next]));
+            } catch { /* ignore */ }
+            return next;
+        });
+    };
 
-
-
+    // Build flat list of unresolved comments across all orders with comments
+    const unresolvedCommentItems = ordersWithComments.flatMap(order =>
+        (order.comments || [])
+            .filter(c => c.userId !== 'system' && c.userId !== 'System' && !resolvedCommentIds.has(c.id))
+            .map(c => ({ comment: c, order }))
+    );
 
     // Helper functions
     const doctorsMap = useMemo(() => {
@@ -432,7 +459,59 @@ export default function DashboardNew() {
                     </div>
                 )}
 
-                {/* 3. FINANCE / ADMIN (Green) */}
+                {/* 3. COMMENTS ALERT (Blue/Teal) */}
+                {unresolvedCommentItems.length > 0 && (
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
+                            <MessageSquare size={16} />
+                            تعليقات تحتاج ردود
+                        </h3>
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl shadow-sm overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-4 border-b border-blue-100 dark:border-blue-800">
+                                <div className="flex items-center gap-2">
+                                    <MessageSquare className="text-blue-600 dark:text-blue-400 w-5 h-5" />
+                                    <h3 className="text-blue-800 dark:text-blue-300 font-bold text-sm">تعليقات على الحالات</h3>
+                                </div>
+                                <span className="bg-blue-600 text-white px-2.5 py-1 rounded-full text-xs font-bold">
+                                    {unresolvedCommentItems.length}
+                                </span>
+                            </div>
+                            {/* Comment List */}
+                            <div className="divide-y divide-blue-100 dark:divide-blue-800 max-h-80 overflow-y-auto">
+                                {unresolvedCommentItems.map(({ comment, order }) => (
+                                    <div
+                                        key={comment.id}
+                                        className="flex items-start gap-3 p-4 hover:bg-blue-100/50 dark:hover:bg-blue-900/30 transition-colors"
+                                    >
+                                        {/* Case Info */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                <span className="font-mono text-[10px] text-blue-500 dark:text-blue-400 font-bold">#{order.caseId}</span>
+                                                <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{order.patientName}</span>
+                                                <span className="text-[10px] text-gray-400">—</span>
+                                                <span className="text-[10px] font-semibold text-blue-700 dark:text-blue-300">{comment.userName}</span>
+                                                <span className="text-[10px] text-gray-400 mr-auto">
+                                                    {new Date(comment.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{comment.text}</p>
+                                        </div>
+                                        {/* Dismiss Checkbox */}
+                                        <button
+                                            onClick={() => resolveComment(comment.id)}
+                                            title="تم الرد — إزالة من القائمة"
+                                            className="shrink-0 mt-0.5 p-1.5 rounded-lg text-blue-400 hover:text-blue-700 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors group"
+                                        >
+                                            <Square className="w-5 h-5 group-hover:hidden" />
+                                            <CheckSquare className="w-5 h-5 hidden group-hover:block text-blue-600" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
 

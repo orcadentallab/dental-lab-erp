@@ -283,6 +283,11 @@ class MockDB {
         return getDashboardActiveOrders();
     }
 
+    async getOrdersWithComments(): Promise<Order[]> {
+        const { getOrdersWithComments } = await import('./supabase/orders');
+        return getOrdersWithComments();
+    }
+
     async getOrder(id: string): Promise<Order | null> {
         const { getOrder } = await import('./supabase/orders');
         return getOrder(id);
