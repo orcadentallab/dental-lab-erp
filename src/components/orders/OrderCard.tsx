@@ -351,9 +351,12 @@ export default function OrderCard({
 
                             <div className="h-4 w-px bg-surface-200 dark:bg-surface-700/50 mx-1"></div>
 
-                            <span className="text-[10px] font-semibold text-surface-500 flex items-center gap-1 font-mono tracking-tight">
+                            <span
+                                className="text-[10px] font-semibold text-surface-500 flex items-center gap-1 font-mono tracking-tight"
+                                title="تاريخ استلام العمل"
+                            >
                                 <Calendar size={11} className="text-surface-400" />
-                                {order.deliveryDate}
+                                {order.createdAt ? order.createdAt.split('T')[0] : '-'}
                             </span>
                         </div>
                     </div>

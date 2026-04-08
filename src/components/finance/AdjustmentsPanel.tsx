@@ -10,7 +10,7 @@ import { Calculator, ArrowRightLeft, Save, Search, Pencil, Trash2, X } from 'luc
 
 export default function AdjustmentsPanel() {
     const { user } = useAuth();
-    const isAdmin = user?.role === 'admin';
+    const isAllowed = ['admin', 'accountant'].includes(user?.role || '');
 
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -44,11 +44,11 @@ export default function AdjustmentsPanel() {
     });
 
     useEffect(() => {
-        if (isAdmin) loadData();
+        if (isAllowed) loadData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAdmin]);
+    }, [isAllowed]);
 
-    if (!isAdmin) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
+    if (!isAllowed) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
     async function loadData() {
         try {
             const [adjs, docs, sups] = await Promise.all([
