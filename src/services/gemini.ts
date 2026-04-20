@@ -27,12 +27,15 @@ export interface AnalyzeContext {
         operatingExpenses: number;
         completedOrders: number;
         pendingOrders: number;
+        deliveryRate: number;
+        newOrders: number;
     };
     // Previous Monthly Data
     previousMonth?: {
         revenue: number;
         profit: number;
         completedOrders: number;
+        topDoctors: { name: string; orderCount?: number; revenue: number; count?: number }[];
     };
     // All-time Totals
     allTime?: {
@@ -42,7 +45,9 @@ export interface AnalyzeContext {
         collectionRate: number;
     };
 
-    // Legacy flat fields (kept for backward compatibility with old local saved contexts)
+    delayedOrdersCount?: number;
+
+    // Legacy flat fields
     orderCount?: number;
     completedOrders?: number;
     pendingOrders?: number;
@@ -53,7 +58,7 @@ export interface AnalyzeContext {
     profit?: number;
     profitMargin?: number;
     grossMargin?: number;
-    topDoctors: { name: string; orderCount: number; revenue: number }[];
+    topDoctors: { name: string; orderCount?: number; revenue: number; count?: number }[];
     topServices: { name: string; count: number; revenue: number }[];
     ordersByStatus: { status: string; count: number }[];
     revenueByMonth?: { month: string; revenue: number }[];

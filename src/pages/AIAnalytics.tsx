@@ -6,6 +6,8 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, RefreshCw, Clock, Shield, AlertTriangle, ChevronDown, FileText } from 'lucide-react';
+import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
+import { analyticsService } from '../services/supabase/analyticsService';
 import clsx from 'clsx';
 import { db } from '../services/db';
 import InsightCard, { InsightCardSkeleton } from '../components/ai/InsightCard';
@@ -44,104 +46,61 @@ export default function AIAnalytics() {
     // Load Data Context (for generation and chat)
     const loadDataContext = useCallback(async () => {
         try {
-            const [orders, transactions, doctors] = await Promise.all([
-                db.getAllOrdersUnpaginated(),
-                db.getTransactions(),
-                db.getDoctors()
+            const today = new Date();
+            const formatDate = (d: Date) => format(d, 'yyyy-MM-dd');
+
+            // Date Ranges
+            const curMonthStart = formatDate(startOfMonth(today));
+            const curMonthEnd = formatDate(endOfMonth(today));
+            const prevMonthStart = formatDate(startOfMonth(subMonths(today, 1)));
+            const prevMonthEnd = formatDate(endOfMonth(subMonths(today, 1)));
+
+            const [
+                summaryAll,
+                summaryCurrent,
+                summaryPrev,
+                topDoctorsCurrent,
+                topServicesCurrent,
+                topDoctorsPrev,
+                orders
+            ] = await Promise.all([
+                analyticsService.getSummary(), // All time
+                analyticsService.getSummary(curMonthStart, curMonthEnd),
+                analyticsService.getSummary(prevMonthStart, prevMonthEnd),
+                analyticsService.getTopDoctors(curMonthStart, curMonthEnd, 10),
+                analyticsService.getTopServices(curMonthStart, curMonthEnd, 10),
+                analyticsService.getTopDoctors(prevMonthStart, prevMonthEnd, 10),
+                db.getAllOrdersUnpaginated()
             ]);
 
-            // Calculate stats for analysis context (including Delivered as completed)
-            const completedOrders = orders.filter(o =>
-                ['completed', 'delivered'].includes((o.status || '').toLowerCase())
-            );
-            const pendingOrders = orders.filter(o =>
-                !['completed', 'delivered', 'rejected'].includes((o.status || '').toLowerCase())
-            );
+            // Delayed Orders Detection (created > 7 days ago, not delivered/rejected)
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            const delayedOrdersCount = orders.filter(o => 
+                new Date(o.createdAt) < sevenDaysAgo && 
+                !['delivered', 'rejected', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())
+            ).length;
 
-            const revenue = transactions
-                .filter(t => t.type === 'income' && t.isApproved)
-                .reduce((sum, t) => sum + t.amount, 0);
-
-            let productionCosts = 0;
-            let operatingExpenses = 0;
-
-            transactions.filter(t => t.type === 'expense' && t.isApproved).forEach(t => {
-                if (t.entityType === 'supplier' || t.entityType === 'designer') {
-                    productionCosts += t.amount;
-                } else {
-                    operatingExpenses += t.amount;
-                }
-            });
-
-            const profit = revenue - (productionCosts + operatingExpenses);
-            const grossProfit = revenue - productionCosts;
-            const profitMargin = revenue > 0 ? (profit / revenue) * 100 : 0;
-            const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
-
-            // Top Doctors
-            const doctorStats = doctors.map(d => {
-                const doctorOrders = orders.filter(o => o.doctorId === d.id);
-                const doctorRevenue = doctorOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-                return {
-                    name: d.name,
-                    orderCount: doctorOrders.length,
-                    revenue: doctorRevenue
-                };
-            }).sort((a, b) => b.orderCount - a.orderCount); // All doctors, sorted by order count
-
-            // Helper: count actual units from teethNumbers
-            const getUnitCount = (teethNumbers: unknown): number => {
-                if (Array.isArray(teethNumbers) && teethNumbers.length > 0) return teethNumbers.length;
-                if (typeof teethNumbers === 'string' && teethNumbers.trim()) {
-                    return teethNumbers.split(',').filter(s => s.trim()).length || 1;
-                }
-                return 1;
-            };
-
-            // Top Services - count teeth (units) from completed orders only
-            const serviceStats: Record<string, { count: number; revenue: number }> = {};
-            completedOrders.forEach(order => {
-                order.items?.forEach((item: { serviceType: string; price: number; teethNumbers?: unknown }) => {
-                    if (!serviceStats[item.serviceType]) {
-                        serviceStats[item.serviceType] = { count: 0, revenue: 0 };
-                    }
-                    const unitCount = getUnitCount(item.teethNumbers);
-                    serviceStats[item.serviceType].count += unitCount;
-                    serviceStats[item.serviceType].revenue += (item.price || 0) * unitCount;
-                });
-            });
-            const topServices = Object.entries(serviceStats)
-                .map(([name, stats]) => ({ name, ...stats }))
-                .sort((a, b) => b.count - a.count); // All services, sorted by usage
-
-            // Orders by Status
-            const statusCounts: Record<string, number> = {};
-            orders.forEach(o => {
-                statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
-            });
-            const ordersByStatus = Object.entries(statusCounts).map(([status, count]) => ({
-                status,
-                count
-            }));
-
-            // Collection Rate
-            const totalInvoiced = orders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-            const totalPaid = transactions
-                .filter(t => t.type === 'income' && t.isApproved)
-                .reduce((sum, t) => sum + t.amount, 0);
-            const collectionRate = totalInvoiced > 0 ? (totalPaid / totalInvoiced) * 100 : 0;
-            const pendingPayments = totalInvoiced - totalPaid;
+            // Monthly Delivery Performance
+            // Orders CREATED this month that are already DELIVERED
+            const createdThisMonth = orders.filter(o => o.createdAt >= curMonthStart);
+            const deliveredFromThisMonth = createdThisMonth.filter(o => 
+                ['delivered', 'completed'].includes((o.status || '').toLowerCase())
+            ).length;
+            const monthlyDeliveryRate = createdThisMonth.length > 0 
+                ? (deliveredFromThisMonth / createdThisMonth.length) * 100 
+                : 0;
 
             // Set Chat Context
             setChatContext({
-                orderCount: orders.length,
-                revenue,
-                productionCosts,
-                operatingExpenses,
-                expenses: productionCosts + operatingExpenses,
-                profit,
-                topDoctors: doctorStats.map(d => ({ name: d.name, orderCount: d.orderCount })),
-                topServices: topServices.map(s => ({ name: s.name, count: s.count })),
+                orderCount: summaryCurrent.total_order_count,
+                revenue: summaryCurrent.total_sales_value,
+                productionCosts: summaryCurrent.production_costs,
+                operatingExpenses: summaryCurrent.operating_expenses,
+                expenses: summaryCurrent.production_costs + summaryCurrent.operating_expenses,
+                profit: summaryCurrent.total_sales_value - (summaryCurrent.production_costs + summaryCurrent.operating_expenses),
+                topDoctors: topDoctorsCurrent.map(d => ({ name: d.name, orderCount: d.count })),
+                topServices: topServicesCurrent.map(s => ({ name: s.name, count: s.count })),
                 recentOrders: orders.slice(0, 10).map(o => ({
                     patientName: o.patientName,
                     status: o.status,
@@ -151,22 +110,32 @@ export default function AIAnalytics() {
 
             // Set Analysis Context
             setAnalyzeContext({
-                orderCount: orders.length,
-                completedOrders: completedOrders.length,
-                pendingOrders: pendingOrders.length,
-                revenue,
-                productionCosts,
-                operatingExpenses,
-                expenses: productionCosts + operatingExpenses,
-                profit,
-                profitMargin,
-                grossMargin,
-                topDoctors: doctorStats,
-                topServices,
-                ordersByStatus,
-                revenueByMonth: [],
-                collectionRate,
-                pendingPayments
+                currentMonth: {
+                    revenue: summaryCurrent.total_sales_value,
+                    profit: summaryCurrent.total_sales_value - (summaryCurrent.production_costs + summaryCurrent.operating_expenses),
+                    productionCosts: summaryCurrent.production_costs,
+                    operatingExpenses: summaryCurrent.operating_expenses,
+                    completedOrders: summaryCurrent.completed_order_count,
+                    pendingOrders: summaryCurrent.active_order_count,
+                    deliveryRate: monthlyDeliveryRate,
+                    newOrders: createdThisMonth.length
+                },
+                previousMonth: {
+                    revenue: summaryPrev.total_sales_value,
+                    profit: summaryPrev.total_sales_value - (summaryPrev.production_costs + summaryPrev.operating_expenses),
+                    completedOrders: summaryPrev.completed_order_count,
+                    topDoctors: topDoctorsPrev.map(d => ({ name: d.name, revenue: d.revenue, count: d.count }))
+                },
+                allTime: {
+                    revenue: summaryAll.total_sales_value,
+                    profit: summaryAll.total_sales_value - (summaryAll.production_costs + summaryAll.operating_expenses),
+                    pendingPayments: summaryAll.total_receivables,
+                    collectionRate: summaryAll.total_sales_value > 0 ? (summaryAll.total_income / summaryAll.total_sales_value) * 100 : 0
+                },
+                delayedOrdersCount,
+                topDoctors: topDoctorsCurrent.map(d => ({ name: d.name, revenue: d.revenue, count: d.count })),
+                topServices: topServicesCurrent.map(s => ({ name: s.name, revenue: s.revenue, count: s.count })),
+                ordersByStatus: [] // Not strictly needed for the higher level analysis but kept for compat
             });
 
         } catch (err) {
@@ -507,7 +476,7 @@ export default function AIAnalytics() {
                         <div className="mt-6 flex items-start gap-3 p-4 bg-blue-50/50 rounded-xl border border-blue-100/50 text-xs text-blue-700/80 leading-relaxed">
                             <Shield size={16} className="mt-0.5 flex-shrink-0" />
                             <p>
-                                هذا التحليل تم إنشاؤه بواسطة الذكاء الاصطناعي (Gemini 2.5) بناءً على البيانات المسجلة.
+                                هذا التحليل تم إنشاؤه بواسطة الذكاء الاصطناعي بناءً على البيانات المسجلة.
                                 يرجى مراجعة الأرقام المالية قبل اتخاذ قرارات حاسمة.
                             </p>
                         </div>

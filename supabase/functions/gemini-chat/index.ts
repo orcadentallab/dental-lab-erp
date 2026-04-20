@@ -1,6 +1,5 @@
-// Gemini Chat Edge Function
-// Handles chat requests from the frontend and proxies to Gemini API
-// API Key is stored in Supabase secrets (never exposed to frontend)
+// AI Chat Edge Function — Groq
+// Model: llama-3.3-70b-versatile (Free tier: 1000 req/day, 30 RPM)
 
 // @ts-ignore: Deno URL imports
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -8,18 +7,18 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // @ts-ignore: Deno global
-const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent'
+const GROQ_API_KEY = Deno.env.get('GROQ_API_KEY')
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const MODEL = 'llama-3.3-70b-versatile'
 
-// System prompt with guardrails
 const SYSTEM_PROMPT = `أنت مساعد تحليل بيانات لمعمل أسنان فقط.
 
 قواعد صارمة:
 1. أجب فقط على أسئلة متعلقة ببيانات المعمل (طلبات، مالية، أطباء، خدمات)
 2. لا تجب على أسئلة شخصية أو عامة أو سياسية
-3. لو السؤال خارج النطاق، قل: "عذراً، أنا متخصص في تحليل بيانات المعمل فقط. هل لديك سؤال عن الطلبات أو المالية؟"
-4. لا تخترع بيانات - استخدم فقط البيانات المقدمة
-5. لو البيانات غير كافية، قل: "لا تتوفر لدي بيانات كافية للإجابة على هذا السؤال"
+3. لو السؤال خارج النطاق، قل: "عذراً، أنا متخصص في تحليل بيانات المعمل فقط."
+4. لا تخترع بيانات — استخدم فقط البيانات المقدمة لك
+5. لو البيانات غير كافية، قل: "لا تتوفر لدي بيانات كافية للإجابة."
 6. أجب بالعربية دائماً
 7. كن مختصراً ومفيداً`
 
@@ -46,22 +45,19 @@ interface ChatRequest {
 
 // @ts-ignore: Deno serve
 serve(async (req: any) => {
-    // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
 
     try {
-        // Check API key is configured
-        if (!GEMINI_API_KEY) {
-            console.error('GEMINI_API_KEY not configured')
+        if (!GROQ_API_KEY) {
+            console.error('GROQ_API_KEY not configured')
             return new Response(
-                JSON.stringify({ error: 'Gemini API not configured' }),
+                JSON.stringify({ error: 'Groq API key not configured. Please set GROQ_API_KEY secret.' }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 
-        // Create Supabase client (Environment variables only)
         const supabaseClient = createClient(
             // @ts-ignore: Deno global
             Deno.env.get('SUPABASE_URL') ?? '',
@@ -69,26 +65,16 @@ serve(async (req: any) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        // Debug: Log auth header presence
         const authHeader = req.headers.get('Authorization')
-        console.log('Chat Auth Header Present:', !!authHeader)
-
-        // BYPASS AUTH CHECK FOR DEBUGGING
         if (authHeader) {
             const token = authHeader.replace('Bearer ', '')
             const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
             console.log('Chat User found:', !!user)
-            if (authError) console.log('Chat Auth Error:', authError.message)
-        } else {
-            console.log('Chat No Auth Header provided')
+            if (authError) console.log('Auth Error:', authError.message)
         }
 
-        // Proceed...
-
-        // Parse request body
         const { message, context, conversationHistory = [] }: ChatRequest = await req.json()
 
-        // Build context string for Gemini
         const contextString = `
 بيانات المعمل الحالية:
 - إجمالي الطلبات: ${context.orderCount || 0}
@@ -97,68 +83,51 @@ serve(async (req: any) => {
 - مصاريف التشغيل: ${(context.operatingExpenses || 0).toLocaleString()} ج.م
 - إجمالي المصروفات: ${((context.productionCosts || 0) + (context.operatingExpenses || 0) || context.expenses || 0).toLocaleString()} ج.م
 - صافي الربح: ${(context.profit || 0).toLocaleString()} ج.م
-- أعلى الأطباء: ${context.topDoctors?.map((d) => `${d.name} (${d.orderCount} طلب)`).join('، ') || 'غير متاح'}
-- أعلى الخدمات: ${context.topServices?.map((s) => `${s.name} (${s.count})`).join('، ') || 'غير متاح'}
+- أعلى الأطباء: ${context.topDoctors?.map(d => `${d.name} (${d.orderCount} طلب)`).join('، ') || 'غير متاح'}
+- أعلى الخدمات: ${context.topServices?.map(s => `${s.name} (${s.count})`).join('، ') || 'غير متاح'}
 `
 
-        // Build conversation for Gemini
-        const contents = [
-            {
-                role: 'user',
-                parts: [{ text: SYSTEM_PROMPT + '\n\n' + contextString }]
-            },
-            {
-                role: 'model',
-                parts: [{ text: 'مرحباً! أنا مساعد تحليل بيانات المعمل. كيف يمكنني مساعدتك؟' }]
-            },
+        const messages = [
+            { role: 'system', content: SYSTEM_PROMPT + '\n\n' + contextString },
+            { role: 'assistant', content: 'مرحباً! أنا مساعد تحليل بيانات المعمل. كيف يمكنني مساعدتك؟' },
             ...conversationHistory.map(msg => ({
-                role: msg.role === 'user' ? 'user' : 'model',
-                parts: [{ text: msg.content }]
+                role: msg.role === 'user' ? 'user' : 'assistant',
+                content: msg.content
             })),
-            {
-                role: 'user',
-                parts: [{ text: message }]
-            }
+            { role: 'user', content: message }
         ]
 
-        // Call Gemini API
-        const geminiResponse = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+        const groqResponse = await fetch(GROQ_API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+            },
             body: JSON.stringify({
-                contents,
-                generationConfig: {
-                    temperature: 0.7,
-                    topK: 40,
-                    topP: 0.95,
-                    maxOutputTokens: 1024,
-                },
-                safetySettings: [
-                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-                ]
+                model: MODEL,
+                messages,
+                temperature: 0.7,
+                max_tokens: 1024,
             })
         })
 
-        if (!geminiResponse.ok) {
-            const errorText = await geminiResponse.text()
-            console.error('Gemini API error:', errorText)
+        if (!groqResponse.ok) {
+            const errorText = await groqResponse.text()
+            console.error('Groq API error:', errorText)
             return new Response(
                 JSON.stringify({ error: 'حدث خطأ في التحليل، يرجى المحاولة لاحقاً' }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 
-        const geminiData = await geminiResponse.json()
-        const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || 'عذراً، لم أتمكن من الإجابة'
+        const groqData = await groqResponse.json()
+        const responseText = groqData.choices?.[0]?.message?.content || 'عذراً، لم أتمكن من الإجابة'
 
         return new Response(
             JSON.stringify({
                 response: responseText,
-                model_version: 'gemini-1.5-flash-latest',
-                prompt_version: 'v1.0'
+                model_version: MODEL,
+                prompt_version: 'v3.0-groq'
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
@@ -166,7 +135,7 @@ serve(async (req: any) => {
     } catch (error) {
         console.error('Edge function error:', error)
         return new Response(
-            JSON.stringify({ error: 'حدث خطأ غير متوقع' }),
+            JSON.stringify({ error: 'حدث خطأ غير متوقع، يرجى المحاولة لاحقاً' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
     }

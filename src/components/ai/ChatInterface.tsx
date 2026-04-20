@@ -347,7 +347,7 @@ export default function ChatInterface({ context }: ChatInterfaceProps) {
                     </button>
                 </div>
                 <p className="text-[10px] text-gray-300 mt-2 text-center font-light">
-                    نظام مدعوم بـ Gemini 2.5 Flash
+                    نظام مدعوم بـ Groq AI
                 </p>
             </div>
         </div>

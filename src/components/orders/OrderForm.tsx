@@ -166,9 +166,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         }
     };
 
-    const updateItem = (index: number, field: keyof FormOrderItem, value: string | number) => {
+    const updateItem = (index: number, field: keyof FormOrderItem, value: string | number | string[]) => {
         const newItems = [...items];
-        newItems[index] = { ...newItems[index], [field]: value };
+        if (field === 'serviceType') {
+            // Reset prices when the service type changes so it picks up the new service's default/custom price
+            newItems[index] = { ...newItems[index], serviceType: value as string, price: 0, customPrice: undefined };
+        } else {
+            newItems[index] = { ...newItems[index], [field]: value as any };
+        }
         setItems(newItems);
     };
 
