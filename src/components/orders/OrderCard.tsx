@@ -17,9 +17,11 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
+import { canAccessDesignerFeatures } from '../../lib/userRoles';
 
 interface OrderCardProps {
     order: Order;
+    fullDoctors?: any[];
     doctors: Record<string, string>;
     suppliers: Record<string, string>;
     users: Record<string, string>;
@@ -45,6 +47,7 @@ interface OrderCardProps {
 
 export default function OrderCard({
     order,
+    fullDoctors,
     doctors,
     suppliers,
     users,
@@ -179,6 +182,10 @@ export default function OrderCard({
     const isReturnedStatus = order.status === 'Returned for Adjustments';
     const isDelivered = order.status === 'Delivered';
 
+    const resolvedDoctor = fullDoctors?.find((d: any) => d.id === order.doctorId);
+    const parentDoctor = resolvedDoctor?.parentId ? fullDoctors?.find((d: any) => d.id === resolvedDoctor.parentId) : null;
+    const doctorDisplayName = parentDoctor ? `${parentDoctor.name}` : `${doctors[order.doctorId] || 'غير معروف'}`;
+
     const handleArchive = async (archive: boolean) => {
         if (!confirm(archive ? 'أرشفة الطلب؟ سيختفي من القائمة الرئيسية.' : 'إلغاء الأرشفة؟')) return;
         try {
@@ -264,7 +271,7 @@ export default function OrderCard({
                         {/* Actions */}
                         <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 flex-1 min-w-[150px]">
                             {/* Designer Action */}
-                            {onUpdateDesignUrl && (userRole === 'designer' || userRole === 'admin' || userRole === 'lab') && (
+                            {onUpdateDesignUrl && canAccessDesignerFeatures(currentUser) && (
                                 <Button
                                     size="sm"
                                     variant={order.designUrl ? 'outline' : 'primary'}
@@ -380,9 +387,18 @@ export default function OrderCard({
                                     <div className="p-1.5 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-500 shrink-0">
                                         <User size={14} />
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="font-semibold text-sm md:text-base text-surface-700 dark:text-surface-300 leading-tight truncate">d. {doctors[order.doctorId] || 'غير معروف'}</p>
-                                        <p className="text-[10px] sm:text-xs text-surface-400">الطبيب المعالج</p>
+                                    <div className="min-w-0 flex items-center gap-3 max-w-full">
+                                        <div>
+                                            <p className="font-semibold text-sm md:text-base text-surface-700 dark:text-surface-300 leading-tight truncate">d. {doctorDisplayName}</p>
+                                            <p className="text-[10px] sm:text-xs text-surface-400">الطبيب المعالج</p>
+                                        </div>
+                                        {parentDoctor && (
+                                            <div className="shrink-0">
+                                                <span className="text-[11px] font-bold bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 px-2 py-1 mt-1 rounded-md border border-purple-200 dark:border-purple-800 flex items-center shadow-sm">
+                                                    د. {resolvedDoctor?.name}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -605,7 +621,7 @@ export default function OrderCard({
                             )}
 
                             {/* Tech Actions - Only for admin, designer, lab */}
-                            {onTechAction && (userRole === 'admin' || userRole === 'designer' || userRole === 'lab') && (
+                            {onTechAction && canAccessDesignerFeatures(currentUser) && (
                                 <>
                                     <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
                                     <div className="flex bg-white rounded-lg border border-surface-200 p-0.5 shadow-sm">

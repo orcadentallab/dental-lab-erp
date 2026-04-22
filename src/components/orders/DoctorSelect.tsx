@@ -8,9 +8,10 @@ interface DoctorSelectProps {
     value: string;
     onChange: (value: string) => void;
     error?: string;
+    onlyPrimary?: boolean; // If true, only show doctors who are NOT children (parentId is null)
 }
 
-export function DoctorSelect({ value, onChange, error }: DoctorSelectProps) {
+export function DoctorSelect({ value, onChange, error, onlyPrimary = false }: DoctorSelectProps) {
     const [open, setOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -28,7 +29,10 @@ export function DoctorSelect({ value, onChange, error }: DoctorSelectProps) {
     const fetchDoctors = useCallback(async (search: string) => {
         setLoading(true);
         try {
-            const data = await db.getDoctors(search);
+            let data = await db.getDoctors(search);
+            if (onlyPrimary) {
+                data = data.filter(d => !d.parentId);
+            }
             setDoctors(data);
         } catch (error) {
             console.error('Failed to fetch doctors', error);

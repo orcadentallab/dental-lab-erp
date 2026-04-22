@@ -1,4 +1,3 @@
-
 export interface Doctor {
     id: string;
     name: string;
@@ -9,6 +8,8 @@ export interface Doctor {
     representativeName: string;
     representativeId?: string; // Link to User.id
     customPrices?: Record<string, number>; // serviceName -> special sellingPrice
+    isCenter?: boolean; // True if Medical Center
+    parentId?: string; // Link to parent Medical Center
 }
 
 export interface Service {

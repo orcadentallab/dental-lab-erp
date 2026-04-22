@@ -11,8 +11,25 @@ import OrderListModal from '../components/dashboard/OrderListModal';
 import OrderListItem from '../components/dashboard/OrderListItem';
 import DailySummaryPrint from '../components/dashboard/DailySummaryPrint';
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
+import DesignerDashboard from './DesignerDashboard';
 import { useTranslation } from '../translations';
+import { isDesignerUser } from '../lib/userRoles';
 
+const DASHBOARD_CACHE_KEY = 'dashboard-cache-v1';
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface DashboardCache {
+    userId: string;
+    userRole: string;
+    userEntityId?: string;
+    savedAt: number;
+    orders: Order[];
+    suppliers: Supplier[];
+    users: User[];
+    doctors: Doctor[];
+    contactInquiries: ContactInquiry[];
+    ordersWithComments: Order[];
+}
 
 export default function DashboardNew() {
     const { user } = useAuth();
@@ -40,10 +57,39 @@ export default function DashboardNew() {
         }
     });
     const { t } = useTranslation();
+    const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
 
     useEffect(() => {
+        if (!user) return;
+
+        let restoredFromCache = false;
+
+        try {
+            const rawCache = sessionStorage.getItem(DASHBOARD_CACHE_KEY);
+            if (rawCache) {
+                const cache = JSON.parse(rawCache) as DashboardCache;
+                const isSameUser = cache.userId === user.id && cache.userRole === user.role && cache.userEntityId === user.entityId;
+                const isFresh = Date.now() - cache.savedAt < DASHBOARD_CACHE_TTL_MS;
+
+                if (isSameUser && isFresh) {
+                    setOrders(cache.orders);
+                    setSuppliers(cache.suppliers);
+                    setUsers(cache.users);
+                    setDoctors(cache.doctors);
+                    setContactInquiries(cache.contactInquiries);
+                    setOrdersWithComments(cache.ordersWithComments);
+                    setIsLoading(false);
+                    restoredFromCache = true;
+                }
+            }
+        } catch (error) {
+            console.warn('Could not restore dashboard cache:', error);
+        }
+
         const loadData = async () => {
-            setIsLoading(true);
+            if (!restoredFromCache) {
+                setIsLoading(true);
+            }
             try {
                 const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData] = await Promise.all([
                     db.getDashboardActiveOrders(),
@@ -76,6 +122,24 @@ export default function DashboardNew() {
                 setDoctors(doctorsData);
                 setContactInquiries(inquiriesData);
                 setOrdersWithComments(commentOrdersData);
+
+                try {
+                    const cachePayload: DashboardCache = {
+                        userId: user.id,
+                        userRole: user.role,
+                        userEntityId: user.entityId,
+                        savedAt: Date.now(),
+                        orders: filteredOrders,
+                        suppliers: suppliersData,
+                        users: usersData,
+                        doctors: doctorsData,
+                        contactInquiries: inquiriesData,
+                        ordersWithComments: commentOrdersData,
+                    };
+                    sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
+                } catch (error) {
+                    console.warn('Could not save dashboard cache:', error);
+                }
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
             } finally {
@@ -287,8 +351,25 @@ export default function DashboardNew() {
                 </div>
             </div>
 
+            {isDualRepDesigner && (
+                <>
+                    <div className="flex flex-wrap gap-2 bg-white dark:bg-gray-800 rounded-xl p-2 border border-gray-100 dark:border-gray-700 shadow-sm">
+                        <a href="#rep-dashboard" className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-blue-600 text-white">
+                            شغل المندوب
+                        </a>
+                        <a href="#designer-dashboard" className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-amber-600 text-white">
+                            شغل التصميم
+                        </a>
+                    </div>
+
+                    <section id="designer-dashboard" className="scroll-mt-24">
+                        <DesignerDashboard embedded />
+                    </section>
+                </>
+            )}
+
             {/* Statistics Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div id="rep-dashboard" className="grid grid-cols-1 md:grid-cols-3 gap-4 scroll-mt-24">
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center justify-between">
                     <div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mb-1">{t.dashboard.activeOrders}</p>
@@ -319,7 +400,7 @@ export default function DashboardNew() {
                             <CheckCircle size={24} />
                         </div>
                     </div>
-                    {readyOrdersCount > 0 && user?.role !== 'lab' && user?.role !== 'designer' && (
+                    {readyOrdersCount > 0 && user?.role !== 'lab' && !isDesignerUser(user) && (
                         <button
                             onClick={() => setShowDailySummary(true)}
                             className="w-full mt-2 flex items-center justify-center gap-2 text-sm text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-300 py-1.5 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
@@ -951,7 +1032,7 @@ export default function DashboardNew() {
                     order={acceptingOrder}
                     doctors={doctors}
                     suppliers={suppliers}
-                    designers={users.filter(u => u.role === 'designer')}
+                    designers={users.filter(u => isDesignerUser(u))}
                     existingOrders={orders}
                     onClose={() => setAcceptingOrder(null)}
                     onConfirm={handleAcceptOrder}

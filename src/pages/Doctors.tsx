@@ -27,8 +27,11 @@ export default function Doctors() {
         doctorCode: '',
         representativeName: '',
         representativeId: '',
-        customPrices: {} as Record<string, number>
+        customPrices: {} as Record<string, number>,
+        isCenter: false,
+        parentId: '' as string | undefined
     });
+    const [childDoctors, setChildDoctors] = useState<{ id?: string, name: string, phone: string, doctorCode?: string }[]>([]);
     const [error, setError] = useState<string | null>(null);
 
     const normalizeText = (text: string) => {
@@ -61,7 +64,8 @@ export default function Doctors() {
 
     const openAddModal = () => {
         setEditingId(null);
-        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {} });
+        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined });
+        setChildDoctors([{ name: '', phone: '' }]);
         setError(null);
         setShowModal(true);
     };
@@ -76,8 +80,22 @@ export default function Doctors() {
             doctorCode: doc.doctorCode,
             representativeName: doc.representativeName,
             representativeId: doc.representativeId || '',
-            customPrices: doc.customPrices || {}
+            customPrices: doc.customPrices || {},
+            isCenter: doc.isCenter || false,
+            parentId: doc.parentId || undefined
         });
+        
+        if (doc.isCenter) {
+            const children = doctors.filter(d => d.parentId === doc.id);
+            if (children.length > 0) {
+                setChildDoctors(children.map(c => ({ id: c.id, name: c.name, phone: c.phone, doctorCode: c.doctorCode })));
+            } else {
+                setChildDoctors([{ name: '', phone: '' }]);
+            }
+        } else {
+            setChildDoctors([]);
+        }
+        
         setError(null);
         setShowModal(true);
     };
@@ -113,6 +131,8 @@ export default function Doctors() {
                 return;
             }
 
+            let savedCenterId = editingId;
+
             if (editingId) {
                 // Update
                 const updatedDoc = await db.updateDoctor(editingId, {
@@ -121,7 +141,7 @@ export default function Doctors() {
                     doctorCode: normalizedCode
                 });
                 if (updatedDoc) {
-                    setDoctors(doctors.map(d => d.id === editingId ? updatedDoc : d));
+                    setDoctors(prev => prev.map(d => d.id === editingId ? updatedDoc : d));
                 }
             } else {
                 // Create
@@ -130,12 +150,50 @@ export default function Doctors() {
                     name: newDoctor.name.trim(),
                     doctorCode: normalizedCode
                 });
-                setDoctors([...doctors, doc]);
+                savedCenterId = doc.id;
+                setDoctors(prev => [...prev, doc]);
+            }
+
+            // Sync Child Doctors if it's a center
+            if (newDoctor.isCenter && savedCenterId) {
+                const refreshedDoctors = await db.getDoctors(); // Needed to make sure we map against fresh data
+                for (const child of childDoctors) {
+                    if (!child.name.trim()) continue; // Skip empty rows
+                    if (child.id) {
+                        // Update existing child
+                        const existingChild = refreshedDoctors.find(d => d.id === child.id);
+                        if (existingChild) {
+                            await db.updateDoctor(child.id, { 
+                                ...existingChild, 
+                                name: child.name.trim(), 
+                                phone: child.phone 
+                            });
+                        }
+                    } else {
+                        // Add new child
+                        const randomSuffix = Math.floor(100 + Math.random() * 900);
+                        await db.addDoctor({
+                            name: child.name.trim(),
+                            phone: child.phone,
+                            phone2: '',
+                            address: newDoctor.address,
+                            doctorCode: `${normalizedCode}-${randomSuffix}`,
+                            representativeName: newDoctor.representativeName,
+                            representativeId: newDoctor.representativeId,
+                            isCenter: false,
+                            parentId: savedCenterId,
+                            customPrices: {}
+                        });
+                    }
+                }
+                const finalDoctors = await db.getDoctors();
+                setDoctors(finalDoctors);
             }
 
             setShowModal(false);
             setEditingId(null);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {} });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined });
+            setChildDoctors([]);
 
         } catch (err: unknown) {
             console.error('Save Doctor Error:', err);
@@ -286,14 +344,24 @@ export default function Doctors() {
 
                         <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold text-lg border border-blue-200 dark:border-blue-800">
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg border ${doc.isCenter ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>
                                     {doc.name.charAt(0)}
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-900 dark:text-gray-100">{doc.name}</h3>
-                                    <span className="text-xs bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 px-2 py-1 rounded mt-1 inline-block border border-gray-200 dark:border-gray-600">
-                                        {doc.doctorCode}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-gray-900 dark:text-gray-100">{doc.name}</h3>
+                                        {doc.isCenter && <span className="text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full border border-purple-200 dark:border-purple-700">مركز طبي</span>}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="text-xs bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 px-2 py-1 rounded inline-block border border-gray-200 dark:border-gray-600">
+                                            {doc.doctorCode}
+                                        </span>
+                                        {doc.parentId && (
+                                            <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-1 rounded inline-block border border-blue-100 dark:border-blue-800">
+                                                يتبع: {doctors.find(d => d.id === doc.parentId)?.name || 'مركز طبي'}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -336,16 +404,17 @@ export default function Doctors() {
             {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700">
-                        <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+                        <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
                             <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
                                 {editingId ? 'تعديل بيانات الطبيب' : 'إضافة طبيب جديد'}
                             </h2>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" aria-label="إغلاق">✕</button>
                         </div>
 
-                        <form onSubmit={handleSaveDoctor} className="p-6 space-y-4">
-                            {error && (
+                        <form onSubmit={handleSaveDoctor} className="flex flex-col min-h-0">
+                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                                {error && (
                                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2">
                                     <AlertTriangle size={18} />
                                     {error}
@@ -416,42 +485,134 @@ export default function Doctors() {
                                 />
                             </div>
 
-                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                                <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2">أسعار بيع خاصة للطبيب</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">اترك الحقل فارغاً لاستخدام السعر الأساسي الافتراضي من القائمة.</p>
+                            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={newDoctor.isCenter}
+                                        onChange={e => {
+                                            const isCenter = e.target.checked;
+                                            setNewDoctor({ ...newDoctor, isCenter, parentId: undefined });
+                                            if (isCenter && childDoctors.length === 0) setChildDoctors([{ name: '', phone: '' }]);
+                                        }}
+                                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                    />
+                                    <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                                        هذا الكيان عبارة عن مركز طبي (عيادة مجمعة)
+                                    </span>
+                                </label>
                                 
-                                <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
-                                    {services.map(service => (
-                                        <div key={service.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
-                                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{service.name}</label>
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    placeholder="السعر الأساسي"
-                                                    className="w-24 p-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
-                                                    value={newDoctor.customPrices[service.name] !== undefined ? newDoctor.customPrices[service.name] : ''}
-                                                    onChange={e => {
-                                                        const val = e.target.value;
-                                                        setNewDoctor(prev => {
-                                                            const updated = { ...prev.customPrices };
-                                                            if (val === '') {
-                                                                delete updated[service.name];
-                                                            } else {
-                                                                updated[service.name] = Number(val);
-                                                            }
-                                                            return { ...prev, customPrices: updated };
-                                                        });
-                                                    }}
-                                                />
-                                            </div>
+                                {newDoctor.isCenter && (
+                                    <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800/50">
+                                        <h3 className="text-sm font-bold text-purple-800 dark:text-purple-300 mb-3">أطباء المركز</h3>
+                                        <div className="space-y-3">
+                                            {childDoctors.map((child, index) => (
+                                                <div key={index} className="flex gap-2 items-center object-cover">
+                                                    <div className="flex-1">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="اسم الطبيب"
+                                                            className="w-full p-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md focus:ring-1 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                                                            value={child.name}
+                                                            onChange={e => {
+                                                                const arr = [...childDoctors];
+                                                                arr[index].name = e.target.value;
+                                                                setChildDoctors(arr);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="رقم الهاتف"
+                                                            className="w-full p-2 text-sm border border-gray-200 dark:border-gray-600 rounded-md focus:ring-1 focus:ring-purple-500 dark:bg-gray-700 dark:text-white"
+                                                            value={child.phone}
+                                                            onChange={e => {
+                                                                const arr = [...childDoctors];
+                                                                arr[index].phone = e.target.value;
+                                                                setChildDoctors(arr);
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => {
+                                                            const arr = [...childDoctors];
+                                                            arr.splice(index, 1);
+                                                            setChildDoctors(arr);
+                                                        }}
+                                                        className="text-red-500 hover:bg-red-100 p-1.5 rounded-md transition-colors"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                type="button"
+                                                onClick={() => setChildDoctors([...childDoctors, { name: '', phone: '' }])}
+                                                className="text-sm text-purple-600 hover:text-purple-800 font-bold flex items-center gap-1"
+                                            >
+                                                <Plus size={16} /> اضافة طبيب آخر للمركز
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
+                                    </div>
+                                )}
+
+                                {!newDoctor.isCenter && (
+                                    <div className="mt-3">
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">يتبع لمركز طبي (اختياري)</label>
+                                        <select
+                                            className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                            value={newDoctor.parentId || ''}
+                                            onChange={e => setNewDoctor({ ...newDoctor, parentId: e.target.value || undefined })}
+                                        >
+                                            <option value="">-- طبيب مستقل --</option>
+                                            {doctors.filter(d => d.isCenter && d.id !== editingId).map(center => (
+                                                <option key={center.id} value={center.id}>{center.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                             </div>
 
+                            {(!newDoctor.parentId) && (
+                                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                                    <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2">أسعار بيع خاصة للطبيب / المركز</h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">اترك الحقل فارغاً لاستخدام السعر الأساسي الافتراضي من القائمة.</p>
+                                    
+                                    <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
+                                        {services.map(service => (
+                                            <div key={service.id} className="flex justify-between items-center bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-100 dark:border-gray-700">
+                                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{service.name}</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        placeholder="السعر الأساسي"
+                                                        className="w-24 p-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                                                        value={newDoctor.customPrices[service.name] !== undefined ? newDoctor.customPrices[service.name] : ''}
+                                                        onChange={e => {
+                                                            const val = e.target.value;
+                                                            setNewDoctor(prev => {
+                                                                const updated = { ...prev.customPrices };
+                                                                if (val === '') {
+                                                                    delete updated[service.name];
+                                                                } else {
+                                                                    updated[service.name] = Number(val);
+                                                                }
+                                                                return { ...prev, customPrices: updated };
+                                                            });
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            </div>
 
-                            <div className="pt-4 flex gap-3">
+                            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex gap-3 mt-auto shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}

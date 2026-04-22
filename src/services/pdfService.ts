@@ -239,6 +239,7 @@ const styles = `
     .meta-label { font-size: 9px; color: ${COLORS.light}; margin-bottom: 4px; font-weight: 700; }
     .meta-value { font-size: 13px; font-weight: 700; color: ${COLORS.dark}; }
     .meta-value.large { font-size: 18px; color: ${COLORS.primary}; }
+    .meta-value.subtle { font-size: 12px; color: ${COLORS.darkMuted}; margin-top: 6px; }
     .meta-value.code { font-family: 'Courier New', monospace; direction: ltr; text-align: left; color: ${COLORS.muted}; font-size: 11px; }
 
     /* ===== DETAIL BOX ===== */
@@ -595,7 +596,10 @@ export async function generateDoctorStatementPDF(
         doc.autoPrint();
         window.open(doc.output('bloburl'), '_blank');
     } else {
-        const safeName = (statement.doctorName || 'doctor').replace(/[/\\?%*:|"<>]/g, '_');
+        const fileLabel = statement.filteredDoctorName
+            ? `${statement.doctorName || 'doctor'} - ${statement.filteredDoctorName}`
+            : (statement.doctorName || 'doctor');
+        const safeName = fileLabel.replace(/[/\\?%*:|"<>]/g, '_');
         doc.save(`statement_${safeName}.pdf`);
     }
 }
@@ -642,6 +646,10 @@ function buildStatementHTML(
                     <div class="meta-label">الطبيب</div>
                     <div class="meta-value large">${statement.doctorName || '-'}</div>
                     ${statement.doctorCode ? `<span class="ref-tag">${statement.doctorCode}</span>` : ''}
+                    ${statement.filteredDoctorName ? `
+                        <div class="meta-label" style="margin-top:8px">الطبيب المحدد</div>
+                        <div class="meta-value subtle">${statement.filteredDoctorName}</div>
+                    ` : ''}
                 </div>
                 <div class="meta-group" style="text-align:left">
                     <div class="meta-label">الفترة</div>

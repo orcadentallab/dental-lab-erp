@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { db } from '../services/db';
+import { getUserRoleDisplay, isDesignerUser } from '../lib/userRoles';
 
 import type { LucideIcon } from 'lucide-react';
 
@@ -112,7 +113,7 @@ export default function Sidebar() {
     const filteredGroups = navGroups
         .map(group => ({
             ...group,
-            items: group.items.filter(item => user && item.roles.includes(user.role))
+            items: group.items.filter(item => user && (item.roles.includes(user.role) || (item.roles.includes('designer') && isDesignerUser(user))))
         }))
         .filter(group => group.items.length > 0);
 
@@ -316,7 +317,7 @@ export default function Sidebar() {
                                 <p className="text-sm font-bold text-slate-800 truncate group-hover:text-cyan-800 transition-colors">{user?.name || user?.username}</p>
                                 <div className="flex items-center gap-1.5 mt-0.5">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                    <p className="text-[11px] text-slate-500 capitalize font-medium">{user?.role}</p>
+                                    <p className="text-[11px] text-slate-500 capitalize font-medium">{getUserRoleDisplay(user)}</p>
                                 </div>
                             </div>
                         </div>

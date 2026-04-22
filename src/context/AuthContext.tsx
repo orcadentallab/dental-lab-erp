@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type PropsWithChildren } from 'react';
 import { supabase } from '../lib/supabase';
 import type { User } from '../services/db';
+import { isDesignerUser } from '../lib/userRoles';
 
 
 
@@ -164,7 +165,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
             designer: ['manage_orders', 'view_accounts']
         };
 
-        return rolePermissions[user.role]?.includes(permissionKey) || false;
+        if (rolePermissions[user.role]?.includes(permissionKey)) return true;
+
+        if (isDesignerUser(user) && rolePermissions.designer?.includes(permissionKey)) return true;
+
+        return false;
     };
 
     return (

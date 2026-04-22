@@ -13,6 +13,7 @@ import type { Adjustment } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
 import type { FilterType } from '../components/finance/FinanceFilters';
 import { useToast } from '../context/ToastContext';
+import { isDesignerUser } from '../lib/userRoles';
 
 export default function Finance() {
     const { user } = useAuth();
@@ -72,7 +73,7 @@ export default function Finance() {
                 setTransactions(transactionsData);
                 setDoctors(doctorsData);
                 setSuppliers(suppliersData);
-                setDesigners(usersData.filter(u => u.role === 'designer'));
+                setDesigners(usersData.filter(u => isDesignerUser(u)));
                 setAdjustments(adjustmentsData);
             } catch (error) {
                 console.error('Error loading finance data:', error);
@@ -612,6 +613,7 @@ export default function Finance() {
                                         <DoctorSelect
                                             value={selectedId}
                                             onChange={setSelectedId}
+                                            onlyPrimary={true}
                                         />
                                         <input
                                             type="hidden"

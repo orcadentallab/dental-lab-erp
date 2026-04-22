@@ -5,6 +5,7 @@ import { Plus, Trash2, Edit2, User as UserIcon, Shield, Settings } from 'lucide-
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useAuth } from '../context/AuthContext';
+import { DUAL_ROLE_DESIGNER_PERMISSION, FIXED_SALARY_DESIGNER_PERMISSION, getUserRoleDisplay } from '../lib/userRoles';
 
 export default function Users() {
     const [users, setUsers] = useState<User[]>([]);
@@ -30,6 +31,7 @@ export default function Users() {
     const [entityId, setEntityId] = useState(''); // For linking to Supplier
     const [baseSalary, setBaseSalary] = useState(''); // New State for Payroll
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
+    const [worksAsDesigner, setWorksAsDesigner] = useState(false);
 
     // Permissions Modal State
     const [showPermissionsModal, setShowPermissionsModal] = useState(false);
@@ -100,6 +102,7 @@ export default function Users() {
             setEntityId(user.entityId || '');
             setBaseSalary(user.baseSalary?.toString() || '');
             setUnitRate(user.unitRate?.toString() || '');
+            setWorksAsDesigner(Boolean(user.customPermissions?.[DUAL_ROLE_DESIGNER_PERMISSION]));
         } else {
             setEditingUser(null);
             setName('');
@@ -110,6 +113,7 @@ export default function Users() {
             setEntityId('');
             setBaseSalary('');
             setUnitRate('');
+            setWorksAsDesigner(false);
         }
         setShowModal(true);
     };
@@ -123,6 +127,16 @@ export default function Users() {
                 return;
             }
 
+            const nextCustomPermissions = { ...(editingUser?.customPermissions || {}) };
+
+            if ((role === 'representative' || role === 'admin') && worksAsDesigner) {
+                nextCustomPermissions[DUAL_ROLE_DESIGNER_PERMISSION] = true;
+                nextCustomPermissions[FIXED_SALARY_DESIGNER_PERMISSION] = true;
+            } else {
+                delete nextCustomPermissions[DUAL_ROLE_DESIGNER_PERMISSION];
+                delete nextCustomPermissions[FIXED_SALARY_DESIGNER_PERMISSION];
+            }
+
             const userData: User & { password?: string } = {
                 id: editingUser ? editingUser.id : crypto.randomUUID(),
                 name,
@@ -133,7 +147,8 @@ export default function Users() {
                 entityId: (role === 'lab' || role === 'doctor') ? entityId : undefined,
                 baseSalary: (role === 'representative' || role === 'admin') ? parseFloat(baseSalary) || 0 : undefined,
                 unitRate: role === 'designer' ? parseFloat(unitRate) || 0 : undefined,
-                auth_id: editingUser?.auth_id
+                auth_id: editingUser?.auth_id,
+                customPermissions: Object.keys(nextCustomPermissions).length > 0 ? nextCustomPermissions : undefined
             };
 
 
@@ -224,7 +239,7 @@ export default function Users() {
         }
     };
 
-    const getRoleBadge = (role: string) => {
+    const getRoleBadge = (role: string, user?: User) => {
         const styles: Record<string, string> = {
             admin: 'bg-red-100 text-red-700',
             lab: 'bg-blue-100 text-blue-700',
@@ -241,7 +256,11 @@ export default function Users() {
             designer: 'مصمم (Designer)',
             doctor: 'طبيب (Doctor)'
         };
-        return <span className={`px-2 py-1 rounded text-xs font-bold ${styles[role] || 'bg-gray-100'}`}>{labels[role] || role}</span>;
+        return (
+            <span className={`px-2 py-1 rounded text-xs font-bold ${styles[role] || 'bg-gray-100'}`}>
+                {user ? getUserRoleDisplay(user) : (labels[role] || role)}
+            </span>
+        );
     };
 
     return (
@@ -284,7 +303,7 @@ export default function Users() {
                                     {user.name}
                                 </td>
                                 <td className="p-4 font-mono text-gray-600">{user.username}</td>
-                                <td className="p-4">{getRoleBadge(user.role)}</td>
+                                <td className="p-4">{getRoleBadge(user.role, user)}</td>
                                 <td className="p-4 text-sm text-gray-500">
                                     {user.role === 'lab' && user.entityId ? (
                                         <span className="flex items-center gap-1 text-blue-600">
@@ -292,9 +311,19 @@ export default function Users() {
                                             {suppliers.find(s => s.id === user.entityId)?.name || 'غير معروف'}
                                         </span>
                                     ) : user.role === 'representative' ? (
-                                        <span className="text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
+                                        <div className="space-y-1">
+                                            <span className="block text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
+                                            {user.customPermissions?.[DUAL_ROLE_DESIGNER_PERMISSION] && (
+                                                <span className="block text-xs text-amber-600">يشمل شغل التصميم بمرتب ثابت</span>
+                                            )}
+                                        </div>
                                     ) : user.role === 'admin' && user.username !== 'admin' ? (
-                                        <span className="text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
+                                        <div className="space-y-1">
+                                            <span className="block text-green-600 font-bold">{user.baseSalary?.toLocaleString()} ج.م</span>
+                                            {user.customPermissions?.[DUAL_ROLE_DESIGNER_PERMISSION] && (
+                                                <span className="block text-xs text-amber-600">يشمل شغل التصميم بمرتب ثابت</span>
+                                            )}
+                                        </div>
                                     ) : user.role === 'designer' ? (
                                         <span className="text-amber-600 font-bold">{user.unitRate?.toLocaleString()} ج.م / Unit</span>
                                     ) : user.role === 'doctor' ? (
@@ -427,6 +456,20 @@ export default function Users() {
                                         />
                                         <p className="text-xs text-green-600 mt-1">يُستخدم لحساب الرواتب والعمولات في صفحة شئون الموظفين.</p>
                                     </div>
+                                    <label className="flex items-start gap-3 p-3 bg-white rounded-lg border border-green-200 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="mt-1"
+                                            checked={worksAsDesigner}
+                                            onChange={e => setWorksAsDesigner(e.target.checked)}
+                                        />
+                                        <div>
+                                            <span className="block text-sm font-bold text-green-800">يعمل أيضاً كمصمم</span>
+                                            <span className="block text-xs text-green-700 mt-1">
+                                                سيظهر ضمن المصممين في الأوردرات، لكن حسابه يفضل بمرتب ثابت من نفس طريقة المندوب.
+                                            </span>
+                                        </div>
+                                    </label>
                                 </div>
                             )}
 

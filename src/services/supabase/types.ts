@@ -11,6 +11,8 @@ export interface DbDoctor {
     representative_name: string;
     representative_id?: string | null;
     custom_prices?: Record<string, number> | null; // JSONB
+    is_center?: boolean;
+    parent_id?: string | null;
     created_at: string;
     updated_at: string;
 }

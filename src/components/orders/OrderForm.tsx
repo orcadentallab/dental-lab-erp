@@ -10,6 +10,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
+import { isDesignerUser, isRepresentativeUser } from '../../lib/userRoles';
 
 interface OrderFormProps {
     onCancel: () => void;
@@ -38,7 +39,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     // const [doctorSearchTerm, setDoctorSearchTerm] = useState(''); // REPLACED BY DOCTOR SELECT
     // const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false); // REPLACED BY DOCTOR SELECT
-    const [doctorId, setDoctorId] = useState(initialData?.doctorId || '');
+    const [selectedMainDoctorId, setSelectedMainDoctorId] = useState('');
+    const [selectedChildDoctorId, setSelectedChildDoctorId] = useState('');
     const [patientName, setPatientName] = useState(initialData?.patientName || '');
     const [shade, setShade] = useState(initialData?.shade || '');
     const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
@@ -48,7 +50,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
-    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
+    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined as string | undefined });
     const [doctorError, setDoctorError] = useState<string | null>(null);
 
     const normalizeText = (text: string) => text ? text.toString().trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي') : '';
@@ -56,21 +58,44 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const handleAddDoctorFull = async () => {
         setDoctorError(null);
         try {
-            const normalizedName = normalizeText(newDoctor.name);
-            const normalizedCode = newDoctor.doctorCode.trim().toUpperCase();
+            let finalNewDoctor = { ...newDoctor };
+
+            // If it's a child doctor, inherit from parent and simplify
+            if (newDoctor.parentId) {
+                const parent = doctors.find(d => d.id === newDoctor.parentId);
+                if (parent) {
+                    finalNewDoctor.address = parent.address;
+                    finalNewDoctor.representativeId = parent.representativeId || '';
+                    finalNewDoctor.representativeName = parent.representativeName;
+                    
+                    // Match the generation logic in Doctors.tsx: ParentCode-Rand3
+                    const randomSuffix = Math.floor(100 + Math.random() * 899); // 3 digits
+                    const parentCodeClean = parent.doctorCode.replace(/[^a-zA-Z0-9]/g, '').slice(0, 15);
+                    finalNewDoctor.doctorCode = `${parentCodeClean}-${randomSuffix}`;
+                }
+            }
+
+            const normalizedName = normalizeText(finalNewDoctor.name);
+            const normalizedCode = finalNewDoctor.doctorCode.trim().toUpperCase();
 
             if (!normalizedName || !normalizedCode) {
                 setDoctorError('يرجى ملء جميع الحقول المطلوبة');
                 return;
             }
 
-            const doc = await db.addDoctor({ ...newDoctor, name: newDoctor.name.trim(), doctorCode: normalizedCode });
+            const doc = await db.addDoctor({ ...finalNewDoctor, name: finalNewDoctor.name.trim(), doctorCode: normalizedCode });
             const updatedDoctors = await db.getDoctors();
             setDoctors(updatedDoctors);
-            setDoctorId(doc.id);
-            // setDoctorSearchTerm(doc.name); removed
+            
+            // If the modal was opened from the child doctor select, it means they are adding a child to the selected center
+            if (newDoctor.parentId) {
+                setSelectedChildDoctorId(doc.id);
+            } else {
+                setSelectedMainDoctorId(doc.id);
+                setSelectedChildDoctorId('');
+            }
             setShowDoctorModal(false);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '' });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined });
         } catch (err) {
             console.error('Add Doctor Error:', err);
             setDoctorError('حدث خطأ غير متوقع أثناء الحفظ.');
@@ -130,14 +155,24 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 }
 
                 setSuppliers(suppliersData);
-                setRepresentatives(usersData.filter(u => u.role === 'representative' || (u.role === 'admin' && u.username !== 'admin')));
-                setDesigners(usersData.filter(u => u.role === 'designer'));
+                setRepresentatives(usersData.filter(u => isRepresentativeUser(u)));
+                setDesigners(usersData.filter(u => isDesignerUser(u)));
 
                 // Auto-set representativeId for representatives creating new orders
-                if (!initialData && user?.role === 'representative') {
-                    const currentRep = usersData.find(u => u.id === user.id);
+                if (!initialData && user && isRepresentativeUser(user)) {
+                    const currentRep = usersData.find(u => u.id === user!.id);
                     if (currentRep) {
                         setRepresentativeId(currentRep.id);
+                    }
+                }
+                
+                if (initialData?.doctorId) {
+                    const initDoc = doctorsData.find(d => d.id === initialData.doctorId);
+                    if (initDoc?.parentId) {
+                        setSelectedMainDoctorId(initDoc.parentId);
+                        setSelectedChildDoctorId(initDoc.id);
+                    } else if (initDoc) {
+                        setSelectedMainDoctorId(initDoc.id);
                     }
                 }
                 // removed: setExistingOrders(ordersData);
@@ -177,7 +212,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         setItems(newItems);
     };
 
-    const currentDoctor = doctors.find(d => d.id === doctorId);
+    const currentDoctor = doctors.find(d => d.id === selectedMainDoctorId);
+    const resolvedDoctorId = currentDoctor?.isCenter ? selectedChildDoctorId : selectedMainDoctorId;
+    const finalDoctor = doctors.find(d => d.id === resolvedDoctorId);
 
     const subTotal = items.reduce((sum, item) => {
         const count = item.teethNumbers ? item.teethNumbers.length : 0;
@@ -191,6 +228,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         } else if (item.price > 0) {
             // Previously saved price from DB — respect it (may differ from svc.sellingPrice)
             unitPrice = item.price;
+        } else if (finalDoctor?.customPrices?.[item.serviceType] !== undefined) {
+            unitPrice = finalDoctor.customPrices[item.serviceType];
         } else if (currentDoctor?.customPrices?.[item.serviceType] !== undefined) {
             unitPrice = currentDoctor.customPrices[item.serviceType];
         } else if (svc) {
@@ -208,10 +247,17 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         e.preventDefault();
         if (isSubmitting) return;
 
-        if (!doctorId) {
-            toastError('يرجى اختيار الطبيب');
+        if (!selectedMainDoctorId) {
+            toastError('يرجى اختيار الطبيب / المركز الطبي');
             return;
         }
+
+        if (currentDoctor?.isCenter && !selectedChildDoctorId) {
+            toastError('يرجى اختيار الطبيب التابع للمركز المختار');
+            return;
+        }
+
+        const activeDoctorId = currentDoctor?.isCenter ? selectedChildDoctorId : selectedMainDoctorId;
 
 
 
@@ -220,8 +266,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
             toastError('يرجى إدخال أرقام الأسنان بشكل صحيح');
             return;
         }
-
-        const doc = doctors.find(d => d.id === doctorId);
 
         let calculatedCost = 0;
         if (workflowType === 'full') {
@@ -262,8 +306,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         setIsSubmitting(true);
         try {
             await onSubmit({
-                caseId: initialData?.caseId || (doc ? generateCaseId(doc.doctorCode) : 'UNKNOWN'),
-                doctorId,
+                caseId: initialData?.caseId || (finalDoctor ? generateCaseId(finalDoctor.doctorCode || 'UKN') : 'UNKNOWN'),
+                doctorId: activeDoctorId,
                 patientName,
                 items: items.map(i => {
                     const svc = services.find(s => s.name === i.serviceType);
@@ -274,8 +318,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     } else if (i.price > 0) {
                         // Previously saved price — preserve it as-is
                         resolvedUnitPrice = i.price;
-                    } else if (doc?.customPrices?.[i.serviceType] !== undefined) {
-                        resolvedUnitPrice = doc.customPrices[i.serviceType];
+                    } else if (finalDoctor?.customPrices?.[i.serviceType] !== undefined) {
+                        resolvedUnitPrice = finalDoctor.customPrices[i.serviceType];
+                    } else if (currentDoctor?.customPrices?.[i.serviceType] !== undefined) {
+                        resolvedUnitPrice = currentDoctor.customPrices[i.serviceType];
                     } else if (svc) {
                         resolvedUnitPrice = svc.sellingPrice;
                     } else {
@@ -339,23 +385,29 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     {/* 1. Patient & Doctor Info (Horizontal Dense) */}
                     <Card className="p-4 bg-white dark:bg-surface-800">
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                            {/* Doctor (5 cols) */}
-                            <div className="md:col-span-5 relative">
-                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">الطبيب المعالج</label>
+                            {/* 1. Doctor / Center */}
+                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-4" : "md:col-span-6", "min-w-0")}>
+                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1 truncate">الطبيب / المركز المعالج</label>
                                 <div className="flex gap-1">
-                                    <div className="flex-1">
+                                    <div className="flex-1 min-w-0">
                                         <DoctorSelect
-                                            value={doctorId}
-                                            onChange={(id) => setDoctorId(id)}
-                                            error={!doctorId ? 'مطلوب' : undefined}
+                                            value={selectedMainDoctorId}
+                                            onlyPrimary
+                                            onChange={(id) => {
+                                                setSelectedMainDoctorId(id);
+                                                setSelectedChildDoctorId('');
+                                            }}
+                                            error={!selectedMainDoctorId ? 'مطلوب' : undefined}
                                         />
                                     </div>
                                     {!readOnly && (
                                         <button
                                             type="button"
-                                            onClick={() => setShowDoctorModal(true)}
-                                            aria-label="Add New Doctor"
-                                            className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors"
+                                            onClick={() => {
+                                                setNewDoctor(prev => ({ ...prev, isCenter: false, parentId: undefined }));
+                                                setShowDoctorModal(true);
+                                            }}
+                                            className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors shrink-0"
                                         >
                                             <Plus size={20} />
                                         </button>
@@ -363,25 +415,48 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 </div>
                             </div>
 
-                            {/* Patient (5 cols) */}
-                            <div className="md:col-span-4">
-                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">اسم المريض</label>
+                            {/* 2. Executing Doctor (If Center) */}
+                            {currentDoctor?.isCenter && (
+                                <div className="md:col-span-4 min-w-0">
+                                    <label className="block text-xs font-bold text-purple-700 mb-1 ml-1 flex items-center gap-1.5 leading-none truncate">
+                                        <div className="w-1 h-3 bg-purple-400 rounded-full shrink-0"></div>
+                                        طبيب المركز المنفذ
+                                    </label>
+                                    <div className="flex gap-1 items-center">
+                                        <select
+                                            className="flex-1 text-xs p-2.5 border border-purple-200 bg-purple-50 rounded-lg outline-none focus:ring-1 focus:ring-purple-500 font-bold text-purple-700 truncate"
+                                            value={selectedChildDoctorId}
+                                            onChange={(e) => setSelectedChildDoctorId(e.target.value)}
+                                        >
+                                            <option value="">-- اختر طبيب --</option>
+                                            {doctors.filter(d => d.parentId === selectedMainDoctorId).map(doc => (
+                                                <option key={doc.id} value={doc.id}>{doc.name}</option>
+                                            ))}
+                                        </select>
+                                        {!readOnly && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setNewDoctor(prev => ({ ...prev, isCenter: false, parentId: selectedMainDoctorId }));
+                                                    setShowDoctorModal(true);
+                                                }}
+                                                className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors shrink-0"
+                                            >
+                                                <Plus size={18} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 3. Patient Name */}
+                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-4" : "md:col-span-6", "min-w-0")}>
+                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1 truncate">اسم المريض</label>
                                 <Input
-                                    className="py-2 text-sm font-bold"
+                                    className="py-2.5 text-sm font-bold bg-gray-50/50"
                                     placeholder="اسم المريض..."
                                     value={patientName}
                                     onChange={(e) => setPatientName(e.target.value)}
-                                />
-                            </div>
-
-                            {/* Shade (2 cols) */}
-                            <div className="md:col-span-3">
-                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1">اللون (Shade)</label>
-                                <Input
-                                    className="py-2 text-sm text-center font-bold"
-                                    placeholder="A1"
-                                    value={shade}
-                                    onChange={(e) => setShade(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -391,10 +466,23 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     <Card className="p-4 min-h-[14rem] relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-1 h-full bg-indigo-500"></div>
                         <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-bold text-surface-700 flex items-center gap-2 text-sm">
-                                <span className="p-1 bg-indigo-50 text-indigo-600 rounded-lg"><Box size={16} /></span>
-                                قائمة الأصناف المطلوبة
-                            </h3>
+                            <div className="flex items-center gap-4">
+                                <h3 className="font-bold text-surface-700 flex items-center gap-2 text-sm">
+                                    <span className="p-1 bg-indigo-50 text-indigo-600 rounded-lg"><Box size={16} /></span>
+                                    قائمة الأصناف المطلوبة
+                                </h3>
+                                {/* Integrated Shade Field */}
+                                <div className="flex items-center gap-2 px-3 py-1 bg-surface-50 rounded-lg border border-surface-200">
+                                    <label className="text-[10px] font-bold text-surface-400 whitespace-nowrap">اللون (Shade):</label>
+                                    <input
+                                        type="text"
+                                        className="w-12 bg-transparent text-xs font-bold text-indigo-600 outline-none text-center"
+                                        placeholder="A1"
+                                        value={shade}
+                                        onChange={(e) => setShade(e.target.value)}
+                                    />
+                                </div>
+                            </div>
                             {!readOnly && (
                                 <Button size="sm" variant="secondary" onClick={handleAddItem} className="h-8 text-xs gap-1">
                                     <Plus size={14} /> إضافة صنف
@@ -406,14 +494,18 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             {items.map((item, index) => {
                                 const svc = services.find(s => s.name === item.serviceType);
                                 const doctorSpecialPrice = currentDoctor?.customPrices?.[item.serviceType];
-                                // Priority: explicit customPrice → saved DB price → doctor price → service default
+                                const childDoctorSpecialPrice = finalDoctor?.customPrices?.[item.serviceType];
+                                
+                                // Priority: explicit customPrice → saved DB price → child doctor price → main doctor price → service default
                                 const displayPrice = item.customPrice !== undefined
                                     ? item.customPrice
                                     : item.price > 0
                                         ? item.price
-                                        : doctorSpecialPrice !== undefined
-                                            ? doctorSpecialPrice
-                                            : (svc?.sellingPrice || 0);
+                                        : childDoctorSpecialPrice !== undefined
+                                            ? childDoctorSpecialPrice
+                                            : doctorSpecialPrice !== undefined
+                                                ? doctorSpecialPrice
+                                                : (svc?.sellingPrice || 0);
                                 return (
                                     <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
                                         <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">
@@ -673,12 +765,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 </div>
             </fieldset>
 
-            {/* Doctor Modal */}
             {showDoctorModal && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
                     <Card className="w-full max-w-md animate-in zoom-in-95">
                         <div className="p-4 border-b border-surface-100 bg-surface-50/50 flex justify-between items-center">
-                            <h2 className="font-bold text-base text-surface-900">إضافة طبيب جديد</h2>
+                            <h2 className="font-bold text-base text-surface-900">
+                                {newDoctor.parentId ? 'إضافة طبيب للمركز' : 'إضافة طبيب جديد'}
+                            </h2>
                             <button onClick={() => setShowDoctorModal(false)} aria-label="Close"><X size={18} className="text-surface-400 hover:text-surface-600" /></button>
                         </div>
                         <div className="p-5 space-y-4">
@@ -687,12 +780,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     <AlertTriangle size={14} /> {doctorError}
                                 </div>
                             )}
+                            
                             <Input label="اسم الطبيب" required placeholder="د. ..." value={newDoctor.name} onChange={e => setNewDoctor({ ...newDoctor, name: e.target.value })} />
-                            <div className="grid grid-cols-2 gap-4">
+                            
+                            <div className={newDoctor.parentId ? "w-full" : "grid grid-cols-2 gap-4"}>
                                 <Input label="رقم الهاتف" required type="tel" value={newDoctor.phone} onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })} />
-                                <Input label="الكود" required placeholder="AHM" value={newDoctor.doctorCode} onChange={e => setNewDoctor({ ...newDoctor, doctorCode: e.target.value })} />
+                                {!newDoctor.parentId && (
+                                    <Input label="الكود" required placeholder="AHM" value={newDoctor.doctorCode} onChange={e => setNewDoctor({ ...newDoctor, doctorCode: e.target.value })} />
+                                )}
                             </div>
-                            <Input label="العنوان" required placeholder="القاهرة، مصر" value={newDoctor.address} onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })} />
+
+                            {!newDoctor.parentId && (
+                                <Input label="العنوان" required placeholder="القاهرة، مصر" value={newDoctor.address} onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })} />
+                            )}
+
                             <Button onClick={handleAddDoctorFull} className="w-full mt-2">
                                 <span>حفظ</span>
                             </Button>

@@ -24,7 +24,10 @@ export interface StatementResult {
     };
     doctorName?: string;
     doctorCode?: string;
+    filteredDoctorName?: string;
 }
+
+const getOrderStatementDate = (order: Order) => order.createdAt.split('T')[0];
 
 export const statementService = {
     /**
@@ -50,8 +53,7 @@ export const statementService = {
         // Filter Orders for Opening Balance
         const pastOrders = allOrders.filter(o => {
             if (o.doctorId !== doctorId) return false;
-            // Use deliveryDate or createdAt
-            const sortDate = o.deliveryDate || o.createdAt.split('T')[0];
+            const sortDate = getOrderStatementDate(o);
 
             // Check if before start date
             if (startDate && sortDate >= startDate) return false;
@@ -97,7 +99,7 @@ export const statementService = {
         // Current Period Orders
         const periodOrders = allOrders.filter(o => {
             if (o.doctorId !== doctorId) return false;
-            const sortDate = o.deliveryDate || o.createdAt.split('T')[0];
+            const sortDate = getOrderStatementDate(o);
 
             if (startDate && sortDate < startDate) return false;
             if (endDate && sortDate > endDate) return false;
@@ -118,7 +120,7 @@ export const statementService = {
             const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
             return {
                 id: o.id,
-                date: o.deliveryDate || o.createdAt.split('T')[0],
+                date: getOrderStatementDate(o),
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                 details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,

@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type User, type Service } from '../services/db';
+import { isDesignerUser } from '../lib/userRoles';
 
 // KPICard component defined outside of Analytics to avoid recreation on each render
 const KPICard = ({ title, value, subtext, icon: Icon, type, percentage, percentageLabel, isPercentage = true }: {
@@ -121,7 +122,7 @@ export default function Analytics() {
                 setTransactions(txData);
                 setDoctors(docs);
                 setSuppliers(sups);
-                setDesigners(users.filter(u => u.role === 'designer'));
+                setDesigners(users.filter(u => isDesignerUser(u)));
                 setServices(servs);
                 setIsAnalysisDataLoaded(true);
             }).catch(console.error);

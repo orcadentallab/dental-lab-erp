@@ -24,6 +24,7 @@ interface OrderListProps {
 
 export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, currentUser, onExportInvoice }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
+    const [fullDoctors, setFullDoctors] = useState<any[]>([]); // Store full objects to resolve parent relationships
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
 
     // Feedback Modal State
@@ -48,6 +49,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 const mapD: Record<string, string> = {};
                 docs.forEach(d => mapD[d.id] = d.name);
                 setDoctors(mapD);
+                setFullDoctors(docs);
 
                 const mapS: Record<string, string> = {};
                 sups.forEach(s => mapS[s.id] = s.name);
@@ -175,6 +177,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                     <OrderCard
                         key={order.id}
                         order={order}
+                        fullDoctors={fullDoctors}
                         doctors={doctors}
                         suppliers={suppliers}
                         users={usersMap}

@@ -4,11 +4,16 @@ import { db, type Order } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import {
     FolderKanban, Upload, Search, ChevronDown,
-    AlertCircle, Clock, CheckCircle2
+    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, CalendarDays
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { isDesignerUser } from '../lib/userRoles';
 
-export default function DesignerDashboard() {
+interface DesignerDashboardProps {
+    embedded?: boolean;
+}
+
+export default function DesignerDashboard({ embedded = false }: DesignerDashboardProps) {
     const { user } = useAuth();
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -35,7 +40,7 @@ export default function DesignerDashboard() {
                 db.getDoctors(),
             ];
 
-            // Only admins need users list for filtering
+            // Only non-designer-only users need users list for filtering
             if (user.role !== 'designer') {
                 promises.push(db.getUsers());
             }
@@ -46,7 +51,7 @@ export default function DesignerDashboard() {
             const allUsers = results[2] || []; // Undefined if not fetched
 
             // Filter for orders assigned to this designer OR if admin/accountant/rep (view all split)
-            const isDesigner = user.role === 'designer';
+            const isDesigner = isDesignerUser(user) && user.role !== 'admin' && user.role !== 'accountant';
             const relevantOrders = allOrders.filter(o =>
                 o.workflowType === 'split' &&
                 (!isDesigner || o.designerId === user.id)
@@ -55,7 +60,7 @@ export default function DesignerDashboard() {
             // Sort by date desc
             setOrders(relevantOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
             setDoctors(allDoctors);
-            setUsers(allUsers.filter((u: any) => u.role === 'designer'));
+            setUsers(allUsers.filter((u: any) => isDesignerUser(u)));
         } catch (error) {
             console.error(error);
         } finally {
@@ -149,7 +154,7 @@ export default function DesignerDashboard() {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in pb-10">
+        <div className={`space-y-6 animate-in fade-in ${embedded ? '' : 'pb-10'}`}>
             {/* Header Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
@@ -226,7 +231,7 @@ export default function DesignerDashboard() {
                         <option value="returned">مرتجع</option>
                     </select>
 
-                    {user?.role !== 'designer' && (
+                    {user && !isDesignerUser(user) && (
                         <select
                             value={designerFilter}
                             onChange={(e) => setDesignerFilter(e.target.value)}
@@ -280,9 +285,9 @@ export default function DesignerDashboard() {
                                 <tr>
                                     <th className="px-6 py-4">رقم الحالة</th>
                                     <th className="px-6 py-4">المريض / الطبيب</th>
-                                    {user?.role !== 'designer' && <th className="px-6 py-4">المصمم</th>}
+                                    {user && !isDesignerUser(user) && <th className="px-6 py-4">المصمم</th>}
                                     <th className="px-6 py-4">تاريخ الاستلام</th>
-                                    <th className="px-6 py-4">التفاصيل / المرفقات</th>
+                                    <th className="px-6 py-4">المرفقات / التسليم</th>
                                     <th className="px-6 py-4">الحالة</th>
                                 </tr>
                             </thead>
@@ -301,13 +306,13 @@ export default function DesignerDashboard() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="font-bold text-gray-800">{order.patientName}</div>
-                                                {user?.role !== 'designer' && (
+                                                {user && !isDesignerUser(user) && (
                                                     <div className="text-xs text-gray-500 mt-1">
                                                         د. {doctors.find(d => d.id === order.doctorId)?.name}
                                                     </div>
                                                 )}
                                             </td>
-                                            {user?.role !== 'designer' && (
+                                            {user && !isDesignerUser(user) && (
                                                 <td className="px-6 py-4">
                                                     <span className="text-sm text-gray-700">
                                                         {users.find(u => u.id === order.designerId)?.name || '-'}
@@ -318,18 +323,27 @@ export default function DesignerDashboard() {
                                                 {format(new Date(order.createdAt), 'dd/MM/yyyy')}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="flex gap-2">
+                                                <div className="flex flex-col gap-2 min-w-[220px]">
+                                                    <div className="flex gap-2 flex-wrap">
                                                         {order.stlUrl && (
-                                                            <a href={order.stlUrl} target="_blank" className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1">
+                                                            <a href={order.stlUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md border border-blue-100">
                                                                 <Upload size={12} /> STL
                                                             </a>
                                                         )}
                                                         {order.imagesUrl && (
-                                                            <a href={order.imagesUrl} target="_blank" className="text-teal-600 hover:text-teal-800 text-xs flex items-center gap-1">
+                                                            <a href={order.imagesUrl} target="_blank" rel="noreferrer" className="text-teal-600 hover:text-teal-800 text-xs flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-md border border-teal-100">
                                                                 <FolderKanban size={12} /> صور
                                                             </a>
                                                         )}
+                                                        {order.designUrl && (
+                                                            <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
+                                                                <LinkIcon size={12} /> التصميم الحالي
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                        <CalendarDays size={12} />
+                                                        <span>التسليم: {format(new Date(order.deliveryDate), 'dd/MM/yyyy')}</span>
                                                     </div>
                                                     <div className="text-xs text-gray-500 max-w-[200px] truncate">
                                                         {order.items.map(i => `${i.serviceType} x${i.teethNumbers.length}`).join(', ')}

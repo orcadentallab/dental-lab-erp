@@ -395,14 +395,32 @@ export async function fetchFullEntityStatement(
     entityType: 'doctor' | 'supplier' | 'designer'
 ): Promise<{ orders: Order[], transactions: Transaction[] }> {
 
+    let entityIdsToFetch = [entityId];
+
+    if (entityType === 'doctor') {
+        const { data: childDoctors } = await supabase
+            .from('doctors')
+            .select('id')
+            .eq('parent_id', entityId);
+        
+        if (childDoctors && childDoctors.length > 0) {
+            entityIdsToFetch = [entityId, ...childDoctors.map(d => d.id)];
+        }
+    }
+
     // 1. Fetch Orders for this Entity
     let orderQuery = supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
         .order('created_at', { ascending: false });
 
-    if (entityType === 'doctor') orderQuery = orderQuery.eq('doctor_id', entityId);
-    else if (entityType === 'supplier') orderQuery = orderQuery.eq('supplier_id', entityId);
+    if (entityType === 'doctor') {
+        if (entityIdsToFetch.length > 1) {
+            orderQuery = orderQuery.in('doctor_id', entityIdsToFetch);
+        } else {
+            orderQuery = orderQuery.eq('doctor_id', entityId);
+        }
+    } else if (entityType === 'supplier') orderQuery = orderQuery.eq('supplier_id', entityId);
     else if (entityType === 'designer') orderQuery = orderQuery.eq('designer_id', entityId);
 
     // Fetch up to 10,000 orders for a single entity (plenty)
@@ -412,18 +430,25 @@ export async function fetchFullEntityStatement(
     // 2. Fetch Transactions for this Entity
     // FIXED: Only filter by entity_id at DB level to catch all transactions
     // including legacy ones that might have null/different entity_type
-    const { data: txData, error: txError } = await supabase
+    let txQuery = supabase
         .from('transactions')
         .select('*')
-        .eq('entity_id', entityId)
         .order('date', { ascending: false })
         .range(0, 4999);
+
+    if (entityType === 'doctor' && entityIdsToFetch.length > 1) {
+        txQuery = txQuery.in('entity_id', entityIdsToFetch);
+    } else {
+        txQuery = txQuery.eq('entity_id', entityId);
+    }
+
+    const { data: txData, error: txError } = await txQuery;
 
     if (txError) throw ErrorHandler.handle(txError, 'fetchFullEntityStatement_Tx');
 
     // Filter transactions in JS to match expected entity_type OR handle nulls
     const filteredTransactions = (txData || []).filter(t => {
-        const tx = t as unknown as { entity_type?: string | null };
+        const tx = t as unknown as { entity_type?: string | null, entity_id?: string | null };
         return tx.entity_type === entityType || tx.entity_type === null || tx.entity_type === undefined;
     });
 

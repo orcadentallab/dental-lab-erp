@@ -34,7 +34,9 @@ export const DoctorSchema = z.object({
     doctorCode: z.string().min(1).max(20).regex(/^[a-zA-Z0-9\-_]+$/, 'كود الطبيب يجب أن يحتوي على حروف إنجليزية وأرقام فقط'),
     representativeName: z.string().max(200).optional().nullable().or(z.literal('')),
     representativeId: z.union([z.string().uuid(), z.literal('')]).optional().nullable(),
-    customPrices: z.record(z.string(), z.number().min(0)).optional().nullable()
+    customPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
+    isCenter: z.boolean().optional().nullable(),
+    parentId: z.union([z.string().uuid(), z.literal('')]).optional().nullable()
 });
 
 export const DoctorCreateSchema = DoctorSchema;

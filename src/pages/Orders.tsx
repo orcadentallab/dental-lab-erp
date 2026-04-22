@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 
@@ -610,7 +611,7 @@ export default function Orders() {
                                                 className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
                                             >
                                                 <option value="">كل المصممين</option>
-                                                {users.filter(u => u.role === 'designer').map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
+                                                {users.filter(u => isDesignerUser(u)).map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
                                             </select>
                                             <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
                                         </div>
@@ -625,7 +626,7 @@ export default function Orders() {
                                                 className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
                                             >
                                                 <option value="">كل المناديب</option>
-                                                {users.filter(u => (u.role === 'representative' || u.role === 'admin') && u.username !== 'admin').map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                                                {users.filter(u => isRepresentativeUser(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                                             </select>
                                             <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
                                         </div>
@@ -863,7 +864,7 @@ export default function Orders() {
                         order={acceptingOrder}
                         doctors={doctors}
                         suppliers={suppliers}
-                        designers={users.filter(u => u.role === 'designer')}
+                        designers={users.filter(u => isDesignerUser(u))}
                         existingOrders={orders}
                         onClose={() => setAcceptingOrder(null)}
                         onConfirm={handleAcceptOrder}

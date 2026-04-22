@@ -35,6 +35,8 @@ type TimeFilter = 'week' | 'month' | '3months' | 'year' | 'all';
 type SortField = 'name' | 'code' | 'totalOrders' | 'totalSales' | 'totalCredit' | 'balance';
 type SortDirection = 'asc' | 'desc';
 
+const getOrderStatementDate = (order: Partial<Order>) => (order.createdAt || '').split('T')[0];
+
 const getDateRangeFromFilter = (filter: TimeFilter): { start: string; end: string } => {
     const today = new Date();
     const end = today.toISOString().split('T')[0];
@@ -138,8 +140,6 @@ export default function Accounts() {
     const [designers, setDesigners] = useState<User[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
     const [error, setError] = useState<string | null>(null);
-
-    // Modal State
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
     // Permissions
@@ -380,7 +380,7 @@ export default function Accounts() {
 
         // 3. Map to Summaries (O(Entities))
         let entities: (Doctor | Supplier | User)[] = [];
-        if (activeTab === 'doctors') entities = doctors;
+        if (activeTab === 'doctors') entities = doctors.filter(d => !d.parentId);
         else if (activeTab === 'suppliers') entities = suppliers;
         else if (activeTab === 'designers') entities = designers;
 
@@ -430,7 +430,7 @@ export default function Accounts() {
     const [detailTransactions, setDetailTransactions] = useState<Transaction[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [hiddenTransactionIds, setHiddenTransactionIds] = useState<Set<string>>(new Set());
-
+    const [childDoctorFilter, setChildDoctorFilter] = useState('');
     const toggleTransactionVisibility = (id: string) => {
         setHiddenTransactionIds(prev => {
             const next = new Set(prev);
@@ -460,6 +460,10 @@ export default function Accounts() {
         }
     }, [viewMode, selectedEntityId, activeTab]);
 
+    useEffect(() => {
+        setChildDoctorFilter('');
+    }, [selectedEntityId, activeTab, viewMode]);
+
     // Calculate opening balance (balance before the filtered period)
     const calculateOpeningBalance = useMemo(() => {
         if (!dateRange.start || !selectedEntityId) return 0;
@@ -474,7 +478,7 @@ export default function Accounts() {
             // Orders before the period
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.doctorId !== selectedEntityId) return false;
-                const orderDate = o.deliveryDate || (o.createdAt || '').split('T')[0];
+                const orderDate = getOrderStatementDate(o);
                 return orderDate < dateRange.start && o.status !== 'Rejected' &&
                     ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
             });
@@ -504,7 +508,7 @@ export default function Accounts() {
         } else if (activeTab === 'suppliers') {
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.supplierId !== selectedEntityId) return false;
-                const orderDate = o.deliveryDate || (o.createdAt || '').split('T')[0];
+                const orderDate = getOrderStatementDate(o);
                 return orderDate < dateRange.start && o.status !== 'Rejected' && o.status === 'Delivered';
             });
             openingCredit = beforeOrders.reduce((sum, o) => {
@@ -536,7 +540,7 @@ export default function Accounts() {
         } else if (activeTab === 'designers') {
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.designerId !== selectedEntityId) return false;
-                const orderDate = o.deliveryDate || (o.createdAt || '').split('T')[0];
+                const orderDate = getOrderStatementDate(o);
                 return orderDate < dateRange.start && o.workflowType === 'split' && o.status !== 'Rejected' && o.status === 'Delivered';
             });
             openingCredit = beforeOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
@@ -564,7 +568,7 @@ export default function Accounts() {
         }
 
         return 0;
-    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments]);
+    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments, childDoctorFilter, doctors]);
 
     // Helper: Logic for Individual Statement
     const individualStatement = useMemo(() => {
@@ -576,9 +580,17 @@ export default function Accounts() {
         let items: StatementItem[] = [];
 
         if (activeTab === 'doctors') {
+            const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
+
             const docOrders = relevantOrders.filter(o => {
-                if (o.doctorId !== selectedEntityId) return false;
-                if (showAllOrders) return true; // Show ALL (Including Rejected/Pending)
+                // Match direct orders OR orders by child doctors of the selected center
+                const isDirectOrder = o.doctorId === selectedEntityId;
+                const isChildOrder = selectedIsCenter && o.doctorId &&
+                    doctors.find(d => d.id === o.doctorId)?.parentId === selectedEntityId;
+                if (!isDirectOrder && !isChildOrder) return false;
+                // Apply child doctor filter if set
+                if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
+                if (showAllOrders) return true;
                 return ['Delivered', 'Completed', 'Ready', 'Cancelled', 'Rejected'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
             });
 
@@ -586,10 +598,13 @@ export default function Accounts() {
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
+                // If center, show child doctor name in description
+                const childDoc = selectedIsCenter ? doctors.find(d => d.id === o.doctorId && d.parentId === selectedEntityId) : null;
+                const doctorSuffix = childDoc ? ` (د. ${childDoc.name})` : '';
                 return {
                     id: o.id || '',
-                    date: o.deliveryDate || (o.createdAt ? o.createdAt.split('T')[0] : ''),
-                    description: `حالة #${o.caseId} - المريض: ${o.patientName} `,
+                    date: getOrderStatementDate(o),
+                    description: `حالة #${o.caseId} - المريض: ${o.patientName}${doctorSuffix}`,
                     details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                     type: 'debit' as const,
                     amount: (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0)),
@@ -599,11 +614,20 @@ export default function Accounts() {
                 };
             });
 
-            const docTx = relevantTransactions.filter(t =>
-                (t.entityType === 'doctor' || !t.entityType) &&
-                t.entityId === selectedEntityId &&
-                t.type === 'income'
-            );
+            const docTx = relevantTransactions.filter(t => {
+                if (t.type !== 'income') return false;
+                if (t.entityType !== 'doctor' && t.entityType) return false;
+                // Direct match
+                if (t.entityId === selectedEntityId) {
+                    return !childDoctorFilter; // only show center-level tx when no child filter
+                }
+                // Child doctor tx for center
+                if (selectedIsCenter && t.entityId &&
+                    doctors.find(d => d.id === t.entityId)?.parentId === selectedEntityId) {
+                    return !childDoctorFilter || t.entityId === childDoctorFilter;
+                }
+                return false;
+            });
             items = [...items, ...docTx.map(t => ({
                 id: t.id || '',
                 date: (t.date || '').split('T')[0],
@@ -630,7 +654,7 @@ export default function Accounts() {
 
                 return {
                     id: o.id || '',
-                    date: o.deliveryDate || (o.createdAt ? o.createdAt.split('T')[0] : ''),
+                    date: getOrderStatementDate(o),
                     description: `#${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
                     type: 'credit' as const,
                     amount: cost,
@@ -668,7 +692,7 @@ export default function Accounts() {
 
                 return {
                     id: o.id || '',
-                    date: o.deliveryDate || (o.createdAt ? o.createdAt.split('T')[0] : ''),
+                    date: getOrderStatementDate(o),
                     description: `تصميم #${o.caseId} - ${o.patientName}`,
                     type: 'credit' as const,
                     amount: price,
@@ -743,19 +767,21 @@ export default function Accounts() {
                 openingBalance: dateRange.start ? calculateOpeningBalance : 0
             }
         };
-    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds]);
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter]);
 
 
     const handlePrint = async () => {
         if (!selectedEntityId || !individualStatement) return;
         const entityName = getSelectedEntityName();
         const doctor = doctors.find(d => d.id === selectedEntityId);
+        const filteredDoctor = childDoctorFilter ? doctors.find(d => d.id === childDoctorFilter) : undefined;
 
         const statementForPdf: StatementResult = {
             ...individualStatement,
             items: individualStatement.items.filter(i => !i.isHidden),
             doctorName: entityName,
-            doctorCode: doctor?.doctorCode
+            doctorCode: doctor?.doctorCode,
+            filteredDoctorName: filteredDoctor?.name
         };
 
         await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO, { print: true });
@@ -765,12 +791,14 @@ export default function Accounts() {
         if (!selectedEntityId || !individualStatement) return;
         const entityName = getSelectedEntityName();
         const doctor = doctors.find(d => d.id === selectedEntityId);
+        const filteredDoctor = childDoctorFilter ? doctors.find(d => d.id === childDoctorFilter) : undefined;
 
         const statementForPdf: StatementResult = {
             ...individualStatement,
             items: individualStatement.items.filter(i => !i.isHidden),
             doctorName: entityName,
-            doctorCode: doctor?.doctorCode
+            doctorCode: doctor?.doctorCode,
+            filteredDoctorName: filteredDoctor?.name
         };
 
         await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO);
@@ -1469,7 +1497,6 @@ export default function Accounts() {
                         </button>
                     ))}
                 </div>
-
                 <div className="flex gap-2">
                     <button
                         onClick={() => setShowAllOrders(!showAllOrders)}
@@ -1520,7 +1547,7 @@ export default function Accounts() {
                             exportToExcelWithHeaders(
                                 exportData,
                                 {
-                                    date: 'التاريخ',
+                                    date: 'تاريخ الاستلام',
                                     description: 'البيان',
                                     services: 'الخدمات',
                                     count: 'العدد',
@@ -1548,7 +1575,7 @@ export default function Accounts() {
 
             {/* Custom Date Range (shown when not using presets) */}
             {timeFilter === 'all' && (
-                <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-gray-100 print-hidden">
+                <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-xl border border-gray-100 print-hidden">
                     <Calendar size={18} className="text-gray-400" />
                     <span className="text-sm text-gray-500 font-medium">تاريخ مخصص:</span>
                     <input
@@ -1566,6 +1593,23 @@ export default function Accounts() {
                         className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2"
                         aria-label="End Date"
                     />
+                    {activeTab === 'doctors' && doctors.find(d => d.id === selectedEntityId)?.isCenter && (
+                        <>
+                            <div className="hidden sm:block h-6 w-px bg-gray-200 mx-1" />
+                            <span className="text-sm text-blue-600 font-medium">طبيب المركز:</span>
+                            <select
+                                className="bg-blue-50 border border-blue-200 rounded-lg text-sm px-3 py-2 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none min-w-[180px]"
+                                value={childDoctorFilter}
+                                onChange={e => setChildDoctorFilter(e.target.value)}
+                                aria-label="تصفية بطبيب المركز"
+                            >
+                                <option value="">كل أطباء المركز</option>
+                                {doctors.filter(d => d.parentId === selectedEntityId).map(doc => (
+                                    <option key={doc.id} value={doc.id}>{doc.name}</option>
+                                ))}
+                            </select>
+                        </>
+                    )}
                 </div>
             )}
 
@@ -1652,7 +1696,7 @@ export default function Accounts() {
                                 <th className="p-3 font-semibold text-sm">البيان</th>
                                 <th className="p-3 font-semibold text-sm w-40">الخدمات</th>
                                 <th className="p-3 font-semibold text-sm w-16">العدد</th>
-                                <th className="p-3 font-semibold text-sm w-28">التاريخ</th>
+                                <th className="p-3 font-semibold text-sm w-28">تاريخ الاستلام</th>
                                 <th className="p-3 font-semibold text-sm w-28">مدين</th>
                                 <th className="p-3 rounded-tl-lg font-semibold text-sm w-28">دائن</th>
                             </tr>
