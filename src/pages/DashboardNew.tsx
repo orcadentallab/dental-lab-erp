@@ -242,6 +242,39 @@ export default function DashboardNew() {
         return users.find(u => u.id === designerId)?.name;
     };
 
+    const getDesignerStatusLabel = (order: Order) => {
+        if (order.designStatus) {
+            const map: Record<string, string> = {
+                pending: 'منتظر',
+                accepted: 'مقبول',
+                in_progress: 'تصميم',
+                waiting_approval: 'موافقة',
+                completed: 'مكتمل',
+                returned: 'مرتجع',
+            };
+            return map[order.designStatus] || order.designStatus;
+        }
+
+        return order.status === 'Rejected' ? 'رفض دكتور' : order.status;
+    };
+
+    const getDesignerStatusClass = (order: Order) => {
+        if (order.designStatus === 'completed' || order.status === 'Ready') {
+            return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+        }
+        if (order.designStatus === 'returned' || order.status === 'Rejected' || order.status === 'Returned for Adjustments') {
+            return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+        }
+        if (order.designStatus === 'waiting_approval' || order.status === 'Waiting Dr Approval') {
+            return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+        }
+        if (order.designStatus === 'in_progress' || order.status === 'Under Design') {
+            return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+        }
+
+        return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+    };
+
 
 
     const handleArchiveOrder = async (orderId: string) => {
@@ -646,6 +679,73 @@ export default function DashboardNew() {
                 />
             )}
 
+
+            {/* Designer Workload Cards - mirrors lab workload for active design assignments */}
+            {
+                users.filter(u => isDesignerUser(u)).length > 0 && (() => {
+                    const designers = users.filter(u => isDesignerUser(u));
+                    const hasActiveDesigner = designers.some(designer => {
+                        let designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
+
+                        if (user?.role === 'designer' && user.id !== designer.id) {
+                            return false;
+                        }
+
+                        return designerOrders.length > 0;
+                    });
+
+                    if (!hasActiveDesigner) return null;
+
+                    return (
+                        <div className="space-y-4">
+                            <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+                                <UserCheck className="text-amber-600" size={20} />
+                                حمل المصممين
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {designers.map(designer => {
+                                    let designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
+
+                                    if (user?.role === 'designer' && user.id !== designer.id) {
+                                        return null;
+                                    }
+
+                                    if (designerOrders.length === 0) return null;
+
+                                    return (
+                                        <div key={designer.id} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200">
+                                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400 font-bold text-sm">
+                                                        {designer.name.charAt(0)}
+                                                    </div>
+                                                    <h3 className="font-bold text-gray-800 dark:text-white">{designer.name}</h3>
+                                                </div>
+                                                <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm shadow-amber-200 dark:shadow-none">
+                                                    {designerOrders.length}
+                                                </span>
+                                            </div>
+                                            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                                {designerOrders.map(order => (
+                                                    <div key={order.id} className="flex items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-default">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span className="font-mono text-xs text-gray-400">#{order.caseId}</span>
+                                                            <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{order.patientName}</span>
+                                                        </div>
+                                                        <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium ${getDesignerStatusClass(order)}`}>
+                                                            {getDesignerStatusLabel(order)}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })()
+            }
 
             {/* Lab Workload Cards - Visible to All (with role-based filtering) */}
             {

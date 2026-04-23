@@ -39,7 +39,7 @@ export function DoctorSelect({ value, onChange, error, onlyPrimary = false }: Do
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [onlyPrimary]);
 
     // Initial load (sync value)
     useEffect(() => {
@@ -80,24 +80,26 @@ export function DoctorSelect({ value, onChange, error, onlyPrimary = false }: Do
                 type="button"
                 onClick={() => setOpen(!open)}
                 className={clsx(
-                    "w-full flex items-center justify-between px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 transition-all",
-                    error ? "border-red-500 focus:ring-red-200" : "border-gray-300 dark:border-gray-600",
-                    !selectedDoctor && "text-gray-500"
+                    "w-full min-h-10 flex items-center justify-between px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 transition-all outline-none",
+                    "focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500",
+                    error ? "border-red-400 bg-red-50/30 focus:border-red-500 focus:ring-red-200" : "border-surface-200 dark:border-gray-600 hover:border-surface-300",
+                    !selectedDoctor && "text-surface-500"
                 )}
+                aria-invalid={Boolean(error)}
             >
                 <div className="flex items-center gap-2 overflow-hidden">
-                    <User size={16} className="text-gray-400 shrink-0" />
+                    <User size={16} className={clsx("shrink-0", error ? "text-red-400" : "text-surface-400")} />
                     <span className="truncate">
                         {selectedDoctor ? `${selectedDoctor.name} ${selectedDoctor.doctorCode ? `(${selectedDoctor.doctorCode})` : ''}` : "اختر طبيب..."}
                     </span>
                 </div>
-                <ChevronsUpDown size={14} className="text-gray-400 shrink-0 opacity-50" />
+                <ChevronsUpDown size={14} className="text-surface-400 shrink-0 opacity-60" />
             </button>
 
-            {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+            {error && <p className="mt-1.5 text-xs font-semibold text-red-600">{error}</p>}
 
             {open && (
-                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
+                <div className="absolute z-50 w-full mt-1.5 bg-white dark:bg-gray-800 border border-surface-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
                     <div className="p-2 border-b border-gray-100 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
                         <div className="relative">
                             <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />

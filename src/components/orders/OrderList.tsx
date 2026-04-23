@@ -4,6 +4,7 @@ import { Package, Star } from 'lucide-react';
 import type { Order } from '../../services/db';
 import { db } from '../../services/db';
 import clsx from 'clsx';
+import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { generateCaseId } from '../../utils/caseId';
 import OrderCard from './OrderCard';
 
@@ -104,11 +105,16 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
             }
         }
 
+        const redoDoctor = fullDoctors.find(d => d.id === order.doctorId);
+        const redoCaseId = redoDoctor
+            ? await generateNextCaseIdForDoctor(redoDoctor, fullDoctors)
+            : generateCaseId(order.caseId.split('-')[0] || 'REDO', Math.floor((Date.now() / 1000) % 9000) + 1);
+
         // 2. Create New Order
         const newOrder: Order = {
             ...order,
             id: Math.random().toString(36).substr(2, 9),
-            caseId: generateCaseId(order.caseId.split('-')[0] || 'REDO'),
+            caseId: redoCaseId,
             status: 'New Case',
             technicianStatus: 'Pending',
             createdAt: new Date().toISOString(),
@@ -129,7 +135,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         } catch (error) {
             console.error('Error creating redo order:', error);
         }
-    }, [onStatusChange]);
+    }, [fullDoctors, onStatusChange]);
 
     const handleSubmitFeedback = async () => {
         if (!feedbackOrder) return;

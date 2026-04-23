@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
-import { generateCaseId } from '../../utils/caseId';
+import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -47,6 +47,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
     const [discount, setDiscount] = useState(initialData?.discount || 0);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
@@ -246,6 +247,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+        setHasTriedSubmit(true);
 
         if (!selectedMainDoctorId) {
             toastError('يرجى اختيار الطبيب / المركز الطبي');
@@ -305,8 +307,12 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
         setIsSubmitting(true);
         try {
+            const caseId = initialData?.caseId || (finalDoctor
+                ? await generateNextCaseIdForDoctor(finalDoctor, doctors)
+                : 'UNKNOWN');
+
             await onSubmit({
-                caseId: initialData?.caseId || (finalDoctor ? generateCaseId(finalDoctor.doctorCode || 'UKN') : 'UNKNOWN'),
+                caseId,
                 doctorId: activeDoctorId,
                 patientName,
                 items: items.map(i => {
@@ -357,15 +363,34 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         }
     };
 
+    const sidebarCardClass = "p-3.5 bg-white border border-surface-100 shadow-sm";
+    const fieldClass = "h-9 w-full rounded-lg border border-surface-200 bg-white px-3 text-sm font-bold text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20";
+    const selectClass = "h-9 w-full rounded-lg border border-surface-200 bg-white px-3 text-sm text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20";
+    const segmentWrapClass = "grid grid-cols-2 rounded-lg border border-surface-200 bg-surface-50 p-0.5";
+    const segmentButtonClass = "h-7 rounded-md text-xs font-bold transition-all";
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4 text-right font-sans max-w-7xl mx-auto">
             {/* Header / Top Actions */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
                 <h2 className="text-lg sm:text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
                     <Box className="text-primary-600" />
                     {initialData ? 'تعديل بيانات الأوردر' : 'إنشاء أوردر جديد'}
                 </h2>
-                <div className="flex gap-2 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto sm:items-center">
+                    <div className="min-w-0 sm:w-56">
+                        <label className="sr-only">المندوب المستلم</label>
+                        <select
+                            title="Representative"
+                            aria-label="Select Representative"
+                            className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-sm text-surface-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                            value={representativeId}
+                            onChange={(e) => setRepresentativeId(e.target.value)}
+                        >
+                            <option value="">المندوب المستلم</option>
+                            {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                        </select>
+                    </div>
                     <Button type="button" variant="ghost" disabled={isSubmitting} className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
                         <span>{readOnly ? 'إغلاق' : 'إلغاء'}</span>
                     </Button>
@@ -377,18 +402,21 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 </div>
             </div>
 
-            <fieldset disabled={readOnly} className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <fieldset disabled={readOnly} className="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
                 {/* LEFT COLUMN: Main Inputs (8) */}
-                <div className="lg:col-span-8 space-y-4">
+                <div className="lg:col-span-8 space-y-5">
 
                     {/* 1. Patient & Doctor Info (Horizontal Dense) */}
-                    <Card className="p-4 bg-white dark:bg-surface-800">
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    <Card className="p-4 bg-white dark:bg-surface-800 border border-surface-100 shadow-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
                             {/* 1. Doctor / Center */}
-                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-4" : "md:col-span-6", "min-w-0")}>
-                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1 truncate">الطبيب / المركز المعالج</label>
-                                <div className="flex gap-1">
+                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-5" : "md:col-span-6", "min-w-0")}>
+                                <div className="mb-1.5 flex h-5 items-center justify-between gap-2">
+                                    <label className="block text-xs font-bold text-surface-600 truncate">الطبيب / المركز المعالج</label>
+                                    <span className="shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600">مطلوب</span>
+                                </div>
+                                <div className="flex gap-1.5">
                                     <div className="flex-1 min-w-0">
                                         <DoctorSelect
                                             value={selectedMainDoctorId}
@@ -397,7 +425,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                                 setSelectedMainDoctorId(id);
                                                 setSelectedChildDoctorId('');
                                             }}
-                                            error={!selectedMainDoctorId ? 'مطلوب' : undefined}
+                                            error={!selectedMainDoctorId && hasTriedSubmit ? 'اختر الطبيب أو المركز قبل تأكيد الأوردر' : undefined}
                                         />
                                     </div>
                                     {!readOnly && (
@@ -407,9 +435,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                                 setNewDoctor(prev => ({ ...prev, isCenter: false, parentId: undefined }));
                                                 setShowDoctorModal(true);
                                             }}
-                                            className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors shrink-0"
+                                            className="flex h-10 w-9 items-center justify-center text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors shrink-0"
+                                            aria-label="إضافة طبيب أو مركز"
                                         >
-                                            <Plus size={20} />
+                                            <Plus size={18} />
                                         </button>
                                     )}
                                 </div>
@@ -418,13 +447,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             {/* 2. Executing Doctor (If Center) */}
                             {currentDoctor?.isCenter && (
                                 <div className="md:col-span-4 min-w-0">
-                                    <label className="block text-xs font-bold text-purple-700 mb-1 ml-1 flex items-center gap-1.5 leading-none truncate">
-                                        <div className="w-1 h-3 bg-purple-400 rounded-full shrink-0"></div>
+                                    <label className="mb-1.5 flex h-5 items-center gap-1.5 text-xs font-bold text-surface-600 truncate">
+                                        <div className="w-1 h-3 bg-primary-300 rounded-full shrink-0"></div>
                                         طبيب المركز المنفذ
                                     </label>
-                                    <div className="flex gap-1 items-center">
+                                    <div className="flex gap-1.5 items-center">
                                         <select
-                                            className="flex-1 text-xs p-2.5 border border-purple-200 bg-purple-50 rounded-lg outline-none focus:ring-1 focus:ring-purple-500 font-bold text-purple-700 truncate"
+                                            className="h-10 min-w-0 flex-1 rounded-lg border border-surface-200 bg-white px-3 text-sm font-bold text-surface-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
                                             value={selectedChildDoctorId}
                                             onChange={(e) => setSelectedChildDoctorId(e.target.value)}
                                         >
@@ -440,9 +469,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                                     setNewDoctor(prev => ({ ...prev, isCenter: false, parentId: selectedMainDoctorId }));
                                                     setShowDoctorModal(true);
                                                 }}
-                                                className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg border border-purple-200 transition-colors shrink-0"
+                                                className="flex h-10 w-9 items-center justify-center text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors shrink-0"
+                                                aria-label="إضافة طبيب للمركز"
                                             >
-                                                <Plus size={18} />
+                                                <Plus size={17} />
                                             </button>
                                         )}
                                     </div>
@@ -450,10 +480,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             )}
 
                             {/* 3. Patient Name */}
-                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-4" : "md:col-span-6", "min-w-0")}>
-                                <label className="block text-xs font-bold text-surface-500 mb-1 ml-1 truncate">اسم المريض</label>
+                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-3" : "md:col-span-6", "min-w-0")}>
+                                <label className="mb-1.5 flex h-5 items-center text-xs font-bold text-surface-600 truncate">اسم المريض</label>
                                 <Input
-                                    className="py-2.5 text-sm font-bold bg-gray-50/50"
+                                    className="h-10 py-0 text-sm font-bold bg-white border-surface-200"
                                     placeholder="اسم المريض..."
                                     value={patientName}
                                     onChange={(e) => setPatientName(e.target.value)}
@@ -463,20 +493,19 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     </Card>
 
                     {/* 2. Items List */}
-                    <Card className="p-4 min-h-[14rem] relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-1 h-full bg-indigo-500"></div>
-                        <div className="flex justify-between items-center mb-3">
-                            <div className="flex items-center gap-4">
+                    <Card className="p-5 min-h-[14rem] bg-white border border-surface-100 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
+                            <div className="flex flex-wrap items-center gap-3">
                                 <h3 className="font-bold text-surface-700 flex items-center gap-2 text-sm">
                                     <span className="p-1 bg-indigo-50 text-indigo-600 rounded-lg"><Box size={16} /></span>
                                     قائمة الأصناف المطلوبة
                                 </h3>
                                 {/* Integrated Shade Field */}
-                                <div className="flex items-center gap-2 px-3 py-1 bg-surface-50 rounded-lg border border-surface-200">
-                                    <label className="text-[10px] font-bold text-surface-400 whitespace-nowrap">اللون (Shade):</label>
+                                <div className="flex h-8 items-center overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm">
+                                    <label className="flex h-full items-center border-l border-surface-200 bg-surface-50 px-2.5 text-[10px] font-bold text-surface-500 whitespace-nowrap">اللون (Shade)</label>
                                     <input
                                         type="text"
-                                        className="w-12 bg-transparent text-xs font-bold text-indigo-600 outline-none text-center"
+                                        className="h-full w-20 bg-white px-2 text-center text-xs font-black text-primary-700 outline-none placeholder:text-surface-300"
                                         placeholder="A1"
                                         value={shade}
                                         onChange={(e) => setShade(e.target.value)}
@@ -560,8 +589,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     </Card>
 
                     {/* 3. Notes & STL */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Card className="p-4 bg-surface-50 border-dashed border-surface-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <Card className="p-5 bg-white border border-surface-100 shadow-sm">
                             <label className="block text-xs font-bold text-surface-500 mb-2 flex items-center gap-1"><LinkIcon size={12} /> رابط ملف STL</label>
                             <div className="relative">
                                 <Input value={stlUrl} onChange={(e) => setStlUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" />
@@ -573,9 +602,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
                             </div>
                         </Card>
-                        <Card className="p-0 overflow-hidden">
+                        <Card className="p-0 overflow-hidden bg-white border border-surface-100 shadow-sm">
                             <textarea
-                                className="w-full h-full p-3 bg-white text-sm outline-none resize-none min-h-[5rem]"
+                                className="w-full h-full p-4 bg-white text-sm outline-none resize-none min-h-[5rem] focus:ring-2 focus:ring-primary-500/20"
                                 placeholder="ملاحظات فنية إضافية للمعمل..."
                                 value={instructions}
                                 onChange={(e) => setInstructions(e.target.value)}
@@ -585,88 +614,79 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 </div>
 
                 {/* RIGHT COLUMN: Sidebar (4) */}
-                <div className="lg:col-span-4 space-y-4">
+                <div className="lg:col-span-4 space-y-3">
 
-                    {/* Urgency & Receive Date */}
-                    <Card className={clsx("p-4 border-2 transition-colors", isUrgent ? "border-red-100 bg-red-50/30" : "border-surface-100 bg-white")}>
-                        <div className="flex justify-between items-center mb-3">
+                    {/* Dates & Delivery */}
+                    <Card className={clsx(sidebarCardClass, "transition-colors", isUrgent && "border-red-200 bg-red-50/40")}>
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                            <h3 className="font-bold text-surface-700 text-sm flex items-center gap-2">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
+                                    <Truck size={15} />
+                                </span>
+                                مواعيد الأوردر
+                            </h3>
                             <label className="flex items-center gap-2 cursor-pointer">
-                                <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", isUrgent ? "bg-red-500 border-red-500 text-white" : "bg-white border-surface-300")}>
+                                <div className={clsx("w-5 h-5 rounded-md border flex items-center justify-center transition-colors", isUrgent ? "bg-red-500 border-red-500 text-white" : "bg-white border-surface-300")}>
                                     {isUrgent && <CheckCircle size={12} />}
                                 </div>
                                 <input type="checkbox" className="hidden" checked={isUrgent} onChange={() => setIsUrgent(!isUrgent)} />
-                                <span className={clsx("text-sm font-bold", isUrgent ? "text-red-700" : "text-surface-600")}>طلب مستعجل</span>
+                                <span className={clsx("text-xs font-bold whitespace-nowrap", isUrgent ? "text-red-700" : "text-surface-600")}>مستعجل</span>
                             </label>
-                            {isUrgent && <AlertTriangle size={18} className="text-red-500 animate-pulse" />}
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2.5">
                             <div>
-                                <label className="text-[10px] font-bold text-surface-400 block mb-1">تاريخ استلام العمل</label>
+                                <label className="text-[10px] font-bold text-surface-500 block mb-1">تاريخ الاستلام</label>
                                 <input
                                     title="Received Date"
                                     aria-label="Received Date"
                                     type="date"
-                                    className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm font-bold outline-none focus:ring-1 focus:ring-primary-500"
+                                    className={fieldClass}
                                     value={receivedDate}
                                     onChange={(e) => setReceivedDate(e.target.value)}
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-surface-400 block mb-1">المندوب المستلم</label>
-                                <select
-                                    title="Representative"
-                                    aria-label="Select Representative"
-                                    className="w-full p-2 bg-white border border-surface-200 rounded-lg text-sm outline-none"
-                                    value={representativeId}
-                                    onChange={(e) => setRepresentativeId(e.target.value)}
-                                >
-                                    <option value="">-- اختر المندوب --</option>
-                                    {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
-                                </select>
+                                <label className="text-[10px] font-bold text-surface-500 block mb-1">موعد التسليم</label>
+                                <input
+                                    title="Delivery Date"
+                                    aria-label="Delivery Date"
+                                    type="date"
+                                    className={fieldClass}
+                                    value={deliveryDate}
+                                    onChange={(e) => setDeliveryDate(e.target.value)}
+                                />
                             </div>
                         </div>
-                    </Card>
-
-                    {/* Delivery Settings */}
-                    <Card className="p-4 bg-green-50/20 border-green-100">
-                        <h3 className="font-bold text-surface-700 text-xs mb-3 flex items-center gap-2">
-                            <Truck size={14} className="text-green-600" /> موعد التسليم
-                        </h3>
-                        <input
-                            title="Delivery Date"
-                            aria-label="Delivery Date"
-                            type="date"
-                            className="w-full p-2 mb-3 bg-white border border-green-200 rounded-lg text-sm font-bold text-surface-800 outline-none"
-                            value={deliveryDate}
-                            onChange={(e) => setDeliveryDate(e.target.value)}
-                        />
-                        <div className="flex bg-white rounded-lg border border-green-200 p-0.5">
-                            <button type="button" onClick={() => setDeliveryType('Final')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${deliveryType === 'Final' ? 'bg-green-100 text-green-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Final</button>
-                            <button type="button" onClick={() => setDeliveryType('TryIn')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${deliveryType === 'TryIn' ? 'bg-orange-100 text-orange-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Try-In</button>
+                        <div className={clsx(segmentWrapClass, "mt-3")}>
+                            <button type="button" onClick={() => setDeliveryType('Final')} className={clsx(segmentButtonClass, deliveryType === 'Final' ? 'bg-emerald-100 text-emerald-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Final</button>
+                            <button type="button" onClick={() => setDeliveryType('TryIn')} className={clsx(segmentButtonClass, deliveryType === 'TryIn' ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Try-In</button>
                         </div>
                     </Card>
 
                     {/* Workflow */}
-                    <Card className="p-4 bg-teal-50/20 border-teal-100">
-                        <h3 className="font-bold text-surface-700 text-xs mb-3 flex items-center gap-2">
-                            <Settings size={14} className="text-teal-600" /> تنفيذ العمل
+                    <Card className={sidebarCardClass}>
+                        <h3 className="font-bold text-surface-700 text-sm mb-2.5 flex items-center gap-2">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                                <Settings size={15} />
+                            </span>
+                            تنفيذ العمل
                         </h3>
-                        <div className="flex bg-white rounded-lg border border-teal-200 p-0.5 mb-3">
-                            <button type="button" onClick={() => setWorkflowType('full')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'full' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Full Lab</button>
-                            <button type="button" onClick={() => setWorkflowType('split')} className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all ${workflowType === 'split' ? 'bg-teal-100 text-teal-700 shadow-sm' : 'text-surface-400 hover:text-surface-600'}`}>Split</button>
+                        <div className={clsx(segmentWrapClass, "mb-3")}>
+                            <button type="button" onClick={() => setWorkflowType('full')} className={clsx(segmentButtonClass, workflowType === 'full' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Full Lab</button>
+                            <button type="button" onClick={() => setWorkflowType('split')} className={clsx(segmentButtonClass, workflowType === 'split' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Split</button>
                         </div>
 
                         {workflowType === 'split' ? (
-                            <div className="space-y-2 animate-in slide-in-from-top-2 fade-in">
-                                <select title="Designer" aria-label="Select Designer" className="w-full p-2 bg-white border border-teal-100 rounded-lg text-xs outline-none" value={designerId} onChange={e => setDesignerId(e.target.value)}>
+                            <div className="space-y-3 animate-in slide-in-from-top-2 fade-in">
+                                <select title="Designer" aria-label="Select Designer" className={selectClass} value={designerId} onChange={e => setDesignerId(e.target.value)}>
                                     <option value="">اختر المصمم...</option>
                                     {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </select>
                                 <select
                                     title="Supplier (Split)"
                                     aria-label="Select Supplier for Split Workflow"
-                                    className="w-full p-2 bg-white border border-teal-100 rounded-lg text-xs outline-none"
+                                    className={selectClass}
                                     value={selectedSupplier}
                                     onChange={e => setSelectedSupplier(e.target.value)}
                                 >
@@ -678,7 +698,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             <select
                                 title="Supplier (Full)"
                                 aria-label="Select Supplier for Full Lab Workflow"
-                                className="w-full p-2 bg-white border border-teal-100 rounded-lg text-xs outline-none"
+                                className={selectClass}
                                 value={selectedSupplier}
                                 onChange={e => setSelectedSupplier(e.target.value)}
                             >
@@ -689,14 +709,17 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     </Card>
 
                     {/* Summary */}
-                    <Card className="p-4 bg-surface-900 text-white border-none shadow-xl shadow-surface-900/10">
-                        <div className="flex justify-between items-center mb-3 pb-3 border-b border-surface-700">
+                    <Card className="p-3.5 bg-surface-900 text-white border border-surface-800 shadow-xl shadow-surface-900/10">
+                        <div className="mb-3 border-b border-white/10 pb-3">
                             <span className="text-xs font-bold text-surface-400">الإجمالي النهائي</span>
-                            <span className="text-2xl font-black tracking-tight">{total.toLocaleString()}</span>
+                            <div className="mt-1 flex items-end justify-between gap-3">
+                                <span className="text-2xl font-black leading-none tracking-tight">{total.toLocaleString()}</span>
+                                <span className="text-xs font-bold text-surface-500">جنيه</span>
+                            </div>
                         </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-surface-400">خصم خاص</span>
-                            <div className="flex items-center gap-1 bg-surface-800 px-2 py-1 rounded-lg border border-surface-700 w-24">
+                        <div className="flex justify-between items-center gap-3">
+                            <span className="text-xs font-bold text-surface-300">خصم خاص</span>
+                            <div className="flex h-9 w-28 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2">
                                 <DollarSign size={12} className="text-surface-500" />
                                 <input
                                     type="number"
@@ -711,14 +734,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
                         {/* Admin-only: Manual Cost Override */}
                         {isAdmin && (
-                            <div className="mt-3 pt-3 border-t border-surface-700">
+                            <div className="mt-3 border-t border-white/10 pt-3">
                                 <div className="flex items-center gap-1.5 mb-2">
                                     <Lock size={12} className="text-amber-400" />
                                     <span className="text-[10px] font-bold text-amber-400">تعديل التكلفة يدوياً (أدمن فقط)</span>
                                 </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-xs text-surface-400">التكلفة</span>
-                                    <div className="flex items-center gap-1 bg-surface-800 px-2 py-1 rounded-lg border border-amber-500/30 w-28">
+                                <div className="flex justify-between items-center gap-3">
+                                    <span className="text-xs font-bold text-surface-300">التكلفة</span>
+                                    <div className="flex h-9 w-32 items-center gap-1 rounded-lg border border-amber-500/30 bg-white/5 px-2">
                                         <DollarSign size={12} className="text-amber-400" />
                                         <input
                                             type="number"
@@ -730,7 +753,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                         />
                                     </div>
                                 </div>
-                                <p className="text-[10px] text-surface-500 mt-1 text-left">التكلفة التلقائية: {(() => {
+                                <p className="mt-2 text-left text-[10px] text-surface-500">التكلفة التلقائية: {(() => {
                                     let auto = 0;
                                     if (workflowType === 'full') {
                                         auto = items.reduce((sum, item) => {

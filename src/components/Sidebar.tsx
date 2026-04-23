@@ -186,7 +186,7 @@ export default function Sidebar() {
                                 <h1 className="text-[16px] font-bold text-teal-900 tracking-tight leading-tight">
                                     ORCA Lab
                                 </h1>
-                                <p className="text-[11px] text-cyan-600 font-medium tracking-wide uppercase">Dental ERP v1.2</p>
+                                <p className="text-[11px] text-cyan-600 font-medium tracking-wide uppercase">Dental ERP v1.3</p>
                             </div>
                         </div>
                     </div>

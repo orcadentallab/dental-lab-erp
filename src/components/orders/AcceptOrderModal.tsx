@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { type Order, type User, type Doctor, type Supplier } from '../../services/db';
-import { generateCaseId } from '../../utils/caseId';
+import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { X, Check, Building2, User as UserIcon, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -28,7 +28,6 @@ export default function AcceptOrderModal({
     doctors,
     suppliers,
     designers,
-    existingOrders,
     isOpen,
     onClose,
     onConfirm
@@ -39,17 +38,32 @@ export default function AcceptOrderModal({
 
     // Calculate recommended case ID
     const doctor = doctors.find(d => d.id === order.doctorId);
-    const recommendedCaseId = useMemo(() => {
-        if (!doctor) return '';
-        return generateCaseId(doctor.doctorCode || 'UNK');
-    }, [doctor, existingOrders]);
-
-    const [caseId, setCaseId] = useState(recommendedCaseId);
+    const [caseId, setCaseId] = useState('');
 
     // Update caseId when recommended changes (e.g. initial load or doctor change)
     useEffect(() => {
-        setCaseId(recommendedCaseId);
-    }, [recommendedCaseId]);
+        let isMounted = true;
+
+        const loadRecommendedCaseId = async () => {
+            if (!doctor || !isOpen) {
+                if (isMounted) {
+                    setCaseId('');
+                }
+                return;
+            }
+
+            const nextCaseId = await generateNextCaseIdForDoctor(doctor, doctors);
+            if (isMounted) {
+                setCaseId(nextCaseId);
+            }
+        };
+
+        loadRecommendedCaseId();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [doctor, doctors, isOpen]);
 
     const [receivedDate, setReceivedDate] = useState(() => {
         const d = new Date();
@@ -117,7 +131,7 @@ export default function AcceptOrderModal({
                                 className="font-mono text-center font-bold text-lg tracking-wider"
                             />
                         </div>
-                        <p className="text-[10px] text-gray-400 mt-1">تم توليد الرقم تلقائياً بناءً على كود الطبيب والتاريخ.</p>
+                        <p className="text-[10px] text-gray-400 mt-1">تم توليد الرقم تلقائياً بناءً على كود الجهة والتاريخ وتسلسل السنة.</p>
                     </div>
 
                     {/* Workflow Type */}

@@ -14,6 +14,7 @@ import { generateDoctorInvoicePDF, generateOrdersListPDF } from '../services/pdf
 import { calculateOpeningBalance, DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 import { motion, AnimatePresence } from 'framer-motion';
+import clsx from 'clsx';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -344,6 +345,22 @@ export default function Orders() {
     };
 
     const canFilterByDoctorAndSupplier = user?.role === 'admin' || user?.role === 'representative';
+    const filterSelectClass = (isActive: boolean, withLeftIcon = false) => clsx(
+        'w-full py-2 border-none rounded-lg text-xs focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors',
+        withLeftIcon ? 'pl-8 pr-8' : 'pl-2 pr-6',
+        isActive
+            ? 'bg-white ring-2 ring-primary-300 text-surface-900 font-black shadow-sm'
+            : 'bg-surface-50 ring-1 ring-surface-200 text-surface-500 font-semibold'
+    );
+    const filterIconClass = (isActive: boolean) => clsx(
+        'absolute left-2.5 top-2 h-3.5 w-3.5',
+        isActive ? 'text-primary-600' : 'text-surface-400'
+    );
+    const filterChevronClass = (isActive: boolean, withLeftIcon = false) => clsx(
+        'absolute top-2.5 h-3 w-3 pointer-events-none',
+        withLeftIcon ? 'right-2.5' : 'right-2',
+        isActive ? 'text-primary-600' : 'text-surface-300'
+    );
 
     // Print Logic Removed
 
@@ -549,7 +566,7 @@ export default function Orders() {
                                         aria-label="Filter by Status"
                                         value={statusFilter}
                                         onChange={(e) => setStatusFilter(e.target.value)}
-                                        className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                        className={filterSelectClass(Boolean(statusFilter), true)}
                                     >
                                         <option value="">{t.common.status}</option>
                                         <option value="New Case">New Case</option>
@@ -563,8 +580,8 @@ export default function Orders() {
                                         <option value="Delivered">Delivered</option>
                                         <option value="Rejected">Rejected</option>
                                     </select>
-                                    <Filter className="absolute left-2.5 top-2 h-3.5 w-3.5 text-surface-400" />
-                                    <ChevronDown className="absolute right-2.5 top-2.5 h-3 w-3 text-surface-400 pointer-events-none" />
+                                    <Filter className={filterIconClass(Boolean(statusFilter))} />
+                                    <ChevronDown className={filterChevronClass(Boolean(statusFilter), true)} />
                                 </div>
 
                                 {canFilterByDoctorAndSupplier && (
@@ -576,13 +593,13 @@ export default function Orders() {
                                                 aria-label="Filter by Doctor"
                                                 value={doctorFilter}
                                                 onChange={(e) => setDoctorFilter(e.target.value)}
-                                                className="w-full pl-8 pr-8 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                                className={filterSelectClass(Boolean(doctorFilter), true)}
                                             >
                                                 <option value="">كل الأطباء</option>
                                                 {doctors.map(doc => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
                                             </select>
-                                            <UserIcon className="absolute left-2.5 top-2 h-3.5 w-3.5 text-surface-400" />
-                                            <ChevronDown className="absolute right-2.5 top-2.5 h-3 w-3 text-surface-400 pointer-events-none" />
+                                            <UserIcon className={filterIconClass(Boolean(doctorFilter))} />
+                                            <ChevronDown className={filterChevronClass(Boolean(doctorFilter), true)} />
                                         </div>
 
                                         {/* Supplier */}
@@ -592,13 +609,13 @@ export default function Orders() {
                                                 aria-label="Filter by Supplier"
                                                 value={supplierFilter}
                                                 onChange={(e) => setSupplierFilter(e.target.value)}
-                                                className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                                className={filterSelectClass(Boolean(supplierFilter))}
                                             >
                                                 <option value="">كل المعامل</option>
                                                 <option value="internal">{t.orders.internalLab}</option>
                                                 {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
+                                            <ChevronDown className={filterChevronClass(Boolean(supplierFilter))} />
                                         </div>
 
                                         {/* Designer */}
@@ -608,12 +625,12 @@ export default function Orders() {
                                                 aria-label="Filter by Designer"
                                                 value={designerFilter}
                                                 onChange={(e) => setDesignerFilter(e.target.value)}
-                                                className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                                className={filterSelectClass(Boolean(designerFilter))}
                                             >
                                                 <option value="">كل المصممين</option>
                                                 {users.filter(u => isDesignerUser(u)).map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
+                                            <ChevronDown className={filterChevronClass(Boolean(designerFilter))} />
                                         </div>
 
                                         {/* Representative */}
@@ -623,12 +640,12 @@ export default function Orders() {
                                                 aria-label="Filter by Representative"
                                                 value={representativeFilter}
                                                 onChange={(e) => setRepresentativeFilter(e.target.value)}
-                                                className="w-full pl-2 pr-6 py-2 bg-surface-50 border-none ring-1 ring-surface-200 rounded-lg text-xs text-surface-500 focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors"
+                                                className={filterSelectClass(Boolean(representativeFilter))}
                                             >
                                                 <option value="">كل المناديب</option>
                                                 {users.filter(u => isRepresentativeUser(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                                             </select>
-                                            <ChevronDown className="absolute right-2 top-2.5 h-3 w-3 text-surface-300 pointer-events-none" />
+                                            <ChevronDown className={filterChevronClass(Boolean(representativeFilter))} />
                                         </div>
                                     </>
                                 )}

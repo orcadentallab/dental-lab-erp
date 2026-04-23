@@ -358,13 +358,28 @@ export default function OrderCard({
 
                             <div className="h-4 w-px bg-surface-200 dark:bg-surface-700/50 mx-1"></div>
 
-                            <span
-                                className="text-[10px] font-semibold text-surface-500 flex items-center gap-1 font-mono tracking-tight"
-                                title="تاريخ استلام العمل"
-                            >
-                                <Calendar size={11} className="text-surface-400" />
-                                {order.createdAt ? order.createdAt.split('T')[0] : '-'}
-                            </span>
+                            <div className="flex items-center gap-2 text-[10px] font-semibold text-surface-500 font-mono tracking-tight">
+                                <span
+                                    className="flex items-center gap-1"
+                                    title="تاريخ استلام العمل"
+                                >
+                                    <Calendar size={11} className="text-surface-400" />
+                                    <span className="text-surface-400 font-bold">استلام</span>
+                                    <span className="font-black text-surface-600">{order.createdAt ? order.createdAt.split('T')[0] : '-'}</span>
+                                </span>
+                                <span className="h-3 w-px bg-surface-200 dark:bg-surface-700/50" />
+                                <span
+                                    className={clsx(
+                                        "flex items-center gap-1",
+                                        isLate ? "text-red-600" : "text-surface-500"
+                                    )}
+                                    title="تاريخ التسليم"
+                                >
+                                    <Clock size={11} className={isLate ? "text-red-500" : "text-surface-400"} />
+                                    <span className={clsx("font-bold", isLate ? "text-red-500" : "text-surface-400")}>تسليم</span>
+                                    <span className={clsx("font-black", isLate ? "text-red-700" : "text-surface-600")}>{order.deliveryDate || '-'}</span>
+                                </span>
+                            </div>
                         </div>
                     </div>
 
@@ -440,6 +455,12 @@ export default function OrderCard({
                                     <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
                                         <User size={12} className="text-blue-600" />
                                         <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
+                                    </div>
+                                )}
+                                {order.designerId && users[order.designerId] && (
+                                    <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/10 px-1.5 py-0.5 rounded text-xs border border-indigo-100 dark:border-indigo-800/30">
+                                        <User size={12} className="text-indigo-600" />
+                                        <span className="font-semibold text-indigo-800 dark:text-indigo-300">{users[order.designerId]}</span>
                                     </div>
                                 )}
                             </div>
