@@ -133,6 +133,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const setItems = (newItems: FormOrderItem[]) => itemsSet(newItems);
 
     useEffect(() => {
+        setInstructions(initialData?.instructions || '');
+    }, [initialData?.id, initialData?.instructions]);
+
+    useEffect(() => {
         const loadData = async () => {
             try {
                 const [doctorsData, servicesData, suppliersData, usersData] = await Promise.all([

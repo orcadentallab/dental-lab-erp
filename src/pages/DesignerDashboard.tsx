@@ -4,7 +4,7 @@ import { db, type Order } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import {
     FolderKanban, Upload, Search, ChevronDown,
-    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, CalendarDays
+    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, CalendarDays, StickyNote, MessageCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
@@ -30,6 +30,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showDesignModal, setShowDesignModal] = useState(false);
     const [designUrl, setDesignUrl] = useState('');
+    const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
     const loadData = useCallback(async () => {
         if (!user) return;
@@ -105,6 +106,27 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         });
         setShowDesignModal(false);
         setSelectedOrder(null);
+        loadData();
+    };
+
+    const handleAddComment = async (order: Order) => {
+        if (!user) return;
+        const text = (commentDrafts[order.id] || '').trim();
+        if (!text) return;
+
+        const nextComment = {
+            id: Math.random().toString(36).substr(2, 9),
+            text,
+            userId: user.id,
+            userName: user.name || user.role || 'مصمم',
+            createdAt: new Date().toISOString(),
+        };
+
+        await db.updateOrder(order.id, {
+            comments: [...(order.comments || []), nextComment],
+        });
+
+        setCommentDrafts(prev => ({ ...prev, [order.id]: '' }));
         loadData();
     };
 
@@ -286,6 +308,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                     <th className="px-6 py-4">رقم الحالة</th>
                                     <th className="px-6 py-4">المريض / الطبيب</th>
                                     {user && !isDesignerUser(user) && <th className="px-6 py-4">المصمم</th>}
+                                    <th className="px-6 py-4">تعليمات / تعليقات</th>
                                     <th className="px-6 py-4">تاريخ الاستلام</th>
                                     <th className="px-6 py-4">المرفقات / التسليم</th>
                                     <th className="px-6 py-4">الحالة</th>
@@ -294,6 +317,9 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                             <tbody className="divide-y divide-gray-50">
                                 {filteredOrders.map(order => {
                                     const currentStatus = order.designStatus || 'pending';
+                                    const latestComment = order.comments && order.comments.length > 0
+                                        ? order.comments[order.comments.length - 1]
+                                        : null;
                                     return (
                                         <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
                                             <td className="px-6 py-4">
@@ -319,6 +345,52 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     </span>
                                                 </td>
                                             )}
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col gap-1.5 min-w-[220px] max-w-[280px]">
+                                                    {order.instructions ? (
+                                                        <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-800 border border-amber-100">
+                                                            <StickyNote size={13} className="mt-0.5 shrink-0 text-amber-600" />
+                                                            <span className="line-clamp-2 font-semibold">{order.instructions}</span>
+                                                        </div>
+                                                    ) : null}
+                                                    {latestComment ? (
+                                                        <div className="flex items-start gap-1.5 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-800 border border-blue-100">
+                                                            <MessageCircle size={13} className="mt-0.5 shrink-0 text-blue-600" />
+                                                            <span className="line-clamp-2">
+                                                                <span className="font-bold">{latestComment.userName}: </span>
+                                                                {latestComment.text}
+                                                            </span>
+                                                        </div>
+                                                    ) : null}
+                                                    {!order.instructions && !latestComment && (
+                                                        <span className="text-xs text-gray-300">-</span>
+                                                    )}
+                                                    <div className="mt-1 flex items-center gap-1.5">
+                                                        <input
+                                                            type="text"
+                                                            value={commentDrafts[order.id] || ''}
+                                                            onChange={(e) => setCommentDrafts(prev => ({ ...prev, [order.id]: e.target.value }))}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.preventDefault();
+                                                                    handleAddComment(order);
+                                                                }
+                                                            }}
+                                                            placeholder="اكتب تعليق..."
+                                                            aria-label="إضافة تعليق للحالة"
+                                                            className="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 px-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleAddComment(order)}
+                                                            disabled={!commentDrafts[order.id]?.trim()}
+                                                            className="h-8 rounded-lg bg-blue-600 px-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                                        >
+                                                            إضافة
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 text-sm text-gray-600" dir="ltr">
                                                 {format(new Date(order.createdAt), 'dd/MM/yyyy')}
                                             </td>
