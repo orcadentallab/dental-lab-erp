@@ -15,6 +15,7 @@ interface OrderListItemProps {
     showDeliveryDate?: boolean;
     hideCaseId?: boolean;
     onEditDeliveryDate?: (order: Order) => void;
+    onMarkReviewed?: () => void;
     onRegister?: (orderId: string) => void;
     showRegister?: boolean;
     onAccept?: (order: Order) => void;
@@ -32,6 +33,7 @@ const OrderListItem = React.memo(function OrderListItem({
     showDeliveryDate = false,
     hideCaseId = false,
     onEditDeliveryDate,
+    onMarkReviewed,
     onRegister,
     showRegister = false,
     onAccept,
@@ -157,6 +159,14 @@ const OrderListItem = React.memo(function OrderListItem({
                         className="flex-1 md:flex-none justify-center text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
                     >
                         تعديل التسليم
+                    </button>
+                )}
+                {onMarkReviewed && (
+                    <button
+                        onClick={onMarkReviewed}
+                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                    >
+                        تمت المراجعة
                     </button>
                 )}
                 {showRegister && !order.isRegistered && order.status === 'Delivered' && onRegister && (

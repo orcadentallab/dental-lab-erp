@@ -24,6 +24,7 @@ import { ErrorHandler } from '../lib/errorHandler';
 const DASHBOARD_CACHE_KEY = 'dashboard-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
 const DELIVERY_DATE_AUDIT_PREFIX = '__delivery_date_change__';
+const REVIEWED_DELIVERY_CHANGE_IDS_KEY = 'reviewedDeliveryChangeIds';
 
 interface DashboardCache {
     userId: string;
@@ -66,6 +67,14 @@ export default function DashboardNew() {
     const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
         try {
             const stored = localStorage.getItem('resolvedCommentIds');
+            return stored ? new Set(JSON.parse(stored) as string[]) : new Set<string>();
+        } catch {
+            return new Set<string>();
+        }
+    });
+    const [reviewedDeliveryChangeIds, setReviewedDeliveryChangeIds] = useState<Set<string>>(() => {
+        try {
+            const stored = localStorage.getItem(REVIEWED_DELIVERY_CHANGE_IDS_KEY);
             return stored ? new Set(JSON.parse(stored) as string[]) : new Set<string>();
         } catch {
             return new Set<string>();
@@ -362,6 +371,17 @@ export default function DashboardNew() {
         });
     };
 
+    const markDeliveryChangeReviewed = (reviewKey: string) => {
+        setReviewedDeliveryChangeIds(prev => {
+            const next = new Set(prev);
+            next.add(reviewKey);
+            try {
+                localStorage.setItem(REVIEWED_DELIVERY_CHANGE_IDS_KEY, JSON.stringify([...next]));
+            } catch { /* ignore */ }
+            return next;
+        });
+    };
+
     // Build flat list of unresolved comments across all orders with comments
     const unresolvedCommentItems = ordersWithComments.flatMap(order =>
         (order.comments || [])
@@ -392,6 +412,7 @@ export default function DashboardNew() {
 
     const representativeDeliveryDateChanges = useMemo(() => {
         const latestChangesByOrder = new Map<string, {
+            reviewKey: string;
             order: Order;
             actorName: string;
             changedAt: string;
@@ -414,6 +435,7 @@ export default function DashboardNew() {
 
             if (!latestChangesByOrder.has(relatedOrder.id)) {
                 latestChangesByOrder.set(relatedOrder.id, {
+                    reviewKey: `history-${historyEntry.id}`,
                     order: relatedOrder,
                     actorName: historyEntry.user_name,
                     changedAt: historyEntry.created_at,
@@ -438,6 +460,7 @@ export default function DashboardNew() {
             if (!parsedAudit.oldDate || !parsedAudit.newDate || parsedAudit.oldDate === parsedAudit.newDate) return;
 
             latestChangesByOrder.set(order.id, {
+                reviewKey: `audit-${order.id}-${auditComment.id}`,
                 order,
                 actorName: parsedAudit.userName,
                 changedAt: auditComment.createdAt,
@@ -446,8 +469,10 @@ export default function DashboardNew() {
             });
         });
 
-        return Array.from(latestChangesByOrder.values());
-    }, [orders, recentOrderHistory, representativeUserIds]);
+        return Array.from(latestChangesByOrder.values())
+            .filter(change => !reviewedDeliveryChangeIds.has(change.reviewKey))
+            .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime());
+    }, [orders, recentOrderHistory, representativeUserIds, reviewedDeliveryChangeIds]);
 
     // Helper functions
     const doctorsMap = useMemo(() => {
@@ -1498,7 +1523,7 @@ export default function DashboardNew() {
             >
                 {representativeDeliveryDateChanges.map(change => (
                     <OrderListItem
-                        key={`${change.order.id}-${change.changedAt}`}
+                        key={change.reviewKey}
                         order={change.order}
                         doctorName={getDoctorDisplayName(change.order.doctorId)}
                         showDoctor
@@ -1516,6 +1541,7 @@ export default function DashboardNew() {
                         showDeliveryDate
                         hideCaseId
                         onEditDeliveryDate={openDeliveryDateEditor}
+                        onMarkReviewed={() => markDeliveryChangeReviewed(change.reviewKey)}
                         labName={getLabName(change.order.supplierId)}
                         designerName={getDesignerName(change.order.designerId)}
                     />
