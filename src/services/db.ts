@@ -156,6 +156,8 @@ export interface Order {
 
 export interface OrderHistoryEntry {
     id: string;
+    order_id: string;
+    user_id?: string | null;
     user_name: string;
     action_type: string;
     details: string;
@@ -194,6 +196,11 @@ class MockDB {
     async getOrderHistory(orderId: string): Promise<OrderHistoryEntry[]> {
         const { getOrderHistory } = await import('./supabase/orders');
         return getOrderHistory(orderId);
+    }
+
+    async getRecentOrderHistory(limit: number = 200): Promise<OrderHistoryEntry[]> {
+        const { getRecentOrderHistory } = await import('./supabase/orders');
+        return getRecentOrderHistory(limit);
     }
 
     // --- DOCTORS ---

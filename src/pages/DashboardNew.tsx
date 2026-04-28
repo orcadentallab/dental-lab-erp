@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect, useState, useMemo } from 'react';
-import { format } from 'date-fns';
+import { differenceInCalendarDays, format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
+import { db, type Order, type Supplier, type User, type Doctor, type OrderHistoryEntry } from '../services/db';
 import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare } from 'lucide-react';
 import { contactService, type ContactInquiry } from '../services/contactService';
 import AlertCard from '../components/dashboard/AlertCard';
@@ -12,13 +12,18 @@ import OrderListModal from '../components/dashboard/OrderListModal';
 import OrderListItem from '../components/dashboard/OrderListItem';
 import DailySummaryPrint from '../components/dashboard/DailySummaryPrint';
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
+import { Input } from '../components/ui/Input';
+import { Button } from '../components/ui/Button';
 import DesignerDashboard from './DesignerDashboard';
 import { useTranslation } from '../translations';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
+import { useToast } from '../context/ToastContext';
+import { ErrorHandler } from '../lib/errorHandler';
 
 const DASHBOARD_CACHE_KEY = 'dashboard-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+const DELIVERY_DATE_AUDIT_PREFIX = '__delivery_date_change__';
 
 interface DashboardCache {
     userId: string;
@@ -32,10 +37,12 @@ interface DashboardCache {
     contactInquiries: ContactInquiry[];
     ordersWithComments: Order[];
     designerOrders?: Order[];
+    recentOrderHistory?: OrderHistoryEntry[];
 }
 
 export default function DashboardNew() {
     const { user } = useAuth();
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -48,9 +55,13 @@ export default function DashboardNew() {
     const [showDailySummary, setShowDailySummary] = useState(false);
     const [activeModal, setActiveModal] = useState<string | null>(null);
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
+    const [editingDeliveryOrder, setEditingDeliveryOrder] = useState<Order | null>(null);
+    const [editingDeliveryDate, setEditingDeliveryDate] = useState('');
+    const [isSavingDeliveryDate, setIsSavingDeliveryDate] = useState(false);
     const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
+    const [recentOrderHistory, setRecentOrderHistory] = useState<OrderHistoryEntry[]>([]);
     // Track which comment IDs have been resolved (dismissed) — stored in localStorage
     const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
         try {
@@ -62,6 +73,8 @@ export default function DashboardNew() {
     });
     const { t } = useTranslation();
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
+    const canViewDeliveryFollowUp = user?.role === 'admin' || user?.role === 'representative';
+    const canEditDeliveryDates = user?.role === 'admin' || user?.role === 'representative';
 
     useEffect(() => {
         if (!user) return;
@@ -83,6 +96,7 @@ export default function DashboardNew() {
                     setContactInquiries(cache.contactInquiries);
                     setOrdersWithComments(cache.ordersWithComments);
                     setDesignerOrders(cache.designerOrders || []);
+                    setRecentOrderHistory(cache.recentOrderHistory || []);
                     setIsLoading(false);
                     restoredFromCache = true;
                 }
@@ -105,13 +119,14 @@ export default function DashboardNew() {
                     db.getOrdersWithComments().catch(() => [] as Order[]),
                 ] as const;
 
-                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, designerOrdersData] =
+                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, designerOrdersData, recentOrderHistoryData] =
                     user?.role === 'admin'
                         ? await Promise.all([
                             ...baseRequests,
                             db.getDesignerDashboardOrders().catch(() => [] as Order[]),
+                            db.getRecentOrderHistory(250).catch(() => [] as OrderHistoryEntry[]),
                         ] as const)
-                        : [...await Promise.all(baseRequests), undefined] as const;
+                        : [...await Promise.all(baseRequests), undefined, undefined] as const;
 
                 // Apply role-based filtering
                 let filteredOrders = ordersData;
@@ -136,6 +151,7 @@ export default function DashboardNew() {
                 setContactInquiries(inquiriesData);
                 setOrdersWithComments(commentOrdersData);
                 setDesignerOrders((designerOrdersData as Order[] | undefined) || []);
+                setRecentOrderHistory((recentOrderHistoryData as OrderHistoryEntry[] | undefined) || []);
 
                 try {
                     const cachePayload: DashboardCache = {
@@ -150,6 +166,7 @@ export default function DashboardNew() {
                         contactInquiries: inquiriesData,
                         ordersWithComments: commentOrdersData,
                         designerOrders: (designerOrdersData as Order[] | undefined) || [],
+                        recentOrderHistory: (recentOrderHistoryData as OrderHistoryEntry[] | undefined) || [],
                     };
                     sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
                 } catch (error) {
@@ -187,6 +204,28 @@ export default function DashboardNew() {
         !['Delivered', 'Rejected', 'Cancelled'].includes(o.status)
     );
 
+    const activeDeliveryOrders = orders.filter(o =>
+        Boolean(o.deliveryDate) &&
+        !['Delivered', 'Rejected', 'Cancelled'].includes(o.status)
+    );
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowKey = tomorrow.toISOString().split('T')[0];
+
+    const normalizeDeliveryDate = (date: string) => {
+        const directDateMatch = date.match(/^\d{4}-\d{2}-\d{2}/);
+        if (directDateMatch) return directDateMatch[0];
+
+        const parsedDate = new Date(date);
+        if (Number.isNaN(parsedDate.getTime())) return '';
+
+        return parsedDate.toISOString().split('T')[0];
+    };
+
+    const dueTodayOrders = activeDeliveryOrders.filter(o => normalizeDeliveryDate(o.deliveryDate) === today);
+    const dueTomorrowOrders = activeDeliveryOrders.filter(o => normalizeDeliveryDate(o.deliveryDate) === tomorrowKey);
+    const dueLaterOrders = activeDeliveryOrders.filter(o => normalizeDeliveryDate(o.deliveryDate) > tomorrowKey);
     const designPhaseOrders = orders.filter(o =>
         ['Under Design', 'Waiting Dr Approval'].includes(o.status)
     );
@@ -330,6 +369,86 @@ export default function DashboardNew() {
             .map(c => ({ comment: c, order }))
     );
 
+    function parseDeliveryDateAuditComment(text: string) {
+        if (!text.startsWith(`${DELIVERY_DATE_AUDIT_PREFIX}|`)) return null;
+
+        const [, oldDate, newDate, userId, userName, role] = text.split('|');
+        return {
+            oldDate: normalizeDeliveryDate(oldDate || ''),
+            newDate: normalizeDeliveryDate(newDate || ''),
+            userId: userId || '',
+            userName: userName || 'Unknown',
+            role: role || '',
+        };
+    }
+
+    const representativeUserIds = useMemo(() => {
+        return new Set(
+            users
+                .filter(appUser => appUser.role === 'representative')
+                .map(appUser => appUser.id)
+        );
+    }, [users]);
+
+    const representativeDeliveryDateChanges = useMemo(() => {
+        const latestChangesByOrder = new Map<string, {
+            order: Order;
+            actorName: string;
+            changedAt: string;
+            oldDate: string;
+            newDate: string;
+        }>();
+
+        recentOrderHistory.forEach(historyEntry => {
+            const deliveryDateChange = historyEntry.changes?.delivery_date;
+            if (!deliveryDateChange || !historyEntry.order_id || !historyEntry.user_id) return;
+            if (!representativeUserIds.has(historyEntry.user_id)) return;
+
+            const oldDate = typeof deliveryDateChange.old === 'string' ? normalizeDeliveryDate(deliveryDateChange.old) : '';
+            const newDate = typeof deliveryDateChange.new === 'string' ? normalizeDeliveryDate(deliveryDateChange.new) : '';
+            if (!oldDate || !newDate || oldDate === newDate) return;
+
+            const relatedOrder = orders.find(order => order.id === historyEntry.order_id);
+            if (!relatedOrder) return;
+            if (['Delivered', 'Cancelled', 'Rejected'].includes(relatedOrder.status)) return;
+
+            if (!latestChangesByOrder.has(relatedOrder.id)) {
+                latestChangesByOrder.set(relatedOrder.id, {
+                    order: relatedOrder,
+                    actorName: historyEntry.user_name,
+                    changedAt: historyEntry.created_at,
+                    oldDate,
+                    newDate,
+                });
+            }
+        });
+
+        orders.forEach(order => {
+            if (latestChangesByOrder.has(order.id)) return;
+            if (['Delivered', 'Cancelled', 'Rejected'].includes(order.status)) return;
+
+            const auditComment = [...(order.comments || [])]
+                .reverse()
+                .find(comment => comment.userId === 'system' && comment.text.startsWith(`${DELIVERY_DATE_AUDIT_PREFIX}|`));
+
+            if (!auditComment) return;
+
+            const parsedAudit = parseDeliveryDateAuditComment(auditComment.text);
+            if (!parsedAudit || parsedAudit.role !== 'representative') return;
+            if (!parsedAudit.oldDate || !parsedAudit.newDate || parsedAudit.oldDate === parsedAudit.newDate) return;
+
+            latestChangesByOrder.set(order.id, {
+                order,
+                actorName: parsedAudit.userName,
+                changedAt: auditComment.createdAt,
+                oldDate: parsedAudit.oldDate,
+                newDate: parsedAudit.newDate,
+            });
+        });
+
+        return Array.from(latestChangesByOrder.values());
+    }, [orders, recentOrderHistory, representativeUserIds]);
+
     // Helper functions
     const doctorsMap = useMemo(() => {
         return doctors.reduce((acc, doc) => {
@@ -367,6 +486,54 @@ export default function DashboardNew() {
         }
 
         return doctor.name;
+    };
+
+    const getDeliveryDateStatusLabel = (deliveryDate?: string) => {
+        if (!deliveryDate) return '-';
+
+        const normalizedDate = normalizeDeliveryDate(deliveryDate);
+        if (!normalizedDate) return '-';
+
+        const deliveryDateObj = new Date(normalizedDate);
+        if (Number.isNaN(deliveryDateObj.getTime())) return '-';
+
+        const daysDifference = differenceInCalendarDays(deliveryDateObj, new Date(today));
+
+        if (daysDifference < 0) {
+            const overdueBy = Math.abs(daysDifference);
+            return overdueBy === 1 ? 'متأخرة من يوم' : `متأخرة من ${overdueBy} أيام`;
+        }
+
+        if (daysDifference === 0) return 'مطلوبة اليوم';
+        if (daysDifference === 1) return 'مطلوبة غدا';
+        if (daysDifference === 2) return 'مطلوبة بعد غد';
+
+        return `مطلوبة بعد ${daysDifference} أيام`;
+    };
+
+    const getDeliveryDateChangeReviewLabel = (change: {
+        actorName: string;
+        changedAt: string;
+        oldDate: string;
+        newDate: string;
+    }) => {
+        const changedAt = format(new Date(change.changedAt), 'dd/MM HH:mm');
+        return (
+            <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-1 text-[11px] font-semibold">
+                    <span className="rounded-md bg-red-50 px-2 py-0.5 text-red-700 dark:bg-red-900/20 dark:text-red-300">
+                        قبل: {change.oldDate}
+                    </span>
+                    <span className="text-surface-400">←</span>
+                    <span className="rounded-md bg-green-50 px-2 py-0.5 text-green-700 dark:bg-green-900/20 dark:text-green-300">
+                        بعد: {change.newDate}
+                    </span>
+                </div>
+                <div className="text-[10px] text-surface-500 dark:text-surface-400">
+                    {change.actorName} · {changedAt}
+                </div>
+            </div>
+        );
     };
 
     const getDesignerStatusLabel = (order: Order) => {
@@ -444,6 +611,81 @@ export default function DashboardNew() {
             console.error('Error accepting order:', error);
         } finally {
             setAcceptingOrder(null);
+        }
+    };
+
+    const openDeliveryDateEditor = (order: Order) => {
+        setEditingDeliveryOrder(order);
+        setEditingDeliveryDate(normalizeDeliveryDate(order.deliveryDate));
+    };
+
+    const handleUpdateDeliveryDate = async () => {
+        if (!editingDeliveryOrder || !editingDeliveryDate) {
+            toast.warning('يرجى اختيار تاريخ التسليم الجديد');
+            return;
+        }
+
+        const currentDeliveryDate = normalizeDeliveryDate(editingDeliveryOrder.deliveryDate);
+        if (currentDeliveryDate === editingDeliveryDate) {
+            toast.info('لم يتم تغيير تاريخ التسليم');
+            return;
+        }
+
+        setIsSavingDeliveryDate(true);
+        try {
+            const currentOrder = await db.getOrder(editingDeliveryOrder.id);
+            if (!currentOrder) {
+                throw new Error('Order not found');
+            }
+
+            const nextComments = [...(currentOrder.comments || [])];
+            nextComments.push({
+                id: crypto.randomUUID(),
+                text: `${DELIVERY_DATE_AUDIT_PREFIX}|${currentDeliveryDate}|${editingDeliveryDate}|${user?.id || ''}|${user?.name || 'Unknown'}|${user?.role || ''}`,
+                userId: 'system',
+                userName: 'System',
+                createdAt: new Date().toISOString(),
+            });
+
+            const updatedOrder = await db.updateOrder(editingDeliveryOrder.id, {
+                deliveryDate: editingDeliveryDate,
+                comments: nextComments,
+            });
+
+            if (!updatedOrder) {
+                throw new Error('Failed to update delivery date');
+            }
+
+            const savedDeliveryDate = normalizeDeliveryDate(updatedOrder.deliveryDate);
+            if (savedDeliveryDate !== editingDeliveryDate) {
+                throw new Error(`Delivery date was not persisted. Expected ${editingDeliveryDate}, got ${savedDeliveryDate || 'empty'}`);
+            }
+
+            setOrders(prev => prev.map(order => (
+                order.id === editingDeliveryOrder.id
+                    ? updatedOrder
+                    : order
+            )));
+            setDesignerOrders(prev => prev.map(order => (
+                order.id === editingDeliveryOrder.id
+                    ? updatedOrder
+                    : order
+            )));
+
+            if (user?.role === 'admin') {
+                const refreshedHistory = await db.getRecentOrderHistory(250).catch(() => [] as OrderHistoryEntry[]);
+                setRecentOrderHistory(refreshedHistory);
+            }
+
+            sessionStorage.removeItem(DASHBOARD_CACHE_KEY);
+            toast.success('تم تحديث تاريخ التسليم');
+            setEditingDeliveryOrder(null);
+            setEditingDeliveryDate('');
+        } catch (error) {
+            console.error('Error updating delivery date:', error);
+            toast.error(ErrorHandler.getUserMessage(error));
+        } finally {
+            setIsSavingDeliveryDate(false);
         }
     };
 
@@ -572,11 +814,62 @@ export default function DashboardNew() {
                 </div>
             </div>
 
+            {canViewDeliveryFollowUp && (overdueOrders.length > 0 || dueTodayOrders.length > 0 || dueTomorrowOrders.length > 0 || dueLaterOrders.length > 0) && (
+                <div>
+                    <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
+                        <Clock size={16} />
+                        {t.dashboard.deliveryFollowUp}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                        {overdueOrders.length > 0 && (
+                            <AlertCard
+                                title={t.dashboard.overdueOrders}
+                                count={overdueOrders.length}
+                                icon={AlertTriangle}
+                                colorClass="red"
+                                useModal
+                                onExpand={() => setActiveModal('delivery-overdue')}
+                            />
+                        )}
+                        {dueTodayOrders.length > 0 && (
+                            <AlertCard
+                                title={t.dashboard.dueToday}
+                                count={dueTodayOrders.length}
+                                icon={Clock}
+                                colorClass="yellow"
+                                useModal
+                                onExpand={() => setActiveModal('delivery-today')}
+                            />
+                        )}
+                        {dueTomorrowOrders.length > 0 && (
+                            <AlertCard
+                                title={t.dashboard.dueTomorrow}
+                                count={dueTomorrowOrders.length}
+                                icon={CheckCircle}
+                                colorClass="blue"
+                                useModal
+                                onExpand={() => setActiveModal('delivery-tomorrow')}
+                            />
+                        )}
+                        {dueLaterOrders.length > 0 && (
+                            <AlertCard
+                                title={t.dashboard.dueLater}
+                                count={dueLaterOrders.length}
+                                icon={Package}
+                                colorClass="green"
+                                useModal
+                                onExpand={() => setActiveModal('delivery-later')}
+                            />
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* ALERT SECTIONS */}
             <div className="space-y-6">
 
                 {/* 1. URGENT / ATTENTION (Red/Orange) */}
-                {(rejectedOrders.length > 0 || returnedOrders.length > 0 || overdueOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0) && (
+                {(rejectedOrders.length > 0 || returnedOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <AlertTriangle size={16} />
@@ -622,16 +915,6 @@ export default function DashboardNew() {
                                     colorClass="red"
                                     useModal
                                     onExpand={() => setActiveModal('rejected-lab')}
-                                />
-                            )}
-                            {overdueOrders.length > 0 && (
-                                <AlertCard
-                                    title={t.dashboard.overdueOrders}
-                                    count={overdueOrders.length}
-                                    icon={AlertTriangle}
-                                    colorClass="red"
-                                    useModal
-                                    onExpand={() => setActiveModal('overdue')}
                                 />
                             )}
                             {needsAttentionOrders.length > 0 && (
@@ -701,7 +984,7 @@ export default function DashboardNew() {
                 )}
 
                 {/* 3. COMMENTS ALERT (Blue) */}
-                {unresolvedCommentItems.length > 0 && (
+                {(unresolvedCommentItems.length > 0 || (user?.role === 'admin' && representativeDeliveryDateChanges.length > 0)) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <MessageSquare size={16} />
@@ -743,6 +1026,16 @@ export default function DashboardNew() {
                                     ))}
                                 </div>
                             </AlertCard>
+                            {user?.role === 'admin' && representativeDeliveryDateChanges.length > 0 && (
+                                <AlertCard
+                                    title="تعديلات تواريخ التسليم"
+                                    count={representativeDeliveryDateChanges.length}
+                                    icon={Clock}
+                                    colorClass="yellow"
+                                    useModal
+                                    onExpand={() => setActiveModal('delivery-change-review')}
+                                />
+                            )}
                         </div>
                     </div>
                 )}
@@ -1109,15 +1402,122 @@ export default function DashboardNew() {
 
             <OrderListModal
                 title="حالات متأخرة"
-                isOpen={activeModal === 'overdue'}
+                isOpen={canViewDeliveryFollowUp && (activeModal === 'overdue' || activeModal === 'delivery-overdue')}
                 onClose={() => setActiveModal(null)}
+                showDoctor
+                showDeliveryDate
             >
                 {overdueOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
+                        deliveryDateLabel={getDeliveryDateStatusLabel(order.deliveryDate)}
+                        showDeliveryDate
+                        onEditDeliveryDate={canEditDeliveryDates ? openDeliveryDateEditor : undefined}
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="حالات مطلوبة اليوم"
+                isOpen={canViewDeliveryFollowUp && activeModal === 'delivery-today'}
+                onClose={() => setActiveModal(null)}
+                showDoctor
+                showDeliveryDate
+            >
+                {dueTodayOrders.map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
+                        deliveryDateLabel={getDeliveryDateStatusLabel(order.deliveryDate)}
+                        showDeliveryDate
+                        onEditDeliveryDate={canEditDeliveryDates ? openDeliveryDateEditor : undefined}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="حالات مطلوبة غدا"
+                isOpen={canViewDeliveryFollowUp && activeModal === 'delivery-tomorrow'}
+                onClose={() => setActiveModal(null)}
+                showDoctor
+                showDeliveryDate
+            >
+                {dueTomorrowOrders.map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
+                        deliveryDateLabel={getDeliveryDateStatusLabel(order.deliveryDate)}
+                        showDeliveryDate
+                        onEditDeliveryDate={canEditDeliveryDates ? openDeliveryDateEditor : undefined}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="حالات مطلوبة لاحقاً"
+                isOpen={canViewDeliveryFollowUp && activeModal === 'delivery-later'}
+                onClose={() => setActiveModal(null)}
+                showDoctor
+                showDeliveryDate
+            >
+                {dueLaterOrders.map(order => (
+                    <OrderListItem
+                        key={order.id}
+                        order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
+                        deliveryDateLabel={getDeliveryDateStatusLabel(order.deliveryDate)}
+                        showDeliveryDate
+                        onEditDeliveryDate={canEditDeliveryDates ? openDeliveryDateEditor : undefined}
+                        labName={getLabName(order.supplierId)}
+                        designerName={getDesignerName(order.designerId)}
+                    />
+                ))}
+            </OrderListModal>
+
+            <OrderListModal
+                title="تعديلات تواريخ التسليم من المندوبين"
+                isOpen={user?.role === 'admin' && activeModal === 'delivery-change-review'}
+                onClose={() => setActiveModal(null)}
+                showDoctor
+                showDeliveryDate
+                hideCaseId
+            >
+                {representativeDeliveryDateChanges.map(change => (
+                    <OrderListItem
+                        key={`${change.order.id}-${change.changedAt}`}
+                        order={change.order}
+                        doctorName={getDoctorDisplayName(change.order.doctorId)}
+                        showDoctor
+                        deliveryDateValue={
+                            <div className="space-y-1">
+                                <div className="text-sm font-bold text-surface-900 dark:text-surface-100">
+                                    {change.newDate}
+                                </div>
+                                <div className="text-[11px] text-surface-500 dark:text-surface-400">
+                                    بدلاً من {change.oldDate}
+                                </div>
+                            </div>
+                        }
+                        deliveryDateLabel={getDeliveryDateChangeReviewLabel(change)}
+                        showDeliveryDate
+                        hideCaseId
+                        onEditDeliveryDate={openDeliveryDateEditor}
+                        labName={getLabName(change.order.supplierId)}
+                        designerName={getDesignerName(change.order.designerId)}
                     />
                 ))}
             </OrderListModal>
@@ -1360,6 +1760,46 @@ export default function DashboardNew() {
                     onClose={() => setAcceptingOrder(null)}
                     onConfirm={handleAcceptOrder}
                 />
+            )}
+
+            {editingDeliveryOrder && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-700">
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                            <h2 className="text-lg font-bold text-gray-800 dark:text-white">تعديل تاريخ التسليم</h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                #{editingDeliveryOrder.caseId} - {editingDeliveryOrder.patientName}
+                            </p>
+                        </div>
+                        <div className="p-4 space-y-4">
+                            <Input
+                                type="date"
+                                label="تاريخ التسليم الجديد"
+                                value={editingDeliveryDate}
+                                onChange={(e) => setEditingDeliveryDate(e.target.value)}
+                            />
+                            <div className="flex gap-2 justify-end">
+                                <Button
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={() => {
+                                        setEditingDeliveryOrder(null);
+                                        setEditingDeliveryDate('');
+                                    }}
+                                >
+                                    إلغاء
+                                </Button>
+                                <Button
+                                    type="button"
+                                    isLoading={isSavingDeliveryDate}
+                                    onClick={handleUpdateDeliveryDate}
+                                >
+                                    حفظ التاريخ
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
         </div >
     );

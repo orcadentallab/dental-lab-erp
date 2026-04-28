@@ -83,12 +83,16 @@ export const ar = {
 
         // Alerts
         importantAlerts: 'تنبيهات هامة',
+        deliveryFollowUp: 'متابعة تسليم الحالات',
         workflowTracking: 'متابعة سير العمل',
         financialActions: 'إجراءات مالية وإدارية',
 
         // Alert Cards
         rejectedReturned: 'حالات مرفوضة/مرتجعة',
         overdueOrders: 'حالات متأخرة',
+        dueToday: 'حالات مطلوبة اليوم',
+        dueTomorrow: 'حالات مطلوبة غدا',
+        dueLater: 'حالات مطلوبة لاحقاً',
         needsAttention: 'مطلوب انتباه (PMMA/تفاصيل)',
         unassignedLab: 'حالات بدون معمل',
         pendingApproval: 'حالات منتظرة موافقة المعمل/المصمم',

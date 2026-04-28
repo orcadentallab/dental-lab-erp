@@ -8,6 +8,13 @@ interface OrderListItemProps {
     order: Order;
     labName?: string;
     designerName?: string;
+    doctorName?: string;
+    showDoctor?: boolean;
+    deliveryDateLabel?: React.ReactNode;
+    deliveryDateValue?: React.ReactNode;
+    showDeliveryDate?: boolean;
+    hideCaseId?: boolean;
+    onEditDeliveryDate?: (order: Order) => void;
     onRegister?: (orderId: string) => void;
     showRegister?: boolean;
     onAccept?: (order: Order) => void;
@@ -18,6 +25,13 @@ const OrderListItem = React.memo(function OrderListItem({
     order,
     labName,
     designerName,
+    doctorName,
+    showDoctor = false,
+    deliveryDateLabel,
+    deliveryDateValue,
+    showDeliveryDate = false,
+    hideCaseId = false,
+    onEditDeliveryDate,
     onRegister,
     showRegister = false,
     onAccept,
@@ -29,22 +43,35 @@ const OrderListItem = React.memo(function OrderListItem({
         navigate(`/orders?highlight=${order.id}`);
     };
 
+    const assigneeDisplayName = [labName, designerName].filter(Boolean).join(' / ') || '-';
+    const columns = hideCaseId
+        ? (showDeliveryDate ? 'md:grid-cols-5' : 'md:grid-cols-4')
+        : (showDeliveryDate ? 'md:grid-cols-6' : 'md:grid-cols-5');
+
     return (
         <div className="flex flex-col md:flex-row md:items-center justify-between p-3 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition-colors border-b border-surface-200 dark:border-surface-700 last:border-0 gap-3 md:gap-0">
-            <div className="flex-1 flex flex-col md:grid md:grid-cols-5 gap-2 md:gap-4 md:items-center">
+            <div className={`flex-1 flex flex-col md:grid ${columns} gap-2 md:gap-4 md:items-center`}>
                 <div className="flex items-center gap-2 md:contents">
-                    {/* Case ID */}
-                    <div className="shrink-0 md:shrink">
-                        <span className="font-mono text-xs md:text-sm font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded border border-primary-100 dark:border-primary-800">
-                            #{order.caseId}
-                        </span>
-                    </div>
+                    {!hideCaseId && (
+                        <div className="shrink-0 md:shrink">
+                            <span className="font-mono text-xs md:text-sm font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded border border-primary-100 dark:border-primary-800">
+                                #{order.caseId}
+                            </span>
+                        </div>
+                    )}
 
-                    {/* Patient Name */}
-                    <div className="truncate md:col-span-1">
-                        <span className="text-sm font-bold text-surface-900 dark:text-surface-100">
-                            {order.patientName}
-                        </span>
+                    {/* Patient / Doctor */}
+                    <div className="min-w-0 md:col-span-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="text-sm font-bold text-surface-900 dark:text-surface-100 truncate">
+                                {order.patientName}
+                            </span>
+                            {showDoctor && (
+                                <span className="text-xs text-surface-500 dark:text-surface-400 truncate">
+                                    / {doctorName || '-'}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -66,9 +93,24 @@ const OrderListItem = React.memo(function OrderListItem({
                     {/* Lab/Designer Name */}
                     <div className="md:col-span-1 hidden sm:block">
                         <span className="text-xs text-surface-600 dark:text-surface-400 truncate">
-                            {designerName || labName || '-'}
+                            {assigneeDisplayName}
                         </span>
                     </div>
+
+                    {showDeliveryDate && (
+                        <div className="md:col-span-1 min-w-0">
+                            <div className="flex flex-col gap-1">
+                                <div className="text-xs font-semibold text-surface-800 dark:text-surface-200">
+                                    {deliveryDateValue || order.deliveryDate || '-'}
+                                </div>
+                                {deliveryDateLabel && (
+                                    <div className="text-[10px] text-surface-500 dark:text-surface-400">
+                                        {deliveryDateLabel}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Status */}
                     <div className="md:col-span-1">
@@ -107,8 +149,16 @@ const OrderListItem = React.memo(function OrderListItem({
                     onClick={handleNavigate}
                     className="flex-1 md:flex-none justify-center text-xs font-bold bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
                 >
-                    عرض التفاصيل
+                    تفاصيل
                 </button>
+                {onEditDeliveryDate && (
+                    <button
+                        onClick={() => onEditDeliveryDate(order)}
+                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                    >
+                        تعديل التسليم
+                    </button>
+                )}
                 {showRegister && !order.isRegistered && order.status === 'Delivered' && onRegister && (
                     <button
                         onClick={() => onRegister(order.id)}

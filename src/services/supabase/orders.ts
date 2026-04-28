@@ -815,6 +815,23 @@ export async function getOrderHistory(orderId: string): Promise<OrderHistoryEntr
     return data || [];
 }
 
+export async function getRecentOrderHistory(limit: number = 200): Promise<OrderHistoryEntry[]> {
+    const safeLimit = Math.max(1, Math.min(limit, 500));
+
+    const { data, error } = await supabase
+        .from('order_history')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(0, safeLimit - 1);
+
+    if (error) {
+        console.error('Error fetching recent order history:', error);
+        return [];
+    }
+
+    return data || [];
+}
+
 // ============================================================================
 // CENTRALIZED STATUS UPDATE FUNCTION
 // All status changes MUST go through this function to ensure consistency.

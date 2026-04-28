@@ -83,12 +83,16 @@ export const en = {
 
         // Alerts
         importantAlerts: 'Important Alerts',
+        deliveryFollowUp: 'Case Delivery Follow-up',
         workflowTracking: 'Workflow Tracking',
         financialActions: 'Financial & Administrative Actions',
 
         // Alert Cards
         rejectedReturned: 'Rejected/Returned Cases',
         overdueOrders: 'Overdue Cases',
+        dueToday: 'Cases Due Today',
+        dueTomorrow: 'Cases Due Tomorrow',
+        dueLater: 'Cases Due Later',
         needsAttention: 'Needs Attention (PMMA/Details)',
         unassignedLab: 'Unassigned Lab Cases',
         pendingApproval: 'Pending Lab/Designer Approval',

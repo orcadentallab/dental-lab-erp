@@ -1,49 +1,66 @@
-# ⚡ نشر سريع - خطوات مختصرة
+# ⚡ نشر سريع - الطريقة المعتمدة للمشروع
 
-## 🚀 النشر على Vercel (5 دقائق)
+## ✅ الطريقة الحالية التي نجحت
 
-### 1. رفع الكود على GitHub
-```bash
-git init
-git add .
-git commit -m "Ready for deployment"
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-git push -u origin main
-```
+هذا المشروع يعمل بـ **Auto Deploy** بعد الـ push على GitHub.
 
-### 2. النشر على Vercel
-1. اذهب إلى [vercel.com/new](https://vercel.com/new)
-2. سجل دخول بحساب GitHub
-3. Import مشروعك
-4. **أضف Environment Variables:**
-   - `VITE_SUPABASE_URL` = من Supabase → Settings → API → Project URL
-   - `VITE_SUPABASE_ANON_KEY` = من Supabase → Settings → API → anon public
-5. اضغط Deploy
-
-### 3. جاهز! 🎉
-- الرابط: `your-app.vercel.app`
-- يعمل من أي جهاز (موبايل، لابتوب)
-- البيانات محفوظة في Supabase
-
----
-
-## 📱 الوصول من الموبايل
-
-1. افتح المتصفح على الموبايل
-2. اكتب الرابط
-3. (اختياري) Add to Home Screen
-
----
-
-## 🔄 تحديث البرنامج
+الخطوات المعتمدة:
 
 ```bash
+npm run build
 git add .
 git commit -m "Your changes"
-git push
+git push origin HEAD
 ```
-→ Vercel ينشر تلقائياً!
+
+بعد الـ `push` يبدأ النشر الأونلاين تلقائيًا.
 
 ---
 
-**المزيد من التفاصيل:** راجع `DEPLOYMENT_GUIDE_AR.md`
+## 🖱️ أسرع طريقة من الجهاز
+
+يمكن تشغيل أحد الملفات الجاهزة:
+
+- `CLICK_TO_DEPLOY.bat`
+- `run-deploy.ps1`
+- `deploy.ps1`
+
+### ماذا يفعل `deploy.ps1`؟
+
+1. يشغّل `npm run build`
+2. يعمل `git add .`
+3. يطلب منك `commit message`
+4. يعمل `git push origin HEAD`
+5. وبذلك يبدأ الـ auto-deploy
+
+---
+
+## 📌 ملاحظات مهمة
+
+- البرانش المستخدم حاليًا: `master`
+- الريموت المستخدم: `origin`
+- لو الـ build فشل، لا يتم النشر
+- لو لا يوجد تغييرات جديدة، يمكن دفع آخر برانش فقط
+
+---
+
+## 🔄 تحديث البرنامج لاحقًا
+
+في أي مرة قادمة:
+
+```bash
+npm run build
+git add .
+git commit -m "Update"
+git push origin HEAD
+```
+
+أو ببساطة شغّل:
+
+```powershell
+.\deploy.ps1
+```
+
+---
+
+**تفاصيل أكثر:** راجع [DEPLOYMENT_GUIDE_AR.md](D:\dental-lab-erp\docs\DEPLOYMENT_GUIDE_AR.md)

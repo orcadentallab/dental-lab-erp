@@ -6,10 +6,17 @@ interface OrderListModalProps {
     isOpen: boolean;
     onClose: () => void;
     children: ReactNode;
+    showDoctor?: boolean;
+    showDeliveryDate?: boolean;
+    hideCaseId?: boolean;
 }
 
-export default function OrderListModal({ title, isOpen, onClose, children }: OrderListModalProps) {
+export default function OrderListModal({ title, isOpen, onClose, children, showDoctor = false, showDeliveryDate = false, hideCaseId = false }: OrderListModalProps) {
     if (!isOpen) return null;
+
+    const columns = hideCaseId
+        ? (showDeliveryDate ? 'grid-cols-5' : 'grid-cols-4')
+        : (showDeliveryDate ? 'grid-cols-6' : 'grid-cols-5');
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -28,11 +35,12 @@ export default function OrderListModal({ title, isOpen, onClose, children }: Ord
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-4">
                     {/* Headers */}
-                    <div className="grid grid-cols-5 gap-4 pb-3 mb-3 border-b border-gray-300 dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-300">
-                        <div>رقم الكيس</div>
-                        <div>المريض</div>
+                    <div className={`grid ${columns} gap-4 pb-3 mb-3 border-b border-gray-300 dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-300`}>
+                        {!hideCaseId && <div>رقم الكيس</div>}
+                        <div>{showDoctor ? 'المريض / الطبيب' : 'المريض'}</div>
                         <div>الخدمات</div>
                         <div>المعمل/المصمم</div>
+                        {showDeliveryDate && <div>تاريخ التسليم</div>}
                         <div>الحالة</div>
                     </div>
 
