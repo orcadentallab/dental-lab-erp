@@ -320,6 +320,33 @@ export async function getOrdersWithComments(): Promise<Order[]> {
 }
 
 /**
+ * Optimized fetch for Designer Dashboard.
+ * Returns only split-workflow orders, optionally limited to one designer.
+ * This avoids loading the entire orders table just to filter on the client.
+ */
+export async function getDesignerDashboardOrders(designerId?: string): Promise<Order[]> {
+    let query = supabase
+        .from('orders')
+        .select('*, order_items(*), order_comments(*)')
+        .eq('workflow_type', 'split')
+        .or('is_archived.eq.false,is_archived.is.null')
+        .order('created_at', { ascending: false })
+        .range(0, 999);
+
+    if (designerId) {
+        query = query.eq('designer_id', designerId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'getDesignerDashboardOrders');
+    }
+
+    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+}
+
+/**
  * @deprecated Use getOrders(page, limit, filters) instead.
  * This function fetches ALL orders and should only be used for exports or legacy code.
  */

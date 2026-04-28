@@ -4,13 +4,34 @@ import { db, type Order } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import {
     FolderKanban, Upload, Search, ChevronDown,
-    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, CalendarDays, StickyNote, MessageCircle
+    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, StickyNote, MessageCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
+import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
+}
+
+interface ExpandedTextPreview {
+    title: string;
+    content: string;
+    accentClass: string;
+}
+
+type DesignSubmitTarget = 'Waiting Dr Approval' | 'Under Production';
+
+const DESIGNER_DASHBOARD_CACHE_KEY = 'designer-dashboard-cache-v1';
+const DESIGNER_DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface DesignerDashboardCache {
+    userId: string;
+    userRole: string;
+    savedAt: number;
+    orders: Order[];
+    doctors: any[];
+    users: any[];
 }
 
 export default function DesignerDashboard({ embedded = false }: DesignerDashboardProps) {
@@ -31,13 +52,56 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [showDesignModal, setShowDesignModal] = useState(false);
     const [designUrl, setDesignUrl] = useState('');
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+    const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
+    const [designSubmitTarget, setDesignSubmitTarget] = useState<DesignSubmitTarget>('Waiting Dr Approval');
+    const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
+    const [nowMs, setNowMs] = useState(() => Date.now());
+
+    const isRestrictedDesigner = useMemo(
+        () => !!user && isDesignerUser(user) && user.role !== 'admin' && user.role !== 'accountant',
+        [user]
+    );
+
+    const doctorsById = useMemo(
+        () => new Map(doctors.map((doctor: any) => [doctor.id, doctor])),
+        [doctors]
+    );
+
+    const usersById = useMemo(
+        () => new Map(users.map((appUser: any) => [appUser.id, appUser])),
+        [users]
+    );
 
     const loadData = useCallback(async () => {
         if (!user) return;
-        setIsLoading(true);
+        let restoredFromCache = false;
+
+        try {
+            const rawCache = sessionStorage.getItem(DESIGNER_DASHBOARD_CACHE_KEY);
+            if (rawCache) {
+                const cache = JSON.parse(rawCache) as DesignerDashboardCache;
+                const isSameUser = cache.userId === user.id && cache.userRole === user.role;
+                const isFresh = Date.now() - cache.savedAt < DESIGNER_DASHBOARD_CACHE_TTL_MS;
+
+                if (isSameUser && isFresh) {
+                    setOrders(cache.orders);
+                    setDoctors(cache.doctors);
+                    setUsers(cache.users);
+                    setIsLoading(false);
+                    restoredFromCache = true;
+                }
+            }
+        } catch (error) {
+            console.warn('Could not restore designer dashboard cache:', error);
+        }
+
+        if (!restoredFromCache) {
+            setIsLoading(true);
+        }
+
         try {
             const promises: Promise<any>[] = [
-                db.getAllOrdersUnpaginated(),
+                db.getDesignerDashboardOrders(isRestrictedDesigner ? user.id : undefined),
                 db.getDoctors(),
             ];
 
@@ -47,37 +111,76 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             }
 
             const results = await Promise.all(promises);
-            const allOrders: Order[] = results[0];
+            const dashboardOrders: Order[] = results[0];
             const allDoctors = results[1];
             const allUsers = results[2] || []; // Undefined if not fetched
 
-            // Filter for orders assigned to this designer OR if admin/accountant/rep (view all split)
-            const isDesigner = isDesignerUser(user) && user.role !== 'admin' && user.role !== 'accountant';
-            const relevantOrders = allOrders.filter(o =>
-                o.workflowType === 'split' &&
-                (!isDesigner || o.designerId === user.id)
-            );
-
-            // Sort by date desc
-            setOrders(relevantOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+            setOrders(dashboardOrders);
             setDoctors(allDoctors);
-            setUsers(allUsers.filter((u: any) => isDesignerUser(u)));
+            const designerUsers = allUsers.filter((u: any) => isDesignerUser(u));
+            setUsers(designerUsers);
+
+            try {
+                const cachePayload: DesignerDashboardCache = {
+                    userId: user.id,
+                    userRole: user.role,
+                    savedAt: Date.now(),
+                    orders: dashboardOrders,
+                    doctors: allDoctors,
+                    users: designerUsers,
+                };
+                sessionStorage.setItem(DESIGNER_DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
+            } catch (error) {
+                console.warn('Could not save designer dashboard cache:', error);
+            }
         } catch (error) {
             console.error(error);
         } finally {
             setIsLoading(false);
         }
-    }, [user]);
+    }, [isRestrictedDesigner, user]);
 
     useEffect(() => {
         loadData();
     }, [loadData]);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            setNowMs(Date.now());
+        }, 60 * 1000);
+
+        return () => window.clearInterval(timer);
+    }, []);
+
+    const updateOrderInState = useCallback((updatedOrder: Order | null) => {
+        if (!updatedOrder) return;
+        setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order));
+    }, []);
+
+    useEffect(() => {
+        if (!user) return;
+
+        try {
+            const cachePayload: DesignerDashboardCache = {
+                userId: user.id,
+                userRole: user.role,
+                savedAt: Date.now(),
+                orders,
+                doctors,
+                users,
+            };
+            sessionStorage.setItem(DESIGNER_DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
+        } catch (error) {
+            console.warn('Could not update designer dashboard cache:', error);
+        }
+    }, [doctors, orders, user, users]);
 
     const handleStatusChange = async (order: Order, newStatus: string) => {
         if (newStatus === 'completed') {
             setSelectedOrder(order);
             setDesignUrl(order.designUrl || '');
             setShowDesignModal(true);
+            setDesignSubmitTarget(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
             return;
         }
 
@@ -91,22 +194,36 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         if (newStatus === 'accepted') updates.status = 'Under Design'; // Accepted starts design
 
         if (confirm(`هل أنت متأكد من تغيير الحالة إلى ${getStatusLabel(newStatus)}؟`)) {
-            await db.updateOrder(order.id, updates);
-            loadData();
+            const updatedOrder = await db.updateOrder(order.id, updates);
+            updateOrderInState(updatedOrder);
         }
     };
 
     const submitDesign = async () => {
-        if (!selectedOrder) return;
-        await db.updateOrder(selectedOrder.id, {
-            designStatus: 'completed',
-            designUrl: designUrl,
-            status: 'Under Production', // Auto move to production
-            technicianStatus: 'Pending' // Reset lab status if needed
+        if (!selectedOrder || !user) return;
+
+        const isUnderProduction = designSubmitTarget === 'Under Production';
+        const comment = isUnderProduction
+            ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${designUrl}`
+            : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${designUrl}`;
+
+        const updatedOrder = await db.updateOrderStatus(selectedOrder.id, designSubmitTarget, {
+            designUrl,
+            comment,
+            userId: user.id,
+            userName: user.name || user.role || 'مصمم',
         });
+
+        if (isUnderProduction) {
+            await db.updateOrder(selectedOrder.id, { technicianStatus: 'Pending' });
+        }
+
+        const refreshedOrder = await db.getOrder(selectedOrder.id);
+        updateOrderInState(refreshedOrder || updatedOrder);
         setShowDesignModal(false);
         setSelectedOrder(null);
-        loadData();
+        setDesignUrl('');
+        setDesignQueueView('submitted');
     };
 
     const handleAddComment = async (order: Order) => {
@@ -122,12 +239,12 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             createdAt: new Date().toISOString(),
         };
 
-        await db.updateOrder(order.id, {
+        const updatedOrder = await db.updateOrder(order.id, {
             comments: [...(order.comments || []), nextComment],
         });
 
         setCommentDrafts(prev => ({ ...prev, [order.id]: '' }));
-        loadData();
+        updateOrderInState(updatedOrder);
     };
 
     const filteredOrders = useMemo(() => {
@@ -150,6 +267,27 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             return matchesStatus && matchesDesigner && matchesSearch && matchesDate;
         });
     }, [orders, statusFilter, designerFilter, searchQuery, dateRange]);
+
+    const stats = useMemo(() => ({
+        total: orders.length,
+        inProgress: orders.filter(o => o.designStatus === 'in_progress' || o.designStatus === 'accepted').length,
+        waitingApproval: orders.filter(o => o.designStatus === 'waiting_approval').length,
+        completed: orders.filter(o => o.designStatus === 'completed').length,
+    }), [orders]);
+
+    const pendingOrders = useMemo(
+        () => filteredOrders.filter(order => !isDesignSubmitted(order)),
+        [filteredOrders]
+    );
+
+    const submittedOrders = useMemo(
+        () => filteredOrders.filter(order => isDesignSubmitted(order)),
+        [filteredOrders]
+    );
+
+    const visibleOrders = designQueueView === 'submitted' ? submittedOrders : pendingOrders;
+
+    const showDoctorName = Boolean(user && user.role !== 'designer');
 
     const getStatusLabel = (status: string) => {
         switch (status) {
@@ -175,6 +313,33 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         }
     };
 
+    const openTextPreview = (title: string, content: string, accentClass: string) => {
+        setExpandedTextPreview({ title, content, accentClass });
+    };
+
+    const getDoctorDisplayName = (doctorId?: string) => {
+        if (!doctorId) return '-';
+
+        const doctor = doctorsById.get(doctorId);
+        if (!doctor) return '-';
+
+        if (doctor.parentId) {
+            const center = doctorsById.get(doctor.parentId);
+            if (center?.name) {
+                return `${doctor.name} (${center.name})`;
+            }
+        }
+
+        return doctor.name;
+    };
+
+    const openDesignUploadModal = (order: Order) => {
+        setSelectedOrder(order);
+        setDesignUrl(order.designUrl || '');
+        setDesignSubmitTarget(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
+        setShowDesignModal(true);
+    };
+
     return (
         <div className={`space-y-6 animate-in fade-in ${embedded ? '' : 'pb-10'}`}>
             {/* Header Stats */}
@@ -185,7 +350,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     </div>
                     <div>
                         <p className="text-xs text-gray-500 font-bold">الكل</p>
-                        <p className="text-xl font-bold text-gray-800">{orders.length}</p>
+                        <p className="text-xl font-bold text-gray-800">{stats.total}</p>
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
@@ -195,7 +360,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     <div>
                         <p className="text-xs text-gray-500 font-bold">جاري العمل</p>
                         <p className="text-xl font-bold text-gray-800">
-                            {orders.filter(o => o.designStatus === 'in_progress' || o.designStatus === 'accepted').length}
+                            {stats.inProgress}
                         </p>
                     </div>
                 </div>
@@ -206,7 +371,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     <div>
                         <p className="text-xs text-gray-500 font-bold">انتظار الموافقة</p>
                         <p className="text-xl font-bold text-gray-800">
-                            {orders.filter(o => o.designStatus === 'waiting_approval').length}
+                            {stats.waitingApproval}
                         </p>
                     </div>
                 </div>
@@ -217,7 +382,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     <div>
                         <p className="text-xs text-gray-500 font-bold">مكتمل</p>
                         <p className="text-xl font-bold text-gray-800">
-                            {orders.filter(o => o.designStatus === 'completed').length}
+                            {stats.completed}
                         </p>
                     </div>
                 </div>
@@ -293,37 +458,68 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
             {/* Orders List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-800">حالات التصميم</h3>
+                        <p className="text-xs text-gray-400">افصل بين الحالات قبل رفع التصميم وبعد الرفع لتقليل اللخبطة</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setDesignQueueView('pending')}
+                            className={`rounded-lg px-3 py-2 text-xs font-bold transition ${designQueueView === 'pending' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+                        >
+                            قبل رفع التصميم ({pendingOrders.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDesignQueueView('submitted')}
+                            className={`rounded-lg px-3 py-2 text-xs font-bold transition ${designQueueView === 'submitted' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                        >
+                            بعد رفع التصميم ({submittedOrders.length})
+                        </button>
+                    </div>
+                </div>
                 {isLoading ? (
                     <div className="p-8 text-center text-gray-500">جاري التحميل...</div>
-                ) : filteredOrders.length === 0 ? (
+                ) : visibleOrders.length === 0 ? (
                     <div className="p-12 text-center text-gray-400 flex flex-col items-center gap-4">
                         <FolderKanban size={48} className="opacity-20" />
-                        <p>لا توجد حالات مطابقة للفلاتر</p>
+                        <p>{designQueueView === 'pending' ? 'لا توجد حالات تصميم قبل الرفع' : 'لا توجد حالات تم رفع تصميمها'}</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-right">
                             <thead className="bg-gray-50 border-b border-gray-100 text-gray-500 text-xs font-bold uppercase">
                                 <tr>
-                                    <th className="px-6 py-4">رقم الحالة</th>
+                                    <th className="px-4 py-4">رقم الحالة</th>
                                     <th className="px-6 py-4">المريض / الطبيب</th>
                                     {user && !isDesignerUser(user) && <th className="px-6 py-4">المصمم</th>}
                                     <th className="px-6 py-4">تعليمات / تعليقات</th>
-                                    <th className="px-6 py-4">تاريخ الاستلام</th>
+                                    <th className="px-6 py-4">الاستلام / التسليم / المدة</th>
                                     <th className="px-6 py-4">المرفقات / التسليم</th>
                                     <th className="px-6 py-4">الحالة</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                                {filteredOrders.map(order => {
+                                {visibleOrders.map(order => {
                                     const currentStatus = order.designStatus || 'pending';
                                     const latestComment = order.comments && order.comments.length > 0
                                         ? order.comments[order.comments.length - 1]
                                         : null;
+                                    const submittedAt = getDesignSubmittedAt(order);
+                                    const durationMs = getDesignerWorkDurationMs(order, nowMs);
+                                    const durationLabel = durationMs !== null ? formatDesignerDuration(durationMs) : '-';
                                     return (
                                         <tr key={order.id} className="hover:bg-gray-50/50 transition-colors">
-                                            <td className="px-6 py-4">
-                                                <span className="font-bold text-gray-800">#{order.caseId}</span>
+                                            <td className="px-4 py-4 w-[150px]">
+                                                <span
+                                                    className="block max-w-[140px] truncate text-sm font-semibold text-gray-700"
+                                                    title={`#${order.caseId}`}
+                                                    dir="ltr"
+                                                >
+                                                    #{order.caseId}
+                                                </span>
                                                 {order.priority === 'Urgent' && (
                                                     <div className="mt-1">
                                                         <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">مستعجل</span>
@@ -332,35 +528,43 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="font-bold text-gray-800">{order.patientName}</div>
-                                                {user && !isDesignerUser(user) && (
+                                                {showDoctorName && (
                                                     <div className="text-xs text-gray-500 mt-1">
-                                                        د. {doctors.find(d => d.id === order.doctorId)?.name}
+                                                        د. {getDoctorDisplayName(order.doctorId)}
                                                     </div>
                                                 )}
                                             </td>
                                             {user && !isDesignerUser(user) && (
                                                 <td className="px-6 py-4">
                                                     <span className="text-sm text-gray-700">
-                                                        {users.find(u => u.id === order.designerId)?.name || '-'}
+                                                        {usersById.get(order.designerId)?.name || '-'}
                                                     </span>
                                                 </td>
                                             )}
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1.5 min-w-[220px] max-w-[280px]">
                                                     {order.instructions ? (
-                                                        <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-800 border border-amber-100">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openTextPreview('تعليمات الحالة', order.instructions || '', 'bg-amber-50 border-amber-100 text-amber-800')}
+                                                            className="flex w-full items-start gap-1.5 rounded-lg border border-amber-100 bg-amber-50 px-2 py-1.5 text-right text-xs text-amber-800 transition hover:bg-amber-100/70"
+                                                        >
                                                             <StickyNote size={13} className="mt-0.5 shrink-0 text-amber-600" />
                                                             <span className="line-clamp-2 font-semibold">{order.instructions}</span>
-                                                        </div>
+                                                        </button>
                                                     ) : null}
                                                     {latestComment ? (
-                                                        <div className="flex items-start gap-1.5 rounded-lg bg-blue-50 px-2 py-1.5 text-xs text-blue-800 border border-blue-100">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openTextPreview(`تعليق ${latestComment.userName}`, latestComment.text, 'bg-blue-50 border-blue-100 text-blue-800')}
+                                                            className="flex w-full items-start gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1.5 text-right text-xs text-blue-800 transition hover:bg-blue-100/70"
+                                                        >
                                                             <MessageCircle size={13} className="mt-0.5 shrink-0 text-blue-600" />
                                                             <span className="line-clamp-2">
                                                                 <span className="font-bold">{latestComment.userName}: </span>
                                                                 {latestComment.text}
                                                             </span>
-                                                        </div>
+                                                        </button>
                                                     ) : null}
                                                     {!order.instructions && !latestComment && (
                                                         <span className="text-xs text-gray-300">-</span>
@@ -392,10 +596,35 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600" dir="ltr">
-                                                {format(new Date(order.createdAt), 'dd/MM/yyyy')}
+                                                <div className="min-w-[170px] space-y-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] font-bold text-gray-400">استلام</span>
+                                                        <span>{format(new Date(order.createdAt), 'dd/MM/yyyy')}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] font-bold text-gray-400">تسليم</span>
+                                                        <span>{format(new Date(order.deliveryDate), 'dd/MM/yyyy')}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[11px] font-bold text-gray-400">مدة التصميم</span>
+                                                        <span className={submittedAt ? 'text-emerald-700' : 'text-amber-700'}>
+                                                            {durationLabel}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-2 min-w-[220px]">
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openDesignUploadModal(order)}
+                                                            className={`text-xs flex items-center gap-1 px-2 py-1 rounded-md border transition ${order.designUrl ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+                                                        >
+                                                            <LinkIcon size={12} />
+                                                            {order.designUrl ? 'تحديث التصميم' : 'رفع التصميم'}
+                                                        </button>
+                                                    </div>
                                                     <div className="flex gap-2 flex-wrap">
                                                         {order.stlUrl && (
                                                             <a href={order.stlUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md border border-blue-100">
@@ -413,10 +642,11 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             </a>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                        <CalendarDays size={12} />
-                                                        <span>التسليم: {format(new Date(order.deliveryDate), 'dd/MM/yyyy')}</span>
-                                                    </div>
+                                                    {submittedAt && (
+                                                        <div className="text-[11px] text-emerald-700">
+                                                            تم الرفع: {format(new Date(submittedAt), 'dd/MM/yyyy HH:mm')}
+                                                        </div>
+                                                    )}
                                                     <div className="text-xs text-gray-500 max-w-[200px] truncate">
                                                         {order.items.map(i => `${i.serviceType} x${i.teethNumbers.length}`).join(', ')}
                                                     </div>
@@ -462,14 +692,36 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 )}
             </div>
 
+            {expandedTextPreview && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+                    <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">{expandedTextPreview.title}</h3>
+                                <p className="mt-1 text-xs text-gray-400">عرض كامل للنص</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setExpandedTextPreview(null)}
+                                className="rounded-lg px-3 py-1.5 text-sm font-bold text-gray-500 transition hover:bg-gray-100"
+                            >
+                                إغلاق
+                            </button>
+                        </div>
+                        <div className={`max-h-[60vh] overflow-y-auto rounded-xl border p-4 text-sm leading-7 ${expandedTextPreview.accentClass}`}>
+                            <p className="whitespace-pre-wrap break-words">{expandedTextPreview.content}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Design Completion Modal */}
             {showDesignModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
                         <h3 className="text-xl font-bold text-gray-900 mb-4">تسليم التصميم</h3>
                         <p className="text-sm text-gray-500 mb-6">
-                            يرجى إرفاق رابط ملف التصميم النهائي
-                            {selectedOrder?.status === 'Under Design' && ' (سيتم تحويل الحالة تلقائياً إلى "تحت التصنيع")'}
+                            ارفع رابط التصميم ثم اختر هل يبقى في انتظار موافقة الطبيب أو ينتقل مباشرة إلى المعمل.
                         </p>
 
                         <div className="space-y-4">
@@ -483,6 +735,35 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-left ltr"
                                     autoFocus
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <p className="text-sm font-bold text-gray-700">بعد الحفظ، تروح الحالة على أي مرحلة؟</p>
+                                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 transition hover:border-blue-300">
+                                    <input
+                                        type="radio"
+                                        name="design-submit-target"
+                                        checked={designSubmitTarget === 'Waiting Dr Approval'}
+                                        onChange={() => setDesignSubmitTarget('Waiting Dr Approval')}
+                                        className="mt-1"
+                                    />
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">فى انتظار موافقة الطبيب</p>
+                                        <p className="text-xs text-gray-500">تفضل الحالة معروضة ضمن الحالات المرفوعة بانتظار الاعتماد.</p>
+                                    </div>
+                                </label>
+                                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 transition hover:border-emerald-300">
+                                    <input
+                                        type="radio"
+                                        name="design-submit-target"
+                                        checked={designSubmitTarget === 'Under Production'}
+                                        onChange={() => setDesignSubmitTarget('Under Production')}
+                                        className="mt-1"
+                                    />
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">تم الارسال للمعمل للتنفيذ</p>
+                                        <p className="text-xs text-gray-500">تتحول الحالة إلى تحت التصنيع ويبدأ المعمل تنفيذها مباشرة.</p>
+                                    </div>
+                                </label>
                             </div>
                         </div>
 

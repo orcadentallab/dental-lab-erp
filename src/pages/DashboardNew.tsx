@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect, useState, useMemo } from 'react';
+import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User, type Doctor } from '../services/db';
 import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare } from 'lucide-react';
@@ -14,6 +15,7 @@ import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import DesignerDashboard from './DesignerDashboard';
 import { useTranslation } from '../translations';
 import { isDesignerUser } from '../lib/userRoles';
+import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 
 const DASHBOARD_CACHE_KEY = 'dashboard-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -29,6 +31,7 @@ interface DashboardCache {
     doctors: Doctor[];
     contactInquiries: ContactInquiry[];
     ordersWithComments: Order[];
+    designerOrders?: Order[];
 }
 
 export default function DashboardNew() {
@@ -47,6 +50,7 @@ export default function DashboardNew() {
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
     const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
+    const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
     // Track which comment IDs have been resolved (dismissed) — stored in localStorage
     const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
         try {
@@ -78,6 +82,7 @@ export default function DashboardNew() {
                     setDoctors(cache.doctors);
                     setContactInquiries(cache.contactInquiries);
                     setOrdersWithComments(cache.ordersWithComments);
+                    setDesignerOrders(cache.designerOrders || []);
                     setIsLoading(false);
                     restoredFromCache = true;
                 }
@@ -91,14 +96,22 @@ export default function DashboardNew() {
                 setIsLoading(true);
             }
             try {
-                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData] = await Promise.all([
+                const baseRequests = [
                     db.getDashboardActiveOrders(),
                     db.getSuppliers(),
                     db.getUsers(),
                     db.getDoctors(),
                     contactService.getInquiries('new').catch(() => [] as ContactInquiry[]),
                     db.getOrdersWithComments().catch(() => [] as Order[]),
-                ]);
+                ] as const;
+
+                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, designerOrdersData] =
+                    user?.role === 'admin'
+                        ? await Promise.all([
+                            ...baseRequests,
+                            db.getDesignerDashboardOrders().catch(() => [] as Order[]),
+                        ] as const)
+                        : [...await Promise.all(baseRequests), undefined] as const;
 
                 // Apply role-based filtering
                 let filteredOrders = ordersData;
@@ -122,6 +135,7 @@ export default function DashboardNew() {
                 setDoctors(doctorsData);
                 setContactInquiries(inquiriesData);
                 setOrdersWithComments(commentOrdersData);
+                setDesignerOrders((designerOrdersData as Order[] | undefined) || []);
 
                 try {
                     const cachePayload: DashboardCache = {
@@ -135,6 +149,7 @@ export default function DashboardNew() {
                         doctors: doctorsData,
                         contactInquiries: inquiriesData,
                         ordersWithComments: commentOrdersData,
+                        designerOrders: (designerOrdersData as Order[] | undefined) || [],
                     };
                     sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
                 } catch (error) {
@@ -151,6 +166,7 @@ export default function DashboardNew() {
 
     // Computed alert data
     const today = new Date().toISOString().split('T')[0];
+    const nowMs = Date.now();
 
     const pendingApprovalOrders = orders.filter(o => {
         if (o.technicianStatus === 'Rejected') return false; // Exclude rejected by lab
@@ -197,6 +213,101 @@ export default function DashboardNew() {
     const ordersTodayCount = orders.filter(o => o.createdAt.startsWith(today)).length;
     const readyOrdersCount = orders.filter(o => o.status === 'Ready').length;
 
+    const designerSubmittedOrders = useMemo(
+        () => designerOrders.filter(order => isDesignSubmitted(order)),
+        [designerOrders]
+    );
+
+    const designerPerformanceRows = useMemo(() => {
+        return designerSubmittedOrders
+            .map(order => {
+                const submittedAt = getDesignSubmittedAt(order);
+                const durationMs = getDesignerWorkDurationMs(order, nowMs);
+
+                return {
+                    order,
+                    submittedAt,
+                    durationMs,
+                };
+            })
+            .sort((a, b) => new Date(b.submittedAt || b.order.createdAt).getTime() - new Date(a.submittedAt || a.order.createdAt).getTime());
+    }, [designerSubmittedOrders, nowMs]);
+
+    const designerTimelineRows = useMemo(() => {
+        return designerOrders
+            .map(order => {
+                const submittedAt = getDesignSubmittedAt(order);
+                const durationMs = getDesignerWorkDurationMs(order, nowMs);
+
+                return {
+                    order,
+                    submittedAt,
+                    durationMs,
+                    isFinished: isDesignSubmitted(order),
+                };
+            })
+            .sort((a, b) => new Date((b.submittedAt || b.order.createdAt)).getTime() - new Date((a.submittedAt || a.order.createdAt)).getTime());
+    }, [designerOrders, nowMs]);
+
+    const designerTimelineGroups = useMemo(() => {
+        const groups = new Map<string, {
+            designerId: string;
+            designerName: string;
+            rows: typeof designerTimelineRows;
+        }>();
+
+        designerTimelineRows.forEach(row => {
+            const designerId = row.order.designerId || 'unassigned';
+            const designerName = users.find(appUser => appUser.id === row.order.designerId)?.name || 'غير محدد';
+
+            if (!groups.has(designerId)) {
+                groups.set(designerId, {
+                    designerId,
+                    designerName,
+                    rows: [],
+                });
+            }
+
+            groups.get(designerId)?.rows.push(row);
+        });
+
+        return Array.from(groups.values());
+    }, [designerTimelineRows, users]);
+
+    const dailyDesignerCount = useMemo(() => {
+        return designerPerformanceRows.filter(({ submittedAt }) =>
+            submittedAt && submittedAt.startsWith(today)
+        ).length;
+    }, [designerPerformanceRows, today]);
+
+    const weeklyDesignerCount = useMemo(() => {
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const weekAgoMs = weekAgo.getTime();
+        return designerPerformanceRows.filter(({ submittedAt }) => {
+            if (!submittedAt) return false;
+            return new Date(submittedAt).getTime() >= weekAgoMs;
+        }).length;
+    }, [designerPerformanceRows]);
+
+    const monthlyDesignerCount = useMemo(() => {
+        const monthAgo = new Date();
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        const monthAgoMs = monthAgo.getTime();
+        return designerPerformanceRows.filter(({ submittedAt }) => {
+            if (!submittedAt) return false;
+            return new Date(submittedAt).getTime() >= monthAgoMs;
+        }).length;
+    }, [designerPerformanceRows]);
+
+    const averageDesignerDuration = useMemo(() => {
+        const finishedRows = designerPerformanceRows.filter(row => row.durationMs !== null);
+        if (finishedRows.length === 0) return null;
+
+        const totalDuration = finishedRows.reduce((sum, row) => sum + (row.durationMs || 0), 0);
+        return Math.round(totalDuration / finishedRows.length);
+    }, [designerPerformanceRows]);
+
     // Quality Stats
     const labRejections = orders.filter(o => o.technicianStatus === 'Rejected');
 
@@ -240,6 +351,22 @@ export default function DashboardNew() {
 
     const getDesignerName = (designerId?: string) => {
         return users.find(u => u.id === designerId)?.name;
+    };
+
+    const getDoctorDisplayName = (doctorId?: string) => {
+        if (!doctorId) return '-';
+
+        const doctor = doctors.find(doc => doc.id === doctorId);
+        if (!doctor) return '-';
+
+        if (doctor.parentId) {
+            const center = doctors.find(doc => doc.id === doctor.parentId);
+            if (center?.name) {
+                return `${doctor.name} (${center.name})`;
+            }
+        }
+
+        return doctor.name;
     };
 
     const getDesignerStatusLabel = (order: Order) => {
@@ -685,7 +812,7 @@ export default function DashboardNew() {
                 users.filter(u => isDesignerUser(u)).length > 0 && (() => {
                     const designers = users.filter(u => isDesignerUser(u));
                     const hasActiveDesigner = designers.some(designer => {
-                        let designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
+                        const designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
 
                         if (user?.role === 'designer' && user.id !== designer.id) {
                             return false;
@@ -704,7 +831,7 @@ export default function DashboardNew() {
                             </h2>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {designers.map(designer => {
-                                    let designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
+                                    const designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
 
                                     if (user?.role === 'designer' && user.id !== designer.id) {
                                         return null;
@@ -826,6 +953,102 @@ export default function DashboardNew() {
                     );
                 })()
             }
+
+            {user?.role === 'admin' && (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800 dark:text-white">إحصائيات المصممين</h2>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">متابعة زمن تنفيذ التصميم وروابط المراجعة الأخيرة</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">اليوم</p>
+                            <p className="text-2xl font-bold text-gray-800 dark:text-white">{dailyDesignerCount}</p>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">آخر 7 أيام</p>
+                            <p className="text-2xl font-bold text-gray-800 dark:text-white">{weeklyDesignerCount}</p>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">آخر 30 يوم</p>
+                            <p className="text-2xl font-bold text-gray-800 dark:text-white">{monthlyDesignerCount}</p>
+                        </div>
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">متوسط زمن التصميم</p>
+                            <p className="text-2xl font-bold text-gray-800 dark:text-white">{averageDesignerDuration !== null ? formatDesignerDuration(averageDesignerDuration) : '-'}</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {designerTimelineGroups.map(group => (
+                            <div key={group.designerId} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                                <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                                    <div>
+                                        <h3 className="font-bold text-gray-800 dark:text-white">{group.designerName}</h3>
+                                        <p className="text-xs text-gray-400 dark:text-gray-500">{group.rows.length} حالة</p>
+                                    </div>
+                                </div>
+                                <div className="max-h-[420px] overflow-auto">
+                                    <table className="w-full text-right text-sm">
+                                        <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900/95 text-gray-500 dark:text-gray-400">
+                                            <tr>
+                                                <th className="px-4 py-3">الحالة</th>
+                                                <th className="px-4 py-3">المريض</th>
+                                                <th className="px-4 py-3">الطبيب</th>
+                                                <th className="px-4 py-3">الخدمات</th>
+                                                <th className="px-4 py-3">الوضع</th>
+                                                <th className="px-4 py-3">تم الرفع</th>
+                                                <th className="px-4 py-3">المدة</th>
+                                                <th className="px-4 py-3">الرابط</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {group.rows.map(({ order, submittedAt, durationMs, isFinished }) => (
+                                                <tr key={order.id} className="border-t border-gray-100 dark:border-gray-700 align-top">
+                                                    <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">#{order.caseId}</td>
+                                                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{order.doctorId ? `د. ${getDoctorDisplayName(order.doctorId)}` : '-'}</td>
+                                                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                                                        <div className="max-w-[280px] space-y-1">
+                                                            {order.items.map((item, index) => (
+                                                                <div key={`${order.id}-item-${index}`} className="rounded-lg bg-gray-50 dark:bg-gray-700/50 px-2 py-1">
+                                                                    {item.serviceType} x{item.teethNumbers.length}
+                                                                    {item.teethNumbers.length > 0 && (
+                                                                        <span className="text-gray-400 dark:text-gray-500"> ({item.teethNumbers.join(', ')})</span>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${isFinished ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                                                            {isFinished ? 'تم الرفع' : 'قيد التصميم'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{submittedAt ? format(new Date(submittedAt), 'dd/MM/yyyy HH:mm') : '-'}</td>
+                                                    <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{durationMs !== null ? formatDesignerDuration(durationMs) : '-'}</td>
+                                                    <td className="px-4 py-3">
+                                                        {order.designUrl ? (
+                                                            <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold">
+                                                                مراجعة التصميم
+                                                            </a>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-300">-</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Empty State - Pro UI */}
             {

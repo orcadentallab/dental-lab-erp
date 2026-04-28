@@ -75,6 +75,7 @@ export default function Orders() {
     const [newComment, setNewComment] = useState('');
     const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
     const [designLinkUrl, setDesignLinkUrl] = useState('');
+    const [designLinkTargetStatus, setDesignLinkTargetStatus] = useState<'Waiting Dr Approval' | 'Under Production'>('Waiting Dr Approval');
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
 
     // Build filters object for server-side query
@@ -249,20 +250,31 @@ export default function Orders() {
     const openDesignLinkModal = (order: Order) => {
         setDesignLinkOrder(order);
         setDesignLinkUrl(order.designUrl || '');
+        setDesignLinkTargetStatus(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
     };
 
     const handleUpdateDesignUrl = async () => {
         if (!designLinkOrder) return;
         try {
-            // Use centralized function that handles all side-effects
-            await db.submitDesignForApproval(
-                designLinkOrder.id,
-                designLinkUrl,
-                user?.id || 'system',
-                user?.name || 'System'
-            );
+            const isUnderProduction = designLinkTargetStatus === 'Under Production';
+            const comment = isUnderProduction
+                ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${designLinkUrl}`
+                : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${designLinkUrl}`;
+
+            await db.updateOrderStatus(designLinkOrder.id, designLinkTargetStatus, {
+                designUrl: designLinkUrl,
+                comment,
+                userId: user?.id || 'system',
+                userName: user?.name || 'System'
+            });
+
+            if (isUnderProduction) {
+                await db.updateOrder(designLinkOrder.id, { technicianStatus: 'Pending' });
+            }
+
             setDesignLinkOrder(null);
             setDesignLinkUrl('');
+            setDesignLinkTargetStatus('Waiting Dr Approval');
             await refreshOrders();
         } catch {
             alert('Failed to update design link');
@@ -865,7 +877,35 @@ export default function Orders() {
                                 />
                                 <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-800 mb-6 mt-4 flex gap-2">
                                     <span className="text-lg">ℹ️</span>
-                                    <p className="mt-0.5 leading-relaxed">عند الحفظ، سيتم تحديث حالة الأوردر تلقائياً إلى <strong>Waiting Dr Approval</strong>.</p>
+                                    <p className="mt-0.5 leading-relaxed">اختر هل التصميم ينتظر موافقة الطبيب أو ينتقل مباشرة إلى المعمل.</p>
+                                </div>
+                                <div className="space-y-2 mb-6">
+                                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-surface-200 px-4 py-3">
+                                        <input
+                                            type="radio"
+                                            name="design-link-target-status"
+                                            checked={designLinkTargetStatus === 'Waiting Dr Approval'}
+                                            onChange={() => setDesignLinkTargetStatus('Waiting Dr Approval')}
+                                            className="mt-1"
+                                        />
+                                        <div>
+                                            <p className="text-sm font-bold text-surface-900">فى انتظار موافقة الطبيب</p>
+                                            <p className="text-xs text-surface-500 mt-1">يحفظ الرابط وتظل الحالة في مرحلة المراجعة الطبية.</p>
+                                        </div>
+                                    </label>
+                                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-surface-200 px-4 py-3">
+                                        <input
+                                            type="radio"
+                                            name="design-link-target-status"
+                                            checked={designLinkTargetStatus === 'Under Production'}
+                                            onChange={() => setDesignLinkTargetStatus('Under Production')}
+                                            className="mt-1"
+                                        />
+                                        <div>
+                                            <p className="text-sm font-bold text-surface-900">تم الارسال للمعمل للتنفيذ</p>
+                                            <p className="text-xs text-surface-500 mt-1">يحفظ الرابط وتتحول الحالة مباشرة إلى تحت التصنيع.</p>
+                                        </div>
+                                    </label>
                                 </div>
                                 <div className="flex gap-3">
                                     <Button onClick={handleUpdateDesignUrl} className="flex-1 shadow-lg shadow-primary-500/20">حفظ وإرسال</Button>
