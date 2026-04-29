@@ -4,7 +4,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import {
     Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
-    User, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
+    User, UserCheck, PenTool, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
     Trash2, History, Box, FileDown, Archive as ArchiveIcon, RotateCcw,
     Edit3, DollarSign
 } from 'lucide-react';
@@ -238,6 +238,16 @@ export default function OrderCard({
                                 #{order.caseId}
                             </span>
 
+                            {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
+                                <span
+                                    className="inline-flex max-w-[160px] items-center gap-1.5 rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs dark:border-blue-800/30 dark:bg-blue-900/10"
+                                    title={`المندوب: ${users[order.representativeId]}`}
+                                >
+                                    <UserCheck size={12} className="shrink-0 text-blue-600 dark:text-blue-400" />
+                                    <span className="truncate font-semibold text-blue-800 dark:text-blue-200">{users[order.representativeId]}</span>
+                                </span>
+                            )}
+
                             {isDelivered && (
                                 <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800 flex items-center gap-1">
                                     <Check size={9} strokeWidth={3} /> تم التسليم
@@ -443,24 +453,28 @@ export default function OrderCard({
                                 </div>
                             </div>
 
-                            {/* Context Info (Representative) */}
-                            <div className="flex flex-wrap gap-2 mt-0.5 opacity-80 scale-95 origin-right">
-                                {userRole !== 'admin' && order.supplierId && suppliers[order.supplierId] && (
-                                    <div className="flex items-center gap-1 bg-teal-50 dark:bg-teal-900/10 px-1.5 py-0.5 rounded text-xs border border-teal-100 dark:border-teal-800/30">
-                                        <Building2 size={12} className="text-teal-600" />
-                                        <span className="font-semibold text-teal-800 dark:text-teal-300">{suppliers[order.supplierId]}</span>
-                                    </div>
-                                )}
-                                {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
-                                    <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/10 px-1.5 py-0.5 rounded text-xs border border-blue-100 dark:border-blue-800/30">
-                                        <User size={12} className="text-blue-600" />
-                                        <span className="font-semibold text-blue-800 dark:text-blue-300">{users[order.representativeId]}</span>
+                            {/* Assignment Info */}
+                            <div className="flex flex-wrap gap-2 mt-1.5 origin-right">
+                                {order.supplierId && suppliers[order.supplierId] && (
+                                    <div
+                                        className="inline-flex max-w-full items-center gap-1.5 bg-teal-50 dark:bg-teal-900/10 px-2 py-0.5 rounded-md text-xs border border-teal-100 dark:border-teal-800/30"
+                                        title={`المعمل: ${suppliers[order.supplierId]}`}
+                                    >
+                                        <Building2 size={12} className="text-teal-600 dark:text-teal-400 shrink-0" />
+                                        <span className="text-[10px] font-black text-teal-700 dark:text-teal-300">المعمل</span>
+                                        <span className="h-3 w-px bg-teal-200 dark:bg-teal-700/60" />
+                                        <span className="max-w-[130px] truncate font-semibold text-teal-800 dark:text-teal-200">{suppliers[order.supplierId]}</span>
                                     </div>
                                 )}
                                 {order.designerId && users[order.designerId] && (
-                                    <div className="flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/10 px-1.5 py-0.5 rounded text-xs border border-indigo-100 dark:border-indigo-800/30">
-                                        <User size={12} className="text-indigo-600" />
-                                        <span className="font-semibold text-indigo-800 dark:text-indigo-300">{users[order.designerId]}</span>
+                                    <div
+                                        className="inline-flex max-w-full items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/10 px-2 py-0.5 rounded-md text-xs border border-indigo-100 dark:border-indigo-800/30"
+                                        title={`المصمم: ${users[order.designerId]}`}
+                                    >
+                                        <PenTool size={12} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                        <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-300">المصمم</span>
+                                        <span className="h-3 w-px bg-indigo-200 dark:bg-indigo-700/60" />
+                                        <span className="max-w-[130px] truncate font-semibold text-indigo-800 dark:text-indigo-200">{users[order.designerId]}</span>
                                     </div>
                                 )}
                             </div>
