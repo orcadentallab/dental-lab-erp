@@ -247,6 +247,20 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         updateOrderInState(updatedOrder);
     };
 
+    const requestDesignRevision = async (order: Order) => {
+        if (!user) return;
+        if (!confirm('هل تريد إرجاع الحالة تحت التصميم مع الاحتفاظ برابط التصميم الحالي؟')) return;
+
+        const updatedOrder = await db.updateOrderStatus(order.id, 'Under Design', {
+            comment: '↩️ تم طلب تعديل على التصميم، ورجعت الحالة تحت التصميم مع الاحتفاظ بالرابط السابق لحين رفع نسخة جديدة.',
+            userId: user.id,
+            userName: user.name || user.role || 'مستخدم',
+        });
+
+        updateOrderInState(updatedOrder);
+        setDesignQueueView('pending');
+    };
+
     const filteredOrders = useMemo(() => {
         return orders.filter(order => {
             const s = (order.designStatus || 'pending');
@@ -640,6 +654,15 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
                                                                 <LinkIcon size={12} /> التصميم الحالي
                                                             </a>
+                                                        )}
+                                                        {isDesignSubmitted(order) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => requestDesignRevision(order)}
+                                                                className="text-red-700 hover:text-red-800 text-xs flex items-center gap-1 bg-red-50 px-2 py-1 rounded-md border border-red-100 transition hover:bg-red-100"
+                                                            >
+                                                                <AlertCircle size={12} /> طلب تعديل تصميم
+                                                            </button>
                                                         )}
                                                     </div>
                                                     {submittedAt && (

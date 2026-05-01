@@ -63,6 +63,7 @@ export default function DashboardNew() {
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
     const [recentOrderHistory, setRecentOrderHistory] = useState<OrderHistoryEntry[]>([]);
+    const [designerTimelineView, setDesignerTimelineView] = useState<'pending' | 'submitted'>('pending');
     // Track which comment IDs have been resolved (dismissed) — stored in localStorage
     const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
         try {
@@ -266,6 +267,14 @@ export default function DashboardNew() {
         [designerOrders]
     );
 
+    const getOrderUnitsCount = (order: Order) => {
+        return order.items.reduce((total, item) => total + Math.max(item.teethNumbers.length, 1), 0);
+    };
+
+    const getRowsUnitsCount = (rows: { order: Order }[]) => {
+        return rows.reduce((total, row) => total + getOrderUnitsCount(row.order), 0);
+    };
+
     const designerPerformanceRows = useMemo(() => {
         return designerSubmittedOrders
             .map(order => {
@@ -297,6 +306,23 @@ export default function DashboardNew() {
             .sort((a, b) => new Date((b.submittedAt || b.order.createdAt)).getTime() - new Date((a.submittedAt || a.order.createdAt)).getTime());
     }, [designerOrders, nowMs]);
 
+    const pendingDesignerTimelineRows = useMemo(
+        () => designerTimelineRows.filter(row => !row.isFinished),
+        [designerTimelineRows]
+    );
+
+    const submittedDesignerTimelineRows = useMemo(
+        () => designerTimelineRows.filter(row => row.isFinished),
+        [designerTimelineRows]
+    );
+
+    const visibleDesignerTimelineRows = designerTimelineView === 'submitted'
+        ? submittedDesignerTimelineRows
+        : pendingDesignerTimelineRows;
+
+    const pendingDesignerUnitsCount = getRowsUnitsCount(pendingDesignerTimelineRows);
+    const submittedDesignerUnitsCount = getRowsUnitsCount(submittedDesignerTimelineRows);
+
     const designerTimelineGroups = useMemo(() => {
         const groups = new Map<string, {
             designerId: string;
@@ -304,7 +330,7 @@ export default function DashboardNew() {
             rows: typeof designerTimelineRows;
         }>();
 
-        designerTimelineRows.forEach(row => {
+        visibleDesignerTimelineRows.forEach(row => {
             const designerId = row.order.designerId || 'unassigned';
             const designerName = users.find(appUser => appUser.id === row.order.designerId)?.name || 'غير محدد';
 
@@ -320,7 +346,7 @@ export default function DashboardNew() {
         });
 
         return Array.from(groups.values());
-    }, [designerTimelineRows, users]);
+    }, [users, visibleDesignerTimelineRows]);
 
     const dailyDesignerCount = useMemo(() => {
         return designerPerformanceRows.filter(({ submittedAt }) =>
@@ -592,6 +618,27 @@ export default function DashboardNew() {
         }
 
         return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+    };
+
+    const requestDesignRevision = async (order: Order) => {
+        if (!user) return;
+        if (!confirm('هل تريد إرجاع الحالة تحت التصميم مع الاحتفاظ برابط التصميم الحالي؟')) return;
+
+        try {
+            const updatedOrder = await db.updateOrderStatus(order.id, 'Under Design', {
+                comment: '↩️ تم طلب تعديل على التصميم، ورجعت الحالة تحت التصميم مع الاحتفاظ بالرابط السابق لحين رفع نسخة جديدة.',
+                userId: user.id,
+                userName: user.name || user.role || 'مستخدم',
+            });
+
+            if (updatedOrder) {
+                setDesignerOrders(prev => prev.map(existingOrder => existingOrder.id === updatedOrder.id ? updatedOrder : existingOrder));
+                setOrders(prev => prev.map(existingOrder => existingOrder.id === updatedOrder.id ? updatedOrder : existingOrder));
+                setDesignerTimelineView('pending');
+            }
+        } catch (error) {
+            toast.error(ErrorHandler.getUserMessage(error) || 'فشل إرجاع الحالة تحت التصميم');
+        }
     };
 
 
@@ -1282,31 +1329,80 @@ export default function DashboardNew() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">اليوم</p>
-                            <p className="text-2xl font-bold text-gray-800 dark:text-white">{dailyDesignerCount}</p>
+                        <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl shadow-sm border border-amber-200 dark:border-amber-800">
+                            <p className="text-sm font-bold text-amber-700 dark:text-amber-300 mb-1">لسه تحت التصميم</p>
+                            <p className="text-2xl font-bold text-amber-900 dark:text-amber-100">{pendingDesignerTimelineRows.length}</p>
+                            <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">{pendingDesignerUnitsCount} يونت تحت التصميم</p>
+                        </div>
+                        <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl shadow-sm border border-emerald-200 dark:border-emerald-800">
+                            <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-1">اترفع لها تصميم</p>
+                            <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{submittedDesignerTimelineRows.length}</p>
+                            <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">{submittedDesignerUnitsCount} يونت تم رفعها</p>
                         </div>
                         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">آخر 7 أيام</p>
+                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">مرفوع آخر 7 أيام</p>
                             <p className="text-2xl font-bold text-gray-800 dark:text-white">{weeklyDesignerCount}</p>
-                        </div>
-                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">آخر 30 يوم</p>
-                            <p className="text-2xl font-bold text-gray-800 dark:text-white">{monthlyDesignerCount}</p>
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">اليوم: {dailyDesignerCount}</p>
                         </div>
                         <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">متوسط زمن التصميم</p>
                             <p className="text-2xl font-bold text-gray-800 dark:text-white">{averageDesignerDuration !== null ? formatDesignerDuration(averageDesignerDuration) : '-'}</p>
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">آخر 30 يوم: {monthlyDesignerCount}</p>
                         </div>
                     </div>
 
                     <div className="space-y-4">
-                        {designerTimelineGroups.map(group => (
+                        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-sm font-bold text-gray-800 dark:text-white">
+                                        {designerTimelineView === 'pending' ? 'حالات لسه تحت التصميم' : 'حالات اترفعلها تصميم'}
+                                    </p>
+                                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                                        {designerTimelineView === 'pending'
+                                            ? 'الجدول يعرض الحالات التي لم يتم رفع رابط التصميم لها بعد'
+                                            : 'الجدول يعرض الحالات التي لديها رابط تصميم جاهز للمراجعة'}
+                                    </p>
+                                </div>
+                                <div className="flex gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDesignerTimelineView('pending')}
+                                        className={`rounded-md px-3 py-2 text-xs font-bold transition ${designerTimelineView === 'pending'
+                                            ? 'bg-amber-600 text-white shadow-sm'
+                                            : 'text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/30'
+                                            }`}
+                                    >
+                                        تحت التصميم ({pendingDesignerTimelineRows.length} حالة / {pendingDesignerUnitsCount} يونت)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDesignerTimelineView('submitted')}
+                                        className={`rounded-md px-3 py-2 text-xs font-bold transition ${designerTimelineView === 'submitted'
+                                            ? 'bg-emerald-600 text-white shadow-sm'
+                                            : 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/30'
+                                            }`}
+                                    >
+                                        تم رفع التصميم ({submittedDesignerTimelineRows.length} حالة / {submittedDesignerUnitsCount} يونت)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {designerTimelineGroups.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center text-sm text-gray-400 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
+                                {designerTimelineView === 'pending'
+                                    ? 'لا توجد حالات تحت التصميم حالياً'
+                                    : 'لا توجد حالات تم رفع تصميمها حالياً'}
+                            </div>
+                        ) : designerTimelineGroups.map(group => (
                             <div key={group.designerId} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                                 <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
                                     <div>
                                         <h3 className="font-bold text-gray-800 dark:text-white">{group.designerName}</h3>
-                                        <p className="text-xs text-gray-400 dark:text-gray-500">{group.rows.length} حالة</p>
+                                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                                            {group.rows.length} حالة / {getRowsUnitsCount(group.rows)} يونت {designerTimelineView === 'pending' ? 'تحت التصميم' : 'تم رفع تصميمها'}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="max-h-[420px] overflow-auto">
@@ -1325,15 +1421,18 @@ export default function DashboardNew() {
                                         </thead>
                                         <tbody>
                                             {group.rows.map(({ order, submittedAt, durationMs, isFinished }) => (
-                                                <tr key={order.id} className="border-t border-gray-100 dark:border-gray-700 align-top">
+                                                <tr key={order.id} className={`border-t align-top ${isFinished ? 'border-emerald-100 bg-emerald-50/35 dark:border-emerald-900/40 dark:bg-emerald-900/10' : 'border-amber-100 bg-amber-50/35 dark:border-amber-900/40 dark:bg-amber-900/10'}`}>
                                                     <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">#{order.caseId}</td>
                                                     <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{order.patientName}</td>
                                                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{order.doctorId ? `د. ${getDoctorDisplayName(order.doctorId)}` : '-'}</td>
                                                     <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
                                                         <div className="max-w-[280px] space-y-1">
+                                                            <div className="mb-1 inline-flex rounded-md bg-white px-2 py-0.5 text-[11px] font-bold text-gray-700 ring-1 ring-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700">
+                                                                إجمالي {getOrderUnitsCount(order)} يونت
+                                                            </div>
                                                             {order.items.map((item, index) => (
                                                                 <div key={`${order.id}-item-${index}`} className="rounded-lg bg-gray-50 dark:bg-gray-700/50 px-2 py-1">
-                                                                    {item.serviceType} x{item.teethNumbers.length}
+                                                                    {item.serviceType} x{Math.max(item.teethNumbers.length, 1)}
                                                                     {item.teethNumbers.length > 0 && (
                                                                         <span className="text-gray-400 dark:text-gray-500"> ({item.teethNumbers.join(', ')})</span>
                                                                     )}
@@ -1342,20 +1441,31 @@ export default function DashboardNew() {
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold ${isFinished ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
-                                                            {isFinished ? 'تم الرفع' : 'قيد التصميم'}
+                                                        <span className={`inline-flex min-w-[96px] justify-center rounded-full px-2 py-1 text-[11px] font-bold ${isFinished ? 'bg-emerald-600 text-white dark:bg-emerald-500' : 'bg-amber-500 text-white dark:bg-amber-500'}`}>
+                                                            {isFinished ? 'تم رفع التصميم' : 'تحت التصميم'}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{submittedAt ? format(new Date(submittedAt), 'dd/MM/yyyy HH:mm') : '-'}</td>
                                                     <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{durationMs !== null ? formatDesignerDuration(durationMs) : '-'}</td>
                                                     <td className="px-4 py-3">
-                                                        {order.designUrl ? (
-                                                            <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold">
-                                                                مراجعة التصميم
-                                                            </a>
-                                                        ) : (
-                                                            <span className="text-xs text-gray-300">-</span>
-                                                        )}
+                                                        <div className="flex min-w-[130px] flex-col gap-1.5">
+                                                            {order.designUrl ? (
+                                                                <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold">
+                                                                    مراجعة التصميم
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-xs text-gray-300">-</span>
+                                                            )}
+                                                            {isFinished && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => requestDesignRevision(order)}
+                                                                    className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300"
+                                                                >
+                                                                    طلب تعديل تصميم
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))}

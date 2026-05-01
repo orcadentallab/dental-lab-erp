@@ -66,6 +66,10 @@ export function getDesignSubmittedAt(order: Order): string | null {
 }
 
 export function isDesignSubmitted(order: Order): boolean {
+    if (['pending', 'accepted', 'in_progress', 'returned'].includes(order.designStatus || '')) {
+        return false;
+    }
+
     return Boolean(order.designUrl || getDesignSubmittedAt(order));
 }
 
