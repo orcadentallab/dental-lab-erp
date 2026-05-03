@@ -1,6 +1,6 @@
 import { ArrowDownLeft, ArrowUpRight, History, Wallet } from 'lucide-react';
 import clsx from 'clsx';
-import type { Transaction, Order } from '../../services/db';
+import type { Transaction, Order, Doctor } from '../../services/db';
 import type { Adjustment } from '../../services/financeService';
 
 interface AccountInfoPanelProps {
@@ -10,6 +10,7 @@ interface AccountInfoPanelProps {
     transactions: Transaction[];
     orders: Order[]; // For doctors (revenue) and suppliers/designers (cost)
     adjustments?: Adjustment[];
+    doctors?: Doctor[];
     className?: string;
 }
 
@@ -20,6 +21,7 @@ export function AccountInfoPanel({
     transactions,
     orders,
     adjustments = [],
+    doctors = [],
     className,
 }: AccountInfoPanelProps) {
     if (!entityId) {
@@ -42,14 +44,19 @@ export function AccountInfoPanel({
     let balance = 0;
     const currencyLabel = 'ج.م';
 
+    const entityIds = entityType === 'doctor'
+        ? [entityId, ...doctors.filter(d => d.parentId === entityId).map(d => d.id)]
+        : [entityId];
+    const entityIdSet = new Set(entityIds);
+
     // Filter Transactions for this entity
     const entityTransactions = transactions.filter(
-        (t) => t.entityType === entityType && t.entityId === entityId
+        (t) => (t.entityType === entityType || !t.entityType) && !!t.entityId && entityIdSet.has(t.entityId)
     );
 
     // Filter Adjustments
     const entityAdjustments = adjustments.filter(
-        (a) => a.entity_type === entityType && a.entity_id === entityId
+        (a) => a.entity_type === entityType && entityIdSet.has(a.entity_id)
     );
 
     const totalCharges = entityAdjustments.filter(a => a.type === 'charge').reduce((sum, a) => sum + a.amount, 0);
@@ -62,7 +69,7 @@ export function AccountInfoPanel({
 
     if (entityType === 'doctor') {
         const entityOrders = orders.filter((o) => {
-            if (o.doctorId !== entityId) return false;
+            if (!entityIdSet.has(o.doctorId)) return false;
             if (o.status === 'Rejected') return false;
             return ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
         });

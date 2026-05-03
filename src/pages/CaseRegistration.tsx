@@ -28,7 +28,7 @@ export default function CaseRegistration() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
     const [orders, setOrders] = useState<Order[]>([]);
-    const [doctors, setDoctors] = useState<Record<string, { name: string; code: string }>>({});
+    const [doctors, setDoctors] = useState<Record<string, { name: string; code: string; parentId?: string }>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -54,8 +54,8 @@ export default function CaseRegistration() {
                     db.getSuppliers()
                 ]);
                 
-                const docMap: Record<string, { name: string; code: string }> = {};
-                docs.forEach((d: Doctor) => docMap[d.id] = { name: d.name, code: d.doctorCode });
+                const docMap: Record<string, { name: string; code: string; parentId?: string }> = {};
+                docs.forEach((d: Doctor) => docMap[d.id] = { name: d.name, code: d.doctorCode, parentId: d.parentId });
                 setDoctors(docMap);
 
                 const supMap: Record<string, string> = {};
@@ -186,7 +186,7 @@ export default function CaseRegistration() {
                 'رقم الحالة': order.caseId,
                 'التاريخ': order.deliveryDate || order.createdAt.split('T')[0],
                 'المريض': order.patientName,
-                'الطبيب': doctors[order.doctorId]?.name || order.doctorId,
+                'الطبيب': getBillingDoctor(order.doctorId).name,
                 'الخدمات': order.items.map(i => `${i.serviceType} (x${i.teethNumbers.length})`).join(', '),
                 'سعر البيع': order.totalPrice,
                 'التكلفة': order.cost,
@@ -208,16 +208,29 @@ export default function CaseRegistration() {
         }
     };
 
+    const getBillingDoctor = (doctorId: string) => {
+        const doctor = doctors[doctorId];
+        const parentDoctor = doctor?.parentId ? doctors[doctor.parentId] : undefined;
+        return {
+            id: doctor?.parentId || doctorId,
+            name: parentDoctor?.name || doctor?.name || doctorId,
+            code: parentDoctor?.code || doctor?.code || ''
+        };
+    };
+
     const filteredOrders = orders.filter(order => {
         const doctor = doctors[order.doctorId];
+        const billingDoctor = getBillingDoctor(order.doctorId);
         
         const matchesSearch = 
             order.caseId.toLowerCase().includes(searchTerm.toLowerCase()) ||
             order.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (doctor?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (doctor?.code || '').toLowerCase().includes(searchTerm.toLowerCase());
+            (doctor?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            billingDoctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            billingDoctor.code.toLowerCase().includes(searchTerm.toLowerCase());
 
-        const matchesDoctor = !doctorFilter || order.doctorId === doctorFilter;
+        const matchesDoctor = !doctorFilter || order.doctorId === doctorFilter || billingDoctor.id === doctorFilter;
         const matchesSupplier = !supplierFilter || 
             (supplierFilter === 'internal' ? !order.supplierId : order.supplierId === supplierFilter);
         
@@ -227,7 +240,6 @@ export default function CaseRegistration() {
 
         return matchesSearch && matchesDoctor && matchesSupplier && matchesDateFrom && matchesDateTo;
     });
-
     return (
         <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
             {/* Header */}
@@ -420,6 +432,7 @@ export default function CaseRegistration() {
                                 {filteredOrders.map((order) => {
                                     const dateStr = order.deliveryDate || (order.createdAt ? order.createdAt.split('T')[0] : '');
                                     const formattedDate = dateStr ? dateStr.split('-').slice(1).join('-') : '-'; // MM-DD
+                                    const billingDoctor = getBillingDoctor(order.doctorId);
                                     
                                     return (
                                         <motion.tr
@@ -481,11 +494,11 @@ export default function CaseRegistration() {
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
                                                     <span className="text-sm text-slate-700 font-black leading-tight">
-                                                        {doctors[order.doctorId]?.name || order.doctorId}
+                                                        {billingDoctor.name}
                                                     </span>
-                                                    {doctors[order.doctorId]?.code && (
+                                                    {billingDoctor.code && (
                                                         <span className="text-[10px] bg-slate-800 text-white px-1.5 py-0.5 rounded shadow-sm font-mono font-bold w-fit">
-                                                            #{doctors[order.doctorId].code}
+                                                            #{billingDoctor.code}
                                                         </span>
                                                     )}
                                                 </div>

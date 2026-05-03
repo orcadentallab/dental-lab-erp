@@ -29,48 +29,48 @@ interface StatementItem {
 }
 
 // Time filter presets
-type TimeFilter = 'week' | 'month' | '3months' | 'year' | 'all';
+type TimeFilter = 'currentMonth' | 'previousMonth' | 'all';
 
 // Sorting
 type SortField = 'name' | 'code' | 'totalOrders' | 'totalSales' | 'totalCredit' | 'balance';
 type SortDirection = 'asc' | 'desc';
 
-const getOrderStatementDate = (order: Partial<Order>) => (order.createdAt || '').split('T')[0];
+const formatDateInput = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const getOrderStatementDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
+
+const monthLabel = (offset: number) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + offset);
+    return date.toLocaleDateString('ar-EG', { month: 'long' });
+};
 
 const getDateRangeFromFilter = (filter: TimeFilter): { start: string; end: string } => {
     const today = new Date();
-    const end = today.toISOString().split('T')[0];
+    const end = formatDateInput(today);
     let start = '';
 
     switch (filter) {
-        case 'week': {
-            const weekAgo = new Date(today);
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            start = weekAgo.toISOString().split('T')[0];
+        case 'currentMonth': {
+            const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            start = formatDateInput(currentMonthStart);
             break;
         }
-        case 'month': {
-            const monthAgo = new Date(today);
-            monthAgo.setMonth(monthAgo.getMonth() - 1);
-            start = monthAgo.toISOString().split('T')[0];
-            break;
-        }
-        case '3months': {
-            const threeMonthsAgo = new Date(today);
-            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-            start = threeMonthsAgo.toISOString().split('T')[0];
-            break;
-        }
-        case 'year': {
-            const yearAgo = new Date(today);
-            yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-            start = yearAgo.toISOString().split('T')[0];
-            break;
+        case 'previousMonth': {
+            const previousMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const previousMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+            return { start: formatDateInput(previousMonthStart), end: formatDateInput(previousMonthEnd) };
         }
         case 'all':
-        default:
+        default: {
             start = '';
             break;
+        }
     }
 
     return { start, end: filter === 'all' ? '' : end };
@@ -277,6 +277,15 @@ export default function Accounts() {
 
         const allOrders = orders;
         const allTransactions = transactions;
+        const doctorParentById = new Map(doctors.map(d => [d.id, d.parentId || d.id]));
+        const getDoctorSummaryId = (doctorId: string) => doctorParentById.get(doctorId) || doctorId;
+        const isInSelectedRange = (date?: string) => {
+            const day = (date || '').split('T')[0];
+            if (!day) return false;
+            if (dateRange.start && day < dateRange.start) return false;
+            if (dateRange.end && day > dateRange.end) return false;
+            return true;
+        };
 
         // 1. Pre-aggregate Orders by Entity ID (O(Orders))
         const orderStats = new Map<string, { totalDebit: number; totalCredit: number; count: number; lastDate: string; totalSales: number }>();
@@ -286,11 +295,13 @@ export default function Accounts() {
         };
 
         for (const o of allOrders) {
+            if (!isInSelectedRange(getOrderStatementDate(o))) continue;
+
             if (activeTab === 'doctors' && o.doctorId) {
                 const isRelevant = showAllOrders || ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes((o.status || '').toLowerCase());
 
                 if (isRelevant) {
-                    const stats = getStats(o.doctorId);
+                    const stats = getStats(getDoctorSummaryId(o.doctorId));
                     stats.count++;
                     const amount = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0));
                     stats.totalDebit += amount;
@@ -336,14 +347,16 @@ export default function Accounts() {
         };
 
         for (const t of allTransactions) {
-            if (activeTab === 'doctors' && t.entityType === 'doctor' && t.entityId && t.type === 'income') {
-                const stats = getTxStats(t.entityId);
+            if (!isInSelectedRange(t.date)) continue;
+
+            if (activeTab === 'doctors' && (t.entityType === 'doctor' || !t.entityType) && t.entityId && t.type === 'income') {
+                const stats = getTxStats(getDoctorSummaryId(t.entityId));
                 stats.totalCredit += (t.amount || 0);
                 if (t.date && t.date > stats.lastDate) stats.lastDate = t.date;
-            } else if (activeTab === 'suppliers' && t.entityType === 'supplier' && t.entityId && t.type === 'expense') {
+            } else if (activeTab === 'suppliers' && (t.entityType === 'supplier' || !t.entityType) && t.entityId && t.type === 'expense') {
                 const stats = getTxStats(t.entityId);
                 stats.totalDebit += (t.amount || 0);
-            } else if (activeTab === 'designers' && t.entityType === 'designer' && t.entityId && t.type === 'expense') {
+            } else if (activeTab === 'designers' && (t.entityType === 'designer' || !t.entityType) && t.entityId && t.type === 'expense') {
                 const stats = getTxStats(t.entityId);
                 stats.totalDebit += (t.amount || 0);
             }
@@ -351,9 +364,12 @@ export default function Accounts() {
 
         // 2b. Pre-aggregate Adjustments by Entity ID
         for (const adj of adjustments) {
+            if (!isInSelectedRange(adj.date)) continue;
+
             if (activeTab === 'doctors' && adj.entity_type === 'doctor') {
-                const stats = getStats(adj.entity_id);
-                const txSt = getTxStats(adj.entity_id);
+                const summaryId = getDoctorSummaryId(adj.entity_id);
+                const stats = getStats(summaryId);
+                const txSt = getTxStats(summaryId);
                 if (adj.type === 'charge') {
                     stats.totalDebit += adj.amount;
                 } else {
@@ -423,7 +439,7 @@ export default function Accounts() {
             };
         });
 
-    }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, adjustments, showAllOrders]);
+    }, [viewMode, activeTab, doctors, suppliers, designers, orders, transactions, adjustments, showAllOrders, dateRange]);
 
     // -- FETCH FULL DETAIL DATA ON SELECTION --
     const [detailOrders, setDetailOrders] = useState<Order[]>([]);
@@ -476,8 +492,13 @@ export default function Accounts() {
 
         if (activeTab === 'doctors') {
             // Orders before the period
+            const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
             const beforeOrders = relevantOrders.filter(o => {
-                if (o.doctorId !== selectedEntityId) return false;
+                const isDirectOrder = o.doctorId === selectedEntityId;
+                const isChildOrder = selectedIsCenter && o.doctorId &&
+                    doctors.find(d => d.id === o.doctorId)?.parentId === selectedEntityId;
+                if (!isDirectOrder && !isChildOrder) return false;
+                if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
                 const orderDate = getOrderStatementDate(o);
                 return orderDate < dateRange.start && o.status !== 'Rejected' &&
                     ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
@@ -485,20 +506,27 @@ export default function Accounts() {
             openingDebit = beforeOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
 
             // Transactions before the period
-            const beforeTx = relevantTransactions.filter(t =>
-                (t.entityType === 'doctor' || !t.entityType) &&
-                t.entityId === selectedEntityId &&
-                t.type === 'income' &&
-                (t.date || '').split('T')[0] < dateRange.start
-            );
+            const beforeTx = relevantTransactions.filter(t => {
+                if ((t.entityType !== 'doctor' && t.entityType) || t.type !== 'income') return false;
+                if ((t.date || '').split('T')[0] >= dateRange.start) return false;
+                if (t.entityId === selectedEntityId) return !childDoctorFilter;
+                if (selectedIsCenter && t.entityId &&
+                    doctors.find(d => d.id === t.entityId)?.parentId === selectedEntityId) {
+                    return !childDoctorFilter || t.entityId === childDoctorFilter;
+                }
+                return false;
+            });
             openingCredit = beforeTx.reduce((sum, t) => sum + (t.amount || 0), 0);
 
             // Adjustments before the period
-            const beforeAdjs = adjustments.filter(a =>
-                a.entity_type === 'doctor' &&
-                a.entity_id === selectedEntityId &&
-                a.date < dateRange.start
-            );
+            const beforeAdjs = adjustments.filter(a => {
+                if (a.entity_type !== 'doctor' || a.date >= dateRange.start) return false;
+                if (a.entity_id === selectedEntityId) return !childDoctorFilter;
+                if (selectedIsCenter && doctors.find(d => d.id === a.entity_id)?.parentId === selectedEntityId) {
+                    return !childDoctorFilter || a.entity_id === childDoctorFilter;
+                }
+                return false;
+            });
             for (const adj of beforeAdjs) {
                 if (adj.type === 'charge') openingDebit += adj.amount;
                 else openingCredit += adj.amount;
@@ -718,10 +746,15 @@ export default function Accounts() {
 
         // Add Adjustments as statement items
         const entityTypeMap: Record<string, string> = { doctors: 'doctor', suppliers: 'supplier', designers: 'designer' };
-        const entityAdjustments = adjustments.filter(a =>
-            a.entity_type === entityTypeMap[activeTab] &&
-            a.entity_id === selectedEntityId
-        );
+        const selectedIsCenterForAdjustments = activeTab === 'doctors' && !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
+        const entityAdjustments = adjustments.filter(a => {
+            if (a.entity_type !== entityTypeMap[activeTab]) return false;
+            if (a.entity_id === selectedEntityId) return activeTab !== 'doctors' || !childDoctorFilter;
+            if (selectedIsCenterForAdjustments && doctors.find(d => d.id === a.entity_id)?.parentId === selectedEntityId) {
+                return !childDoctorFilter || a.entity_id === childDoctorFilter;
+            }
+            return false;
+        });
         items = [...items, ...entityAdjustments.map(adj => ({
             id: adj.id,
             date: adj.date,
@@ -738,8 +771,19 @@ export default function Accounts() {
 
         items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // Calculate running balance
-        let runningBalance = dateRange.start ? calculateOpeningBalance : 0;
+        const baseOpeningBalance = dateRange.start ? calculateOpeningBalance : 0;
+        const hiddenBalanceEffect = items
+            .filter(item => hiddenTransactionIds.has(item.id))
+            .reduce((sum, item) => {
+                if (activeTab === 'doctors') {
+                    return sum + (item.type === 'debit' ? item.amount : -item.amount);
+                }
+                return sum + (item.type === 'credit' ? item.amount : -item.amount);
+            }, 0);
+        const adjustedOpeningBalance = baseOpeningBalance + hiddenBalanceEffect;
+
+        // Calculate running balance for visible period items only. Hidden items are carried into opening balance.
+        let runningBalance = adjustedOpeningBalance;
         items = items.map(item => {
             const isHidden = hiddenTransactionIds.has(item.id);
             if (!isHidden) {
@@ -749,14 +793,14 @@ export default function Accounts() {
                     runningBalance += item.type === 'credit' ? item.amount : -item.amount;
                 }
             }
-            return { ...item, runningBalance: isHidden ? 0 : runningBalance, isHidden };
+            return { ...item, runningBalance: isHidden ? adjustedOpeningBalance : runningBalance, isHidden };
         });
 
         const visibleItems = items.filter(i => !i.isHidden);
         const totalDebit = visibleItems.filter(i => i.type === 'debit').reduce((sum, i) => sum + i.amount, 0);
         const totalCredit = visibleItems.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
         const periodBalance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
-        const finalBalance = (dateRange.start ? calculateOpeningBalance : 0) + periodBalance;
+        const finalBalance = adjustedOpeningBalance + periodBalance;
 
         return {
             items,
@@ -764,7 +808,7 @@ export default function Accounts() {
                 totalDebit,
                 totalCredit,
                 balance: finalBalance,
-                openingBalance: dateRange.start ? calculateOpeningBalance : 0
+                openingBalance: adjustedOpeningBalance
             }
         };
     }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter]);
@@ -1158,10 +1202,8 @@ export default function Accounts() {
 
                     <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl overflow-x-auto">
                         {([
-                            { id: 'week', label: 'أسبوع' },
-                            { id: 'month', label: 'شهر' },
-                            { id: '3months', label: '3 شهور' },
-                            { id: 'year', label: 'سنة' },
+                            { id: 'currentMonth', label: `الشهر الحالي (${monthLabel(0)})` },
+                            { id: 'previousMonth', label: `الشهر السابق (${monthLabel(-1)})` },
                             { id: 'all', label: 'الكل' },
                         ] as { id: TimeFilter; label: string }[]).map((filter) => (
                             <button
@@ -1477,10 +1519,8 @@ export default function Accounts() {
                 {/* Time Filter Pills */}
                 <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl overflow-x-auto">
                     {([
-                        { id: 'week', label: 'أسبوع' },
-                        { id: 'month', label: 'شهر' },
-                        { id: '3months', label: '3 شهور' },
-                        { id: 'year', label: 'سنة' },
+                        { id: 'currentMonth', label: `الشهر الحالي (${monthLabel(0)})` },
+                        { id: 'previousMonth', label: `الشهر السابق (${monthLabel(-1)})` },
                         { id: 'all', label: 'الكل' },
                     ] as { id: TimeFilter; label: string }[]).map((filter) => (
                         <button
@@ -1725,11 +1765,14 @@ export default function Accounts() {
                             {(() => {
                                 const filteredItems = statementSearch
                                     ? individualStatement.items.filter(item =>
-                                        item.description.toLowerCase().includes(statementSearch.toLowerCase()) ||
-                                        (item.services || '').toLowerCase().includes(statementSearch.toLowerCase()) ||
-                                        (item.details || '').toLowerCase().includes(statementSearch.toLowerCase())
+                                        !item.isHidden &&
+                                        (
+                                            item.description.toLowerCase().includes(statementSearch.toLowerCase()) ||
+                                            (item.services || '').toLowerCase().includes(statementSearch.toLowerCase()) ||
+                                            (item.details || '').toLowerCase().includes(statementSearch.toLowerCase())
+                                        )
                                     )
-                                    : individualStatement.items;
+                                    : individualStatement.items.filter(item => !item.isHidden);
                                 return filteredItems.length === 0 ? (
                                     <tr>
                                         <td colSpan={7} className="p-12 text-center text-gray-400">
@@ -1755,9 +1798,10 @@ export default function Accounts() {
                                                 <input
                                                     type="checkbox"
                                                     checked={!item.isHidden}
+                                                    onClick={(e) => e.stopPropagation()}
                                                     onChange={() => toggleTransactionVisibility(item.id)}
                                                     className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
-                                                    title="تضمين في كشف الحساب والطباعة"
+                                                    title="إزالة من الفترة وترحيله إلى الرصيد السابق"
                                                 />
                                             </td>
                                             <td className="p-3">

@@ -651,6 +651,7 @@ export default function Finance() {
                                 transactions={transactions}
                                 orders={orders}
                                 adjustments={adjustments}
+                                doctors={doctors}
                                 className="h-full min-h-[300px]"
                             />
                         </div>

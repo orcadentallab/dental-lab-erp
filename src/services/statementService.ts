@@ -27,7 +27,7 @@ export interface StatementResult {
     filteredDoctorName?: string;
 }
 
-const getOrderStatementDate = (order: Order) => order.createdAt.split('T')[0];
+const getOrderStatementDate = (order: Order) => (order.deliveryDate || order.createdAt).split('T')[0];
 
 export const statementService = {
     /**
