@@ -1,12 +1,14 @@
 export const generateArabicSearchPattern = (term: string): string => {
-    // Escape special regex characters
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tokens = Array.from(term.trim())
+        .filter(char => !/\s/.test(char))
+        .map(char => {
+            if (/[اأإآ]/.test(char)) return '[اأإآ]';
+            if (/[يى]/.test(char)) return '[يى]';
+            if (/[هة]/.test(char)) return '[هة]';
+            return char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        });
 
-    // Replace Arabic characters with character sets
-    return escaped
-        .replace(/[اأإآ]/g, '[اأإآ]')
-        .replace(/[يى]/g, '[يى]')
-        .replace(/[هة]/g, '[هة]');
+    return tokens.join('[[:space:]]*');
 };
 
 export const normalizeArabicText = (text: string): string => {
@@ -22,7 +24,7 @@ export const normalizeArabicText = (text: string): string => {
  * Note: For Supabase .or(), we might need specific syntax.
  */
 export const matchArabic = (text: string, term: string): boolean => {
-    const pattern = generateArabicSearchPattern(term);
+    const pattern = generateArabicSearchPattern(term).replace(/\[\[:space:\]\]\*/g, '\\s*');
     const regex = new RegExp(pattern, 'i');
     return regex.test(text);
 };

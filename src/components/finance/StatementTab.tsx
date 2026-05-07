@@ -17,6 +17,7 @@ import { type Order, type Transaction, type Doctor, type Supplier, type User, ty
 import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { getDoctorServicePrice } from '../../lib/pricingUtils';
 
 interface StatementTabProps {
     type: 'service' | 'expense';
@@ -189,7 +190,7 @@ export default function StatementTab({
                 const cnt = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
                 if (it.price > 0) return it.price * cnt;
                 const sv = services.find(s => s.name === it.serviceType as string);
-                const catalogUnitPrice = orderDoctor?.customPrices?.[it.serviceType as string] ?? sv?.sellingPrice ?? 0;
+                const catalogUnitPrice = getDoctorServicePrice(it.serviceType as string, sv, orderDoctor, doctors);
                 return catalogUnitPrice > 0 ? catalogUnitPrice * cnt : cnt;
             });
             const totalWeight2 = itemWeights2.reduce((s, w) => s + w, 0);
@@ -300,7 +301,7 @@ export default function StatementTab({
                 const cnt = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
                 if (it.price > 0) return it.price * cnt;
                 const sv = services.find(s => s.name === it.serviceType as string);
-                const catP = orderDocExp?.customPrices?.[it.serviceType as string] ?? sv?.sellingPrice ?? 0;
+                const catP = getDoctorServicePrice(it.serviceType as string, sv, orderDocExp, doctors);
                 return catP > 0 ? catP * cnt : cnt;
             });
             const expWeightTotal = expWeights.reduce((s, w) => s + w, 0);

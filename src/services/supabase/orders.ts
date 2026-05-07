@@ -146,6 +146,29 @@ export interface PaginatedOrdersResult {
 
 const DEFAULT_PAGE_SIZE = 50;
 
+async function getDoctorFilterIds(doctorId: string): Promise<string[]> {
+    const { data: selectedDoctor, error: selectedError } = await supabase
+        .from('doctors')
+        .select('id, is_center')
+        .eq('id', doctorId)
+        .single();
+
+    if (selectedError || !selectedDoctor?.is_center) {
+        return [doctorId];
+    }
+
+    const { data: childDoctors, error: childError } = await supabase
+        .from('doctors')
+        .select('id')
+        .eq('parent_id', doctorId);
+
+    if (childError) {
+        throw ErrorHandler.handle(childError, 'getDoctorFilterIds');
+    }
+
+    return [doctorId, ...(childDoctors || []).map(d => d.id)];
+}
+
 /**
  * Fetches orders with mandatory pagination and server-side filtering.
  * NO unbounded queries allowed.
@@ -178,7 +201,10 @@ export async function getOrders(
     }
 
     if (filters.doctorId) {
-        query = query.eq('doctor_id', filters.doctorId);
+        const doctorIds = await getDoctorFilterIds(filters.doctorId);
+        query = doctorIds.length === 1
+            ? query.eq('doctor_id', doctorIds[0])
+            : query.in('doctor_id', doctorIds);
     }
 
     if (filters.representativeId) {
@@ -224,10 +250,24 @@ export async function getOrders(
         // 1. Find matching doctors first
         const { data: matchingDoctors } = await supabase
             .from('doctors')
-            .select('id')
+            .select('id, is_center')
             .or(`name.imatch.${regex},doctor_code.imatch.${regex}`);
 
-        const doctorIds = matchingDoctors?.map(d => d.id) || [];
+        const matchedDoctorIds = matchingDoctors?.map(d => d.id) || [];
+        const matchingCenterIds = matchedDoctorIds.length > 0
+            ? (matchingDoctors || []).filter(d => (d as { is_center?: boolean }).is_center).map(d => d.id)
+            : [];
+        let childDoctorIds: string[] = [];
+
+        if (matchingCenterIds.length > 0) {
+            const { data: matchingChildren } = await supabase
+                .from('doctors')
+                .select('id')
+                .in('parent_id', matchingCenterIds);
+            childDoctorIds = matchingChildren?.map(d => d.id) || [];
+        }
+
+        const doctorIds = Array.from(new Set([...matchedDoctorIds, ...childDoctorIds]));
 
         // 2. Build OR query
         let orQuery = `case_id.imatch.${regex},patient_name.imatch.${regex}`;
@@ -755,27 +795,16 @@ export async function deleteOrder(id: string): Promise<void> {
         throw new ValidationError('معرف الطلب غير صحيح');
     }
 
-    // Check if the order is already registered
+    // UI delete is a recoverable hide/archive action. Hard deletes make cases
+    // impossible to find later from orders, accounts, or dashboards.
     try {
         const order = await getOrder(id);
-        if (order?.isRegistered) {
-            // Because the accountant needs to review "deleted" registered orders,
-            // we soft-delete it by marking it as archived. The update logic will
-            // catch the isArchived change and unregister the order, adding a note.
+        if (order) {
             await updateOrder(id, { isArchived: true });
-            return;
         }
+        return;
     } catch (e) {
-        console.error('Failed to get order before delete:', e);
-    }
-
-    const { error } = await supabase
-        .from('orders')
-        .delete()
-        .eq('id', id);
-
-    if (error) {
-        throw ErrorHandler.handle(error, 'deleteOrder');
+        throw ErrorHandler.handle(e, 'deleteOrder');
     }
 }
 

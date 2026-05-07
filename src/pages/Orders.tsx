@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
 import OrderBoard from '../components/orders/OrderBoard';
@@ -22,24 +22,36 @@ import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 
+function isCaseCodeSearchTerm(term: string): boolean {
+    const normalized = term.trim().replace(/^#/, '').replace(/\s+/g, '');
+    return /^[0-9-]+$/.test(normalized) && /\d/.test(normalized);
+}
+
 
 export default function Orders() {
     const { user } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
+    const initialModalRef = useRef({
+        modal: searchParams.get('modal'),
+        orderId: searchParams.get('order')
+    });
+    const didRunInitialFilterLoad = useRef(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'list');
 
     const highlightedOrderId = searchParams.get('highlight');
 
     useEffect(() => {
         if (highlightedOrderId) {
             const timer = setTimeout(() => {
-                setSearchParams({}, { replace: true });
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.delete('highlight');
+                setSearchParams(nextParams, { replace: true });
             }, 5000);
             return () => clearTimeout(timer);
         }
-    }, [highlightedOrderId, setSearchParams]);
+    }, [highlightedOrderId, searchParams, setSearchParams]);
 
     // Note: isDesigner check removed - RLS handles role-based filtering at DB level
     const isAccountant = user?.role === 'accountant';
@@ -52,22 +64,25 @@ export default function Orders() {
     const [users, setUsers] = useState<User[]>([]);
 
     // Pagination state
-    const [currentPage, setCurrentPage] = useState(1);
+    const [currentPage, setCurrentPage] = useState(() => {
+        const page = Number(searchParams.get('page'));
+        return Number.isFinite(page) && page > 0 ? page : 1;
+    });
     const [totalCount, setTotalCount] = useState(0);
     const PAGE_SIZE = 50;
     const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
     // Filter state (server-side)
-    const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('');
-    const [doctorFilter, setDoctorFilter] = useState('');
-    const [supplierFilter, setSupplierFilter] = useState('');
-    const [designerFilter, setDesignerFilter] = useState('');
-    const [representativeFilter, setRepresentativeFilter] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [hideDelivered, setHideDelivered] = useState(true);
-    const [showArchived, setShowArchived] = useState(false);
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
+    const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
+    const [doctorFilter, setDoctorFilter] = useState(() => searchParams.get('doctor') || '');
+    const [supplierFilter, setSupplierFilter] = useState(() => searchParams.get('supplier') || '');
+    const [designerFilter, setDesignerFilter] = useState(() => searchParams.get('designer') || '');
+    const [representativeFilter, setRepresentativeFilter] = useState(() => searchParams.get('rep') || '');
+    const [startDate, setStartDate] = useState(() => searchParams.get('start') || '');
+    const [endDate, setEndDate] = useState(() => searchParams.get('end') || '');
+    const [hideDelivered, setHideDelivered] = useState(() => searchParams.get('hideDelivered') !== '0');
+    const [showArchived, setShowArchived] = useState(() => searchParams.get('archived') === '1');
 
     // Modal state
     const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
@@ -77,6 +92,24 @@ export default function Orders() {
     const [designLinkUrl, setDesignLinkUrl] = useState('');
     const [designLinkTargetStatus, setDesignLinkTargetStatus] = useState<'Waiting Dr Approval' | 'Under Production'>('Waiting Dr Approval');
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
+
+    const setOrderPageParams = (updates: Record<string, string | number | boolean | null | undefined>) => {
+        const nextParams = new URLSearchParams(searchParams);
+
+        Object.entries(updates).forEach(([key, value]) => {
+            if (value === undefined || value === null || value === '' || value === false) {
+                nextParams.delete(key);
+            } else {
+                nextParams.set(key, String(value));
+            }
+        });
+
+        setSearchParams(nextParams, { replace: true });
+    };
+
+    const clearOpenOrderParams = () => {
+        setOrderPageParams({ modal: null, order: null });
+    };
 
     // Build filters object for server-side query
     const buildFilters = () => {
@@ -91,6 +124,7 @@ export default function Orders() {
             search?: string;
             hideDelivered?: boolean;
             showArchived?: boolean;
+            includeArchived?: boolean;
         } = {};
 
         if (statusFilter) filters.status = statusFilter;
@@ -100,7 +134,12 @@ export default function Orders() {
         if (representativeFilter) filters.representativeId = representativeFilter;
         if (supplierFilter) filters.supplierId = supplierFilter;
         if (designerFilter) filters.designerId = designerFilter;
-        if (searchQuery.trim()) filters.search = searchQuery.trim();
+        if (searchQuery.trim()) {
+            filters.search = searchQuery.trim();
+            if (isCaseCodeSearchTerm(searchQuery)) {
+                filters.includeArchived = true;
+            }
+        }
         if (hideDelivered) filters.hideDelivered = true;
         if (showArchived) filters.showArchived = true;
 
@@ -137,11 +176,83 @@ export default function Orders() {
         loadAux();
     }, []);
 
+    useEffect(() => {
+        const nextParams = new URLSearchParams(searchParams);
+        const setOrDelete = (key: string, value: string | number | boolean | null | undefined, defaultValue?: string | number | boolean) => {
+            if (value === undefined || value === null || value === '' || value === defaultValue) {
+                nextParams.delete(key);
+            } else {
+                nextParams.set(key, String(value));
+            }
+        };
+
+        setOrDelete('q', searchQuery);
+        setOrDelete('status', statusFilter);
+        setOrDelete('doctor', doctorFilter);
+        setOrDelete('supplier', supplierFilter);
+        setOrDelete('designer', designerFilter);
+        setOrDelete('rep', representativeFilter);
+        setOrDelete('start', startDate);
+        setOrDelete('end', endDate);
+        setOrDelete('page', currentPage, 1);
+        setOrDelete('view', viewMode, 'list');
+        setOrDelete('hideDelivered', hideDelivered ? '' : '0');
+        setOrDelete('archived', showArchived ? '1' : '');
+
+        if (nextParams.toString() !== searchParams.toString()) {
+            setSearchParams(nextParams, { replace: true });
+        }
+    }, [searchQuery, statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams]);
+
+    useEffect(() => {
+        const { modal, orderId } = initialModalRef.current;
+        if (modal === 'new') {
+            setIsFormOpen(true);
+            return;
+        }
+        if (!modal || !orderId) return;
+
+        let cancelled = false;
+        const restoreOpenOrder = async () => {
+            try {
+                const order = await db.getOrder(orderId);
+                if (!order || cancelled) return;
+
+                if (modal === 'edit') {
+                    setFullEditingOrder(order);
+                } else if (modal === 'notes') {
+                    setNoteEditingOrder(order);
+                    setNewComment('');
+                } else if (modal === 'design') {
+                    setDesignLinkOrder(order);
+                    setDesignLinkUrl(order.designUrl || '');
+                    setDesignLinkTargetStatus(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
+                } else if (modal === 'accept') {
+                    setAcceptingOrder(order);
+                }
+            } catch (error) {
+                console.error('Failed to restore open order:', error);
+                clearOpenOrderParams();
+            }
+        };
+
+        restoreOpenOrder();
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // CONSOLIDATED: Single debounced effect for all filter and search changes
     useEffect(() => {
         const timer = setTimeout(() => {
-            setCurrentPage(1);
-            refreshOrders(1);
+            if (didRunInitialFilterLoad.current) {
+                setCurrentPage(1);
+                refreshOrders(1);
+            } else {
+                didRunInitialFilterLoad.current = true;
+                refreshOrders(currentPage);
+            }
         }, 150);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,6 +283,7 @@ export default function Orders() {
         try {
             await db.addOrder(orderData);
             setIsFormOpen(false);
+            clearOpenOrderParams();
             await refreshOrders();
         } catch (error) {
             console.error('Error creating order:', error);
@@ -183,6 +295,7 @@ export default function Orders() {
         try {
             await db.updateOrder(fullEditingOrder.id, orderData);
             setFullEditingOrder(null);
+            clearOpenOrderParams();
             await refreshOrders();
         } catch (error) {
             console.error('Error updating order:', error);
@@ -219,11 +332,35 @@ export default function Orders() {
         }
     };
 
-    const openFullEdit = (order: Order) => setFullEditingOrder(order);
+    const openNewOrder = () => {
+        setIsFormOpen(true);
+        setOrderPageParams({ modal: 'new', order: null });
+    };
+
+    const closeNewOrder = () => {
+        setIsFormOpen(false);
+        clearOpenOrderParams();
+    };
+
+    const openFullEdit = (order: Order) => {
+        setFullEditingOrder(order);
+        setOrderPageParams({ modal: 'edit', order: order.id });
+    };
+
+    const closeFullEdit = () => {
+        setFullEditingOrder(null);
+        clearOpenOrderParams();
+    };
 
     const openAddNote = (order: Order) => {
         setNoteEditingOrder(order);
         setNewComment('');
+        setOrderPageParams({ modal: 'notes', order: order.id });
+    };
+
+    const closeAddNote = () => {
+        setNoteEditingOrder(null);
+        clearOpenOrderParams();
     };
 
     const handleAddComment = async () => {
@@ -251,6 +388,22 @@ export default function Orders() {
         setDesignLinkOrder(order);
         setDesignLinkUrl(order.designUrl || '');
         setDesignLinkTargetStatus(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
+        setOrderPageParams({ modal: 'design', order: order.id });
+    };
+
+    const closeDesignLinkModal = () => {
+        setDesignLinkOrder(null);
+        clearOpenOrderParams();
+    };
+
+    const openAcceptOrder = (order: Order) => {
+        setAcceptingOrder(order);
+        setOrderPageParams({ modal: 'accept', order: order.id });
+    };
+
+    const closeAcceptOrder = () => {
+        setAcceptingOrder(null);
+        clearOpenOrderParams();
     };
 
     const handleUpdateDesignUrl = async () => {
@@ -273,6 +426,7 @@ export default function Orders() {
             }
 
             setDesignLinkOrder(null);
+            clearOpenOrderParams();
             setDesignLinkUrl('');
             setDesignLinkTargetStatus('Waiting Dr Approval');
             await refreshOrders();
@@ -349,6 +503,7 @@ export default function Orders() {
             }
 
             setAcceptingOrder(null);
+            clearOpenOrderParams();
             await refreshOrders(); // Refresh dashboard
         } catch (error) {
             console.error('Failed to accept order:', error);
@@ -488,7 +643,7 @@ export default function Orders() {
                             <div className="flex flex-1 items-center gap-3 w-full">
                                 {/* New Order Button */}
                                 {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
-                                    <Button onClick={() => setIsFormOpen(true)} className="gap-2 shadow-sm shadow-primary-500/20 bg-primary-600 hover:bg-primary-700 text-white border-0 ring-0 h-9 px-4 rounded-xl whitespace-nowrap">
+                                    <Button onClick={openNewOrder} className="gap-2 shadow-sm shadow-primary-500/20 bg-primary-600 hover:bg-primary-700 text-white border-0 ring-0 h-9 px-4 rounded-xl whitespace-nowrap">
                                         <Plus size={16} />
                                         <span className="font-bold text-sm hidden xl:inline">{t.orders.newOrder}</span>
                                         <span className="font-bold text-sm xl:hidden">{t.common.add}</span>
@@ -591,6 +746,7 @@ export default function Orders() {
                                         <option value="Completed">Completed</option>
                                         <option value="Delivered">Delivered</option>
                                         <option value="Rejected">Rejected</option>
+                                        <option value="Cancelled">Cancelled</option>
                                     </select>
                                     <Filter className={filterIconClass(Boolean(statusFilter))} />
                                     <ChevronDown className={filterChevronClass(Boolean(statusFilter), true)} />
@@ -701,7 +857,7 @@ export default function Orders() {
                     onDelete={handleDeleteOrder}
                     onUpdateDesignUrl={openDesignLinkModal}
                     highlightedOrderId={highlightedOrderId}
-                    onAccept={(order) => setAcceptingOrder(order)}
+                    onAccept={openAcceptOrder}
                     onExportInvoice={handleExportInvoice}
                     currentUser={user || undefined}
                 />
@@ -776,9 +932,9 @@ export default function Orders() {
                                         <h2 className="text-2xl font-bold text-surface-900">إنشاء أوردر جديد</h2>
                                         <p className="text-surface-500 text-sm mt-1">أدخل بيانات الحالة الجديدة</p>
                                     </div>
-                                    <button onClick={() => setIsFormOpen(false)} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
+                                    <button onClick={closeNewOrder} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
                                 </div>
-                                <OrderForm onSubmit={handleCreateOrder} onCancel={() => setIsFormOpen(false)} />
+                                <OrderForm onSubmit={handleCreateOrder} onCancel={closeNewOrder} />
                             </div>
                         </motion.div>
                     </motion.div>
@@ -799,9 +955,9 @@ export default function Orders() {
                                             </div>
                                         </div>
                                     </div>
-                                    <button onClick={() => setFullEditingOrder(null)} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
+                                    <button onClick={closeFullEdit} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
                                 </div>
-                                <OrderForm onSubmit={handleUpdateOrder} onCancel={() => setFullEditingOrder(null)} initialData={fullEditingOrder} />
+                                <OrderForm onSubmit={handleUpdateOrder} onCancel={closeFullEdit} initialData={fullEditingOrder} />
                             </div>
                         </motion.div>
                     </motion.div>
@@ -815,7 +971,7 @@ export default function Orders() {
                                     <h3 className="font-bold text-lg text-surface-900 flex items-center gap-2"><MessageCircle size={20} className="text-primary-600" /> التواصل والملاحظات</h3>
                                     <p className="text-xs text-surface-500 mt-0.5">الحالة #{noteEditingOrder.caseId}</p>
                                 </div>
-                                <button onClick={() => setNoteEditingOrder(null)} aria-label="Close" className="p-1 hover:bg-surface-200 rounded-full transition-colors"><X className="text-surface-400" size={20} /></button>
+                                <button onClick={closeAddNote} aria-label="Close" className="p-1 hover:bg-surface-200 rounded-full transition-colors"><X className="text-surface-400" size={20} /></button>
                             </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
                                 {noteEditingOrder.instructions && (
@@ -865,7 +1021,7 @@ export default function Orders() {
                         <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-md rounded-3xl shadow-xl overflow-hidden">
                             <div className="p-4 bg-surface-50 border-b flex justify-between items-center">
                                 <h3 className="font-bold text-surface-800 flex items-center gap-2">🔗 إضافة رابط التصميم</h3>
-                                <button onClick={() => setDesignLinkOrder(null)} aria-label="Close"><X size={20} className="text-surface-400 hover:text-red-500" /></button>
+                                <button onClick={closeDesignLinkModal} aria-label="Close"><X size={20} className="text-surface-400 hover:text-red-500" /></button>
                             </div>
                             <div className="p-6">
                                 <Input
@@ -909,7 +1065,7 @@ export default function Orders() {
                                 </div>
                                 <div className="flex gap-3">
                                     <Button onClick={handleUpdateDesignUrl} className="flex-1 shadow-lg shadow-primary-500/20">حفظ وإرسال</Button>
-                                    <Button variant="secondary" onClick={() => setDesignLinkOrder(null)} className="flex-1">إلغاء</Button>
+                                    <Button variant="secondary" onClick={closeDesignLinkModal} className="flex-1">إلغاء</Button>
                                 </div>
                             </div>
                         </motion.div>
@@ -923,7 +1079,7 @@ export default function Orders() {
                         suppliers={suppliers}
                         designers={users.filter(u => isDesignerUser(u))}
                         existingOrders={orders}
-                        onClose={() => setAcceptingOrder(null)}
+                        onClose={closeAcceptOrder}
                         onConfirm={handleAcceptOrder}
                     />
                 )}

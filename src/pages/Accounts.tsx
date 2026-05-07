@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
@@ -13,6 +13,7 @@ import { DEFAULT_LAB_INFO } from '../utils/finance';
 import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { matchArabic } from '../lib/searchUtils';
 
 interface StatementItem {
     id: string;
@@ -43,6 +44,17 @@ const formatDateInput = (date: Date) => {
 };
 
 const getOrderStatementDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
+
+const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {
+    const term = searchTerm.trim();
+    if (!term) return true;
+
+    return [
+        item.description,
+        item.services || '',
+        item.details || ''
+    ].some(value => matchArabic(value, term));
+};
 
 const monthLabel = (offset: number) => {
     const date = new Date();
@@ -444,7 +456,7 @@ export default function Accounts() {
     // -- FETCH FULL DETAIL DATA ON SELECTION --
     const [detailOrders, setDetailOrders] = useState<Order[]>([]);
     const [detailTransactions, setDetailTransactions] = useState<Transaction[]>([]);
-    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [, setLoadingDetails] = useState(false);
     const [hiddenTransactionIds, setHiddenTransactionIds] = useState<Set<string>>(new Set());
     const [childDoctorFilter, setChildDoctorFilter] = useState('');
     const toggleTransactionVisibility = (id: string) => {
@@ -456,25 +468,38 @@ export default function Accounts() {
         });
     };
 
-    useEffect(() => {
-        if (viewMode === 'detail' && selectedEntityId) {
-            setLoadingDetails(true);
-            setHiddenTransactionIds(new Set());
-            const typeMap: Record<string, 'doctor' | 'supplier' | 'designer'> = {
-                doctors: 'doctor',
-                suppliers: 'supplier',
-                designers: 'designer'
-            };
+    const refreshStatementDetails = useCallback(async (resetHidden = false) => {
+        if (viewMode !== 'detail' || !selectedEntityId) return;
 
-            db.fetchFullEntityStatement(selectedEntityId, typeMap[activeTab])
-                .then(({ orders, transactions }) => {
-                    setDetailOrders(orders);
-                    setDetailTransactions(transactions);
-                })
-                .catch(err => console.error("Failed to load full statement:", err))
-                .finally(() => { setLoadingDetails(false); console.log('Details loaded', loadingDetails); });
+        setLoadingDetails(true);
+        if (resetHidden) setHiddenTransactionIds(new Set());
+
+        const typeMap: Record<string, 'doctor' | 'supplier' | 'designer'> = {
+            doctors: 'doctor',
+            suppliers: 'supplier',
+            designers: 'designer'
+        };
+
+        try {
+            const { orders, transactions } = await db.fetchFullEntityStatement(selectedEntityId, typeMap[activeTab]);
+            setDetailOrders(orders);
+            setDetailTransactions(transactions);
+        } catch (err) {
+            console.error("Failed to load full statement:", err);
+        } finally {
+            setLoadingDetails(false);
         }
     }, [viewMode, selectedEntityId, activeTab]);
+
+    useEffect(() => {
+        refreshStatementDetails(true);
+    }, [refreshStatementDetails, showAllOrders, dateRange.start, dateRange.end]);
+
+    useEffect(() => {
+        const handleFocus = () => refreshStatementDetails(false);
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
+    }, [refreshStatementDetails]);
 
     useEffect(() => {
         setChildDoctorFilter('');
@@ -1766,11 +1791,7 @@ export default function Accounts() {
                                 const filteredItems = statementSearch
                                     ? individualStatement.items.filter(item =>
                                         !item.isHidden &&
-                                        (
-                                            item.description.toLowerCase().includes(statementSearch.toLowerCase()) ||
-                                            (item.services || '').toLowerCase().includes(statementSearch.toLowerCase()) ||
-                                            (item.details || '').toLowerCase().includes(statementSearch.toLowerCase())
-                                        )
+                                        matchesStatementSearch(item, statementSearch)
                                     )
                                     : individualStatement.items.filter(item => !item.isHidden);
                                 return filteredItems.length === 0 ? (

@@ -11,6 +11,7 @@ import { Card } from '../ui/Card';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
 import { isDesignerUser, isRepresentativeUser } from '../../lib/userRoles';
+import { getDoctorServicePrice } from '../../lib/pricingUtils';
 
 interface OrderFormProps {
     onCancel: () => void;
@@ -233,14 +234,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         } else if (item.price > 0) {
             // Previously saved price from DB — respect it (may differ from svc.sellingPrice)
             unitPrice = item.price;
-        } else if (finalDoctor?.customPrices?.[item.serviceType] !== undefined) {
-            unitPrice = finalDoctor.customPrices[item.serviceType];
-        } else if (currentDoctor?.customPrices?.[item.serviceType] !== undefined) {
-            unitPrice = currentDoctor.customPrices[item.serviceType];
-        } else if (svc) {
-            unitPrice = svc.sellingPrice;
         } else {
-            unitPrice = 0;
+            unitPrice = getDoctorServicePrice(item.serviceType, svc, finalDoctor, doctors);
         }
 
         return sum + (count * unitPrice);
@@ -294,6 +289,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 const dCost = (designer?.unitRate || 0) * count;
                 let mCost = 0;
                 if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+                else if (svc?.millingPrice) mCost = svc.millingPrice * count;
                 else if (svc) mCost = (svc.costPrice * 0.5) * count;
                 return sum + dCost + mCost;
             }, 0);
@@ -328,14 +324,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     } else if (i.price > 0) {
                         // Previously saved price — preserve it as-is
                         resolvedUnitPrice = i.price;
-                    } else if (finalDoctor?.customPrices?.[i.serviceType] !== undefined) {
-                        resolvedUnitPrice = finalDoctor.customPrices[i.serviceType];
-                    } else if (currentDoctor?.customPrices?.[i.serviceType] !== undefined) {
-                        resolvedUnitPrice = currentDoctor.customPrices[i.serviceType];
-                    } else if (svc) {
-                        resolvedUnitPrice = svc.sellingPrice;
                     } else {
-                        resolvedUnitPrice = 0;
+                        resolvedUnitPrice = getDoctorServicePrice(i.serviceType, svc, finalDoctor, doctors);
                     }
                     return { serviceType: i.serviceType, teethNumbers: i.teethNumbers, price: resolvedUnitPrice, shade: i.shade };
                 }),
@@ -779,6 +769,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                             const dCost = (designer?.unitRate || 0) * count;
                                             let mCost = 0;
                                             if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+                                            else if (svc?.millingPrice) mCost = svc.millingPrice * count;
                                             else if (svc) mCost = (svc.costPrice * 0.5) * count;
                                             return sum + dCost + mCost;
                                         }, 0);

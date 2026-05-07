@@ -181,12 +181,14 @@ export default function OrderCard({
     // Active-but-returned: amber styling, NO archive button — case needs rework before delivery
     const isReturnedStatus = order.status === 'Returned for Adjustments';
     const isDelivered = order.status === 'Delivered';
+    const canArchiveOrders = userRole === 'admin';
 
     const resolvedDoctor = fullDoctors?.find((d: any) => d.id === order.doctorId);
     const parentDoctor = resolvedDoctor?.parentId ? fullDoctors?.find((d: any) => d.id === resolvedDoctor.parentId) : null;
     const doctorDisplayName = parentDoctor ? `${parentDoctor.name}` : `${doctors[order.doctorId] || 'غير معروف'}`;
 
     const handleArchive = async (archive: boolean) => {
+        if (!canArchiveOrders) return;
         if (!confirm(archive ? 'أرشفة الطلب؟ سيختفي من القائمة الرئيسية.' : 'إلغاء الأرشفة؟')) return;
         try {
             await db.updateOrder(order.id, { isArchived: archive });
@@ -632,7 +634,7 @@ export default function OrderCard({
                             </div>
 
                             {/* Archive Action for Cancelled/Rejected only — NOT for Returned orders */}
-                            {isRedStatus && !order.isArchived && (
+                            {canArchiveOrders && isRedStatus && !order.isArchived && (
                                 <button
                                     onClick={() => handleArchive(true)}
                                     className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-red-200"
@@ -644,7 +646,7 @@ export default function OrderCard({
                             )}
 
                             {/* Unarchive Action */}
-                            {order.isArchived && (
+                            {canArchiveOrders && order.isArchived && (
                                 <button
                                     onClick={() => handleArchive(false)}
                                     className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300"

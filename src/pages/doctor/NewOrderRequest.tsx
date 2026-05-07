@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, type Order, type Service, type OrderItem } from '../../services/db';
+import { db, type Doctor, type Order, type Service, type OrderItem } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../../components/ui/Input';
@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Box, Plus, Trash2, Link as LinkIcon, Image, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getDoctorServicePrice } from '../../lib/pricingUtils';
 
 interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
     teethNumbers: string;
@@ -18,8 +19,9 @@ export default function NewOrderRequest() {
     const navigate = useNavigate();
 
     const [services, setServices] = useState<Service[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [loading, setLoading] = useState(false);
-    const [doctorInfo, setDoctorInfo] = useState<import('../../services/db').Doctor | null>(null);
+    const [doctorInfo, setDoctorInfo] = useState<Doctor | null>(null);
 
     // Form State
     const [patientName, setPatientName] = useState('');
@@ -33,11 +35,15 @@ export default function NewOrderRequest() {
 
     useEffect(() => {
         const loadInitialData = async () => {
-            const data = await db.getServices();
+            const [data, doctorsData] = await Promise.all([
+                db.getServices(),
+                db.getDoctors()
+            ]);
             setServices(data.sort((a, b) => a.name.localeCompare(b.name)));
+            setDoctors(doctorsData);
             
             if (user?.entityId) {
-                const doc = await db.getDoctor(user.entityId);
+                const doc = doctorsData.find(d => d.id === user.entityId) || await db.getDoctor(user.entityId);
                 setDoctorInfo(doc);
             }
         };
@@ -69,9 +75,7 @@ export default function NewOrderRequest() {
         return items.reduce((sum, item) => {
             const count = item.teethNumbers ? item.teethNumbers.split(',').filter(t => t.trim() !== '').length : 0;
             const svc = services.find(s => s.name === item.serviceType);
-            const unitPrice = doctorInfo?.customPrices?.[item.serviceType] !== undefined 
-                ? doctorInfo.customPrices[item.serviceType] 
-                : (svc ? svc.sellingPrice : 0);
+            const unitPrice = getDoctorServicePrice(item.serviceType, svc, doctorInfo, doctors);
             return sum + (count * unitPrice);
         }, 0);
     };
@@ -112,11 +116,11 @@ export default function NewOrderRequest() {
                 doctorId: user.entityId,
                 patientName,
                 items: items.map(i => {
-                    const defaultPrice = services.find(s => s.name === i.serviceType)?.sellingPrice || 0;
+                    const service = services.find(s => s.name === i.serviceType);
                     return {
                         ...i,
                         teethNumbers: i.teethNumbers.split(',').map(s => s.trim()).filter(Boolean),
-                        price: doctor.customPrices?.[i.serviceType] !== undefined ? doctor.customPrices[i.serviceType] : defaultPrice
+                        price: getDoctorServicePrice(i.serviceType, service, doctor, doctors)
                     };
                 }),
                 shade,

@@ -132,13 +132,17 @@ export default function Doctors() {
             }
 
             let savedCenterId = editingId;
+            const doctorPayload = {
+                ...newDoctor,
+                name: newDoctor.name.trim(),
+                doctorCode: normalizedCode,
+                customPrices: newDoctor.parentId ? {} : newDoctor.customPrices
+            };
 
             if (editingId) {
                 // Update
                 const updatedDoc = await db.updateDoctor(editingId, {
-                    ...newDoctor,
-                    name: newDoctor.name.trim(),
-                    doctorCode: normalizedCode
+                    ...doctorPayload
                 });
                 if (updatedDoc) {
                     setDoctors(prev => prev.map(d => d.id === editingId ? updatedDoc : d));
@@ -146,9 +150,7 @@ export default function Doctors() {
             } else {
                 // Create
                 const doc = await db.addDoctor({
-                    ...newDoctor,
-                    name: newDoctor.name.trim(),
-                    doctorCode: normalizedCode
+                    ...doctorPayload
                 });
                 savedCenterId = doc.id;
                 setDoctors(prev => [...prev, doc]);
@@ -166,7 +168,8 @@ export default function Doctors() {
                             await db.updateDoctor(child.id, { 
                                 ...existingChild, 
                                 name: child.name.trim(), 
-                                phone: child.phone 
+                                phone: child.phone,
+                                customPrices: {}
                             });
                         }
                     } else {

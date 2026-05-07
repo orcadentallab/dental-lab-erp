@@ -20,6 +20,7 @@ import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 import { useToast } from '../context/ToastContext';
 import { ErrorHandler } from '../lib/errorHandler';
+import { useNavigate } from 'react-router-dom';
 
 const DASHBOARD_CACHE_KEY = 'dashboard-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -43,6 +44,7 @@ interface DashboardCache {
 
 export default function DashboardNew() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const toast = useToast();
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
@@ -85,6 +87,13 @@ export default function DashboardNew() {
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
     const canViewDeliveryFollowUp = user?.role === 'admin' || user?.role === 'representative';
     const canEditDeliveryDates = user?.role === 'admin' || user?.role === 'representative';
+    const goToOrder = (order: Order) => {
+        const params = new URLSearchParams({
+            q: order.caseId,
+            highlight: order.id
+        });
+        navigate(`/orders?${params.toString()}`);
+    };
 
     useEffect(() => {
         if (!user) return;
@@ -644,6 +653,7 @@ export default function DashboardNew() {
 
 
     const handleArchiveOrder = async (orderId: string) => {
+        if (user?.role !== 'admin') return;
         try {
             await db.updateOrder(orderId, { isArchived: true });
             // Remove from local state immediately to hide from alerts
@@ -1219,7 +1229,13 @@ export default function DashboardNew() {
                                             </div>
                                             <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                                                 {designerOrders.map(order => (
-                                                    <div key={order.id} className="flex items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-default">
+                                                    <button
+                                                        key={order.id}
+                                                        type="button"
+                                                        onClick={() => goToOrder(order)}
+                                                        className="flex w-full items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer text-right"
+                                                        title="فتح الأوردر"
+                                                    >
                                                         <div className="flex items-center gap-2 min-w-0">
                                                             <span className="font-mono text-xs text-gray-400">#{order.caseId}</span>
                                                             <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{order.patientName}</span>
@@ -1227,7 +1243,7 @@ export default function DashboardNew() {
                                                         <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium ${getDesignerStatusClass(order)}`}>
                                                             {getDesignerStatusLabel(order)}
                                                         </span>
-                                                    </div>
+                                                    </button>
                                                 ))}
                                             </div>
                                         </div>
@@ -1289,7 +1305,13 @@ export default function DashboardNew() {
                                             </div>
                                             <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
                                                 {labOrders.map(order => (
-                                                    <div key={order.id} className="flex items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-default">
+                                                    <button
+                                                        key={order.id}
+                                                        type="button"
+                                                        onClick={() => goToOrder(order)}
+                                                        className="flex w-full items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer text-right"
+                                                        title="فتح الأوردر"
+                                                    >
                                                         <div className="flex items-center gap-2 min-w-0">
                                                             <span className="font-mono text-xs text-gray-400">#{order.caseId}</span>
                                                             <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{order.patientName}</span>
@@ -1307,7 +1329,7 @@ export default function DashboardNew() {
                                                                 {order.status === 'Rejected' ? 'رفض دكتور' : order.status}
                                                             </span>
                                                         </div>
-                                                    </div>
+                                                    </button>
                                                 ))}
                                             </div>
                                         </div>
@@ -1669,7 +1691,7 @@ export default function DashboardNew() {
                         order={order}
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
-                        onArchive={handleArchiveOrder}
+                        onArchive={user?.role === 'admin' ? handleArchiveOrder : undefined}
                     />
                 ))}
             </OrderListModal>
@@ -1685,7 +1707,7 @@ export default function DashboardNew() {
                         order={order}
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
-                        onArchive={handleArchiveOrder}
+                        onArchive={user?.role === 'admin' ? handleArchiveOrder : undefined}
                     />
                 ))}
             </OrderListModal>
