@@ -5,6 +5,7 @@ import { db } from '../../services/db';
 import { Clock, User, MessageCircle, Building2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
+import { filterVisibleOrderComments, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 
 const statuses = [
     { id: 'New Case', label: 'حالة جديدة (New)', color: 'bg-teal-100 text-teal-700 border-teal-200' },
@@ -82,7 +83,11 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                             <span className="bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 text-xs px-2 py-0.5 rounded-full font-mono">{colOrders.length}</span>
                         </div>
                         <div className="p-2 flex-1 overflow-y-auto space-y-2">
-                            {colOrders.map(order => (
+                            {colOrders.map(order => {
+                                const visibleComments = filterVisibleOrderComments(order.comments);
+                                const displayDate = getOrderCardDisplayDate(order);
+
+                                return (
                                 <motion.div
                                     layoutId={order.id}
                                     key={order.id}
@@ -102,9 +107,9 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                                         <span className="bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-100 dark:border-primary-800 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold">
                                             #{order.caseId}
                                         </span>
-                                        {order.deliveryDate && (
-                                            <span className="text-[9px] text-surface-500 flex items-center gap-1 font-mono">
-                                                <Clock size={10} /> {order.deliveryDate}
+                                        {displayDate.date && (
+                                            <span className="text-[9px] text-surface-500 flex items-center gap-1 font-mono" title={displayDate.label}>
+                                                <Clock size={10} /> {displayDate.date}
                                             </span>
                                         )}
                                     </div>
@@ -138,9 +143,9 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                                                     className="p-1 text-surface-400 hover:text-primary-600 hover:bg-primary-50 rounded transition-colors relative"
                                                 >
                                                     <MessageCircle size={14} />
-                                                    {(order.comments && order.comments.length > 0) && (
+                                                    {visibleComments.length > 0 && (
                                                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white ring-1 ring-white">
-                                                            {order.comments.length}
+                                                            {visibleComments.length}
                                                         </span>
                                                     )}
                                                 </button>
@@ -148,7 +153,8 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                                         </div>
                                     </div>
                                 </motion.div>
-                            ))}
+                                );
+                            })}
                             {colOrders.length === 0 && (
                                 <div className="text-center p-4 text-surface-300 dark:text-surface-600 text-xs border-2 border-dashed border-surface-200 dark:border-surface-700 rounded-xl mt-2">
                                     اسحب الحالات هنا

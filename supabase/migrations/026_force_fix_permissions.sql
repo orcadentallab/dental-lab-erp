@@ -14,10 +14,10 @@ CREATE POLICY "Designers can update their assigned orders"
 ON orders FOR UPDATE
 TO authenticated
 USING (
-  (designer_id = auth.uid()) OR (role IN ('admin', 'representative'))
+  (designer_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin', 'representative'))
 )
 WITH CHECK (
-  (designer_id = auth.uid()) OR (role IN ('admin', 'representative'))
+  (designer_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin', 'representative'))
 );
 
 -- Re-apply Select Policy
@@ -26,7 +26,7 @@ CREATE POLICY "Designers can view their assigned orders"
 ON orders FOR SELECT
 TO authenticated
 USING (
-  (designer_id = auth.uid()) OR (role IN ('admin', 'representative', 'lab', 'accountant'))
+  (designer_id = auth.uid()) OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin', 'representative', 'lab', 'accountant'))
 );
 
 -- Fix order_history permissions specifically

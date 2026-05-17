@@ -2,6 +2,7 @@ import { ArrowDownLeft, ArrowUpRight, History, Wallet } from 'lucide-react';
 import clsx from 'clsx';
 import type { Transaction, Order, Doctor } from '../../services/db';
 import type { Adjustment } from '../../services/financeService';
+import { getDoctorReceivableAmount, isDoctorStatementIncluded } from '../../constants/orderLifecycle';
 
 interface AccountInfoPanelProps {
     entityId: string;
@@ -70,10 +71,9 @@ export function AccountInfoPanel({
     if (entityType === 'doctor') {
         const entityOrders = orders.filter((o) => {
             if (!entityIdSet.has(o.doctorId)) return false;
-            if (o.status === 'Rejected') return false;
-            return ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
+            return isDoctorStatementIncluded(o);
         });
-        totalWork = entityOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0) + totalCharges;
+        totalWork = entityOrders.reduce((sum, o) => sum + getDoctorReceivableAmount(o), 0) + totalCharges;
         // Income from doctor
         totalPaid = entityTransactions
             .filter((t) => t.type === 'income')

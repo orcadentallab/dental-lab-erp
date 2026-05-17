@@ -30,5 +30,8 @@ TO authenticated
 USING (
   auth.uid() = designer_id
   OR
-  role IN ('admin', 'lab', 'representative', 'accountant')
+  EXISTS (
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid() AND role IN ('admin', 'lab', 'representative', 'accountant')
+  )
 );

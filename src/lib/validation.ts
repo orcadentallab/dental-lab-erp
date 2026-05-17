@@ -65,6 +65,7 @@ export const OrderSchema = z.object({
     isUrgent: z.boolean().optional(),
     deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صحيح'),
     cost: z.number().min(0),
+    manualCost: z.number().min(0).optional().nullable(),
     stlUrl: z.string().url().optional().nullable(),
     supplierId: z.string().uuid().optional().nullable(),
     instructions: z.string().max(2000).optional().nullable(),

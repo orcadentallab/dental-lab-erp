@@ -5,11 +5,373 @@ import type { Order, OrderHistoryEntry, Transaction } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 import { generateArabicSearchPattern } from '../../lib/searchUtils';
+import { ORDER_EVENT_TYPES } from '../../constants/orderEvents';
+import { getDoctorReceivableAmount, getProductionStatus, isFinalReady, isTryInOrder } from '../../constants/orderLifecycle';
+import {
+    DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE,
+    EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE,
+    EXTERNAL_LAB_PAYABLE_VOID_FAILURE_MESSAGE,
+    FINANCIAL_OBLIGATIONS_FLAGS,
+    getLabCostMetadata,
+    shouldCreateDoctorReceivableObligationForStatusChange,
+    shouldCreateExternalLabPayableObligationForStatusChange,
+    shouldVoidDoctorReceivableForStatusOrIssueChange,
+    shouldVoidExternalLabReadyObligationForStatusChange,
+} from '../../constants/financialObligations';
+import {
+    createOrderEvent,
+    getStatusChangeEventType,
+    logDeliveryDateChanged,
+    type DeliveryDateResponsibilityParty,
+} from './orderEvents';
+import {
+    createDoctorReceivableObligationForOrder,
+    createExternalLabPayableObligationForOrder,
+    findActiveDoctorDeliveredObligationForOrder,
+    findActiveExternalLabReadyObligationForOrder,
+    voidFinancialObligation,
+} from './financialObligations';
 
 // Helper to handle joined data which isn't in DbOrder type
 interface DbOrderWithRelations extends DbOrder {
     order_items?: DbOrderItemRow[];
     order_comments?: DbOrderCommentRow[];
+}
+
+export interface OrderEventActorContext {
+    userId?: string;
+    actorRole?: string;
+}
+
+export interface UpdateOrderContext extends OrderEventActorContext {
+    deliveryDateChangeReason?: string | null;
+    deliveryDateChangeReasonCode?: string | null;
+    deliveryDateChangeNotes?: string | null;
+    deliveryDateResponsibilityParty?: DeliveryDateResponsibilityParty;
+    deliveryDateChangeSource?: string | null;
+    skipDeliveryDateEvent?: boolean;
+}
+
+const DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE =
+    'Order left final delivered workflow, but shadow doctor receivable obligation could not be voided.';
+const DOCTOR_RECEIVABLE_PARTY_CORRECTION_FAILURE_MESSAGE =
+    'Doctor was corrected, but shadow doctor receivable obligation could not be updated.';
+const EXTERNAL_LAB_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE =
+    'Supplier was corrected, but shadow external lab payable obligation could not be updated.';
+const DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
+    'Doctor receivable amount was corrected, but shadow doctor receivable obligation could not be updated.';
+const EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
+    'External lab cost was corrected, but shadow external lab payable obligation could not be updated.';
+
+async function createOrderEventNonBlocking(
+    label: string,
+    input: Parameters<typeof createOrderEvent>[0]
+): Promise<void> {
+    try {
+        const event = await createOrderEvent(input);
+        if (!event) {
+            console.error(`Order event was not created: ${label}`);
+        }
+    } catch (error) {
+        console.error(`Failed to create order event: ${label}`, error);
+    }
+}
+
+const normalizeDateOnly = (date?: string | null): string => {
+    if (!date) return '';
+    const directDateMatch = date.match(/^\d{4}-\d{2}-\d{2}/);
+    if (directDateMatch) return directDateMatch[0];
+    const parsed = new Date(date);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().split('T')[0];
+};
+
+async function correctDoctorReceivablePartyAfterOrderUpdate(input: {
+    previousOrder: Order;
+    updatedOrder: Order;
+    changedBy?: string | null;
+}): Promise<void> {
+    const previousDoctorId = input.previousOrder.doctorId || null;
+    const newDoctorId = input.updatedOrder.doctorId || null;
+
+    if (previousDoctorId === newDoctorId) return;
+
+    const isReceivableEligible = getProductionStatus(input.updatedOrder) === 'delivered';
+    if (!isReceivableEligible) return;
+
+    if ((input.updatedOrder.totalPrice || 0) <= 0) {
+        console.debug('Doctor corrected after Delivered, but shadow receivable was not created because totalPrice is missing or zero', {
+            orderId: input.updatedOrder.id,
+            previousDoctorId,
+            newDoctorId,
+            totalPrice: input.updatedOrder.totalPrice,
+        });
+        return;
+    }
+
+    let replacedObligationId: string | null = null;
+
+    if (previousDoctorId) {
+        const oldObligation = await findActiveDoctorDeliveredObligationForOrder(input.updatedOrder.id, previousDoctorId);
+        if (oldObligation) {
+            replacedObligationId = oldObligation.id;
+            await voidFinancialObligation(
+                oldObligation.id,
+                `Doctor corrected from ${previousDoctorId} to ${newDoctorId || 'none'}`,
+                {
+                    voidReason: 'doctor_corrected',
+                    previousDoctorId,
+                    newDoctorId,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                }
+            );
+        }
+    }
+
+    if (!newDoctorId) {
+        console.debug('Doctor corrected after Delivered, but no new doctorId was provided for shadow receivable creation', {
+            orderId: input.updatedOrder.id,
+            previousDoctorId,
+        });
+        return;
+    }
+
+    await createDoctorReceivableObligationForOrder(input.updatedOrder, {
+        createdBy: input.changedBy || null,
+        metadata: {
+            correctionReason: previousDoctorId ? 'doctor_corrected' : 'doctor_added_after_delivered',
+            previousDoctorId,
+            newDoctorId,
+            replacedObligationId,
+            shadowMode: true,
+            trackingOnly: true,
+        },
+    });
+}
+
+async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
+    previousOrder: Order;
+    updatedOrder: Order;
+    changedBy?: string | null;
+}): Promise<void> {
+    const isReceivableEligible = getProductionStatus(input.updatedOrder) === 'delivered' && !!input.updatedOrder.doctorId;
+    if (!isReceivableEligible) return;
+
+    const newAmount = getDoctorReceivableAmount(input.updatedOrder);
+    const activeObligation = await findActiveDoctorDeliveredObligationForOrder(input.updatedOrder.id, input.updatedOrder.doctorId);
+    const previousAmount = activeObligation?.grossAmount ?? getDoctorReceivableAmount(input.previousOrder);
+
+    if (newAmount <= 0) {
+        if (activeObligation) {
+            await voidFinancialObligation(
+                activeObligation.id,
+                `Doctor receivable amount corrected from ${activeObligation.grossAmount} to 0`,
+                {
+                    voidReason: 'doctor_amount_zero_or_removed',
+                    previousAmount: activeObligation.grossAmount,
+                    newAmount: 0,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                }
+            );
+        }
+        return;
+    }
+
+    if (!activeObligation) {
+        await createDoctorReceivableObligationForOrder(input.updatedOrder, {
+            createdBy: input.changedBy || null,
+            metadata: {
+                correctionReason: 'doctor_amount_added_after_delivered',
+                previousAmount,
+                newAmount,
+                changedBy: input.changedBy || null,
+                shadowMode: true,
+                trackingOnly: true,
+            },
+        });
+        return;
+    }
+
+    if (activeObligation.grossAmount === newAmount) return;
+
+    await voidFinancialObligation(
+        activeObligation.id,
+        `Doctor receivable amount corrected from ${activeObligation.grossAmount} to ${newAmount}`,
+        {
+            voidReason: 'doctor_amount_corrected',
+            previousAmount: activeObligation.grossAmount,
+            newAmount,
+            changedBy: input.changedBy || null,
+            shadowMode: true,
+        }
+    );
+
+    await createDoctorReceivableObligationForOrder(input.updatedOrder, {
+        createdBy: input.changedBy || null,
+        metadata: {
+            correctionReason: 'doctor_amount_corrected',
+            previousAmount: activeObligation.grossAmount,
+            newAmount,
+            replacedObligationId: activeObligation.id,
+            changedBy: input.changedBy || null,
+            shadowMode: true,
+            trackingOnly: true,
+        },
+    });
+}
+
+async function correctExternalLabPayablePartyAfterOrderUpdate(input: {
+    previousOrder: Order;
+    updatedOrder: Order;
+    changedBy?: string | null;
+}): Promise<void> {
+    const previousSupplierId = input.previousOrder.supplierId || null;
+    const newSupplierId = input.updatedOrder.supplierId || null;
+
+    if (previousSupplierId === newSupplierId) return;
+
+    const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'delivered';
+    const isPayableEligible = isFinalReady(input.updatedOrder) || impliedFinalReady;
+    if (!isPayableEligible) return;
+
+    if ((input.updatedOrder.cost || 0) <= 0) {
+        console.debug('Supplier corrected after Final Ready/Delivered, but shadow payable was not created because cost is missing or zero', {
+            orderId: input.updatedOrder.id,
+            previousSupplierId,
+            newSupplierId,
+            cost: input.updatedOrder.cost,
+        });
+        return;
+    }
+
+    let replacedObligationId: string | null = null;
+
+    if (previousSupplierId) {
+        const oldObligation = await findActiveExternalLabReadyObligationForOrder(input.updatedOrder.id, previousSupplierId);
+        if (oldObligation) {
+            replacedObligationId = oldObligation.id;
+            await voidFinancialObligation(
+                oldObligation.id,
+                `Supplier corrected from ${previousSupplierId} to ${newSupplierId || 'none'}`,
+                {
+                    voidReason: 'supplier_corrected',
+                    previousSupplierId,
+                    newSupplierId,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                }
+            );
+        }
+    }
+
+    if (!newSupplierId) {
+        console.debug('Supplier corrected after Final Ready/Delivered, but no new supplierId was provided for shadow payable creation', {
+            orderId: input.updatedOrder.id,
+            previousSupplierId,
+        });
+        return;
+    }
+
+    await createExternalLabPayableObligationForOrder(input.updatedOrder, {
+        createdBy: input.changedBy || null,
+        impliedFinalReady,
+        triggerDate: impliedFinalReady
+            ? (input.updatedOrder.actualDeliveryDate || new Date().toISOString().split('T')[0])
+            : undefined,
+        metadata: {
+            correctionReason: previousSupplierId ? 'supplier_corrected' : 'supplier_added_after_ready_or_delivered',
+            previousSupplierId,
+            newSupplierId,
+            replacedObligationId,
+            shadowMode: true,
+            trackingOnly: true,
+        },
+    });
+}
+
+async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
+    previousOrder: Order;
+    updatedOrder: Order;
+    changedBy?: string | null;
+}): Promise<void> {
+    const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'delivered' && !isTryInOrder(input.updatedOrder);
+    const isPayableEligible = (isFinalReady(input.updatedOrder) || impliedFinalReady) && !!input.updatedOrder.supplierId;
+    if (!isPayableEligible) return;
+
+    const labCostMetadata = getLabCostMetadata(input.updatedOrder);
+    const newAmount = labCostMetadata.cost;
+    const activeObligation = await findActiveExternalLabReadyObligationForOrder(input.updatedOrder.id, input.updatedOrder.supplierId);
+    const previousAmount = activeObligation?.grossAmount ?? getLabCostMetadata(input.previousOrder).cost;
+
+    if (newAmount <= 0) {
+        if (activeObligation) {
+            await voidFinancialObligation(
+                activeObligation.id,
+                `External lab payable amount corrected from ${activeObligation.grossAmount} to 0`,
+                {
+                    voidReason: 'lab_cost_zero_or_removed',
+                    previousAmount: activeObligation.grossAmount,
+                    newAmount: 0,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                }
+            );
+        }
+        return;
+    }
+
+    const createContext = {
+        createdBy: input.changedBy || null,
+        impliedFinalReady,
+        triggerDate: impliedFinalReady
+            ? (input.updatedOrder.actualDeliveryDate || new Date().toISOString().split('T')[0])
+            : undefined,
+    };
+
+    if (!activeObligation) {
+        await createExternalLabPayableObligationForOrder(input.updatedOrder, {
+            ...createContext,
+            metadata: {
+                correctionReason: 'lab_cost_added_after_ready_or_delivered',
+                previousAmount,
+                newAmount,
+                ...labCostMetadata,
+                changedBy: input.changedBy || null,
+                shadowMode: true,
+                trackingOnly: true,
+            },
+        });
+        return;
+    }
+
+    if (activeObligation.grossAmount === newAmount) return;
+
+    await voidFinancialObligation(
+        activeObligation.id,
+        `External lab payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}`,
+        {
+            voidReason: 'lab_cost_corrected',
+            previousAmount: activeObligation.grossAmount,
+            newAmount,
+            changedBy: input.changedBy || null,
+            shadowMode: true,
+        }
+    );
+
+    await createExternalLabPayableObligationForOrder(input.updatedOrder, {
+        ...createContext,
+        metadata: {
+            correctionReason: 'lab_cost_corrected',
+            previousAmount: activeObligation.grossAmount,
+            newAmount,
+            replacedObligationId: activeObligation.id,
+            ...labCostMetadata,
+            changedBy: input.changedBy || null,
+            shadowMode: true,
+            trackingOnly: true,
+        },
+    });
 }
 
 // Transform database record to application format
@@ -53,6 +415,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         status: dbOrder.status,
         deliveryDate: dbOrder.delivery_date,
         cost: dbOrder.cost,
+        manualCost: dbOrder.manual_cost ?? undefined,
         stlUrl: dbOrder.stl_url || undefined,
         imagesUrl: dbOrder.images_url || undefined,
         supplierId: dbOrder.supplier_id || undefined,
@@ -78,6 +441,9 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         statusHistory: dbOrder.status_history || undefined,
         isArchived: dbOrder.is_archived || false,
         rejectedLabCost: dbOrder.rejected_lab_cost || undefined,
+        // WF-1 shadow workflow columns (default to 'not_started'/'none' if absent).
+        productionStatus: dbOrder.production_status || undefined,
+        issueState: dbOrder.issue_state || undefined,
     };
 }
 
@@ -95,6 +461,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         status: order.status,
         delivery_date: order.deliveryDate,
         cost: order.cost,
+        manual_cost: order.manualCost ?? null,
         stl_url: order.stlUrl || null,
         images_url: order.imagesUrl || null,
         supplier_id: order.supplierId || null,
@@ -119,6 +486,11 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         status_history: order.statusHistory || [],
         is_archived: order.isArchived || false,
         rejected_lab_cost: order.rejectedLabCost || null,
+        // WF-1 shadow columns: pass through if the caller specified them; the DB
+        // defaults handle inserts that omit them. Finance logic does not depend
+        // on these in WF-1.
+        ...(order.productionStatus ? { production_status: order.productionStatus } : {}),
+        ...(order.issueState ? { issue_state: order.issueState } : {}),
     };
 }
 
@@ -369,6 +741,7 @@ export async function getDesignerDashboardOrders(designerId?: string): Promise<O
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
         .eq('workflow_type', 'split')
+        .not('status', 'in', '("Delivered","Completed","Rejected","Cancelled")')
         .or('is_archived.eq.false,is_archived.is.null')
         .order('created_at', { ascending: false })
         .range(0, 999);
@@ -427,7 +800,7 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
-        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, workflow_type, created_at, delivery_date, is_archived, rejected_lab_cost')
+        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, workflow_type, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost')
         .order('created_at', { ascending: false })
         .range(0, 9999);
 
@@ -446,6 +819,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         workflowType: d.workflow_type || undefined,
         createdAt: d.created_at,
         deliveryDate: d.delivery_date,
+        actualDeliveryDate: d.actual_delivery_date || undefined,
         isArchived: d.is_archived || undefined,
         rejectedLabCost: d.rejected_lab_cost || undefined
     }));
@@ -564,7 +938,7 @@ export async function getOrder(id: string): Promise<Order | null> {
     return data ? dbToOrder(data as unknown as DbOrderWithRelations) : null;
 }
 
-export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
+export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: OrderEventActorContext = {}): Promise<Order> {
     // Validate input
     try {
         OrderCreateSchema.parse(order);
@@ -618,14 +992,56 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<
         if (commentsError) console.error('Failed to insert comments:', commentsError);
     }
 
+    await createOrderEventNonBlocking('order_created', {
+        orderId: newOrderId,
+        eventType: ORDER_EVENT_TYPES.orderCreated,
+        changedBy: context.userId || null,
+        actorRole: context.actorRole || null,
+        severity: 'info',
+        metadata: {
+            caseId: order.caseId,
+            status: order.status,
+            productionStatus: getProductionStatus(order),
+            doctorId: order.doctorId,
+            supplierId: order.supplierId || null,
+            designerId: order.designerId || null,
+            workflowType: order.workflowType || null,
+            deliveryType: order.deliveryType || null,
+        },
+    });
+
     // Re-fetch formatted order with relations
     return getOrder(newOrderId) as Promise<Order>;
 }
 
-export async function updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
+export async function updateOrder(id: string, updates: Partial<Order>, context: UpdateOrderContext = {}): Promise<Order | null> {
     // Validate UUID
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         throw new ValidationError('معرف الطلب غير صحيح');
+    }
+
+    // Manual cost clearing contract:
+    // When the caller clears `manualCost` (sets it to null), they MUST also
+    // provide the recalculated effective `cost` in the same update, because
+    // the default cost is computed in the UI and is not stored in the DB.
+    // Without this, `cost` would silently retain the previous manual amount
+    // and the external-lab payable would not be corrected.
+    if ('manualCost' in updates && updates.manualCost === null && updates.cost === undefined) {
+        throw new ValidationError('Clearing manual cost requires providing the recalculated effective cost.');
+    }
+
+    const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
+    const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
+    const updateFields = Object.keys(updates) as (keyof Order)[];
+    const businessUpdateFields = updateFields.filter(field => !workflowFields.includes(field));
+    const isFinancialAdminOnly = businessUpdateFields.length > 0
+        && businessUpdateFields.every(field => financialAdminFields.includes(field));
+
+    if (isFinancialAdminOnly) {
+        updates = { ...updates };
+        workflowFields.forEach(field => {
+            delete updates[field];
+        });
     }
 
     // Validate updates if provided
@@ -634,6 +1050,65 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
             OrderUpdateSchema.parse({ id, ...updates });
         } catch (error: unknown) {
             throw new ValidationError(formatValidationError(error));
+        }
+    }
+
+    let currentOrderForUpdate: Order | null | undefined;
+    const getCurrentOrderForUpdate = async () => {
+        if (currentOrderForUpdate === undefined) {
+            currentOrderForUpdate = await getOrder(id);
+        }
+        return currentOrderForUpdate;
+    };
+
+    let deliveryDateChangeEvent: {
+        oldDeliveryDate: string;
+        newDeliveryDate: string;
+    } | null = null;
+
+    if (updates.deliveryDate !== undefined && !context.skipDeliveryDateEvent) {
+        const currentOrder = await getCurrentOrderForUpdate();
+        const oldDeliveryDate = normalizeDateOnly(currentOrder?.deliveryDate);
+        const newDeliveryDate = normalizeDateOnly(updates.deliveryDate);
+
+        if (currentOrder && oldDeliveryDate !== newDeliveryDate) {
+            deliveryDateChangeEvent = {
+                oldDeliveryDate,
+                newDeliveryDate,
+            };
+        }
+    }
+
+    let financialPartyCorrection: {
+        previousOrder: Order;
+        doctorChanged: boolean;
+        supplierChanged: boolean;
+        doctorAmountChanged: boolean;
+        labCostChanged: boolean;
+    } | null = null;
+
+    if (updates.doctorId !== undefined || updates.supplierId !== undefined || updates.totalPrice !== undefined || updates.discount !== undefined || updates.cost !== undefined || updates.manualCost !== undefined || updates.status !== undefined || updates.productionStatus !== undefined || updates.issueState !== undefined) {
+        const currentOrder = await getCurrentOrderForUpdate();
+        if (currentOrder) {
+            const oldDoctorId = currentOrder.doctorId || null;
+            const newDoctorId = updates.doctorId !== undefined ? (updates.doctorId || null) : oldDoctorId;
+            const oldSupplierId = currentOrder.supplierId || null;
+            const newSupplierId = updates.supplierId !== undefined ? (updates.supplierId || null) : oldSupplierId;
+            const oldDoctorAmount = getDoctorReceivableAmount(currentOrder);
+            const nextOrderForAmount = { ...currentOrder, ...updates };
+            const newDoctorAmount = getDoctorReceivableAmount(nextOrderForAmount);
+            // Compare effective lab cost (manualCost overrides cost when present)
+            // so that changing only manualCost still triggers the payable correction.
+            const oldLabCost = getLabCostMetadata(currentOrder).cost;
+            const newLabCost = getLabCostMetadata(nextOrderForAmount).cost;
+
+            financialPartyCorrection = {
+                previousOrder: currentOrder,
+                doctorChanged: oldDoctorId !== newDoctorId,
+                supplierChanged: oldSupplierId !== newSupplierId,
+                doctorAmountChanged: oldDoctorAmount !== newDoctorAmount,
+                labCostChanged: oldLabCost !== newLabCost,
+            };
         }
     }
 
@@ -650,6 +1125,15 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
     if (updates.status !== undefined) dbUpdates.status = updates.status;
     if (updates.deliveryDate !== undefined) dbUpdates.delivery_date = updates.deliveryDate;
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
+    if (updates.manualCost !== undefined) {
+        dbUpdates.manual_cost = updates.manualCost ?? null;
+        // Keep `cost` in sync with `manualCost` when the caller only supplies
+        // the override. This prevents the two fields from diverging and
+        // guarantees the effective order.cost reflects the manual override.
+        if (updates.cost === undefined && typeof updates.manualCost === 'number') {
+            dbUpdates.cost = updates.manualCost;
+        }
+    }
     if (updates.stlUrl !== undefined) dbUpdates.stl_url = updates.stlUrl || null;
     if (updates.imagesUrl !== undefined) dbUpdates.images_url = updates.imagesUrl || null;
     if (updates.supplierId !== undefined) dbUpdates.supplier_id = updates.supplierId || null;
@@ -682,7 +1166,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
 
     if (hasSensitiveUpdate && updates.isRegistered === undefined) {
         // Only reset if it was previously registered
-        const currentOrder = await getOrder(id);
+        const currentOrder = await getCurrentOrderForUpdate();
         if (currentOrder?.isRegistered) {
             dbUpdates.is_registered = false;
             
@@ -714,7 +1198,7 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
         // fetch current order to get old status and history
         let currentOrder: Order | null = null;
         try {
-            currentOrder = await getOrder(id);
+            currentOrder = await getCurrentOrderForUpdate();
         } catch (e) {
             console.error('Failed to fetch order for history update', e);
         }
@@ -747,9 +1231,13 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
 
             dbUpdates.status_history = history;
 
-            // 3. Set actual delivery date if status is 'Delivered'
+            // 3. Set actual delivery date if status is 'Delivered'.
+            // delivery_date remains the planned/requested date and is changed only by explicit edits.
             if (updates.status === 'Delivered') {
-                dbUpdates.actual_delivery_date = timestamp;
+                const deliveredDate = timestamp.split('T')[0];
+                dbUpdates.actual_delivery_date = deliveredDate;
+            } else if (updates.status !== undefined && getProductionStatus({ status: updates.status }) !== 'delivered') {
+                dbUpdates.actual_delivery_date = null;
             }
         }
     }
@@ -786,7 +1274,158 @@ export async function updateOrder(id: string, updates: Partial<Order>): Promise<
         throw ErrorHandler.handle(error, 'updateOrder');
     }
 
-    return getOrder(id);
+    if (deliveryDateChangeEvent) {
+        try {
+            const event = await logDeliveryDateChanged({
+                orderId: id,
+                oldDeliveryDate: deliveryDateChangeEvent.oldDeliveryDate,
+                newDeliveryDate: deliveryDateChangeEvent.newDeliveryDate,
+                changedBy: context.userId || null,
+                actorRole: context.actorRole || null,
+                reason: context.deliveryDateChangeReason || null,
+                reasonCode: context.deliveryDateChangeReasonCode || null,
+                notes: context.deliveryDateChangeNotes || null,
+                responsibilityParty: context.deliveryDateResponsibilityParty || 'unknown',
+                source: context.deliveryDateChangeSource || 'update_order',
+            });
+
+            if (!event) {
+                console.error('Delivery date changed, but structured order event was not created', {
+                    orderId: id,
+                    ...deliveryDateChangeEvent,
+                });
+            }
+        } catch (error) {
+            console.error('Failed to log delivery date changed event', {
+                orderId: id,
+                ...deliveryDateChangeEvent,
+                error,
+            });
+        }
+    }
+
+    const updatedOrder = await getOrder(id);
+
+    const shouldVoidDoctorReceivableForLifecycle = Boolean(
+        updatedOrder
+        && financialPartyCorrection
+        && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled
+        && shouldVoidDoctorReceivableForStatusOrIssueChange(financialPartyCorrection.previousOrder, updatedOrder)
+    );
+
+    if (shouldVoidDoctorReceivableForLifecycle && updatedOrder && financialPartyCorrection) {
+        const notes = 'Order left final delivered / became rejected, returned, cancelled, or issue; doctor receivable obligation voided.';
+
+        try {
+            const obligation = await findActiveDoctorDeliveredObligationForOrder(id);
+
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, notes, {
+                    voidReason: 'delivery_rejected_or_reverted',
+                    previousStatus: financialPartyCorrection.previousOrder.status,
+                    newStatus: updatedOrder.status,
+                    previousIssueState: financialPartyCorrection.previousOrder.issueState || null,
+                    newIssueState: updatedOrder.issueState || null,
+                    shadowMode: true,
+                    reviewNeeded: true,
+                });
+            } else {
+                console.debug('No active shadow doctor receivable obligation found to void after leaving final delivered workflow', {
+                    orderId: id,
+                    previousStatus: financialPartyCorrection.previousOrder.status,
+                    newStatus: updatedOrder.status,
+                });
+            }
+        } catch (error) {
+            console.error(DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE, {
+                orderId: id,
+                previousStatus: financialPartyCorrection.previousOrder.status,
+                newStatus: updatedOrder.status,
+                error,
+            });
+            throw new Error(DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE);
+        }
+    }
+
+    if (updatedOrder && financialPartyCorrection && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
+        if (financialPartyCorrection.doctorChanged) {
+            try {
+                await correctDoctorReceivablePartyAfterOrderUpdate({
+                    previousOrder: financialPartyCorrection.previousOrder,
+                    updatedOrder,
+                    changedBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(DOCTOR_RECEIVABLE_PARTY_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: id,
+                    previousDoctorId: financialPartyCorrection.previousOrder.doctorId || null,
+                    newDoctorId: updatedOrder.doctorId || null,
+                    error,
+                });
+                throw new Error(DOCTOR_RECEIVABLE_PARTY_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (financialPartyCorrection.supplierChanged) {
+            try {
+                await correctExternalLabPayablePartyAfterOrderUpdate({
+                    previousOrder: financialPartyCorrection.previousOrder,
+                    updatedOrder,
+                    changedBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(EXTERNAL_LAB_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: id,
+                    previousSupplierId: financialPartyCorrection.previousOrder.supplierId || null,
+                    newSupplierId: updatedOrder.supplierId || null,
+                    error,
+                });
+                throw new Error(EXTERNAL_LAB_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (
+            financialPartyCorrection.doctorAmountChanged
+            && !financialPartyCorrection.doctorChanged
+            && !shouldVoidDoctorReceivableForLifecycle
+        ) {
+            try {
+                await correctDoctorReceivableAmountAfterOrderUpdate({
+                    previousOrder: financialPartyCorrection.previousOrder,
+                    updatedOrder,
+                    changedBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: id,
+                    previousAmount: getDoctorReceivableAmount(financialPartyCorrection.previousOrder),
+                    newAmount: getDoctorReceivableAmount(updatedOrder),
+                    error,
+                });
+                throw new Error(DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (financialPartyCorrection.labCostChanged && !financialPartyCorrection.supplierChanged) {
+            try {
+                await correctExternalLabPayableAmountAfterOrderUpdate({
+                    previousOrder: financialPartyCorrection.previousOrder,
+                    updatedOrder,
+                    changedBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: id,
+                    previousAmount: financialPartyCorrection.previousOrder.cost || 0,
+                    newAmount: updatedOrder.cost || 0,
+                    error,
+                });
+                throw new Error(EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+    }
+
+    return updatedOrder;
 }
 
 export async function deleteOrder(id: string): Promise<void> {
@@ -795,14 +1434,36 @@ export async function deleteOrder(id: string): Promise<void> {
         throw new ValidationError('معرف الطلب غير صحيح');
     }
 
-    // UI delete is a recoverable hide/archive action. Hard deletes make cases
-    // impossible to find later from orders, accounts, or dashboards.
+    // First delete archives the order. Deleting an already archived order is a
+    // deliberate hard delete for fake/test orders.
     try {
         const order = await getOrder(id);
-        if (order) {
-            await updateOrder(id, { isArchived: true });
+        if (!order) return;
+
+        if (order.isArchived) {
+            const { error: unlinkRedoError } = await supabase
+                .from('orders')
+                .update({ original_order_id: null })
+                .eq('original_order_id', id);
+
+            if (unlinkRedoError) {
+                throw ErrorHandler.handle(unlinkRedoError, 'deleteOrder_unlinkRedoOrders');
+            }
+
+            const { error } = await supabase
+                .from('orders')
+                .delete()
+                .eq('id', id)
+                .eq('is_archived', true);
+
+            if (error) {
+                throw ErrorHandler.handle(error, 'deleteOrder_hardDelete');
+            }
+
+            return;
         }
-        return;
+
+        await updateOrder(id, { isArchived: true });
     } catch (e) {
         throw ErrorHandler.handle(e, 'deleteOrder');
     }
@@ -871,6 +1532,7 @@ export interface StatusUpdateContext {
     comment?: string;        // Optional comment to add
     userId?: string;         // User making the change
     userName?: string;       // User name for comment attribution
+    actorRole?: string;      // User role when available
     rejectedLabCost?: number; // Cost to lab when rejected
 }
 
@@ -951,7 +1613,165 @@ export async function updateOrderStatus(
     }
 
     // Use existing updateOrder for the actual update (handles history tracking)
-    return updateOrder(orderId, updates);
+    const updatedOrder = await updateOrder(orderId, updates);
+
+    const wasDelivered = getProductionStatus(currentOrder) === 'delivered';
+    const isNowDelivered = updatedOrder ? getProductionStatus(updatedOrder) === 'delivered' : false;
+    const isDeliveredReversal = updatedOrder ? wasDelivered && !isNowDelivered : false;
+
+    if (updatedOrder && currentOrder.status !== newStatus) {
+        const eventType = isDeliveredReversal
+            ? ORDER_EVENT_TYPES.deliveryReverted
+            : getStatusChangeEventType(newStatus);
+        const deliveredAt = updatedOrder.actualDeliveryDate || new Date().toISOString().split('T')[0];
+        const autoMarkedReady = isNowDelivered && !wasDelivered && !isFinalReady(currentOrder);
+
+        await createOrderEventNonBlocking(eventType, {
+            orderId,
+            eventType,
+            oldValue: currentOrder.status,
+            newValue: newStatus,
+            changedBy: context.userId || null,
+            actorRole: context.actorRole || null,
+            severity: isDeliveredReversal ? 'warning' : 'info',
+            metadata: {
+                legacyStatus: newStatus,
+                previousLegacyStatus: currentOrder.status,
+                productionStatus: getProductionStatus(updatedOrder),
+                previousProductionStatus: getProductionStatus(currentOrder),
+                designStatus: updatedOrder.designStatus || null,
+                previousDesignStatus: currentOrder.designStatus || null,
+                ...(isNowDelivered && autoMarkedReady ? {
+                    autoMarkedReady: true,
+                    readyAt: deliveredAt,
+                    impliedFinalReady: true,
+                } : {}),
+                ...(isDeliveredReversal ? {
+                    previousActualDeliveryDate: currentOrder.actualDeliveryDate || null,
+                    revertedToStatus: newStatus,
+                    revertedAt: new Date().toISOString(),
+                    shadowMode: true,
+                    shadowObligationVoidNeeded: true,
+                } : {}),
+            },
+        });
+    }
+
+    if (
+        updatedOrder
+        && isDeliveredReversal
+        && !shouldVoidDoctorReceivableForStatusOrIssueChange(currentOrder, updatedOrder)
+    ) {
+        const voidReason = `Order reverted from Delivered to ${newStatus}`;
+        try {
+            const obligation = await findActiveDoctorDeliveredObligationForOrder(orderId);
+
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, voidReason, {
+                    voidReason: 'delivery_reverted',
+                    revertedToStatus: newStatus,
+                    voidedAt: new Date().toISOString(),
+                    shadowMode: true,
+                });
+            } else {
+                console.debug('No active shadow doctor receivable obligation found to void after Delivered reversal', {
+                    orderId,
+                    newStatus,
+                });
+            }
+        } catch (error) {
+            console.error(DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE, {
+                orderId,
+                newStatus,
+                error,
+            });
+            throw new Error(DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE);
+        }
+    }
+
+    if (
+        updatedOrder
+        && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled
+        && shouldVoidExternalLabReadyObligationForStatusChange(currentOrder, updatedOrder)
+    ) {
+        const notes = 'Order left Final Ready/Delivered workflow; normal external lab payable voided. Issue settlement may be entered separately.';
+
+        try {
+            const obligation = await findActiveExternalLabReadyObligationForOrder(orderId);
+
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, notes, {
+                    voidReason: 'left_final_ready_or_issue_status',
+                    previousStatus: currentOrder.status,
+                    newStatus,
+                    shadowMode: true,
+                    reviewNeeded: true,
+                    issueSettlementMayBeNeeded: true,
+                });
+            } else {
+                console.debug('No active shadow external lab ready obligation found to void after leaving Final Ready/Delivered workflow', {
+                    orderId,
+                    previousStatus: currentOrder.status,
+                    newStatus,
+                });
+            }
+        } catch (error) {
+            console.error(EXTERNAL_LAB_PAYABLE_VOID_FAILURE_MESSAGE, {
+                orderId,
+                previousStatus: currentOrder.status,
+                newStatus,
+                error,
+            });
+            throw new Error(EXTERNAL_LAB_PAYABLE_VOID_FAILURE_MESSAGE);
+        }
+    }
+
+    if (
+        updatedOrder
+        && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled
+        && shouldCreateDoctorReceivableObligationForStatusChange(currentOrder.status, newStatus)
+    ) {
+        try {
+            await createDoctorReceivableObligationForOrder(updatedOrder, {
+                createdBy: context.userId || null,
+            });
+        } catch (error) {
+            console.error(DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE, {
+                orderId,
+                status: newStatus,
+                error,
+            });
+            throw new Error(DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE);
+        }
+    }
+
+    if (updatedOrder && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
+        const externalLabPayableDecision = shouldCreateExternalLabPayableObligationForStatusChange(currentOrder, updatedOrder);
+
+        if (externalLabPayableDecision.shouldCreate && updatedOrder.supplierId && (updatedOrder.cost || 0) > 0) {
+            try {
+                await createExternalLabPayableObligationForOrder(updatedOrder, {
+                    createdBy: context.userId || null,
+                    impliedFinalReady: externalLabPayableDecision.impliedFinalReady,
+                    triggerDate: externalLabPayableDecision.impliedFinalReady
+                        ? (updatedOrder.actualDeliveryDate || new Date().toISOString().split('T')[0])
+                        : undefined,
+                });
+            } catch (error) {
+                console.error(EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE, {
+                    orderId,
+                    status: newStatus,
+                    supplierId: updatedOrder.supplierId,
+                    cost: updatedOrder.cost,
+                    impliedFinalReady: externalLabPayableDecision.impliedFinalReady,
+                    error,
+                });
+                throw new Error(EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE);
+            }
+        }
+    }
+
+    return updatedOrder;
 }
 
 /**

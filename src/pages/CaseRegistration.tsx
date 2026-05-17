@@ -13,7 +13,8 @@ import {
     Loader2,
     MessageSquare,
     Download,
-    X
+    X,
+    ArchiveX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../context/ToastContext';
@@ -21,6 +22,15 @@ import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 import clsx from 'clsx';
 import type { Order, Doctor, Supplier } from '../services/db';
+import { filterVisibleOrderComments, getLatestVisibleOrderComment } from '../utils/orderDisplay';
+
+const ACCOUNTING_CHANGE_MARKER = 'بعد التسجيل المحاسبي';
+
+const hasPostRegistrationChange = (order: Order) =>
+    order.comments?.some(c => c.text.includes(ACCOUNTING_CHANGE_MARKER)) || false;
+
+const isArchivedAfterRegistration = (order: Order) =>
+    Boolean(order.isArchived && hasPostRegistrationChange(order));
 
 export default function CaseRegistration() {
     const { t } = useTranslation();
@@ -82,10 +92,16 @@ export default function CaseRegistration() {
                 includeArchived: true
             });
 
-            const filtered = data.filter(order => 
-                (statuses.includes(order.status) || order.isArchived) && 
-                (activeTab === 'pending' ? !order.isRegistered : order.isRegistered)
-            ).sort((a, b) => {
+            const filtered = data.filter(order => {
+                if (order.isArchived) {
+                    return activeTab === 'pending'
+                        ? isArchivedAfterRegistration(order) && !order.isRegistered
+                        : order.isRegistered;
+                }
+
+                return statuses.includes(order.status) &&
+                    (activeTab === 'pending' ? !order.isRegistered : order.isRegistered);
+            }).sort((a, b) => {
                 const dateA = a.actualDeliveryDate || a.deliveryDate || a.createdAt;
                 const dateB = b.actualDeliveryDate || b.deliveryDate || b.createdAt;
                 return dateB.localeCompare(dateA);
@@ -101,10 +117,13 @@ export default function CaseRegistration() {
     };
 
     const handleRegister = async (orderId: string) => {
+        const order = orders.find(o => o.id === orderId);
+        const isDeletedReview = order ? isArchivedAfterRegistration(order) : false;
+
         setProcessingId(orderId);
         try {
             await db.updateOrder(orderId, { isRegistered: true });
-            success(t.common.success);
+            success(isDeletedReview ? 'تم شيل الحالة المحذوفة من مراجعة التسجيل' : t.common.success);
             setOrders(prev => prev.filter(o => o.id !== orderId));
             setSelectedIds(prev => prev.filter(id => id !== orderId));
         } catch (error) {
@@ -433,6 +452,10 @@ export default function CaseRegistration() {
                                     const dateStr = order.deliveryDate || (order.createdAt ? order.createdAt.split('T')[0] : '');
                                     const formattedDate = dateStr ? dateStr.split('-').slice(1).join('-') : '-'; // MM-DD
                                     const billingDoctor = getBillingDoctor(order.doctorId);
+                                    const visibleComments = filterVisibleOrderComments(order.comments);
+                                    const latestComment = getLatestVisibleOrderComment(order.comments);
+                                    const isDeletedReview = isArchivedAfterRegistration(order);
+                                    const isChangedAfterRegistration = hasPostRegistrationChange(order);
                                     
                                     return (
                                         <motion.tr
@@ -443,7 +466,8 @@ export default function CaseRegistration() {
                                             className={clsx(
                                                 "hover:bg-cyan-50/40 transition-colors group border-b border-slate-50",
                                                 selectedIds.includes(order.id) && "bg-cyan-50/60",
-                                                activeTab === 'pending' && order.comments?.some(c => c.text.includes('بعد التسجيل المحاسبي')) && "bg-cyan-50/20 border-r-4 border-r-cyan-500",
+                                                activeTab === 'pending' && isChangedAfterRegistration && !isDeletedReview && "bg-cyan-50/20 border-r-4 border-r-cyan-500",
+                                                activeTab === 'pending' && isDeletedReview && "bg-rose-50/30 border-r-4 border-r-rose-500",
                                                 order.status === 'Rejected' && "bg-red-50/10",
                                                 order.status === 'Returned for Adjustments' && "bg-amber-50/10"
                                             )}
@@ -468,12 +492,20 @@ export default function CaseRegistration() {
                                                                 مرفوض
                                                             </span>
                                                         )}
+                                                        {isDeletedReview && (
+                                                            <span className="px-1.5 py-0.5 bg-rose-600 text-white text-[8px] font-black rounded shadow-sm whitespace-nowrap">
+                                                                محذوفة
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div className="flex items-center gap-1 mt-0.5">
                                                         <span className="text-[9px] text-slate-300 font-mono">{order.id.split('-')[0]}</span>
-                                                        {activeTab === 'pending' && order.comments?.some(c => c.text.includes('بعد التسجيل المحاسبي')) && (
-                                                            <span className="px-1.5 py-0.5 bg-cyan-500 text-white text-[8px] font-black rounded uppercase tracking-tighter animate-pulse">
-                                                                {t.registration.changesDetected || 'تعديل'}
+                                                        {activeTab === 'pending' && isChangedAfterRegistration && (
+                                                            <span className={clsx(
+                                                                "px-1.5 py-0.5 text-white text-[8px] font-black rounded uppercase tracking-tighter animate-pulse",
+                                                                isDeletedReview ? "bg-rose-500" : "bg-cyan-500"
+                                                            )}>
+                                                                {isDeletedReview ? 'اتمسحت بعد التسجيل' : (t.registration.changesDetected || 'تعديل')}
                                                             </span>
                                                         )}
                                                     </div>
@@ -556,12 +588,13 @@ export default function CaseRegistration() {
                                                 <div className="flex">
                                                     <span className={clsx(
                                                         "px-2.5 py-1 rounded-xl text-[9px] font-black border uppercase tracking-wider whitespace-nowrap inline-flex items-center justify-center",
+                                                        isDeletedReview ? "bg-rose-50 text-rose-700 border-rose-200" :
                                                         order.status === 'Delivered' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                                                         order.status === 'Rejected' ? "bg-red-50 text-red-700 border-red-200" :
                                                         order.status === 'Returned for Adjustments' ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                         "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-sm shadow-cyan-100"
                                                     )}>
-                                                        {t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status}
+                                                        {isDeletedReview ? 'محذوفة بعد التسجيل' : (t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status)}
                                                     </span>
                                                 </div>
                                             </td>
@@ -573,8 +606,8 @@ export default function CaseRegistration() {
                                                             disabled={processingId === order.id}
                                                             className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all shadow-lg shadow-emerald-200/50 hover:-translate-y-0.5 whitespace-nowrap"
                                                         >
-                                                            {processingId === order.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                                                            {t.registration.markAsRegistered}
+                                                            {processingId === order.id ? <Loader2 size={14} className="animate-spin" /> : (isDeletedReview ? <ArchiveX size={16} /> : <CheckCircle2 size={16} />)}
+                                                            {isDeletedReview ? 'شيلها' : t.registration.markAsRegistered}
                                                         </button>
                                                     ) : (
                                                         <button
@@ -595,26 +628,26 @@ export default function CaseRegistration() {
                                                         onClick={() => setCommentModal({
                                                             isOpen: true,
                                                             orderId: order.id,
-                                                            text: order.comments?.[order.comments.length - 1]?.text || ''
+                                                            text: latestComment?.text || ''
                                                         })}
                                                         className={clsx(
                                                             "p-3 rounded-2xl transition-all relative group",
-                                                            order.comments && order.comments.length > 0 
+                                                            visibleComments.length > 0
                                                                 ? "text-cyan-600 bg-cyan-50" 
                                                                 : "text-slate-400 hover:text-cyan-600 hover:bg-cyan-50"
                                                         )}
                                                         title="ملاحظات المحاسب"
                                                     >
                                                         <MessageSquare size={20} />
-                                                        {order.comments && order.comments.length > 0 && (
+                                                        {visibleComments.length > 0 && (
                                                             <span className="absolute top-2 right-2 w-2 h-2 bg-cyan-500 rounded-full border-2 border-white" />
                                                         )}
                                                         
                                                         {/* Tooltip for latest comment */}
-                                                        {order.comments && order.comments.length > 0 && (
+                                                        {latestComment && (
                                                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
-                                                                <span className="font-bold block mb-1">{order.comments[order.comments.length - 1].userName}</span>
-                                                                {order.comments[order.comments.length - 1].text}
+                                                                <span className="font-bold block mb-1">{latestComment.userName}</span>
+                                                                {latestComment.text}
                                                             </div>
                                                         )}
                                                     </button>

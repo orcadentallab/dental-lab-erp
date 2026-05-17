@@ -21,10 +21,10 @@ import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs
 import { useToast } from '../context/ToastContext';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useNavigate } from 'react-router-dom';
+import { DELIVERY_DATE_AUDIT_PREFIX, isInternalDeliveryDateAuditComment } from '../utils/orderDisplay';
 
 const DASHBOARD_CACHE_KEY = 'dashboard-cache-v1';
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
-const DELIVERY_DATE_AUDIT_PREFIX = '__delivery_date_change__';
 const REVIEWED_DELIVERY_CHANGE_IDS_KEY = 'reviewedDeliveryChangeIds';
 
 interface DashboardCache {
@@ -420,7 +420,7 @@ export default function DashboardNew() {
     // Build flat list of unresolved comments across all orders with comments
     const unresolvedCommentItems = ordersWithComments.flatMap(order =>
         (order.comments || [])
-            .filter(c => c.userId !== 'system' && c.userId !== 'System' && !resolvedCommentIds.has(c.id))
+            .filter(c => c.userId !== 'system' && c.userId !== 'System' && !isInternalDeliveryDateAuditComment(c) && !resolvedCommentIds.has(c.id))
             .map(c => ({ comment: c, order }))
     );
 
@@ -638,6 +638,7 @@ export default function DashboardNew() {
                 comment: '↩️ تم طلب تعديل على التصميم، ورجعت الحالة تحت التصميم مع الاحتفاظ بالرابط السابق لحين رفع نسخة جديدة.',
                 userId: user.id,
                 userName: user.name || user.role || 'مستخدم',
+                actorRole: user.role,
             });
 
             if (updatedOrder) {
@@ -732,6 +733,11 @@ export default function DashboardNew() {
             const updatedOrder = await db.updateOrder(editingDeliveryOrder.id, {
                 deliveryDate: editingDeliveryDate,
                 comments: nextComments,
+            }, {
+                userId: user?.id,
+                actorRole: user?.role,
+                deliveryDateResponsibilityParty: 'unknown',
+                deliveryDateChangeSource: 'dashboard',
             });
 
             if (!updatedOrder) {
@@ -1838,7 +1844,10 @@ export default function DashboardNew() {
                                 <OrderForm
                                     onCancel={() => setShowOrderForm(false)}
                                     onSubmit={async (order) => {
-                                        await db.addOrder(order);
+                                        await db.addOrder(order, {
+                                            userId: user?.id,
+                                            actorRole: user?.role,
+                                        });
                                         setShowOrderForm(false);
                                         window.location.reload();
                                     }}

@@ -19,6 +19,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
+import { filterVisibleOrderComments } from '../utils/orderDisplay';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 
@@ -281,7 +282,10 @@ export default function Orders() {
 
     const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'createdAt'>) => {
         try {
-            await db.addOrder(orderData);
+            await db.addOrder(orderData, {
+                userId: user?.id,
+                actorRole: user?.role,
+            });
             setIsFormOpen(false);
             clearOpenOrderParams();
             await refreshOrders();
@@ -293,7 +297,32 @@ export default function Orders() {
     const handleUpdateOrder = async (orderData: Partial<Order>) => {
         if (!fullEditingOrder) return;
         try {
-            await db.updateOrder(fullEditingOrder.id, orderData);
+            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
+            const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
+            const changedFields = (Object.keys(orderData) as (keyof Order)[]).filter(field => {
+                const nextValue = orderData[field];
+                const previousValue = fullEditingOrder[field];
+                return JSON.stringify(nextValue ?? null) !== JSON.stringify(previousValue ?? null);
+            });
+            const changedBusinessFields = changedFields.filter(field => !workflowFields.includes(field));
+            const isFinancialAdminOnly = changedBusinessFields.length > 0
+                && changedBusinessFields.every(field => financialAdminFields.includes(field));
+
+            const safeUpdates = isFinancialAdminOnly
+                ? financialAdminFields.reduce<Partial<Order>>((updates, field) => {
+                    if (orderData[field] !== undefined) {
+                        (updates as Record<keyof Order, unknown>)[field] = orderData[field];
+                    }
+                    return updates;
+                }, {})
+                : orderData;
+
+            await db.updateOrder(fullEditingOrder.id, safeUpdates, {
+                userId: user?.id,
+                actorRole: user?.role,
+                deliveryDateChangeSource: 'orders_page',
+                deliveryDateResponsibilityParty: 'unknown',
+            });
             setFullEditingOrder(null);
             clearOpenOrderParams();
             await refreshOrders();
@@ -315,7 +344,11 @@ export default function Orders() {
             if (status === 'same' && context) {
                 await db.updateOrder(id, context as Partial<Order>);
             } else if (status !== 'same') {
-                await db.updateOrderStatus(id, status, context);
+                await db.updateOrderStatus(id, status, {
+                    ...context,
+                    userId: user?.id,
+                    actorRole: user?.role,
+                });
             }
             await refreshOrders();
         } catch (error) {
@@ -418,7 +451,8 @@ export default function Orders() {
                 designUrl: designLinkUrl,
                 comment,
                 userId: user?.id || 'system',
-                userName: user?.name || 'System'
+                userName: user?.name || 'System',
+                actorRole: user?.role
             });
 
             if (isUnderProduction) {
@@ -466,7 +500,12 @@ export default function Orders() {
                 technicianStatus: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First',
             };
 
-            await db.updateOrder(acceptingOrder.id, orderUpdate);
+            await db.updateOrder(acceptingOrder.id, orderUpdate, {
+                userId: user?.id,
+                actorRole: user?.role,
+                deliveryDateChangeSource: 'orders_page',
+                deliveryDateResponsibilityParty: 'unknown',
+            });
 
             // 2. Add System Comment
             const supplierName = suppliers.find(s => s.id === data.supplierId)?.name;
@@ -982,7 +1021,7 @@ export default function Orders() {
                                     </div>
                                 )}
                                 <div className="space-y-3">
-                                    {noteEditingOrder.comments?.map((comment) => (
+                                    {filterVisibleOrderComments(noteEditingOrder.comments).map((comment) => (
                                         <div key={comment.id} className={`flex flex-col ${comment.userId === user?.id ? 'items-start' : 'items-end'}`}>
                                             <div className="flex items-center gap-2 mb-1 px-1">
                                                 <span className="text-xs font-bold text-surface-700">{comment.userName}</span>

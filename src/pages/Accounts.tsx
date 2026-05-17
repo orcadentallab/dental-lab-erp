@@ -10,6 +10,7 @@ import { statementService, type StatementResult } from '../services/statementSer
 import { generateDoctorStatementPDF, generateBulkStatementsPDF } from '../services/pdfService';
 import { financeService, type Adjustment } from '../services/financeService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
+import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -21,12 +22,16 @@ interface StatementItem {
     description: string;
     type: 'debit' | 'credit' | 'opening';
     amount: number;
+    displayAmount?: number;
+    officialAmount?: number;
     details?: string;
     status?: string;
     runningBalance?: number;
     services?: string;
     count?: number;
     isHidden?: boolean;
+    isOrderValue?: boolean;
+    isInformationalOnly?: boolean;
 }
 
 // Time filter presets
@@ -43,7 +48,11 @@ const formatDateInput = (date: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-const getOrderStatementDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
+const getOperationalOrderDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
+
+const getOrderDisplayValue = (order: Partial<Order>) => order.totalPrice || 0;
+
+const isVisibleInAccountStatement = (order: Partial<Order>) => !order.isArchived;
 
 const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {
     const term = searchTerm.trim();
@@ -219,7 +228,12 @@ export default function Accounts() {
     const handleOrderSubmit = async (orderData: Omit<Order, 'id'>) => {
         if (!editingOrder) return;
         try {
-            await db.updateOrder(editingOrder.id, orderData);
+            await db.updateOrder(editingOrder.id, orderData, {
+                userId: user?.id,
+                actorRole: user?.role,
+                deliveryDateChangeSource: 'accounts_statement_edit',
+                deliveryDateResponsibilityParty: 'unknown',
+            });
             setEditingOrder(null);
             fetchData();
         } catch (error) {
@@ -307,20 +321,22 @@ export default function Accounts() {
         };
 
         for (const o of allOrders) {
-            if (!isInSelectedRange(getOrderStatementDate(o))) continue;
+            if (!isVisibleInAccountStatement(o)) continue;
 
             if (activeTab === 'doctors' && o.doctorId) {
-                const isRelevant = showAllOrders || ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes((o.status || '').toLowerCase());
+                if (!isInSelectedRange(getOfficialStatementDate(o))) continue;
+                const isRelevant = showAllOrders || isDoctorStatementIncluded(o);
 
                 if (isRelevant) {
                     const stats = getStats(getDoctorSummaryId(o.doctorId));
                     stats.count++;
-                    const amount = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0));
+                    const amount = getDoctorReceivableAmount(o);
                     stats.totalDebit += amount;
                     stats.totalSales += amount;
                     if (o.createdAt && o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
                 }
             } else if (activeTab === 'suppliers' && o.supplierId) {
+                if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const isRelevant = (o.status !== 'Rejected' || hasRejectionCost) &&
                     (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled' || hasRejectionCost);
@@ -335,6 +351,7 @@ export default function Accounts() {
                     stats.totalSales += cost;
                 }
             } else if (activeTab === 'designers' && o.designerId) {
+                if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const isRelevant = o.workflowType === 'split' &&
                     (o.status !== 'Rejected' || hasRejectionCost) &&
@@ -519,16 +536,16 @@ export default function Accounts() {
             // Orders before the period
             const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
             const beforeOrders = relevantOrders.filter(o => {
+                if (!isVisibleInAccountStatement(o)) return false;
                 const isDirectOrder = o.doctorId === selectedEntityId;
                 const isChildOrder = selectedIsCenter && o.doctorId &&
                     doctors.find(d => d.id === o.doctorId)?.parentId === selectedEntityId;
                 if (!isDirectOrder && !isChildOrder) return false;
                 if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
-                const orderDate = getOrderStatementDate(o);
-                return orderDate < dateRange.start && o.status !== 'Rejected' &&
-                    ['delivered', 'completed', 'ready'].includes((o.status || '').toLowerCase());
+                const orderDate = getOfficialStatementDate(o);
+                return orderDate < dateRange.start && isDoctorStatementIncluded(o);
             });
-            openingDebit = beforeOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
+            openingDebit = beforeOrders.reduce((sum, o) => sum + getDoctorReceivableAmount(o), 0);
 
             // Transactions before the period
             const beforeTx = relevantTransactions.filter(t => {
@@ -560,8 +577,9 @@ export default function Accounts() {
             return openingDebit - openingCredit;
         } else if (activeTab === 'suppliers') {
             const beforeOrders = relevantOrders.filter(o => {
+                if (!isVisibleInAccountStatement(o)) return false;
                 if (o.supplierId !== selectedEntityId) return false;
-                const orderDate = getOrderStatementDate(o);
+                const orderDate = getOperationalOrderDate(o);
                 return orderDate < dateRange.start && o.status !== 'Rejected' && o.status === 'Delivered';
             });
             openingCredit = beforeOrders.reduce((sum, o) => {
@@ -592,8 +610,9 @@ export default function Accounts() {
             return openingCredit - openingDebit;
         } else if (activeTab === 'designers') {
             const beforeOrders = relevantOrders.filter(o => {
+                if (!isVisibleInAccountStatement(o)) return false;
                 if (o.designerId !== selectedEntityId) return false;
-                const orderDate = getOrderStatementDate(o);
+                const orderDate = getOperationalOrderDate(o);
                 return orderDate < dateRange.start && o.workflowType === 'split' && o.status !== 'Rejected' && o.status === 'Delivered';
             });
             openingCredit = beforeOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
@@ -636,6 +655,7 @@ export default function Accounts() {
             const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
 
             const docOrders = relevantOrders.filter(o => {
+                if (!isVisibleInAccountStatement(o)) return false;
                 // Match direct orders OR orders by child doctors of the selected center
                 const isDirectOrder = o.doctorId === selectedEntityId;
                 const isChildOrder = selectedIsCenter && o.doctorId &&
@@ -644,10 +664,12 @@ export default function Accounts() {
                 // Apply child doctor filter if set
                 if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
                 if (showAllOrders) return true;
-                return ['Delivered', 'Completed', 'Ready', 'Cancelled', 'Rejected'].map(s => s.toLowerCase()).includes((o.status || '').toLowerCase());
+                return isDoctorStatementIncluded(o);
             });
 
             items = docOrders.map(o => {
+                const officialReceivableAmount = getDoctorReceivableAmount(o);
+                const displayOrderValue = showAllOrders ? getOrderDisplayValue(o) : officialReceivableAmount;
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
@@ -656,14 +678,18 @@ export default function Accounts() {
                 const doctorSuffix = childDoc ? ` (د. ${childDoc.name})` : '';
                 return {
                     id: o.id || '',
-                    date: getOrderStatementDate(o),
+                    date: getOfficialStatementDate(o),
                     description: `حالة #${o.caseId} - المريض: ${o.patientName}${doctorSuffix}`,
                     details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                     type: 'debit' as const,
-                    amount: (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.totalPrice || 0)),
+                    amount: officialReceivableAmount,
+                    displayAmount: displayOrderValue,
+                    officialAmount: officialReceivableAmount,
                     status: o.status,
                     services,
-                    count
+                    count,
+                    isOrderValue: true,
+                    isInformationalOnly: displayOrderValue !== officialReceivableAmount
                 };
             });
 
@@ -689,7 +715,7 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'suppliers') {
-            const supOrders = relevantOrders.filter(o => o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
+            const supOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = supOrders.map(o => {
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 let cost = o.cost || 0;
@@ -707,7 +733,7 @@ export default function Accounts() {
 
                 return {
                     id: o.id || '',
-                    date: getOrderStatementDate(o),
+                    date: getOperationalOrderDate(o),
                     description: `#${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
                     type: 'credit' as const,
                     amount: cost,
@@ -730,7 +756,7 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
+            const desOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = desOrders.map(o => {
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const orderItems = o.items || [];
@@ -745,7 +771,7 @@ export default function Accounts() {
 
                 return {
                     id: o.id || '',
-                    date: getOrderStatementDate(o),
+                    date: getOperationalOrderDate(o),
                     description: `تصميم #${o.caseId} - ${o.patientName}`,
                     type: 'credit' as const,
                     amount: price,
@@ -826,6 +852,11 @@ export default function Accounts() {
         const totalCredit = visibleItems.filter(i => i.type === 'credit').reduce((sum, i) => sum + i.amount, 0);
         const periodBalance = activeTab === 'doctors' ? totalDebit - totalCredit : totalCredit - totalDebit;
         const finalBalance = adjustedOpeningBalance + periodBalance;
+        const allOrdersDisplayTotal = activeTab === 'doctors' && showAllOrders
+            ? visibleItems
+                .filter(i => i.isOrderValue)
+                .reduce((sum, i) => sum + (i.displayAmount ?? i.amount), 0)
+            : 0;
 
         return {
             items,
@@ -833,7 +864,8 @@ export default function Accounts() {
                 totalDebit,
                 totalCredit,
                 balance: finalBalance,
-                openingBalance: adjustedOpeningBalance
+                openingBalance: adjustedOpeningBalance,
+                allOrdersDisplayTotal
             }
         };
     }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter]);
@@ -1736,6 +1768,16 @@ export default function Accounts() {
                                 : (activeTab === 'doctors' ? 'رصيد دائن' : 'مدفوع زيادة')}
                         </p>
                     </div>
+                    {activeTab === 'doctors' && showAllOrders && (
+                        <div className="col-span-2 md:col-span-4 text-center p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                            <p className="text-xs text-blue-700 mb-1 font-bold">إجمالي كل الحالات شامل تحت التشغيل</p>
+                            <p className="text-xl font-black text-blue-700">
+                                {(individualStatement.totals.allOrdersDisplayTotal ?? 0).toLocaleString()}
+                                <span className="text-xs font-normal text-blue-400 mr-1">ج.م</span>
+                            </p>
+                            <p className="text-xs text-blue-500 mt-1">للعرض فقط ولا يدخل في الفواتير أو التقارير</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Statement Search */}
@@ -1804,44 +1846,52 @@ export default function Accounts() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredItems.map((item, idx) => (
-                                        <tr 
-                                            key={idx} 
-                                            onClick={() => handleStatementRowClick(item)}
-                                            className={clsx(
-                                                "border-b border-gray-50 transition-colors", 
-                                                (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800", 
-                                                item.isHidden && "opacity-50 grayscale",
-                                                (item.description?.includes('حالة #') || (item.status && item.description?.includes('#'))) ? "cursor-pointer hover:bg-blue-50/50" : "hover:bg-gray-50"
-                                            )}
-                                        >
-                                            <td className="p-3 text-center print-hidden">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!item.isHidden}
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    onChange={() => toggleTransactionVisibility(item.id)}
-                                                    className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
-                                                    title="إزالة من الفترة وترحيله إلى الرصيد السابق"
-                                                />
-                                            </td>
-                                            <td className="p-3">
-                                                <div className={clsx("font-medium", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-700 line-through decoration-red-300" : "text-gray-800")}>{item.description}</div>
-                                                {item.details && <div className={clsx("text-xs mt-0.5 truncate max-w-xs", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-400" : "text-gray-500")}>{item.details}</div>}
-                                                {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">❌ مرفوض</span>}
-                                                {item.status === 'Cancelled' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">🚫 ملغي</span>}
-                                            </td>
-                                            <td className="p-3 text-gray-600 text-xs">{item.services || '-'}</td>
-                                            <td className="p-3 text-gray-600 font-medium text-center">{item.count ? `(${item.count})` : '-'}</td>
-                                            <td className="p-3 font-mono text-gray-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
-                                            <td className="p-3 font-mono font-bold text-rose-600">
-                                                {item.type === 'debit' ? item.amount.toLocaleString() : '-'}
-                                            </td>
-                                            <td className="p-3 font-mono font-bold text-emerald-600">
-                                                {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
-                                            </td>
-                                        </tr>
-                                    ))
+                                    filteredItems.map((item, idx) => {
+                                        const showDisplayOrderValue = activeTab === 'doctors' && showAllOrders && item.isOrderValue;
+                                        const visibleDebitAmount = showDisplayOrderValue ? (item.displayAmount ?? item.amount) : item.amount;
+
+                                        return (
+                                            <tr
+                                                key={idx}
+                                                onClick={() => handleStatementRowClick(item)}
+                                                className={clsx(
+                                                    "border-b border-gray-50 transition-colors",
+                                                    (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800",
+                                                    item.isHidden && "opacity-50 grayscale",
+                                                    (item.description?.includes('حالة #') || (item.status && item.description?.includes('#'))) ? "cursor-pointer hover:bg-blue-50/50" : "hover:bg-gray-50"
+                                                )}
+                                            >
+                                                <td className="p-3 text-center print-hidden">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!item.isHidden}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        onChange={() => toggleTransactionVisibility(item.id)}
+                                                        className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 rounded focus:ring-emerald-500 cursor-pointer"
+                                                        title="إزالة من الفترة وترحيله إلى الرصيد السابق"
+                                                    />
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className={clsx("font-medium", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-700 line-through decoration-red-300" : "text-gray-800")}>{item.description}</div>
+                                                    {item.details && <div className={clsx("text-xs mt-0.5 truncate max-w-xs", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-400" : "text-gray-500")}>{item.details}</div>}
+                                                    {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">❌ مرفوض</span>}
+                                                    {item.status === 'Cancelled' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">🚫 ملغي</span>}
+                                                    {item.isInformationalOnly && (
+                                                        <span className="inline-block bg-blue-50 text-blue-600 text-xs font-bold px-2 py-0.5 rounded mt-1 mr-1">عرض فقط</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-gray-600 text-xs">{item.services || '-'}</td>
+                                                <td className="p-3 text-gray-600 font-medium text-center">{item.count ? `(${item.count})` : '-'}</td>
+                                                <td className="p-3 font-mono text-gray-600">{new Date(item.date).toLocaleDateString('en-GB')}</td>
+                                                <td className="p-3 font-mono font-bold text-rose-600">
+                                                    {item.type === 'debit' ? visibleDebitAmount.toLocaleString() : '-'}
+                                                </td>
+                                                <td className="p-3 font-mono font-bold text-emerald-600">
+                                                    {item.type === 'credit' ? item.amount.toLocaleString() : '-'}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 );
                             })()}
                         </tbody>

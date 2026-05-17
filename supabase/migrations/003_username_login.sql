@@ -1,5 +1,4 @@
-230
-.-1- Function to resolve username to email securely
+-- Migration 003: Function to resolve username to email securely
 -- This allows users to login with username by looking up their email
 -- Bypasses RLS to read strictly the email for the given username
 

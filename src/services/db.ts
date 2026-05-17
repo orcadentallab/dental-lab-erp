@@ -97,6 +97,7 @@ export interface Order {
     status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Cancelled' | 'Pending Review';
     deliveryDate: string;
     cost: number;
+    manualCost?: number | null;
     stlUrl?: string; // stlUrl / scanUrl
     imagesUrl?: string; // Photos URL
     supplierId?: string; // Optional: Assigned External Lab
@@ -152,6 +153,10 @@ export interface Order {
         durationMinutes?: number;
     }[];
     rejectedLabCost?: number;
+    // WF-1: shadow workflow columns. Optional for backwards-compat with all
+    // existing call sites; finance helpers do not depend on these yet.
+    productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
+    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold';
 }
 
 export interface OrderHistoryEntry {
@@ -163,6 +168,272 @@ export interface OrderHistoryEntry {
     details: string;
     created_at: string;
     changes?: Record<string, { old: unknown; new: unknown }> | null;
+}
+
+export interface OrderEvent {
+    id: string;
+    orderId: string;
+    eventType: string;
+    oldValue?: string | null;
+    newValue?: string | null;
+    changedBy?: string | null;
+    actorRole?: string | null;
+    changedAt: string;
+    reason?: string | null;
+    notes?: string | null;
+    severity: 'info' | 'warning' | 'critical';
+    responsibilityParty?: string | null;
+    approvalStatus: 'none' | 'pending' | 'approved' | 'rejected';
+    approvedBy?: string | null;
+    approvedAt?: string | null;
+    financialImpact?: number | null;
+    relatedTransactionId?: string | null;
+    relatedAdjustmentId?: string | null;
+    relatedAllocationId?: string | null;
+    relatedIssueId?: string | null;
+    metadata: Record<string, unknown>;
+    createdAt: string;
+}
+
+export interface EntityBillingSettings {
+    id?: string;
+    entityType: 'doctor' | 'external_lab' | 'designer';
+    entityId: string;
+    billingMode: 'per_order' | 'monthly_cycle';
+    billingDay?: number | null;
+    perOrderDueDays: number;
+    paymentTermsNotes?: string | null;
+    autoApplyCredit: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface FinancialObligation {
+    id: string;
+    orderId: string;
+    entityType: 'doctor' | 'external_lab' | 'designer';
+    entityId: string;
+    direction: 'receivable' | 'payable';
+    triggerType: 'doctor_delivered' | 'external_lab_ready' | 'external_lab_issue_settlement' | 'designer_approved' | 'manual_adjustment';
+    triggerStatus?: string | null;
+    triggerDate: string;
+    dueDate: string;
+    grossAmount: number;
+    adjustmentAmount: number;
+    netAmount: number;
+    allocatedAmount: number;
+    remainingAmount: number;
+    status: 'unpaid' | 'partially_paid' | 'paid' | 'void' | 'written_off';
+    source: 'order' | 'remake' | 'adjustment' | 'backfill';
+    notes?: string | null;
+    metadata: Record<string, unknown>;
+    createdBy?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface FinancialObligationsReviewParams {
+    page?: number;
+    pageSize?: number;
+    entityType?: 'all' | FinancialObligation['entityType'];
+    direction?: 'all' | FinancialObligation['direction'];
+    status?: 'all' | FinancialObligation['status'];
+    triggerType?: 'all' | FinancialObligation['triggerType'];
+    createdFrom?: string;
+    createdTo?: string;
+    search?: string;
+}
+
+export interface FinancialObligationReviewItem extends FinancialObligation {
+    caseId?: string | null;
+    patientName?: string | null;
+    entityName?: string | null;
+}
+
+export interface FinancialObligationsReviewResult {
+    data: FinancialObligationReviewItem[];
+    count: number;
+    page: number;
+    pageSize: number;
+}
+
+export interface AllocationPreviewParams {
+    entityType: 'doctor' | 'external_lab';
+    entityId: string;
+    direction: 'receivable' | 'payable';
+    amount: number;
+    paymentDate?: string;
+    mode?: 'fifo';
+    includeNotDue?: boolean;
+    transactionId?: string;
+}
+
+export interface AllocationPreviewItem {
+    obligationId: string;
+    orderId: string;
+    caseId?: string | null;
+    patientName?: string | null;
+    triggerType: FinancialObligation['triggerType'];
+    dueDate: string;
+    triggerDate: string;
+    netAmount: number;
+    alreadyAllocatedAmount: number;
+    currentRemainingAmount: number;
+    previewAllocatedAmount: number;
+    previewRemainingAmountAfter: number;
+}
+
+export interface AllocationPreviewResult {
+    entityType: AllocationPreviewParams['entityType'];
+    entityId: string;
+    direction: AllocationPreviewParams['direction'];
+    amount: number;
+    mode: 'fifo';
+    transactionId?: string | null;
+    allocationPlan: AllocationPreviewItem[];
+    totalAllocated: number;
+    unallocatedAmount: number;
+    creditPreviewAmount: number;
+    warnings: string[];
+}
+
+export interface HistoricalObligationsPreviewParams {
+    entityType?: 'all' | 'doctor' | 'external_lab';
+    rowType?: 'all' | 'missing_obligation' | 'missing_data_warning';
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    page?: number;
+    pageSize?: number;
+}
+
+export interface HistoricalObligationPreviewRow {
+    rowType: 'missing_obligation' | 'missing_data_warning';
+    entityType: 'doctor' | 'external_lab' | null;
+    reason:
+        | 'missing_doctor_receivable'
+        | 'missing_external_lab_payable'
+        | 'missing_external_lab_issue_settlement'
+        | 'doctor_receivable_missing_doctor'
+        | 'doctor_receivable_zero_or_missing_amount'
+        | 'external_lab_payable_missing_supplier'
+        | 'external_lab_payable_zero_or_missing_cost'
+        | 'try_in_ready_excluded'
+        | 'issue_settlement_missing_admin_amount'
+        | 'issue_settlement_missing_supplier'
+        | 'issue_status_excluded';
+    orderId: string;
+    caseId: string;
+    patientName: string;
+    status: string;
+    deliveryType?: string | null;
+    doctorId?: string | null;
+    doctorName?: string | null;
+    supplierId?: string | null;
+    supplierName?: string | null;
+    amount: number;
+    cost?: number | null;
+    manualCost?: number | null;
+    defaultCost?: number | null;
+    costSource?: 'manual' | 'default' | 'legacy_manual_inferred' | 'unknown';
+    date: string;
+    dateBasis: 'actualDeliveryDate' | 'deliveryDate' | 'createdAt';
+}
+
+export interface HistoricalObligationsPreviewResult {
+    rows: HistoricalObligationPreviewRow[];
+    counts: {
+        missingDoctorReceivables: number;
+        missingExternalLabPayables: number;
+        missingIssueSettlementPayables: number;
+        warnings: number;
+        total: number;
+    };
+    page: number;
+    pageSize: number;
+    limitation: string;
+}
+
+export interface HistoricalObligationsBackfillBatchParams extends HistoricalObligationsPreviewParams {
+    reason?: 'all' | 'missing_doctor_receivable' | 'missing_external_lab_payable' | 'missing_external_lab_issue_settlement';
+    dryRun?: boolean;
+    actorRole?: string | null;
+    createdBy?: string | null;
+}
+
+export interface HistoricalObligationsBackfillActionRow {
+    orderId: string;
+    caseId: string;
+    patientName: string;
+    reason: HistoricalObligationPreviewRow['reason'];
+    action: 'would_create' | 'created' | 'skipped_duplicate' | 'warning' | 'error';
+    obligationId?: string;
+    amount?: number;
+    entityType?: HistoricalObligationPreviewRow['entityType'];
+    entityId?: string | null;
+    triggerType?: FinancialObligation['triggerType'];
+    error?: string;
+}
+
+export interface HistoricalObligationsBackfillBatchResult {
+    processed: number;
+    createdDoctorReceivables: { count: number; total: number };
+    createdExternalLabPayables: { count: number; total: number };
+    createdIssueSettlementPayables: { count: number; total: number };
+    skippedDuplicate: number;
+    warnings: number;
+    errors: HistoricalObligationsBackfillActionRow[];
+    hasMore: boolean;
+    nextPage: number | null;
+    rows: HistoricalObligationsBackfillActionRow[];
+}
+
+export interface FinancialReconciliationPreviewParams {
+    entityType?: 'all' | 'doctor' | 'external_lab';
+    search?: string;
+    page?: number;
+    pageSize?: number;
+    dateFrom?: string;
+    dateTo?: string;
+}
+
+export interface FinancialReconciliationPreviewRow {
+    entityType: 'doctor' | 'external_lab';
+    entityId: string;
+    entityName: string;
+    officialBalance: number;
+    obligationTotal: number;
+    transactionPaymentTotal: number;
+    obligationBasedBalance: number;
+    difference: number;
+    flags: (
+        | 'difference_zero'
+        | 'difference_nonzero'
+        | 'missing_transactions'
+        | 'obligations_without_transactions'
+        | 'payments_without_obligations'
+        | 'issue_settlement_present'
+        | 'possible_date_range_mismatch'
+        | 'data_missing'
+    )[];
+    notes: string[];
+    totalDoctorReceivableObligations?: number;
+    totalExternalLabReadyPayables?: number;
+    totalExternalLabIssueSettlementPayables?: number;
+}
+
+export interface FinancialReconciliationPreviewResult {
+    rows: FinancialReconciliationPreviewRow[];
+    summary: {
+        doctorCount: number;
+        supplierCount: number;
+        totalOfficialBalance: number;
+        totalObligationBasedBalance: number;
+        totalDifference: number;
+        entitiesWithDifference: number;
+    };
+    page: number;
+    pageSize: number;
 }
 
 class MockDB {
@@ -201,6 +472,84 @@ class MockDB {
     async getRecentOrderHistory(limit: number = 200): Promise<OrderHistoryEntry[]> {
         const { getRecentOrderHistory } = await import('./supabase/orders');
         return getRecentOrderHistory(limit);
+    }
+
+    async getOrderTimeline(orderId: string): Promise<OrderEvent[]> {
+        const { getOrderTimeline } = await import('./supabase/orderEvents');
+        return getOrderTimeline(orderId);
+    }
+
+    async getEntityBillingSettings(
+        entityType: EntityBillingSettings['entityType'],
+        entityId: string
+    ): Promise<EntityBillingSettings> {
+        const { getEntityBillingSettings } = await import('./supabase/billingSettings');
+        return getEntityBillingSettings(entityType, entityId);
+    }
+
+    async upsertEntityBillingSettings(
+        settings: Omit<EntityBillingSettings, 'id' | 'createdAt' | 'updatedAt'>
+    ): Promise<EntityBillingSettings> {
+        const { upsertEntityBillingSettings } = await import('./supabase/billingSettings');
+        return upsertEntityBillingSettings(settings);
+    }
+
+    async createFinancialObligation(
+        input: Omit<FinancialObligation, 'id' | 'netAmount' | 'remainingAmount' | 'createdAt' | 'updatedAt'> & { dueDate: string }
+    ): Promise<FinancialObligation> {
+        const { createFinancialObligation } = await import('./supabase/financialObligations');
+        return createFinancialObligation(input);
+    }
+
+    async getFinancialObligationsForOrder(orderId: string): Promise<FinancialObligation[]> {
+        const { getFinancialObligationsForOrder } = await import('./supabase/financialObligations');
+        return getFinancialObligationsForOrder(orderId);
+    }
+
+    async getFinancialObligationsForEntity(
+        entityType: FinancialObligation['entityType'],
+        entityId: string
+    ): Promise<FinancialObligation[]> {
+        const { getFinancialObligationsForEntity } = await import('./supabase/financialObligations');
+        return getFinancialObligationsForEntity(entityType, entityId);
+    }
+
+    async getFinancialObligationsReview(
+        params: FinancialObligationsReviewParams = {}
+    ): Promise<FinancialObligationsReviewResult> {
+        const { getFinancialObligationsReview } = await import('./supabase/financialObligations');
+        return getFinancialObligationsReview(params);
+    }
+
+    async previewPaymentAllocation(params: AllocationPreviewParams): Promise<AllocationPreviewResult> {
+        const { previewPaymentAllocation } = await import('./supabase/allocationPreview');
+        return previewPaymentAllocation(params);
+    }
+
+    async previewHistoricalObligationsBackfill(
+        params: HistoricalObligationsPreviewParams = {}
+    ): Promise<HistoricalObligationsPreviewResult> {
+        const { previewHistoricalObligationsBackfill } = await import('./supabase/historicalObligationsPreview');
+        return previewHistoricalObligationsBackfill(params);
+    }
+
+    async createHistoricalObligationsBackfillBatch(
+        params: HistoricalObligationsBackfillBatchParams = {}
+    ): Promise<HistoricalObligationsBackfillBatchResult> {
+        const { createHistoricalObligationsBackfillBatch } = await import('./supabase/historicalObligationsBackfill');
+        return createHistoricalObligationsBackfillBatch(params) as Promise<HistoricalObligationsBackfillBatchResult>;
+    }
+
+    async previewFinancialReconciliation(
+        params: FinancialReconciliationPreviewParams = {}
+    ): Promise<FinancialReconciliationPreviewResult> {
+        const { previewFinancialReconciliation } = await import('./supabase/financialReconciliationPreview');
+        return previewFinancialReconciliation(params) as Promise<FinancialReconciliationPreviewResult>;
+    }
+
+    async voidFinancialObligation(id: string, notes?: string): Promise<FinancialObligation | null> {
+        const { voidFinancialObligation } = await import('./supabase/financialObligations');
+        return voidFinancialObligation(id, notes);
     }
 
     // --- DOCTORS ---
@@ -306,14 +655,41 @@ class MockDB {
         return getOrder(id);
     }
 
-    async addOrder(order: Omit<Order, 'id' | 'createdAt'>): Promise<Order> {
+    async addOrder(order: Omit<Order, 'id' | 'createdAt'>, context?: { userId?: string; actorRole?: string }): Promise<Order> {
         const { addOrder } = await import('./supabase/orders');
-        return addOrder(order);
+        return addOrder(order, context);
     }
 
-    async updateOrder(id: string, updates: Partial<Order>): Promise<Order | null> {
+    async updateOrder(id: string, updates: Partial<Order>, context?: {
+        userId?: string;
+        actorRole?: string;
+        deliveryDateChangeReason?: string | null;
+        deliveryDateChangeReasonCode?: string | null;
+        deliveryDateChangeNotes?: string | null;
+        deliveryDateResponsibilityParty?: 'doctor' | 'internal' | 'external_lab' | 'designer' | 'unknown';
+        deliveryDateChangeSource?: string | null;
+        skipDeliveryDateEvent?: boolean;
+    }): Promise<Order | null> {
         const { updateOrder } = await import('./supabase/orders');
-        return updateOrder(id, updates);
+        return updateOrder(id, updates, context);
+    }
+
+    /**
+     * WF-1: Audit-gated representative edit pathway. The single entry point for
+     * all rep mutations once `app.workflow_strict_rep` is flipped on. Backed by
+     * the `rep_update_order_fields_with_audit` SECURITY DEFINER RPC.
+     *
+     * Reason code is required; reason note is required when reasonCode === 'other'.
+     * See docs/orders-field-permissions.md §5 for the allow-list and state guards.
+     */
+    async repUpdateOrderWithAudit(
+        orderId: string,
+        changes: Partial<Order>,
+        reasonCode: string,
+        reasonNote?: string | null
+    ): Promise<Order | null> {
+        const { repUpdateOrderWithAudit } = await import('./supabase/orderWorkflow');
+        return repUpdateOrderWithAudit(orderId, changes, reasonCode, reasonNote);
     }
 
     /**
@@ -323,7 +699,7 @@ class MockDB {
     async updateOrderStatus(
         orderId: string,
         newStatus: Order['status'],
-        context?: { designUrl?: string; comment?: string; userId?: string; userName?: string; rejectedLabCost?: number }
+        context?: { designUrl?: string; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);

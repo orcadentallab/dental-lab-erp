@@ -1,6 +1,12 @@
 -- Migration 073: Add 'settled' as valid transaction status
 -- This allows individual expense records to be marked as settled while keeping them for audit history.
 
+-- Defensively ensure the status column exists. In production it was added manually
+-- via the SQL editor before this migration was authored; locally we create it here
+-- so the constraint below can attach. Default 'pending' matches the legacy
+-- is_approved=false equivalence.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending';
+
 -- Drop the existing check constraint (find its name first)
 DO $$
 DECLARE

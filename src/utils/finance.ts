@@ -1,4 +1,5 @@
 import type { Order, Transaction } from '../services/db';
+import { getDoctorReceivableAmount, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 
 export interface StatementTotals {
     totalDebit: number;
@@ -14,8 +15,6 @@ export interface LabInfo {
     logoUrl?: string;
 }
 
-const VALID_STATUSES = ['delivered', 'completed', 'ready', 'cancelled'];
-
 export function calculateOpeningBalance(
     orders: Order[],
     transactions: Transaction[],
@@ -29,10 +28,9 @@ export function calculateOpeningBalance(
             if (o.doctorId !== doctorId) return false;
             const sortDate = o.deliveryDate || o.createdAt.split('T')[0];
             if (sortDate >= beforeDate) return false;
-            if (o.status === 'Rejected') return false;
-            return VALID_STATUSES.includes((o.status || '').toLowerCase());
+            return isDoctorStatementIncluded(o);
         })
-        .reduce((sum, o) => sum + (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0)), 0);
+        .reduce((sum, o) => sum + getDoctorReceivableAmount(o), 0);
 
     const openingCredit = transactions
         .filter(t =>

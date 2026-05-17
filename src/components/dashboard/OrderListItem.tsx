@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import type { Order } from '../../services/db';
 import { getTechStatusBadge } from '../../utils/orderUtils';
+import { getOrderCardDisplayDate } from '../../utils/orderDisplay';
 
 interface OrderListItemProps {
     order: Order;
@@ -40,6 +41,7 @@ const OrderListItem = React.memo(function OrderListItem({
     onArchive
 }: OrderListItemProps) {
     const navigate = useNavigate();
+    const displayDate = getOrderCardDisplayDate(order);
 
     const handleNavigate = () => {
         navigate(`/orders?highlight=${order.id}`);
@@ -103,11 +105,11 @@ const OrderListItem = React.memo(function OrderListItem({
                         <div className="md:col-span-1 min-w-0">
                             <div className="flex flex-col gap-1">
                                 <div className="text-xs font-semibold text-surface-800 dark:text-surface-200">
-                                    {deliveryDateValue || order.deliveryDate || '-'}
+                                    {deliveryDateValue || displayDate.date || '-'}
                                 </div>
-                                {deliveryDateLabel && (
+                                {(deliveryDateLabel || displayDate.label) && (
                                     <div className="text-[10px] text-surface-500 dark:text-surface-400">
-                                        {deliveryDateLabel}
+                                        {deliveryDateLabel || displayDate.label}
                                     </div>
                                 )}
                             </div>

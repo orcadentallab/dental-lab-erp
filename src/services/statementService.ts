@@ -1,5 +1,6 @@
 import type { Order, Transaction } from './db';
 import type { Adjustment } from './financeService';
+import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 
 export interface StatementItem {
     id: string;
@@ -27,8 +28,6 @@ export interface StatementResult {
     filteredDoctorName?: string;
 }
 
-const getOrderStatementDate = (order: Order) => (order.deliveryDate || order.createdAt).split('T')[0];
-
 export const statementService = {
     /**
      * Calculates the statement for a specific doctor over a date range.
@@ -53,19 +52,16 @@ export const statementService = {
         // Filter Orders for Opening Balance
         const pastOrders = allOrders.filter(o => {
             if (o.doctorId !== doctorId) return false;
-            const sortDate = getOrderStatementDate(o);
+            const sortDate = getOfficialStatementDate(o);
 
             // Check if before start date
             if (startDate && sortDate >= startDate) return false;
 
-            const status = (o.status || '').toLowerCase();
-            return ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes(status);
+            return isDoctorStatementIncluded(o);
         });
 
         openingDebit = pastOrders.reduce((sum, o) => {
-            // Cancelled orders have 0 amount in statement usually, but let's follow Accounts.tsx logic:
-            // "amount = (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0))"
-            const amount = o.status === 'Cancelled' ? 0 : (o.totalPrice || 0);
+            const amount = getDoctorReceivableAmount(o);
             return sum + amount;
         }, 0);
 
@@ -99,7 +95,7 @@ export const statementService = {
         // Current Period Orders
         const periodOrders = allOrders.filter(o => {
             if (o.doctorId !== doctorId) return false;
-            const sortDate = getOrderStatementDate(o);
+            const sortDate = getOfficialStatementDate(o);
 
             if (startDate && sortDate < startDate) return false;
             if (endDate && sortDate > endDate) return false;
@@ -110,8 +106,7 @@ export const statementService = {
             // Let's assume Standard View: valid statuses only.
             // Actually, Accounts.tsx logic for `individualStatement` includes Cancelled/Rejected if showAll is true.
             // For a formal statement, we usually only want billable items.
-            const status = (o.status || '').toLowerCase();
-            return ['delivered', 'completed', 'ready', 'cancelled', 'rejected'].includes(status);
+            return isDoctorStatementIncluded(o);
         });
 
         items = items.concat(periodOrders.map(o => {
@@ -120,11 +115,11 @@ export const statementService = {
             const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
             return {
                 id: o.id,
-                date: getOrderStatementDate(o),
+                date: getOfficialStatementDate(o),
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                 details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
-                amount: (o.status === 'Cancelled' ? 0 : (o.totalPrice || 0)),
+                amount: getDoctorReceivableAmount(o),
                 status: o.status,
                 services,
                 count

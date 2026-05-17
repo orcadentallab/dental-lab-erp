@@ -7,6 +7,7 @@ import { generateGenericTablePDF } from '../services/pdfService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 import { matchArabic } from '../lib/searchUtils';
+import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 
 export default function Doctors() {
     const { user } = useAuth();
@@ -611,6 +612,16 @@ export default function Doctors() {
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+                            {editingId && (
+                                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                                    <BillingSettingsPanel
+                                        entityType="doctor"
+                                        entityId={editingId}
+                                        title="نظام التحصيل"
+                                        canEdit={user?.role === 'admin'}
+                                    />
                                 </div>
                             )}
                             </div>

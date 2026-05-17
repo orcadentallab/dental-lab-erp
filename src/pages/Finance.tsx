@@ -8,6 +8,10 @@ import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
 import { DoctorSelect } from '../components/orders/DoctorSelect';
 import FinancialSetup from '../components/finance/FinancialSetup';
 import AdjustmentsPanel from '../components/finance/AdjustmentsPanel';
+import FinancialObligationsReview from '../components/finance/FinancialObligationsReview';
+import AllocationPreviewPanel from '../components/finance/AllocationPreviewPanel';
+import HistoricalObligationsPreview from '../components/finance/HistoricalObligationsPreview';
+import HistoricalObligationsBackfillDryRun from '../components/finance/HistoricalObligationsBackfillDryRun';
 import { financeService } from '../services/financeService';
 import type { Adjustment } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
@@ -21,7 +25,7 @@ export default function Finance() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const todayDate = new Date().toISOString().split('T')[0];
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments' | 'obligations' | 'allocationPreview' | 'historicalObligationsPreview' | 'historicalBackfillDryRun'>('dashboard');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
@@ -352,12 +356,19 @@ export default function Finance() {
                 <div className="flex gap-1 min-w-max justify-center">
                     {(() => {
                         const allTabs = [
-                            { id: 'daily_tx', label: 'المعاملات اليومية', icon: '💰', adminOnly: false },
-                            { id: 'accounts', label: 'الحسابات', icon: '👥', adminOnly: false },
-                            { id: 'reports', label: 'رأس المال والأصول', icon: '🏦', adminOnly: true },
+                            { id: 'daily_tx', label: 'المعاملات اليومية', icon: '💰', adminOnly: false, internalOnly: false },
+                            { id: 'accounts', label: 'الحسابات', icon: '👥', adminOnly: false, internalOnly: false },
+                            { id: 'obligations', label: 'مراجعة الالتزامات المالية', icon: '📋', adminOnly: false, internalOnly: true },
+                            { id: 'allocation_preview', label: 'معاينة توزيع الدفعات', icon: '🧾', adminOnly: false, internalOnly: true },
+                            { id: 'historical_obligations_preview', label: 'معاينة الالتزامات القديمة', icon: '🗂️', adminOnly: false, internalOnly: true },
+                            { id: 'historical_backfill_dry_run', label: 'تجربة تجهيز الالتزامات القديمة', icon: '🧪', adminOnly: false, internalOnly: true },
+                            { id: 'reports', label: 'رأس المال والأصول', icon: '🏦', adminOnly: true, internalOnly: false },
                         ] as const;
 
-                        const tabs = allTabs.filter(t => !t.adminOnly || user?.username === 'admin');
+                        const tabs = allTabs.filter(t =>
+                            (!t.adminOnly || user?.username === 'admin')
+                            && (!t.internalOnly || ['admin', 'accountant'].includes(user?.role || ''))
+                        );
 
                         return tabs.map((tab) => (
                             <button
@@ -366,6 +377,10 @@ export default function Finance() {
                                     // Map high-level tabs to specific active views
                                     if (tab.id === 'daily_tx') setActiveTab('expenses'); // default sub-tab
                                     if (tab.id === 'accounts') setActiveTab('doctors'); // default sub-tab
+                                    if (tab.id === 'obligations') setActiveTab('obligations');
+                                    if (tab.id === 'allocation_preview') setActiveTab('allocationPreview');
+                                    if (tab.id === 'historical_obligations_preview') setActiveTab('historicalObligationsPreview');
+                                    if (tab.id === 'historical_backfill_dry_run') setActiveTab('historicalBackfillDryRun');
                                     if (tab.id === 'reports') setActiveTab('capital'); // default sub-tab
                                 }}
                                 className={clsx(
@@ -373,6 +388,10 @@ export default function Finance() {
                                     (
                                         (tab.id === 'daily_tx' && ['expenses', 'revenue'].includes(activeTab)) ||
                                         (tab.id === 'accounts' && ['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab)) ||
+                                        (tab.id === 'obligations' && activeTab === 'obligations') ||
+                                        (tab.id === 'allocation_preview' && activeTab === 'allocationPreview') ||
+                                        (tab.id === 'historical_obligations_preview' && activeTab === 'historicalObligationsPreview') ||
+                                        (tab.id === 'historical_backfill_dry_run' && activeTab === 'historicalBackfillDryRun') ||
                                         (tab.id === 'reports' && ['capital'].includes(activeTab))
                                     )
                                         ? `bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200`
@@ -897,6 +916,22 @@ export default function Finance() {
             {/* ADJUSTMENTS TAB (ADMIN ONLY) */}
             {activeTab === 'adjustments' && user?.role === 'admin' && (
                 <AdjustmentsPanel />
+            )}
+
+            {activeTab === 'obligations' && ['admin', 'accountant'].includes(user?.role || '') && (
+                <FinancialObligationsReview />
+            )}
+
+            {activeTab === 'allocationPreview' && ['admin', 'accountant'].includes(user?.role || '') && (
+                <AllocationPreviewPanel doctors={doctors} suppliers={suppliers} />
+            )}
+
+            {activeTab === 'historicalObligationsPreview' && ['admin', 'accountant'].includes(user?.role || '') && (
+                <HistoricalObligationsPreview />
+            )}
+
+            {activeTab === 'historicalBackfillDryRun' && ['admin', 'accountant'].includes(user?.role || '') && (
+                <HistoricalObligationsBackfillDryRun />
             )}
         </div>
     );

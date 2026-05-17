@@ -1,17 +1,102 @@
-import { X, Clock, User, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { X, Clock, User, ArrowRight, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
-import type { OrderHistoryEntry } from '../../services/db';
+import type { OrderEvent, OrderHistoryEntry } from '../../services/db';
 
 interface OrderHistoryModalProps {
     isOpen: boolean;
     onClose: () => void;
     history: OrderHistoryEntry[];
     isLoading: boolean;
-
+    events?: OrderEvent[];
+    eventsLoading?: boolean;
+    eventsError?: boolean;
+    showBusinessTimeline?: boolean;
 }
 
-export default function OrderHistoryModal({ isOpen, onClose, history, isLoading }: OrderHistoryModalProps) {
+const EVENT_LABELS: Record<string, string> = {
+    order_created: 'تم إنشاء الأوردر',
+    production_status_changed: 'تم تغيير حالة الأوردر',
+    try_in_started: 'بدأت مرحلة Try-In',
+    try_in_approved: 'تمت الموافقة على Try-In',
+    try_in_adjustment_requested: 'تم طلب تعديل Try-In',
+    order_ready: 'الأوردر جاهز',
+    order_delivered: 'تم تسليم الأوردر',
+    delivery_route_changed: 'تم تغيير مسار التسليم',
+    issue_reported: 'تم تسجيل مشكلة',
+    remake_requested: 'تم طلب إعادة',
+    rejection_requested: 'تم تسجيل رفض',
+    financial_adjustment_requested: 'تم طلب تسوية مالية',
+    financial_adjustment_approved: 'تم اعتماد تسوية مالية',
+    payment_allocated: 'تم توزيع دفعة',
+    manual_allocation_override: 'تعديل يدوي في توزيع الدفع',
+    order_closed: 'تم إغلاق الأوردر',
+    order_reopened: 'تم إعادة فتح الأوردر',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+    admin: 'مدير',
+    accountant: 'محاسب',
+    representative: 'مندوب',
+    designer: 'مصمم',
+    lab: 'معمل خارجي',
+    doctor: 'طبيب',
+};
+
+const SEVERITY_STYLES = {
+    info: 'bg-blue-50 text-blue-700 border-blue-100',
+    warning: 'bg-amber-50 text-amber-700 border-amber-100',
+    critical: 'bg-red-50 text-red-700 border-red-100',
+} as const;
+
+const SEVERITY_ICONS = {
+    info: Info,
+    warning: AlertTriangle,
+    critical: AlertTriangle,
+} as const;
+
+function formatEventActor(event: OrderEvent) {
+    const role = event.actorRole ? ROLE_LABELS[event.actorRole] || event.actorRole : '';
+    const actor = event.changedBy ? `#${event.changedBy.slice(0, 8)}` : 'System';
+    return role ? `${actor} · ${role}` : actor;
+}
+
+function renderEventDetails(event: OrderEvent) {
+    const details = [
+        event.reason && { label: 'السبب', value: event.reason },
+        event.notes && { label: 'ملاحظات', value: event.notes },
+        event.responsibilityParty && { label: 'المسؤولية', value: event.responsibilityParty },
+        event.approvalStatus && event.approvalStatus !== 'none' && { label: 'الاعتماد', value: event.approvalStatus },
+        event.financialImpact !== null && event.financialImpact !== undefined && { label: 'الأثر المالي', value: event.financialImpact.toLocaleString() },
+    ].filter(Boolean) as { label: string; value: string }[];
+
+    if (details.length === 0) return null;
+
+    return (
+        <div className="mt-3 space-y-1 rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+            {details.map((detail) => (
+                <div key={detail.label} className="flex gap-2">
+                    <span className="font-bold text-gray-500">{detail.label}:</span>
+                    <span>{detail.value}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+export default function OrderHistoryModal({
+    isOpen,
+    onClose,
+    history,
+    isLoading,
+    events = [],
+    eventsLoading = false,
+    eventsError = false,
+    showBusinessTimeline = false,
+}: OrderHistoryModalProps) {
+    const [activeTab, setActiveTab] = useState<'events' | 'history'>(showBusinessTimeline ? 'events' : 'history');
+
     if (!isOpen) return null;
 
     return (
@@ -24,7 +109,7 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading 
                             <Clock size={20} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800">سجل النشاط (Audit Log)</h3>
+                            <h3 className="font-bold text-gray-800">{showBusinessTimeline ? 'سجل الأحداث' : 'سجل النشاط (Audit Log)'}</h3>
                             <p className="text-xs text-gray-500">تتبع جميع التعديلات والحالات لهذا الطلب</p>
                         </div>
                     </div>
@@ -33,9 +118,83 @@ export default function OrderHistoryModal({ isOpen, onClose, history, isLoading 
                     </button>
                 </div>
 
+                {showBusinessTimeline && (
+                    <div className="flex border-b border-gray-100 bg-white px-4 pt-3">
+                        <button
+                            onClick={() => setActiveTab('events')}
+                            className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'events' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}
+                        >
+                            سجل الأحداث
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('history')}
+                            className={`px-4 py-2 text-sm font-bold border-b-2 transition-colors ${activeTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-700'}`}
+                        >
+                            Audit Log
+                        </button>
+                    </div>
+                )}
+
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto p-6 bg-gray-50/50">
-                    {isLoading ? (
+                    {showBusinessTimeline && activeTab === 'events' ? (
+                        eventsLoading ? (
+                            <div className="flex flex-col items-center justify-center gap-3 py-10 text-gray-400">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                <p>جاري تحميل سجل الأحداث...</p>
+                            </div>
+                        ) : eventsError ? (
+                            <div className="text-center py-8 text-red-500">
+                                <AlertTriangle className="mx-auto mb-2" size={28} />
+                                <p>تعذر تحميل سجل الأحداث</p>
+                            </div>
+                        ) : events.length === 0 ? (
+                            <div className="text-center py-8 text-gray-400">
+                                <p>لا توجد أحداث مسجلة بعد</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-5 relative before:absolute before:inset-y-0 before:right-[19px] before:w-0.5 before:bg-blue-100">
+                                {events.map((event) => {
+                                    const SeverityIcon = SEVERITY_ICONS[event.severity];
+
+                                    return (
+                                        <div key={event.id} className="relative flex gap-4 pr-10">
+                                            <div className={`absolute right-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm z-10 ${event.severity === 'critical' ? 'bg-red-100 text-red-600' : event.severity === 'warning' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                {event.eventType === 'order_delivered' ? <CheckCircle2 size={16} /> : <SeverityIcon size={16} />}
+                                            </div>
+
+                                            <div className="flex-1 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-2">
+                                                    <div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="font-bold text-gray-800 text-sm">{EVENT_LABELS[event.eventType] || event.eventType}</span>
+                                                            <span className={`text-[10px] border px-2 py-0.5 rounded-full font-bold ${SEVERITY_STYLES[event.severity]}`}>
+                                                                {event.severity}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 mt-1">{formatEventActor(event)}</p>
+                                                    </div>
+                                                    <span className="text-xs text-gray-400" dir="ltr">
+                                                        {format(new Date(event.changedAt), 'dd/MM/yyyy hh:mm a', { locale: ar })}
+                                                    </span>
+                                                </div>
+
+                                                {(event.oldValue || event.newValue) && (
+                                                    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 p-2 text-xs">
+                                                        <span className="text-red-500 line-through bg-red-50 px-2 py-0.5 rounded">{event.oldValue || 'Empty'}</span>
+                                                        <ArrowRight size={12} className="text-gray-400" />
+                                                        <span className="text-green-700 font-bold bg-green-50 px-2 py-0.5 rounded">{event.newValue || 'Empty'}</span>
+                                                    </div>
+                                                )}
+
+                                                {renderEventDetails(event)}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )
+                    ) : isLoading ? (
                         <div className="flex justify-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                         </div>

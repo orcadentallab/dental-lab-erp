@@ -9,6 +9,7 @@ import {
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
+import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
@@ -212,6 +213,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             comment,
             userId: user.id,
             userName: user.name || user.role || 'مصمم',
+            actorRole: user.role,
         });
 
         if (isUnderProduction) {
@@ -255,6 +257,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             comment: '↩️ تم طلب تعديل على التصميم، ورجعت الحالة تحت التصميم مع الاحتفاظ بالرابط السابق لحين رفع نسخة جديدة.',
             userId: user.id,
             userName: user.name || user.role || 'مستخدم',
+            actorRole: user.role,
         });
 
         updateOrderInState(updatedOrder);
@@ -518,9 +521,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                             <tbody className="divide-y divide-gray-50">
                                 {visibleOrders.map(order => {
                                     const currentStatus = order.designStatus || 'pending';
-                                    const latestComment = order.comments && order.comments.length > 0
-                                        ? order.comments[order.comments.length - 1]
-                                        : null;
+                                    const latestComment = getLatestVisibleOrderComment(order.comments);
                                     const submittedAt = getDesignSubmittedAt(order);
                                     const durationMs = getDesignerWorkDurationMs(order, nowMs);
                                     const durationLabel = durationMs !== null ? formatDesignerDuration(durationMs) : '-';

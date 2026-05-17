@@ -6,6 +6,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useAuth } from '../context/AuthContext';
 import { DUAL_ROLE_DESIGNER_PERMISSION, FIXED_SALARY_DESIGNER_PERMISSION, getUserRoleDisplay } from '../lib/userRoles';
+import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 
 export default function Users() {
     const [users, setUsers] = useState<User[]>([]);
@@ -351,12 +352,12 @@ export default function Users() {
             {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
                         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                             <h3 className="text-lg font-bold text-gray-800">{editingUser ? 'تعديل مستخدم' : 'مستخدم جديد'}</h3>
                             <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
                         </div>
-                        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">الاسم بالكامل</label>
                                 <input required type="text" aria-label="الاسم بالكامل" className="w-full p-2 border rounded-lg" value={name} onChange={e => setName(e.target.value)} />
@@ -489,6 +490,15 @@ export default function Users() {
                                         <p className="text-xs text-amber-600 mt-1">المبلغ الذي يتقاضاه المصمم عن كل قطعة (Unit) يقوم بتصميمها.</p>
                                     </div>
                                 </div>
+                            )}
+
+                            {editingUser && role === 'designer' && (
+                                <BillingSettingsPanel
+                                    entityType="designer"
+                                    entityId={editingUser.id}
+                                    title="نظام دفع المصمم"
+                                    canEdit={currentUser?.role === 'admin'}
+                                />
                             )}
 
                             <div className="pt-4 flex gap-3">

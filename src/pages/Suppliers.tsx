@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { db, type Supplier, type Service } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, X } from 'lucide-react';
+import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 
 
 export default function Suppliers() {
@@ -288,6 +289,17 @@ export default function Suppliers() {
                                     ))}
                                 </div>
                             </div>
+
+                            {editingSupplier && (
+                                <div className="border-t border-gray-100 pt-6">
+                                    <BillingSettingsPanel
+                                        entityType="external_lab"
+                                        entityId={editingSupplier.id}
+                                        title="نظام الدفع للمعمل"
+                                        canEdit={user?.role === 'admin'}
+                                    />
+                                </div>
+                            )}
 
                             <div className="pt-6 flex gap-3 justify-end">
                                 <button

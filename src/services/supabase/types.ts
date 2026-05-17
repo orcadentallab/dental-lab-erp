@@ -52,6 +52,7 @@ export interface DbOrder {
     status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Cancelled' | 'Pending Review';
     delivery_date: string;
     cost: number;
+    manual_cost?: number | null;
     stl_url?: string | null;
     images_url?: string | null;
     supplier_id?: string | null;
@@ -83,6 +84,11 @@ export interface DbOrder {
     updated_at: string;
     is_archived?: boolean;
     rejected_lab_cost?: number | null;
+    // WF-1: shadow workflow columns (added by migration 086).
+    // Default values are 'not_started' and 'none'; finance helpers do NOT depend
+    // on these yet — they remain compatibility/shadow fields.
+    production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
+    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold';
 }
 
 export interface DbTransaction {

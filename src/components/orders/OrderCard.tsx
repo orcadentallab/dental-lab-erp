@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import OrderHistoryModal from './OrderHistoryModal';
 import { db } from '../../services/db';
-import type { Order, OrderHistoryEntry } from '../../services/db';
+import type { Order, OrderEvent, OrderHistoryEntry } from '../../services/db';
 import clsx from 'clsx';
 import { checkIsLate } from '../../utils/orderUtils';
 import { Card } from '../ui/Card';
@@ -18,6 +18,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
 import { canAccessDesignerFeatures } from '../../lib/userRoles';
+import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 
 interface OrderCardProps {
     order: Order;
@@ -158,10 +159,18 @@ export default function OrderCard({
     const [showHistory, setShowHistory] = useState(false);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyData, setHistoryData] = useState<OrderHistoryEntry[]>([]);
+    const [eventsLoading, setEventsLoading] = useState(false);
+    const [eventsError, setEventsError] = useState(false);
+    const [eventsData, setEventsData] = useState<OrderEvent[]>([]);
+    const canViewBusinessTimeline = ['admin', 'accountant', 'representative'].includes(userRole || '');
 
     const handleShowHistory = async () => {
         setShowHistory(true);
         setHistoryLoading(true);
+        setEventsError(false);
+        if (canViewBusinessTimeline) {
+            setEventsLoading(true);
+        }
         try {
             const data = await db.getOrderHistory(order.id);
             setHistoryData(data);
@@ -170,11 +179,23 @@ export default function OrderCard({
         } finally {
             setHistoryLoading(false);
         }
+
+        if (canViewBusinessTimeline) {
+            try {
+                const events = await db.getOrderTimeline(order.id);
+                setEventsData(events);
+            } catch (error) {
+                console.error('Failed to load order events', error);
+                setEventsError(true);
+            } finally {
+                setEventsLoading(false);
+            }
+        }
     };
 
-    const latestComment = order.comments && order.comments.length > 0
-        ? order.comments[order.comments.length - 1]
-        : null;
+    const visibleComments = filterVisibleOrderComments(order.comments);
+    const latestComment = getLatestVisibleOrderComment(order.comments);
+    const displayDate = getOrderCardDisplayDate(order);
 
     // Terminal statuses (red): Rejected/Cancelled only — these get archive button and red styling
     const isRedStatus = order.status === 'Rejected' || order.status === 'Cancelled' || order.technicianStatus === 'Rejected';
@@ -182,6 +203,10 @@ export default function OrderCard({
     const isReturnedStatus = order.status === 'Returned for Adjustments';
     const isDelivered = order.status === 'Delivered';
     const canArchiveOrders = userRole === 'admin';
+    const deleteConfirmMessage = order.isArchived
+        ? 'حذف نهائي؟ سيتم حذف الأوردر تماما من السيستم ولا يمكن استرجاعه.'
+        : 'حذف؟ سيتم نقل الأوردر إلى الأرشيف ويمكن استرجاعه لاحقا.';
+    const deleteTitle = order.isArchived ? 'حذف نهائي' : 'حذف';
 
     const resolvedDoctor = fullDoctors?.find((d: any) => d.id === order.doctorId);
     const parentDoctor = resolvedDoctor?.parentId ? fullDoctors?.find((d: any) => d.id === resolvedDoctor.parentId) : null;
@@ -360,9 +385,9 @@ export default function OrderCard({
                                     title="ملاحظات"
                                 >
                                     <MessageCircle size={12} />
-                                    {(order.comments && order.comments.length > 0) && (
+                                    {visibleComments.length > 0 && (
                                         <span className="absolute -top-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white ring-1 ring-white">
-                                            {order.comments.length}
+                                            {visibleComments.length}
                                         </span>
                                     )}
                                 </Button>
@@ -385,11 +410,11 @@ export default function OrderCard({
                                         "flex items-center gap-1",
                                         isLate ? "text-red-600" : "text-surface-500"
                                     )}
-                                    title="تاريخ التسليم"
+                                    title={displayDate.label}
                                 >
                                     <Clock size={11} className={isLate ? "text-red-500" : "text-surface-400"} />
-                                    <span className={clsx("font-bold", isLate ? "text-red-500" : "text-surface-400")}>تسليم</span>
-                                    <span className={clsx("font-black", isLate ? "text-red-700" : "text-surface-600")}>{order.deliveryDate || '-'}</span>
+                                    <span className={clsx("font-bold", isLate ? "text-red-500" : "text-surface-400")}>{displayDate.label}</span>
+                                    <span className={clsx("font-black", isLate ? "text-red-700" : "text-surface-600")}>{displayDate.date || '-'}</span>
                                 </span>
                             </div>
                         </div>
@@ -710,7 +735,7 @@ export default function OrderCard({
                                 </Button>
                             )}
                             {userRole === 'admin' && onDelete && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { if (confirm('حذف؟')) onDelete(order); }} title="حذف">
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { if (confirm(deleteConfirmMessage)) onDelete(order); }} title={deleteTitle}>
                                     <Trash2 size={14} />
                                 </Button>
                             )}
@@ -734,6 +759,10 @@ export default function OrderCard({
                 onClose={() => setShowHistory(false)}
                 history={historyData}
                 isLoading={historyLoading}
+                events={eventsData}
+                eventsLoading={eventsLoading}
+                eventsError={eventsError}
+                showBusinessTimeline={canViewBusinessTimeline}
             />
 
             {/* Confirmation Dialog */}

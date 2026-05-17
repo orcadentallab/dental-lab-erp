@@ -27,6 +27,42 @@ interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
 
 import { DoctorSelect } from './DoctorSelect';
 
+const calculateOrderCost = (
+    workflowType: 'full' | 'split',
+    items: FormOrderItem[],
+    services: Service[],
+    suppliers: Supplier[],
+    selectedSupplier: string,
+    designers: User[],
+    designerId: string
+) => {
+    if (workflowType === 'full') {
+        return items.reduce((sum, item) => {
+            const count = item.teethNumbers ? item.teethNumbers.length : 0;
+            const svc = services.find(s => s.name === item.serviceType);
+            let unitCost = svc ? svc.costPrice : 0;
+            if (selectedSupplier) {
+                const sup = suppliers.find(s => s.id === selectedSupplier);
+                if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
+            }
+            return sum + (unitCost * count);
+        }, 0);
+    }
+
+    const designer = designers.find(d => d.id === designerId);
+    const sup = suppliers.find(s => s.id === selectedSupplier);
+    return items.reduce((sum, item) => {
+        const count = item.teethNumbers ? item.teethNumbers.length : 0;
+        const svc = services.find(s => s.name === item.serviceType);
+        const dCost = (designer?.unitRate || 0) * count;
+        let mCost = 0;
+        if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+        else if (svc?.millingPrice) mCost = svc.millingPrice * count;
+        else if (svc) mCost = (svc.costPrice * 0.5) * count;
+        return sum + dCost + mCost;
+    }, 0);
+};
+
 export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }: OrderFormProps) {
     const { user } = useAuth();
     const { error: toastError } = useToast();
@@ -121,7 +157,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(initialData?.deliveryType || 'Final');
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
-    const [manualCost, setManualCost] = useState<number | null>(initialData?.cost ?? null);
+    const [manualCost, setManualCost] = useState<number | null>(initialData?.manualCost ?? null);
     const isAdmin = user?.role === 'admin';
 
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
@@ -160,9 +196,35 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     // if (doc) setDoctorSearchTerm(doc.name);
                 }
 
+                const designersData = usersData.filter(u => isDesignerUser(u));
                 setSuppliers(suppliersData);
                 setRepresentatives(usersData.filter(u => isRepresentativeUser(u)));
-                setDesigners(usersData.filter(u => isDesignerUser(u)));
+                setDesigners(designersData);
+
+                if (initialData) {
+                    if (initialData.manualCost !== undefined && initialData.manualCost !== null) {
+                        setManualCost(initialData.manualCost);
+                    } else {
+                        const initialItems = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
+                            serviceType: i.serviceType,
+                            teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (typeof i.teethNumbers === 'string' ? (i.teethNumbers as string).split(',') : []),
+                            price: i.price,
+                            customPrice: undefined
+                        })) : [{ serviceType: '', teethNumbers: [], price: 0 }];
+                        const automaticCost = calculateOrderCost(
+                            initialData.workflowType || 'full',
+                            initialItems,
+                            servicesData,
+                            suppliersData,
+                            initialData.supplierId || '',
+                            designersData,
+                            initialData.designerId || ''
+                        );
+                        setManualCost(Math.abs((initialData.cost || 0) - automaticCost) > 0.0001 ? initialData.cost : null);
+                    }
+                } else {
+                    setManualCost(null);
+                }
 
                 // Auto-set representativeId for representatives creating new orders
                 if (!initialData && user && isRepresentativeUser(user)) {
@@ -243,6 +305,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     const total = subTotal - discount;
 
+    const calculateAutomaticCost = () => {
+        return calculateOrderCost(workflowType, items, services, suppliers, selectedSupplier, designers, designerId);
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
@@ -268,32 +334,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
             return;
         }
 
-        let calculatedCost = 0;
-        if (workflowType === 'full') {
-            calculatedCost = items.reduce((sum, item) => {
-                const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                const svc = services.find(s => s.name === item.serviceType);
-                let unitCost = svc ? svc.costPrice : 0;
-                if (selectedSupplier) {
-                    const sup = suppliers.find(s => s.id === selectedSupplier);
-                    if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
-                }
-                return sum + (unitCost * count);
-            }, 0);
-        } else {
-            const designer = designers.find(d => d.id === designerId);
-            const sup = suppliers.find(s => s.id === selectedSupplier);
-            calculatedCost = items.reduce((sum, item) => {
-                const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                const svc = services.find(s => s.name === item.serviceType);
-                const dCost = (designer?.unitRate || 0) * count;
-                let mCost = 0;
-                if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
-                else if (svc?.millingPrice) mCost = svc.millingPrice * count;
-                else if (svc) mCost = (svc.costPrice * 0.5) * count;
-                return sum + dCost + mCost;
-            }, 0);
-        }
+        const calculatedCost = calculateAutomaticCost();
 
         let totalDesignPrice = 0;
         if (workflowType === 'split') {
@@ -339,9 +380,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 createdAt: new Date(receivedDate).toISOString(),
                 totalPrice: total,
                 cost: (isAdmin && manualCost !== null) ? manualCost : calculatedCost,
+                manualCost: (isAdmin && manualCost !== null) ? manualCost : null,
                 workflowType,
                 designerId: workflowType === 'split' ? designerId : undefined,
-                designStatus: workflowType === 'split' ? 'pending' : undefined,
+                designStatus: initialData ? initialData.designStatus : (workflowType === 'split' ? 'pending' : undefined),
                 designPrice: workflowType === 'split' ? totalDesignPrice : 0,
                 discount,
                 priority: isUrgent ? 'Urgent' : 'Normal',
@@ -731,10 +773,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             <div className="mt-3 border-t border-white/10 pt-3">
                                 <div className="flex items-center gap-1.5 mb-2">
                                     <Lock size={12} className="text-amber-400" />
-                                    <span className="text-[10px] font-bold text-amber-400">تعديل التكلفة يدوياً (أدمن فقط)</span>
+                                    <span className="text-[10px] font-bold text-amber-400">التكلفة اليدوية اختيارية (أدمن فقط)</span>
+                                </div>
+                                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                                    <span className="font-bold text-surface-300">التكلفة الافتراضية</span>
+                                    <span className="font-mono font-bold text-surface-100">
+                                        {calculateAutomaticCost().toLocaleString()}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between items-center gap-3">
-                                    <span className="text-xs font-bold text-surface-300">التكلفة</span>
+                                    <span className="text-xs font-bold text-surface-300">تكلفة يدوية</span>
                                     <div className="flex h-9 w-32 items-center gap-1 rounded-lg border border-amber-500/30 bg-white/5 px-2">
                                         <DollarSign size={12} className="text-amber-400" />
                                         <input
@@ -747,35 +795,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                         />
                                     </div>
                                 </div>
-                                <p className="mt-2 text-left text-[10px] text-surface-500">التكلفة التلقائية: {(() => {
-                                    let auto = 0;
-                                    if (workflowType === 'full') {
-                                        auto = items.reduce((sum, item) => {
-                                            const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                                            const svc = services.find(s => s.name === item.serviceType);
-                                            let unitCost = svc ? svc.costPrice : 0;
-                                            if (selectedSupplier) {
-                                                const sup = suppliers.find(s => s.id === selectedSupplier);
-                                                if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
-                                            }
-                                            return sum + (unitCost * count);
-                                        }, 0);
-                                    } else {
-                                        const designer = designers.find(d => d.id === designerId);
-                                        const sup = suppliers.find(s => s.id === selectedSupplier);
-                                        auto = items.reduce((sum, item) => {
-                                            const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                                            const svc = services.find(s => s.name === item.serviceType);
-                                            const dCost = (designer?.unitRate || 0) * count;
-                                            let mCost = 0;
-                                            if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
-                                            else if (svc?.millingPrice) mCost = svc.millingPrice * count;
-                                            else if (svc) mCost = (svc.costPrice * 0.5) * count;
-                                            return sum + dCost + mCost;
-                                        }, 0);
-                                    }
-                                    return auto.toLocaleString();
-                                })()}</p>
+                                <p className="mt-1 text-left text-[10px] text-surface-500">
+                                    المحفوظ عند الحفظ: {((manualCost !== null ? manualCost : calculateAutomaticCost())).toLocaleString()}
+                                </p>
                             </div>
                         )}
                     </Card>
