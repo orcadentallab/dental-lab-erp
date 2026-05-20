@@ -85,6 +85,7 @@ export default function DashboardNew() {
     });
     const { t } = useTranslation();
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
+    const canViewDesignerWorkspace = Boolean(user && isDesignerUser(user) && user.role !== 'admin');
     const canViewDeliveryFollowUp = user?.role === 'admin' || user?.role === 'representative';
     const canEditDeliveryDates = user?.role === 'admin' || user?.role === 'representative';
     const goToOrder = (order: Order) => {
@@ -841,16 +842,18 @@ export default function DashboardNew() {
                 </div>
             </div>
 
-            {isDualRepDesigner && (
+            {canViewDesignerWorkspace && (
                 <>
-                    <div className="flex flex-wrap gap-2 bg-white dark:bg-gray-800 rounded-xl p-2 border border-gray-100 dark:border-gray-700 shadow-sm">
-                        <a href="#rep-dashboard" className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-blue-600 text-white">
-                            شغل المندوب
-                        </a>
-                        <a href="#designer-dashboard" className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-amber-600 text-white">
-                            شغل التصميم
-                        </a>
-                    </div>
+                    {isDualRepDesigner && (
+                        <div className="flex flex-wrap gap-2 bg-white dark:bg-gray-800 rounded-xl p-2 border border-gray-100 dark:border-gray-700 shadow-sm">
+                            <a href="#rep-dashboard" className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-blue-600 text-white">
+                                شغل المندوب
+                            </a>
+                            <a href="#designer-dashboard" className="px-4 py-2 rounded-lg text-sm font-bold transition-colors bg-amber-600 text-white">
+                                شغل التصميم
+                            </a>
+                        </div>
+                    )}
 
                     <section id="designer-dashboard" className="scroll-mt-24">
                         <DesignerDashboard embedded />
