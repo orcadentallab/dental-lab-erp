@@ -87,6 +87,7 @@ export default function DashboardNew() {
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
     const canViewDesignerWorkspace = Boolean(user && isDesignerUser(user) && user.role !== 'admin');
     const canViewCommentAlerts = user?.role === 'admin';
+    const canViewWorkloadCards = user?.role === 'admin' || user?.role === 'representative';
     const canViewDeliveryFollowUp = user?.role === 'admin' || user?.role === 'representative';
     const canEditDeliveryDates = user?.role === 'admin' || user?.role === 'representative';
     const goToOrder = (order: Order) => {
@@ -1196,7 +1197,7 @@ export default function DashboardNew() {
 
             {/* Designer Workload Cards - mirrors lab workload for active design assignments */}
             {
-                users.filter(u => isDesignerUser(u)).length > 0 && (() => {
+                canViewWorkloadCards && users.filter(u => isDesignerUser(u)).length > 0 && (() => {
                     const designers = users.filter(u => isDesignerUser(u));
                     const hasActiveDesigner = designers.some(designer => {
                         const designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
@@ -1269,7 +1270,7 @@ export default function DashboardNew() {
 
             {/* Lab Workload Cards - Visible to All (with role-based filtering) */}
             {
-                suppliers.length > 0 && (() => {
+                canViewWorkloadCards && suppliers.length > 0 && (() => {
                     const hasActive = suppliers.some(supplier => {
                         let labOrders = orders.filter(o => o.supplierId === supplier.id && o.status !== 'Delivered');
                         if (user?.role === 'lab' && user.entityId !== supplier.id) return false;
