@@ -19,6 +19,7 @@ import { useTranslation } from '../translations';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 import { useToast } from '../context/ToastContext';
+import { isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useNavigate } from 'react-router-dom';
 import { DELIVERY_DATE_AUDIT_PREFIX, isInternalDeliveryDateAuditComment } from '../utils/orderDisplay';
@@ -46,6 +47,16 @@ export default function DashboardNew() {
     const { user } = useAuth();
     const navigate = useNavigate();
     const toast = useToast();
+
+    const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
+        if (!rawUrl) return;
+        if (!isValidUrl(rawUrl)) {
+            toast.error(errorMsg);
+            return;
+        }
+        window.open(ensureAbsoluteUrl(rawUrl), '_blank');
+    };
+
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -1485,9 +1496,13 @@ export default function DashboardNew() {
                                                     <td className="px-4 py-3">
                                                         <div className="flex min-w-[130px] flex-col gap-1.5">
                                                             {order.designUrl ? (
-                                                                <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+                                                                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold text-right"
+                                                                >
                                                                     مراجعة التصميم
-                                                                </a>
+                                                                </button>
                                                             ) : (
                                                                 <span className="text-xs text-gray-300">-</span>
                                                             )}

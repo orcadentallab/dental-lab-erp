@@ -9,6 +9,7 @@ import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
 import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User as UserIcon, ChevronDown, LayoutList, Columns } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { exportToExcelWithHeaders } from '../lib/exportUtils';
 import { generateDoctorInvoicePDF, generateOrdersListPDF } from '../services/pdfService';
 import { calculateOpeningBalance, DEFAULT_LAB_INFO } from '../utils/finance';
@@ -20,6 +21,7 @@ import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
+import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 
@@ -31,6 +33,7 @@ function isCaseCodeSearchTerm(term: string): boolean {
 
 export default function Orders() {
     const { user } = useAuth();
+    const { error: toastError } = useToast();
     const [searchParams, setSearchParams] = useSearchParams();
     const initialModalRef = useRef({
         modal: searchParams.get('modal'),
@@ -441,14 +444,25 @@ export default function Orders() {
 
     const handleUpdateDesignUrl = async () => {
         if (!designLinkOrder) return;
+        const cleanedUrl = cleanUrl(designLinkUrl);
+        if (!cleanedUrl) {
+            toastError('يرجى إدخال رابط التصميم');
+            return;
+        }
+        if (!isValidUrl(cleanedUrl)) {
+            toastError('رابط التصميم غير صالح. يرجى التأكد من إدخال رابط صحيح (مثال: drive.google.com)');
+            return;
+        }
+        const absoluteUrl = ensureAbsoluteUrl(cleanedUrl);
+
         try {
             const isUnderProduction = designLinkTargetStatus === 'Under Production';
             const comment = isUnderProduction
-                ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${designLinkUrl}`
-                : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${designLinkUrl}`;
+                ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${absoluteUrl}`
+                : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${absoluteUrl}`;
 
             await db.updateOrderStatus(designLinkOrder.id, designLinkTargetStatus, {
-                designUrl: designLinkUrl,
+                designUrl: absoluteUrl,
                 comment,
                 userId: user?.id || 'system',
                 userName: user?.name || 'System',
