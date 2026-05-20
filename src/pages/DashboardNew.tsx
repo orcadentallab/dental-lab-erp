@@ -86,6 +86,7 @@ export default function DashboardNew() {
     const { t } = useTranslation();
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
     const canViewDesignerWorkspace = Boolean(user && isDesignerUser(user) && user.role !== 'admin');
+    const canViewCommentAlerts = user?.role === 'admin';
     const canViewDeliveryFollowUp = user?.role === 'admin' || user?.role === 'representative';
     const canEditDeliveryDates = user?.role === 'admin' || user?.role === 'representative';
     const goToOrder = (order: Order) => {
@@ -419,11 +420,13 @@ export default function DashboardNew() {
     };
 
     // Build flat list of unresolved comments across all orders with comments
-    const unresolvedCommentItems = ordersWithComments.flatMap(order =>
-        (order.comments || [])
-            .filter(c => c.userId !== 'system' && c.userId !== 'System' && !isInternalDeliveryDateAuditComment(c) && !resolvedCommentIds.has(c.id))
-            .map(c => ({ comment: c, order }))
-    );
+    const unresolvedCommentItems = canViewCommentAlerts
+        ? ordersWithComments.flatMap(order =>
+            (order.comments || [])
+                .filter(c => c.userId !== 'system' && c.userId !== 'System' && !isInternalDeliveryDateAuditComment(c) && !resolvedCommentIds.has(c.id))
+                .map(c => ({ comment: c, order }))
+        )
+        : [];
 
     function parseDeliveryDateAuditComment(text: string) {
         if (!text.startsWith(`${DELIVERY_DATE_AUDIT_PREFIX}|`)) return null;
@@ -1075,7 +1078,7 @@ export default function DashboardNew() {
                 )}
 
                 {/* 3. COMMENTS ALERT (Blue) */}
-                {(unresolvedCommentItems.length > 0 || (user?.role === 'admin' && representativeDeliveryDateChanges.length > 0)) && (
+                {canViewCommentAlerts && (unresolvedCommentItems.length > 0 || representativeDeliveryDateChanges.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <MessageSquare size={16} />
