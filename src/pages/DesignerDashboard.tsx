@@ -48,7 +48,13 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             toastError(errorMsg);
             return;
         }
-        window.open(absoluteUrl, '_blank');
+        const link = document.createElement('a');
+        link.href = absoluteUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const [orders, setOrders] = useState<Order[]>([]);

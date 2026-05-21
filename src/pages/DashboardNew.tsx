@@ -55,7 +55,13 @@ export default function DashboardNew() {
             toast.error(errorMsg);
             return;
         }
-        window.open(absoluteUrl, '_blank');
+        const link = document.createElement('a');
+        link.href = absoluteUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const [isLoading, setIsLoading] = useState(true);

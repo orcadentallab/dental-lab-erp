@@ -78,7 +78,13 @@ export default function OrderCard({
             toastError(errorMsg);
             return;
         }
-        window.open(absoluteUrl, '_blank');
+        const link = document.createElement('a');
+        link.href = absoluteUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     // Confirmation State
@@ -380,7 +386,7 @@ export default function OrderCard({
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(order.imagesUrl, '_blank')}
+                                    onClick={() => handleOpenExternalUrl(order.imagesUrl, 'رابط الصور غير صالح أو معطوب')}
                                     className="h-6 px-2 text-xs text-teal-600 border-teal-200 hover:bg-teal-50 bg-white"
                                     title="Images"
                                 >
