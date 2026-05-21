@@ -19,6 +19,7 @@ import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
 import { canAccessDesignerFeatures } from '../../lib/userRoles';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
+import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 
 interface OrderCardProps {
     order: Order;
@@ -68,7 +69,23 @@ export default function OrderCard({
 
     currentUser
 }: OrderCardProps) {
-    const { success } = useToast();
+    const { success, error: toastError } = useToast();
+
+    const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
+        if (!rawUrl) return;
+        const absoluteUrl = ensureAbsoluteUrl(rawUrl);
+        if (!absoluteUrl) {
+            toastError(errorMsg);
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = absoluteUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Confirmation State
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -328,7 +345,8 @@ export default function OrderCard({
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(order.designUrl, '_blank')}
+                                    onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+
                                     className="h-6 px-2 text-xs text-orange-600 border-orange-200 hover:bg-orange-50 bg-white"
                                     title="تحميل التصميم"
                                 >
@@ -341,7 +359,8 @@ export default function OrderCard({
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(order.stlUrl, '_blank')}
+                                    onClick={() => handleOpenExternalUrl(order.stlUrl, 'رابط ملف STL غير صالح أو معطوب')}
+
                                     className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 bg-white"
                                     title="STL File"
                                 >
@@ -367,7 +386,7 @@ export default function OrderCard({
                                 <Button
                                     size="sm"
                                     variant="outline"
-                                    onClick={() => window.open(order.imagesUrl, '_blank')}
+                                    onClick={() => handleOpenExternalUrl(order.imagesUrl, 'رابط الصور غير صالح أو معطوب')}
                                     className="h-6 px-2 text-xs text-teal-600 border-teal-200 hover:bg-teal-50 bg-white"
                                     title="Images"
                                 >

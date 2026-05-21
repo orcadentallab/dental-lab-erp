@@ -10,6 +10,8 @@ import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
+import { useToast } from '../context/ToastContext';
+import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
@@ -37,6 +39,24 @@ interface DesignerDashboardCache {
 
 export default function DesignerDashboard({ embedded = false }: DesignerDashboardProps) {
     const { user } = useAuth();
+    const { error: toastError } = useToast();
+
+    const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
+        if (!rawUrl) return;
+        const absoluteUrl = ensureAbsoluteUrl(rawUrl);
+        if (!absoluteUrl) {
+            toastError(errorMsg);
+            return;
+        }
+        const link = document.createElement('a');
+        link.href = absoluteUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const [orders, setOrders] = useState<Order[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [doctors, setDoctors] = useState<any[]>([]);
@@ -203,13 +223,24 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const submitDesign = async () => {
         if (!selectedOrder || !user) return;
 
+        const cleanedUrl = cleanUrl(designUrl);
+        if (!cleanedUrl) {
+            toastError('يرجى إدخال رابط التصميم');
+            return;
+        }
+        if (!isValidUrl(cleanedUrl)) {
+            toastError('رابط التصميم غير صالح. يرجى التأكد من إدخال رابط صحيح (مثال: drive.google.com)');
+            return;
+        }
+        const absoluteUrl = ensureAbsoluteUrl(cleanedUrl);
+
         const isUnderProduction = designSubmitTarget === 'Under Production';
         const comment = isUnderProduction
-            ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${designUrl}`
-            : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${designUrl}`;
+            ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${absoluteUrl}`
+            : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${absoluteUrl}`;
 
         const updatedOrder = await db.updateOrderStatus(selectedOrder.id, designSubmitTarget, {
-            designUrl,
+            designUrl: absoluteUrl,
             comment,
             userId: user.id,
             userName: user.name || user.role || 'مصمم',
@@ -642,19 +673,31 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     </div>
                                                     <div className="flex gap-2 flex-wrap">
                                                         {order.stlUrl && (
-                                                            <a href={order.stlUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md border border-blue-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenExternalUrl(order.stlUrl, 'رابط ملف STL غير صالح أو معطوب')}
+                                                                className="text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md border border-blue-100"
+                                                            >
                                                                 <Upload size={12} /> STL
-                                                            </a>
+                                                            </button>
                                                         )}
                                                         {order.imagesUrl && (
-                                                            <a href={order.imagesUrl} target="_blank" rel="noreferrer" className="text-teal-600 hover:text-teal-800 text-xs flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-md border border-teal-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenExternalUrl(order.imagesUrl, 'رابط الصور غير صالح أو معطوب')}
+                                                                className="text-teal-600 hover:text-teal-800 text-xs flex items-center gap-1 bg-teal-50 px-2 py-1 rounded-md border border-teal-100"
+                                                            >
                                                                 <FolderKanban size={12} /> صور
-                                                            </a>
+                                                            </button>
                                                         )}
                                                         {order.designUrl && (
-                                                            <a href={order.designUrl} target="_blank" rel="noreferrer" className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+                                                                className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100"
+                                                            >
                                                                 <LinkIcon size={12} /> التصميم الحالي
-                                                            </a>
+                                                            </button>
                                                         )}
                                                         {isDesignSubmitted(order) && (
                                                             <button
