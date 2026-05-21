@@ -43,11 +43,12 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
         if (!rawUrl) return;
-        if (!isValidUrl(rawUrl)) {
+        const absoluteUrl = ensureAbsoluteUrl(rawUrl);
+        if (!absoluteUrl) {
             toastError(errorMsg);
             return;
         }
-        window.open(ensureAbsoluteUrl(rawUrl), '_blank');
+        window.open(absoluteUrl, '_blank');
     };
 
     const [orders, setOrders] = useState<Order[]>([]);

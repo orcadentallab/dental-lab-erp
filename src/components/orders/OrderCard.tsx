@@ -19,7 +19,7 @@ import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
 import { canAccessDesignerFeatures } from '../../lib/userRoles';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
-import { isValidUrl, ensureAbsoluteUrl } from '../../lib/urlUtils';
+import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 
 interface OrderCardProps {
     order: Order;
@@ -73,11 +73,12 @@ export default function OrderCard({
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
         if (!rawUrl) return;
-        if (!isValidUrl(rawUrl)) {
+        const absoluteUrl = ensureAbsoluteUrl(rawUrl);
+        if (!absoluteUrl) {
             toastError(errorMsg);
             return;
         }
-        window.open(ensureAbsoluteUrl(rawUrl), '_blank');
+        window.open(absoluteUrl, '_blank');
     };
 
     // Confirmation State

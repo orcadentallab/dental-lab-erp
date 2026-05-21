@@ -19,7 +19,7 @@ import { useTranslation } from '../translations';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 import { useToast } from '../context/ToastContext';
-import { isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
+import { ensureAbsoluteUrl } from '../lib/urlUtils';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useNavigate } from 'react-router-dom';
 import { DELIVERY_DATE_AUDIT_PREFIX, isInternalDeliveryDateAuditComment } from '../utils/orderDisplay';
@@ -50,11 +50,12 @@ export default function DashboardNew() {
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
         if (!rawUrl) return;
-        if (!isValidUrl(rawUrl)) {
+        const absoluteUrl = ensureAbsoluteUrl(rawUrl);
+        if (!absoluteUrl) {
             toast.error(errorMsg);
             return;
         }
-        window.open(ensureAbsoluteUrl(rawUrl), '_blank');
+        window.open(absoluteUrl, '_blank');
     };
 
     const [isLoading, setIsLoading] = useState(true);
