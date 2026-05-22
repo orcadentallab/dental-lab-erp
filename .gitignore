@@ -35,6 +35,11 @@ audit*.csv
 audit*.txt
 audit.summary.txt
 audit.stderr.txt
+restore-errors.log
+# Production data dumps (never commit)
+prod-*.sql
+*-prod-dump.sql
+*.dump
 drilldown*.md
 *.utf8.md
 delivery-obligation-trace*.md

@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type Supplier, type User, type Doctor, type OrderHistoryEntry } from '../services/db';
-import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare } from 'lucide-react';
+import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare, Search } from 'lucide-react';
 import { contactService, type ContactInquiry } from '../services/contactService';
 import AlertCard from '../components/dashboard/AlertCard';
 import OrderForm from '../components/orders/OrderForm';
@@ -83,7 +83,10 @@ export default function DashboardNew() {
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
     const [recentOrderHistory, setRecentOrderHistory] = useState<OrderHistoryEntry[]>([]);
-    const [designerTimelineView, setDesignerTimelineView] = useState<'pending' | 'submitted'>('pending');
+
+    const [designerStatsSearch, setDesignerStatsSearch] = useState('');
+    const [designerStatsTimeFilter, setDesignerStatsTimeFilter] = useState<'all' | 'week' | 'month'>('all');
+    const [designerStatsStatusFilter, setDesignerStatsStatusFilter] = useState<'all' | 'pending' | 'submitted' | 'tryin' | 'delivered'>('all');
     // Track which comment IDs have been resolved (dismissed) — stored in localStorage
     const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
         try {
@@ -346,37 +349,75 @@ export default function DashboardNew() {
         [designerTimelineRows]
     );
 
-    const visibleDesignerTimelineRows = designerTimelineView === 'submitted'
-        ? submittedDesignerTimelineRows
-        : pendingDesignerTimelineRows;
 
     const pendingDesignerUnitsCount = getRowsUnitsCount(pendingDesignerTimelineRows);
     const submittedDesignerUnitsCount = getRowsUnitsCount(submittedDesignerTimelineRows);
 
-    const designerTimelineGroups = useMemo(() => {
-        const groups = new Map<string, {
-            designerId: string;
-            designerName: string;
-            rows: typeof designerTimelineRows;
-        }>();
 
-        visibleDesignerTimelineRows.forEach(row => {
+    const filteredDesignerStatsRows = useMemo(() => {
+        let rows: typeof designerTimelineRows;
+        if (designerStatsStatusFilter === 'pending') {
+            rows = pendingDesignerTimelineRows;
+        } else if (designerStatsStatusFilter === 'submitted') {
+            rows = submittedDesignerTimelineRows;
+        } else if (designerStatsStatusFilter === 'tryin' || designerStatsStatusFilter === 'delivered') {
+            const targetStatus = designerStatsStatusFilter === 'tryin' ? 'Try In' : 'Delivered';
+            rows = orders
+                .filter(o => o.designerId && o.status === targetStatus)
+                .map(order => ({
+                    order,
+                    submittedAt: getDesignSubmittedAt(order),
+                    durationMs: getDesignerWorkDurationMs(order, nowMs),
+                    isFinished: isDesignSubmitted(order),
+                }))
+                .sort((a, b) => new Date(b.submittedAt || b.order.createdAt).getTime() - new Date(a.submittedAt || a.order.createdAt).getTime());
+        } else {
+            const designerRowIds = new Set(designerTimelineRows.map(r => r.order.id));
+            const extraRows = orders
+                .filter(o => o.designerId && !designerRowIds.has(o.id))
+                .map(order => ({
+                    order,
+                    submittedAt: getDesignSubmittedAt(order),
+                    durationMs: getDesignerWorkDurationMs(order, nowMs),
+                    isFinished: isDesignSubmitted(order),
+                }));
+            rows = [...designerTimelineRows, ...extraRows]
+                .sort((a, b) => new Date(b.submittedAt || b.order.createdAt).getTime() - new Date(a.submittedAt || a.order.createdAt).getTime());
+        }
+        if (designerStatsTimeFilter !== 'all') {
+            const cutoff = new Date();
+            if (designerStatsTimeFilter === 'week') cutoff.setDate(cutoff.getDate() - 7);
+            else cutoff.setDate(cutoff.getDate() - 30);
+            const cutoffMs = cutoff.getTime();
+            rows = rows.filter(row => new Date(row.order.createdAt).getTime() >= cutoffMs);
+        }
+        if (designerStatsSearch.trim()) {
+            const q = designerStatsSearch.trim().toLowerCase();
+            rows = rows.filter(row => {
+                const o = row.order;
+                const doctorName = o.doctorId ? (doctors.find(d => d.id === o.doctorId)?.name || '').toLowerCase() : '';
+                return (
+                    (o.patientName || '').toLowerCase().includes(q) ||
+                    (o.caseId || '').toLowerCase().includes(q) ||
+                    doctorName.includes(q)
+                );
+            });
+        }
+        return rows;
+    }, [designerTimelineRows, pendingDesignerTimelineRows, submittedDesignerTimelineRows, orders, designerStatsStatusFilter, designerStatsTimeFilter, designerStatsSearch, nowMs, doctors]);
+
+    const filteredDesignerStatsGroups = useMemo(() => {
+        const groups = new Map<string, { designerId: string; designerName: string; rows: typeof designerTimelineRows; }>();
+        filteredDesignerStatsRows.forEach(row => {
             const designerId = row.order.designerId || 'unassigned';
-            const designerName = users.find(appUser => appUser.id === row.order.designerId)?.name || 'غير محدد';
-
+            const designerName = users.find(u => u.id === row.order.designerId)?.name || 'غير محدد';
             if (!groups.has(designerId)) {
-                groups.set(designerId, {
-                    designerId,
-                    designerName,
-                    rows: [],
-                });
+                groups.set(designerId, { designerId, designerName, rows: [] });
             }
-
             groups.get(designerId)?.rows.push(row);
         });
-
         return Array.from(groups.values());
-    }, [users, visibleDesignerTimelineRows]);
+    }, [filteredDesignerStatsRows, users]);
 
     const dailyDesignerCount = useMemo(() => {
         return designerPerformanceRows.filter(({ submittedAt }) =>
@@ -619,38 +660,6 @@ export default function DashboardNew() {
         );
     };
 
-    const getDesignerStatusLabel = (order: Order) => {
-        if (order.designStatus) {
-            const map: Record<string, string> = {
-                pending: 'منتظر',
-                accepted: 'مقبول',
-                in_progress: 'تصميم',
-                waiting_approval: 'موافقة',
-                completed: 'مكتمل',
-                returned: 'مرتجع',
-            };
-            return map[order.designStatus] || order.designStatus;
-        }
-
-        return order.status === 'Rejected' ? 'رفض دكتور' : order.status;
-    };
-
-    const getDesignerStatusClass = (order: Order) => {
-        if (order.designStatus === 'completed' || order.status === 'Ready') {
-            return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-        }
-        if (order.designStatus === 'returned' || order.status === 'Rejected' || order.status === 'Returned for Adjustments') {
-            return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-        }
-        if (order.designStatus === 'waiting_approval' || order.status === 'Waiting Dr Approval') {
-            return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-        }
-        if (order.designStatus === 'in_progress' || order.status === 'Under Design') {
-            return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-        }
-
-        return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
-    };
 
     const requestDesignRevision = async (order: Order) => {
         if (!user) return;
@@ -667,7 +676,7 @@ export default function DashboardNew() {
             if (updatedOrder) {
                 setDesignerOrders(prev => prev.map(existingOrder => existingOrder.id === updatedOrder.id ? updatedOrder : existingOrder));
                 setOrders(prev => prev.map(existingOrder => existingOrder.id === updatedOrder.id ? updatedOrder : existingOrder));
-                setDesignerTimelineView('pending');
+
             }
         } catch (error) {
             toast.error(ErrorHandler.getUserMessage(error) || 'فشل إرجاع الحالة تحت التصميم');
@@ -1213,79 +1222,6 @@ export default function DashboardNew() {
             )}
 
 
-            {/* Designer Workload Cards - mirrors lab workload for active design assignments */}
-            {
-                canViewWorkloadCards && users.filter(u => isDesignerUser(u)).length > 0 && (() => {
-                    const designers = users.filter(u => isDesignerUser(u));
-                    const hasActiveDesigner = designers.some(designer => {
-                        const designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
-
-                        if (user?.role === 'designer' && user.id !== designer.id) {
-                            return false;
-                        }
-
-                        return designerOrders.length > 0;
-                    });
-
-                    if (!hasActiveDesigner) return null;
-
-                    return (
-                        <div className="space-y-4">
-                            <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-                                <UserCheck className="text-amber-600" size={20} />
-                                حمل المصممين
-                            </h2>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {designers.map(designer => {
-                                    const designerOrders = orders.filter(o => o.designerId === designer.id && o.status !== 'Delivered');
-
-                                    if (user?.role === 'designer' && user.id !== designer.id) {
-                                        return null;
-                                    }
-
-                                    if (designerOrders.length === 0) return null;
-
-                                    return (
-                                        <div key={designer.id} className="group bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200">
-                                            <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-100 dark:border-gray-700">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400 font-bold text-sm">
-                                                        {designer.name.charAt(0)}
-                                                    </div>
-                                                    <h3 className="font-bold text-gray-800 dark:text-white">{designer.name}</h3>
-                                                </div>
-                                                <span className="bg-amber-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-sm shadow-amber-200 dark:shadow-none">
-                                                    {designerOrders.length}
-                                                </span>
-                                            </div>
-                                            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                                                {designerOrders.map(order => (
-                                                    <button
-                                                        key={order.id}
-                                                        type="button"
-                                                        onClick={() => goToOrder(order)}
-                                                        className="flex w-full items-center justify-between text-sm gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors cursor-pointer text-right"
-                                                        title="فتح الأوردر"
-                                                    >
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                            <span className="font-mono text-xs text-gray-400">#{order.caseId}</span>
-                                                            <span className="text-gray-700 dark:text-gray-300 truncate font-medium">{order.patientName}</span>
-                                                        </div>
-                                                        <span className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-medium ${getDesignerStatusClass(order)}`}>
-                                                            {getDesignerStatusLabel(order)}
-                                                        </span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    );
-                })()
-            }
-
             {/* Lab Workload Cards - Visible to All (with role-based filtering) */}
             {
                 canViewWorkloadCards && suppliers.length > 0 && (() => {
@@ -1405,56 +1341,55 @@ export default function DashboardNew() {
                     </div>
 
                     <div className="space-y-4">
-                        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-sm font-bold text-gray-800 dark:text-white">
-                                        {designerTimelineView === 'pending' ? 'حالات لسه تحت التصميم' : 'حالات اترفعلها تصميم'}
-                                    </p>
-                                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                                        {designerTimelineView === 'pending'
-                                            ? 'الجدول يعرض الحالات التي لم يتم رفع رابط التصميم لها بعد'
-                                            : 'الجدول يعرض الحالات التي لديها رابط تصميم جاهز للمراجعة'}
-                                    </p>
+                        {/* Search + Filter Toolbar */}
+                        <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 space-y-3">
+                            <div className="relative">
+                                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                                <input
+                                    type="text"
+                                    placeholder="ابحث بالمريض أو كود الحالة أو الطبيب..."
+                                    value={designerStatsSearch}
+                                    onChange={e => setDesignerStatsSearch(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pr-9 pl-3 text-sm text-right dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 dark:placeholder-gray-400"
+                                />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
+                                    {(['all', 'week', 'month'] as const).map(f => (
+                                        <button key={f} type="button" onClick={() => setDesignerStatsTimeFilter(f)}
+                                            className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${designerStatsTimeFilter === f ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-700/50'}`}>
+                                            {f === 'all' ? 'الكل' : f === 'week' ? 'الأسبوع' : 'الشهر'}
+                                        </button>
+                                    ))}
                                 </div>
-                                <div className="flex gap-2 rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDesignerTimelineView('pending')}
-                                        className={`rounded-md px-3 py-2 text-xs font-bold transition ${designerTimelineView === 'pending'
-                                            ? 'bg-amber-600 text-white shadow-sm'
-                                            : 'text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/30'
-                                            }`}
-                                    >
-                                        تحت التصميم ({pendingDesignerTimelineRows.length} حالة / {pendingDesignerUnitsCount} يونت)
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDesignerTimelineView('submitted')}
-                                        className={`rounded-md px-3 py-2 text-xs font-bold transition ${designerTimelineView === 'submitted'
-                                            ? 'bg-emerald-600 text-white shadow-sm'
-                                            : 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/30'
-                                            }`}
-                                    >
-                                        تم رفع التصميم ({submittedDesignerTimelineRows.length} حالة / {submittedDesignerUnitsCount} يونت)
-                                    </button>
+                                <div className="flex flex-wrap gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
+                                    {([
+                                        { key: 'all', label: 'كل الحالات' },
+                                        { key: 'pending', label: 'تحت التصميم' },
+                                        { key: 'submitted', label: 'تم رفع التصميم' },
+                                        { key: 'tryin', label: 'تراى ان' },
+                                        { key: 'delivered', label: 'اتسلمت' },
+                                    ] as const).map(({ key, label }) => (
+                                        <button key={key} type="button" onClick={() => setDesignerStatsStatusFilter(key)}
+                                            className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${designerStatsStatusFilter === key ? 'bg-amber-600 text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-700/50'}`}>
+                                            {label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
                         </div>
 
-                        {designerTimelineGroups.length === 0 ? (
+                        {filteredDesignerStatsGroups.length === 0 ? (
                             <div className="rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center text-sm text-gray-400 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500">
-                                {designerTimelineView === 'pending'
-                                    ? 'لا توجد حالات تحت التصميم حالياً'
-                                    : 'لا توجد حالات تم رفع تصميمها حالياً'}
+                                لا توجد حالات تطابق البحث أو الفلاتر المحددة
                             </div>
-                        ) : designerTimelineGroups.map(group => (
+                        ) : filteredDesignerStatsGroups.map(group => (
                             <div key={group.designerId} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                                 <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
                                     <div>
                                         <h3 className="font-bold text-gray-800 dark:text-white">{group.designerName}</h3>
                                         <p className="text-xs text-gray-400 dark:text-gray-500">
-                                            {group.rows.length} حالة / {getRowsUnitsCount(group.rows)} يونت {designerTimelineView === 'pending' ? 'تحت التصميم' : 'تم رفع تصميمها'}
+                                            {group.rows.length} حالة / {getRowsUnitsCount(group.rows)} يونت
                                         </p>
                                     </div>
                                 </div>
@@ -1473,59 +1408,77 @@ export default function DashboardNew() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {group.rows.map(({ order, submittedAt, durationMs, isFinished }) => (
-                                                <tr key={order.id} className={`border-t align-top ${isFinished ? 'border-emerald-100 bg-emerald-50/35 dark:border-emerald-900/40 dark:bg-emerald-900/10' : 'border-amber-100 bg-amber-50/35 dark:border-amber-900/40 dark:bg-amber-900/10'}`}>
-                                                    <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">#{order.caseId}</td>
-                                                    <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{order.patientName}</td>
-                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{order.doctorId ? `د. ${getDoctorDisplayName(order.doctorId)}` : '-'}</td>
-                                                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
-                                                        <div className="max-w-[280px] space-y-1">
-                                                            <div className="mb-1 inline-flex rounded-md bg-white px-2 py-0.5 text-[11px] font-bold text-gray-700 ring-1 ring-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700">
-                                                                إجمالي {getOrderUnitsCount(order)} يونت
-                                                            </div>
-                                                            {order.items.map((item, index) => (
-                                                                <div key={`${order.id}-item-${index}`} className="rounded-lg bg-gray-50 dark:bg-gray-700/50 px-2 py-1">
-                                                                    {item.serviceType} x{Math.max(item.teethNumbers.length, 1)}
-                                                                    {item.teethNumbers.length > 0 && (
-                                                                        <span className="text-gray-400 dark:text-gray-500"> ({item.teethNumbers.join(', ')})</span>
-                                                                    )}
+                                            {group.rows.map(({ order, submittedAt, durationMs, isFinished }) => {
+                                                const rowStatus = order.status === 'Delivered' ? 'delivered' : order.status === 'Try In' ? 'tryin' : isFinished ? 'submitted' : 'pending';
+                                                const rowBg = rowStatus === 'delivered'
+                                                    ? 'border-gray-100 bg-gray-50/30 dark:border-gray-700/40 dark:bg-gray-700/10'
+                                                    : rowStatus === 'tryin'
+                                                        ? 'border-blue-100 bg-blue-50/35 dark:border-blue-900/40 dark:bg-blue-900/10'
+                                                        : rowStatus === 'submitted'
+                                                            ? 'border-emerald-100 bg-emerald-50/35 dark:border-emerald-900/40 dark:bg-emerald-900/10'
+                                                            : 'border-amber-100 bg-amber-50/35 dark:border-amber-900/40 dark:bg-amber-900/10';
+                                                const badgeCls = rowStatus === 'delivered' ? 'bg-gray-500 text-white'
+                                                    : rowStatus === 'tryin' ? 'bg-blue-500 text-white'
+                                                        : rowStatus === 'submitted' ? 'bg-emerald-600 text-white dark:bg-emerald-500'
+                                                            : 'bg-amber-500 text-white';
+                                                const badgeLabel = rowStatus === 'delivered' ? 'اتسلمت'
+                                                    : rowStatus === 'tryin' ? 'تراى ان'
+                                                        : rowStatus === 'submitted' ? 'تم رفع التصميم'
+                                                            : 'تحت التصميم';
+                                                return (
+                                                    <tr key={order.id} className={`border-t align-top ${rowBg}`}>
+                                                        <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">#{order.caseId}</td>
+                                                        <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{order.patientName}</td>
+                                                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{order.doctorId ? `د. ${getDoctorDisplayName(order.doctorId)}` : '-'}</td>
+                                                        <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                                                            <div className="max-w-[280px] space-y-1">
+                                                                <div className="mb-1 inline-flex rounded-md bg-white px-2 py-0.5 text-[11px] font-bold text-gray-700 ring-1 ring-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700">
+                                                                    إجمالي {getOrderUnitsCount(order)} يونت
                                                                 </div>
-                                                            ))}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <span className={`inline-flex min-w-[96px] justify-center rounded-full px-2 py-1 text-[11px] font-bold ${isFinished ? 'bg-emerald-600 text-white dark:bg-emerald-500' : 'bg-amber-500 text-white dark:bg-amber-500'}`}>
-                                                            {isFinished ? 'تم رفع التصميم' : 'تحت التصميم'}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{submittedAt ? format(new Date(submittedAt), 'dd/MM/yyyy HH:mm') : '-'}</td>
-                                                    <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{durationMs !== null ? formatDesignerDuration(durationMs) : '-'}</td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex min-w-[130px] flex-col gap-1.5">
-                                                            {order.designUrl ? (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
-                                                                    className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold text-right"
-                                                                >
-                                                                    مراجعة التصميم
-                                                                </button>
-                                                            ) : (
-                                                                <span className="text-xs text-gray-300">-</span>
-                                                            )}
-                                                            {isFinished && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => requestDesignRevision(order)}
-                                                                    className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300"
-                                                                >
-                                                                    طلب تعديل تصميم
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                                {order.items.map((item, index) => (
+                                                                    <div key={`${order.id}-item-${index}`} className="rounded-lg bg-gray-50 dark:bg-gray-700/50 px-2 py-1">
+                                                                        {item.serviceType} x{Math.max(item.teethNumbers.length, 1)}
+                                                                        {item.teethNumbers.length > 0 && (
+                                                                            <span className="text-gray-400 dark:text-gray-500"> ({item.teethNumbers.join(', ')})</span>
+                                                                        )}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className={`inline-flex min-w-[96px] justify-center rounded-full px-2 py-1 text-[11px] font-bold ${badgeCls}`}>
+                                                                {badgeLabel}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{submittedAt ? format(new Date(submittedAt), 'dd/MM/yyyy HH:mm') : '-'}</td>
+                                                        <td className="px-4 py-3 text-gray-700 dark:text-gray-200">{durationMs !== null ? formatDesignerDuration(durationMs) : '-'}</td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex min-w-[130px] flex-col gap-1.5">
+                                                                {order.designUrl ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+                                                                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-xs font-bold text-right"
+                                                                    >
+                                                                        مراجعة التصميم
+                                                                    </button>
+                                                                ) : (
+                                                                    <span className="text-xs text-gray-300">-</span>
+                                                                )}
+                                                                {isFinished && rowStatus !== 'delivered' && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => requestDesignRevision(order)}
+                                                                        className="rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs font-bold text-red-700 transition hover:bg-red-100 dark:border-red-900/40 dark:bg-red-900/20 dark:text-red-300"
+                                                                    >
+                                                                        طلب تعديل تصميم
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
@@ -2002,3 +1955,4 @@ export default function DashboardNew() {
 }
 
 /* aria-label placeholder */
+
