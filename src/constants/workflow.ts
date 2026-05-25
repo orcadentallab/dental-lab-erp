@@ -25,6 +25,7 @@ export const ISSUE_STATES = [
     'rejected',
     'cancelled',
     'on_hold',
+    'redo',
 ] as const;
 
 export type IssueState = typeof ISSUE_STATES[number];
@@ -35,7 +36,7 @@ export const PRODUCTION_STATUS_LABELS_AR: Record<ProductionStatus, string> = {
     not_started: 'لم يبدأ',
     designing: 'قيد التصميم',
     in_production: 'قيد التنفيذ',
-    try_in_ready: 'Try-In جاهز',
+    try_in_ready: 'Try-In',
     waiting_doctor: 'في انتظار موافقة الطبيب',
     finalization: 'تنفيذ الفاينال',
     final_ready: 'جاهز نهائي',
@@ -48,13 +49,16 @@ export const ISSUE_STATE_LABELS_AR: Record<IssueState, string> = {
     rejected: 'مرفوض',
     cancelled: 'ملغي',
     on_hold: 'موقوف مؤقتاً',
+    redo: 'إعادة إنتاج',
 };
 
 // Derived case locations (computed by future helpers; constant kept here so the
 // timeline UI and the audit report can label rows consistently).
 export const CASE_LOCATIONS = [
     'pending_intake',
+    'with_designer',
     'internal_design',
+    'with_external_lab',
     'internal_production',
     'internal_ready_try_in',
     'with_doctor_waiting',

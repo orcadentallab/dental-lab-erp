@@ -106,3 +106,59 @@ export const REP_FIELD_STATE_GUARDS: Record<RepAuditedField, (ctx: RepStateGuard
         ctx.issueState === 'none' &&
         ctx.workflowType === 'split',
 };
+
+// ─── UI / predicate helpers (WF-2) ───────────────────────────────────────────
+
+const LAB_DENY_FIELDS = new Set([
+    'total_price', 'cost', 'manual_cost', 'design_price', 'discount', 'rejected_lab_cost',
+    'doctor_id', 'representative_id',
+]);
+
+const DESIGNER_ALLOW_FIELDS = new Set(['design_url', 'design_status', 'needs_design_review']);
+
+const ACCOUNTANT_ALLOW_FIELDS = new Set([
+    'total_price', 'cost', 'manual_cost', 'design_price', 'discount', 'rejected_lab_cost',
+    'is_registered', 'comments',
+]);
+
+/**
+ * Returns true if the given role can edit the specified DB field
+ * on an order in the given production_status + issue_state.
+ *
+ * Used by WF-4 UI to disable form fields per role.
+ * The DB trigger is the authoritative enforcement; this is a UI hint.
+ */
+export function canEditOrderField(
+    role: WorkflowRole,
+    field: string,
+    productionStatus: ProductionStatus,
+    issueState: IssueState,
+    workflowType?: string | null
+): boolean {
+    if (role === 'admin') return true;
+
+    if (role === 'representative') {
+        if (!isRepAuditedField(field)) return false;
+        const guard = REP_FIELD_STATE_GUARDS[field];
+        if (!guard) return false;
+        return guard({ productionStatus, issueState, workflowType });
+    }
+
+    if (role === 'lab') {
+        if (field === 'issue_state' && LAB_BLOCKED_ISSUE_STATES.includes(issueState)) return false;
+        if (LAB_DENY_FIELDS.has(field)) return false;
+        return true;
+    }
+
+    if (role === 'designer') {
+        return DESIGNER_ALLOW_FIELDS.has(field);
+    }
+
+    if (role === 'accountant') {
+        return ACCOUNTANT_ALLOW_FIELDS.has(field);
+    }
+
+    if (role === 'doctor') return false;
+
+    return false;
+}

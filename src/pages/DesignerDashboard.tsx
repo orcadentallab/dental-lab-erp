@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, type Order } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import {
-    FolderKanban, Upload, Search, ChevronDown,
+    FolderKanban, Upload, Search,
     AlertCircle, Clock, CheckCircle2, Link as LinkIcon, StickyNote, MessageCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -22,8 +22,6 @@ interface ExpandedTextPreview {
     content: string;
     accentClass: string;
 }
-
-type DesignSubmitTarget = 'Waiting Dr Approval' | 'Under Production';
 
 const DESIGNER_DASHBOARD_CACHE_KEY = 'designer-dashboard-cache-v1';
 const DESIGNER_DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -74,8 +72,15 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [designUrl, setDesignUrl] = useState('');
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
-    const [designSubmitTarget, setDesignSubmitTarget] = useState<DesignSubmitTarget>('Waiting Dr Approval');
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
+    const [decisionOrder, setDecisionOrder] = useState<Order | null>(null);
+    const [decisionNotes, setDecisionNotes] = useState('');
+    const [techActionPending, setTechActionPending] = useState<{
+        orderId: string;
+        action: 'Rejected' | 'NeedDetails';
+        reason: string;
+    } | null>(null);
+    const [decisionLoading, setDecisionLoading] = useState(false);
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     const isRestrictedDesigner = useMemo(
@@ -178,6 +183,35 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order));
     }, []);
 
+    const handleTechAction = useCallback(async (
+        orderId: string,
+        action: 'Approved' | 'Rejected' | 'NeedDetails',
+        reason?: string
+    ) => {
+        try {
+            const order = orders.find(o => o.id === orderId);
+            const updates: Partial<Order> = { technicianStatus: action };
+            if (reason && reason.trim() && order) {
+                const label = action === 'Rejected' ? 'رفض المصمم' : 'طلب تفاصيل';
+                updates.comments = [
+                    ...(order.comments || []),
+                    {
+                        id: crypto.randomUUID(),
+                        text: `[${label}]: ${reason.trim()}`,
+                        userId: user?.id || '',
+                        userName: user?.name || 'المصمم',
+                        createdAt: new Date().toISOString(),
+                    },
+                ];
+            }
+            const updatedOrder = await db.updateOrder(orderId, updates);
+            updateOrderInState(updatedOrder);
+            setTechActionPending(null);
+        } catch (err) {
+            console.error('Tech action error:', err);
+        }
+    }, [orders, updateOrderInState, user]);
+
     useEffect(() => {
         if (!user) return;
 
@@ -196,27 +230,39 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         }
     }, [doctors, orders, user, users]);
 
-    const handleStatusChange = async (order: Order, newStatus: string) => {
-        if (newStatus === 'completed') {
-            setSelectedOrder(order);
-            setDesignUrl(order.designUrl || '');
-            setShowDesignModal(true);
-            setDesignSubmitTarget(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
-            return;
-        }
-
-        // Direct status updates
-        const updates: Partial<Order> = { designStatus: newStatus as Order['designStatus'] };
-
-        // Auto-update main status based on design status
-        if (newStatus === 'in_progress') updates.status = 'Under Design';
-        if (newStatus === 'waiting_approval') updates.status = 'Waiting Dr Approval';
-        if (newStatus === 'returned') updates.status = 'Returned for Adjustments';
-        if (newStatus === 'accepted') updates.status = 'Under Design'; // Accepted starts design
-
-        if (confirm(`هل أنت متأكد من تغيير الحالة إلى ${getStatusLabel(newStatus)}؟`)) {
+    const handleDesignerDecision = async (
+        order: Order,
+        decision: 'accepted' | 'waiting_approval' | 'returned',
+        notes?: string
+    ) => {
+        setDecisionLoading(true);
+        try {
+            const updates: Partial<Order> = { designStatus: decision };
+            if (decision === 'accepted') updates.status = 'Under Design';
+            if (decision === 'waiting_approval') updates.status = 'Waiting Dr Approval';
+            if (decision === 'returned') {
+                updates.status = 'Under Design';
+            }
+            if (notes) {
+                updates.comments = [
+                    ...(order.comments || []),
+                    {
+                        id: crypto.randomUUID(),
+                        text: `[قرار المصمم - ${decision === 'accepted' ? 'قبول' : decision === 'waiting_approval' ? 'محتاج تفاصيل' : 'رفض'}]: ${notes}`,
+                        userId: user?.id || '',
+                        userName: user?.name || 'المصمم',
+                        createdAt: new Date().toISOString(),
+                    },
+                ];
+            }
             const updatedOrder = await db.updateOrder(order.id, updates);
             updateOrderInState(updatedOrder);
+            setDecisionOrder(null);
+            setDecisionNotes('');
+        } catch (err) {
+            console.error('Designer decision error:', err);
+        } finally {
+            setDecisionLoading(false);
         }
     };
 
@@ -234,12 +280,9 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         }
         const absoluteUrl = ensureAbsoluteUrl(cleanedUrl);
 
-        const isUnderProduction = designSubmitTarget === 'Under Production';
-        const comment = isUnderProduction
-            ? `🔗 تم تسليم التصميم وإرساله للمعمل:\n${absoluteUrl}`
-            : `🔗 تم رفع التصميم وبانتظار موافقة الطبيب:\n${absoluteUrl}`;
+        const comment = `🔗 تم تسليم التصميم وإرساله للمعمل:\n${absoluteUrl}`;
 
-        const updatedOrder = await db.updateOrderStatus(selectedOrder.id, designSubmitTarget, {
+        const updatedOrder = await db.updateOrderStatus(selectedOrder.id, 'Under Production', {
             designUrl: absoluteUrl,
             comment,
             userId: user.id,
@@ -247,9 +290,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             actorRole: user.role,
         });
 
-        if (isUnderProduction) {
-            await db.updateOrder(selectedOrder.id, { technicianStatus: 'Pending' });
-        }
+        await db.updateOrder(selectedOrder.id, { technicianStatus: 'Pending' });
 
         const refreshedOrder = await db.getOrder(selectedOrder.id);
         updateOrderInState(refreshedOrder || updatedOrder);
@@ -282,16 +323,18 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     const requestDesignRevision = async (order: Order) => {
         if (!user) return;
-        if (!confirm('هل تريد إرجاع الحالة تحت التصميم مع الاحتفاظ برابط التصميم الحالي؟')) return;
+        if (!confirm('هل تريد إرجاع الحالة تحت التصميم؟ (سيتم حفظ الرابط الحالي في سجل الملاحظات وسيتعين عليك رفع رابط جديد)')) return;
 
         const updatedOrder = await db.updateOrderStatus(order.id, 'Under Design', {
-            comment: '↩️ تم طلب تعديل على التصميم، ورجعت الحالة تحت التصميم مع الاحتفاظ بالرابط السابق لحين رفع نسخة جديدة.',
+            comment: `↩️ تم طلب تعديل على التصميم، ورجعت الحالة تحت التصميم. الرابط السابق للتصميم: ${order.designUrl || 'لا يوجد'}`,
             userId: user.id,
             userName: user.name || user.role || 'مستخدم',
             actorRole: user.role,
+            designUrl: null,
         });
 
         updateOrderInState(updatedOrder);
+        sessionStorage.removeItem(DESIGNER_DASHBOARD_CACHE_KEY);
         setDesignQueueView('pending');
     };
 
@@ -323,6 +366,14 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         completed: orders.filter(o => o.designStatus === 'completed').length,
     }), [orders]);
 
+    const pendingDecisionOrders = useMemo(
+        () => orders.filter(o =>
+            (!o.designStatus || o.designStatus === 'pending') &&
+            (isRestrictedDesigner ? o.designerId === user?.id : true)
+        ),
+        [orders, isRestrictedDesigner, user]
+    );
+
     const pendingOrders = useMemo(
         () => filteredOrders.filter(order => !isDesignSubmitted(order)),
         [filteredOrders]
@@ -336,30 +387,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const visibleOrders = designQueueView === 'submitted' ? submittedOrders : pendingOrders;
 
     const showDoctorName = Boolean(user && user.role !== 'designer');
-
-    const getStatusLabel = (status: string) => {
-        switch (status) {
-            case 'pending': return 'جديد';
-            case 'accepted': return 'تم القبول';
-            case 'in_progress': return 'جاري العمل';
-            case 'waiting_approval': return 'انتظار الموافقة';
-            case 'completed': return 'مكتمل';
-            case 'returned': return 'مرتجع';
-            default: return status;
-        }
-    };
-
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'pending': return 'bg-gray-100 text-gray-700';
-            case 'accepted': return 'bg-blue-100 text-blue-700';
-            case 'in_progress': return 'bg-yellow-100 text-yellow-700';
-            case 'waiting_approval': return 'bg-teal-100 text-teal-700';
-            case 'completed': return 'bg-green-100 text-green-700';
-            case 'returned': return 'bg-red-100 text-red-700';
-            default: return 'bg-gray-100 text-gray-700';
-        }
-    };
 
     const openTextPreview = (title: string, content: string, accentClass: string) => {
         setExpandedTextPreview({ title, content, accentClass });
@@ -384,7 +411,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const openDesignUploadModal = (order: Order) => {
         setSelectedOrder(order);
         setDesignUrl(order.designUrl || '');
-        setDesignSubmitTarget(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
         setShowDesignModal(true);
     };
 
@@ -504,6 +530,85 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 </div>
             </div>
 
+            {/* Pending Designer Decisions */}
+            {pendingDecisionOrders.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                        <AlertCircle size={16} className="text-amber-600" />
+                        <span className="text-sm font-bold text-amber-800">
+                            {pendingDecisionOrders.length} حالة تنتظر قرارك
+                        </span>
+                    </div>
+                    <div className="space-y-2">
+                        {pendingDecisionOrders.map(order => (
+                            <div key={order.id} className="bg-white rounded-lg border border-amber-100 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <span className="font-bold text-sm text-gray-800">#{order.caseId}</span>
+                                    <span className="text-xs text-gray-500 mr-2">{order.patientName}</span>
+                                    {order.priority === 'Urgent' && (
+                                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold mr-1">مستعجل</span>
+                                    )}
+                                </div>
+                                {decisionOrder?.id === order.id ? (
+                                    <div className="w-full space-y-2 mt-2">
+                                        <textarea
+                                            value={decisionNotes}
+                                            onChange={(e) => setDecisionNotes(e.target.value)}
+                                            placeholder="اكتب ملاحظة (مطلوب عند رفض أو طلب تفاصيل)..."
+                                            rows={2}
+                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs resize-none"
+                                        />
+                                        <div className="flex gap-2 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDesignerDecision(order, 'accepted', decisionNotes)}
+                                                disabled={decisionLoading}
+                                                className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
+                                            >
+                                                قبول
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDesignerDecision(order, 'waiting_approval', decisionNotes)}
+                                                disabled={decisionLoading || !decisionNotes.trim()}
+                                                className="px-4 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50"
+                                                title="اكتب ملاحظة أولاً"
+                                            >
+                                                محتاج تفاصيل
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDesignerDecision(order, 'returned', decisionNotes)}
+                                                disabled={decisionLoading || !decisionNotes.trim()}
+                                                className="px-4 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+                                                title="اكتب سبب الرفض أولاً"
+                                            >
+                                                رفض (ينتظر Admin)
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setDecisionOrder(null); setDecisionNotes(''); }}
+                                                className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                                            >
+                                                إلغاء
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setDecisionOrder(order); setDecisionNotes(''); }}
+                                        className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
+                                    >
+                                        اتخذ قرار
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Orders List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
@@ -542,16 +647,15 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                 <tr>
                                     <th className="px-4 py-4">رقم الحالة</th>
                                     <th className="px-6 py-4">المريض / الطبيب</th>
+                                    <th className="px-5 py-4 w-[190px]">مراجعة المصمم</th>
                                     {user && !isDesignerUser(user) && <th className="px-6 py-4">المصمم</th>}
                                     <th className="px-6 py-4">تعليمات / تعليقات</th>
                                     <th className="px-6 py-4">الاستلام / التسليم / المدة</th>
                                     <th className="px-6 py-4">المرفقات / التسليم</th>
-                                    <th className="px-6 py-4">الحالة</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {visibleOrders.map(order => {
-                                    const currentStatus = order.designStatus || 'pending';
                                     const latestComment = getLatestVisibleOrderComment(order.comments);
                                     const submittedAt = getDesignSubmittedAt(order);
                                     const durationMs = getDesignerWorkDurationMs(order, nowMs);
@@ -579,6 +683,79 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                         د. {getDoctorDisplayName(order.doctorId)}
                                                     </div>
                                                 )}
+                                            </td>
+                                            {/* ── مراجعة المصمم column (position 3) ── */}
+                                            <td className="px-4 py-4 align-top w-[190px]">
+                                                <div className="flex flex-col gap-2 w-[170px]">
+                                                    {order.technicianStatus && order.technicianStatus !== 'Pending' && (
+                                                        <span className={`inline-flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full border ${
+                                                            order.technicianStatus === 'Approved'
+                                                                ? 'bg-green-50 text-green-700 border-green-200'
+                                                                : order.technicianStatus === 'Rejected'
+                                                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                                                    : 'bg-orange-50 text-orange-700 border-orange-200'
+                                                        }`}>
+                                                            {order.technicianStatus === 'Approved'
+                                                                ? '✓ موافق'
+                                                                : order.technicianStatus === 'Rejected'
+                                                                    ? '× مرفوض'
+                                                                    : '? محتاج تفاصيل'}
+                                                        </span>
+                                                    )}
+                                                    <div className="flex flex-col gap-1">
+                                                        <button type="button"
+                                                            onClick={() => handleTechAction(order.id, 'Approved')}
+                                                            className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                                                order.technicianStatus === 'Approved'
+                                                                    ? 'bg-green-500 text-white border-green-500 shadow-sm'
+                                                                    : 'bg-white text-green-700 border-green-200 hover:bg-green-50'
+                                                            }`}>
+                                                            ✓ قبول
+                                                        </button>
+                                                        <button type="button"
+                                                            onClick={() => setTechActionPending({ orderId: order.id, action: 'NeedDetails', reason: '' })}
+                                                            className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                                                order.technicianStatus === 'NeedDetails'
+                                                                    ? 'bg-orange-400 text-white border-orange-400 shadow-sm'
+                                                                    : 'bg-white text-orange-700 border-orange-200 hover:bg-orange-50'
+                                                            }`}>
+                                                            ? تفاصيل
+                                                        </button>
+                                                        <button type="button"
+                                                            onClick={() => setTechActionPending({ orderId: order.id, action: 'Rejected', reason: '' })}
+                                                            className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                                                                order.technicianStatus === 'Rejected'
+                                                                    ? 'bg-red-500 text-white border-red-500 shadow-sm'
+                                                                    : 'bg-white text-red-700 border-red-200 hover:bg-red-50'
+                                                            }`}>
+                                                            × رفض
+                                                        </button>
+                                                    </div>
+                                                    {techActionPending?.orderId === order.id && (
+                                                        <div className="flex flex-col gap-1.5 pt-2 border-t border-gray-100 mt-1">
+                                                            <p className="text-[11px] font-semibold text-gray-500">
+                                                                {techActionPending.action === 'Rejected' ? 'سبب الرفض *' : 'التفاصيل المطلوبة *'}
+                                                            </p>
+                                                            <textarea autoFocus rows={3}
+                                                                placeholder={techActionPending.action === 'Rejected' ? 'اكتب سبب الرفض…' : 'اكتب التفاصيل المطلوبة…'}
+                                                                value={techActionPending.reason}
+                                                                onChange={(e) => setTechActionPending(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                                                                className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300 text-right bg-gray-50"
+                                                            />
+                                                            <div className="flex gap-1.5">
+                                                                <button type="button"
+                                                                    disabled={!techActionPending.reason.trim()}
+                                                                    onClick={() => handleTechAction(order.id, techActionPending.action, techActionPending.reason)}
+                                                                    className="flex-1 py-1.5 text-xs font-bold bg-primary-600 text-white rounded-lg disabled:opacity-40 hover:bg-primary-700 transition-colors"
+                                                                >تأكيد</button>
+                                                                <button type="button"
+                                                                    onClick={() => setTechActionPending(null)}
+                                                                    className="px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                                                                >إلغاء</button>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             {user && !isDesignerUser(user) && (
                                                 <td className="px-6 py-4">
@@ -719,37 +896,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="relative group">
-                                                    <select
-                                                        value={currentStatus}
-                                                        onChange={(e) => handleStatusChange(order, e.target.value)}
-                                                        aria-label="تغيير حالة التصميم"
-                                                        className={`appearance-none w-full pl-8 pr-4 py-2 rounded-lg text-xs font-bold border-0 cursor-pointer focus:ring-2 focus:ring-blue-500 transition-all ${getStatusColor(currentStatus)}`}
-                                                    >
-                                                        <option value="pending" disabled={currentStatus !== 'pending'}>جديد</option>
-                                                        {currentStatus === 'pending' && <option value="accepted">قبول الحالة</option>}
-                                                        {/* Allow going back to pending only if accepted/in_progress? Or admin force? */}
-
-                                                        {(currentStatus === 'pending' || currentStatus === 'accepted' || currentStatus === 'waiting_approval' || currentStatus === 'returned' || currentStatus === 'completed') && (
-                                                            <option value="in_progress">جاري العمل</option>
-                                                        )}
-
-                                                        {(currentStatus === 'in_progress') && (
-                                                            <option value="waiting_approval">انتظار موافقة الطبيب</option>
-                                                        )}
-
-                                                        {(currentStatus === 'in_progress' || currentStatus === 'waiting_approval') && (
-                                                            <option value="completed">مكتمل (تسليم)</option>
-                                                        )}
-
-                                                        {(currentStatus === 'completed' || currentStatus === 'in_progress') && (
-                                                            <option value="returned">إرجاع (للتعديل)</option>
-                                                        )}
-                                                    </select>
-                                                    <ChevronDown size={14} className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
-                                                </div>
-                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -788,7 +934,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
                         <h3 className="text-xl font-bold text-gray-900 mb-4">تسليم التصميم</h3>
                         <p className="text-sm text-gray-500 mb-6">
-                            ارفع رابط التصميم ثم اختر هل يبقى في انتظار موافقة الطبيب أو ينتقل مباشرة إلى المعمل.
+                            ارفع رابط التصميم وسيتم إرساله مباشرة إلى المعمل للتنفيذ.
                         </p>
 
                         <div className="space-y-4">
@@ -803,34 +949,9 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                     autoFocus
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <p className="text-sm font-bold text-gray-700">بعد الحفظ، تروح الحالة على أي مرحلة؟</p>
-                                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 transition hover:border-blue-300">
-                                    <input
-                                        type="radio"
-                                        name="design-submit-target"
-                                        checked={designSubmitTarget === 'Waiting Dr Approval'}
-                                        onChange={() => setDesignSubmitTarget('Waiting Dr Approval')}
-                                        className="mt-1"
-                                    />
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-800">فى انتظار موافقة الطبيب</p>
-                                        <p className="text-xs text-gray-500">تفضل الحالة معروضة ضمن الحالات المرفوعة بانتظار الاعتماد.</p>
-                                    </div>
-                                </label>
-                                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 px-4 py-3 transition hover:border-emerald-300">
-                                    <input
-                                        type="radio"
-                                        name="design-submit-target"
-                                        checked={designSubmitTarget === 'Under Production'}
-                                        onChange={() => setDesignSubmitTarget('Under Production')}
-                                        className="mt-1"
-                                    />
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-800">تم الارسال للمعمل للتنفيذ</p>
-                                        <p className="text-xs text-gray-500">تتحول الحالة إلى تحت التصنيع ويبدأ المعمل تنفيذها مباشرة.</p>
-                                    </div>
-                                </label>
+                            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                                <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
+                                <span>بعد الرفع ستنتقل الحالة مباشرة إلى <strong>قيد التنفيذ</strong> عند المعمل.</span>
                             </div>
                         </div>
 

@@ -83,7 +83,6 @@ export default function DashboardNew() {
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
     const [recentOrderHistory, setRecentOrderHistory] = useState<OrderHistoryEntry[]>([]);
-
     const [designerStatsSearch, setDesignerStatsSearch] = useState('');
     const [designerStatsTimeFilter, setDesignerStatsTimeFilter] = useState<'all' | 'week' | 'month'>('all');
     const [designerStatsStatusFilter, setDesignerStatsStatusFilter] = useState<'all' | 'pending' | 'submitted' | 'tryin' | 'delivered'>('all');
@@ -349,10 +348,8 @@ export default function DashboardNew() {
         [designerTimelineRows]
     );
 
-
     const pendingDesignerUnitsCount = getRowsUnitsCount(pendingDesignerTimelineRows);
     const submittedDesignerUnitsCount = getRowsUnitsCount(submittedDesignerTimelineRows);
-
 
     const filteredDesignerStatsRows = useMemo(() => {
         let rows: typeof designerTimelineRows;
@@ -660,7 +657,6 @@ export default function DashboardNew() {
         );
     };
 
-
     const requestDesignRevision = async (order: Order) => {
         if (!user) return;
         if (!confirm('هل تريد إرجاع الحالة تحت التصميم مع الاحتفاظ برابط التصميم الحالي؟')) return;
@@ -676,7 +672,6 @@ export default function DashboardNew() {
             if (updatedOrder) {
                 setDesignerOrders(prev => prev.map(existingOrder => existingOrder.id === updatedOrder.id ? updatedOrder : existingOrder));
                 setOrders(prev => prev.map(existingOrder => existingOrder.id === updatedOrder.id ? updatedOrder : existingOrder));
-
             }
         } catch (error) {
             toast.error(ErrorHandler.getUserMessage(error) || 'فشل إرجاع الحالة تحت التصميم');
@@ -1955,4 +1950,3 @@ export default function DashboardNew() {
 }
 
 /* aria-label placeholder */
-

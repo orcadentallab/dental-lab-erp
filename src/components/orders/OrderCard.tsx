@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import {
-    Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle, ChevronRight,
+    Check, MessageCircle, Clock, Link as LinkIcon, AlertTriangle,
     User, UserCheck, PenTool, Calendar, Settings, Building2, StickyNote, Image as ImageIcon,
     Trash2, History, Box, FileDown, Archive as ArchiveIcon, RotateCcw,
     Edit3, DollarSign
@@ -20,6 +20,11 @@ import { motion } from 'framer-motion';
 import { canAccessDesignerFeatures } from '../../lib/userRoles';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
+import ProductionStatusBadge from './ProductionStatusBadge';
+import IssueStateBadge from './IssueStateBadge';
+import CaseLocationChip from './CaseLocationChip';
+import { getEffectiveProductionStatus, getEffectiveIssueState, getCaseLocation } from '../../constants/orderLifecycle';
+import WorkflowActionBar from './WorkflowActionBar';
 
 interface OrderCardProps {
     order: Order;
@@ -28,14 +33,14 @@ interface OrderCardProps {
     suppliers: Record<string, string>;
     users: Record<string, string>;
     userRole?: string;
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
     onUpdate?: () => void;
     showFinancials?: boolean;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
     onUpdateDesignUrl?: (order: Order) => void;
     onTechAction?: (id: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => void;
-    onRequestRedo?: (order: Order) => void;
+    onRedo?: (order: Order) => void;
     onFeedback?: (order: Order) => void;
     hideSensitiveInfo?: boolean;
     onDelete?: (order: Order) => void;
@@ -63,7 +68,7 @@ export default function OrderCard({
     onDelete,
     isHighlighted = false,
     onAccept,
-    onRequestRedo,
+    onRedo,
     // onPrint removed
     onExportInvoice,
 
@@ -87,76 +92,10 @@ export default function OrderCard({
         document.body.removeChild(link);
     };
 
-    // Confirmation State
-    const [confirmOpen, setConfirmOpen] = useState(false);
-    const [pendingStatus, setPendingStatus] = useState<Order['status'] | null>(null);
-    const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; variant: 'danger' | 'warning' | 'info' }>({ title: '', message: '', variant: 'warning' });
-    const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
+    // Confirmation State — handled by WorkflowActionBar
     const [isEditingCost, setIsEditingCost] = useState(false);
     const [editCostValue, setEditCostValue] = useState<number | ''>('');
 
-    const newStatusTranslations: Record<string, string> = {
-        'Delivered': 'تم التسليم',
-        'Rejected': 'مرفوض',
-        'Cancelled': 'ملغي',
-        'Returned for Adjustments': 'إعادة تعديل',
-        'Pending Review': 'قيد المراجعة'
-    };
-
-    const handleStatusChangeClick = (newStatus: Order['status']) => {
-        if (newStatus === order.status) return;
-
-        // Risky statuses requiring confirmation (terminal actions)
-        const riskyStatuses = ['Delivered', 'Rejected', 'Cancelled', 'Returned for Adjustments'];
-
-        if (riskyStatuses.includes(newStatus)) {
-            setPendingStatus(newStatus);
-            let message = '';
-            let variant: 'danger' | 'warning' = 'warning';
-
-            switch (newStatus) {
-                case 'Delivered':
-                    message = 'هل أنت متأكد من تسليم هذا الأوردر؟ سيتم نقله إلى الأرشيف ولن يظهر في القائمة النشطة.';
-                    variant = 'warning';
-                    break;
-                case 'Rejected':
-                    message = 'هل أنت متأكد من رفض الأوردر؟ هذا الإجراء قد يرسل إشعاراً للطبيب.';
-                    variant = 'danger';
-                    break;
-                case 'Cancelled':
-                    message = 'هل أنت متأكد من إلغاء الأوردر؟';
-                    variant = 'danger';
-                    break;
-                case 'Returned for Adjustments':
-                    // Not terminal — the case comes back to life for rework
-                    message = 'سيتم إرجاع الأوردر للتعديل وسيبقى نشطاً حتى يتم تسليمه مجدداً.';
-                    variant = 'warning';
-                    break;
-            }
-
-            setConfirmAction({
-                title: `تغيير الحالة إلى ${newStatusTranslations[newStatus] || newStatus}`,
-                message,
-                variant
-            });
-            setRejectedLabCost('');
-            setConfirmOpen(true);
-        } else {
-            // Safe status change (e.g., In Progress)
-            onStatusChange(order.id, newStatus);
-            success('تم تحديث الحالة بنجاح');
-        }
-    };
-
-    const confirmStatusChange = () => {
-        if (pendingStatus) {
-            onStatusChange(order.id, pendingStatus, pendingStatus === 'Rejected' && rejectedLabCost !== '' ? { rejectedLabCost: Number(rejectedLabCost) } : undefined);
-            success(`تم تغيير الحالة إلى ${newStatusTranslations[pendingStatus]}`);
-            setConfirmOpen(false);
-            setPendingStatus(null);
-            setRejectedLabCost('');
-        }
-    };
 
     const handleUpdateRejectedCost = () => {
         onStatusChange(order.id, 'same', { rejectedLabCost: editCostValue === '' ? 0 : Number(editCostValue) });
@@ -450,6 +389,16 @@ export default function OrderCard({
                                 <div className="min-w-0">
                                     <p className="font-bold text-base md:text-lg text-surface-900 dark:text-surface-100 leading-tight truncate">{order.patientName}</p>
                                     <p className="text-[10px] sm:text-xs text-surface-500">اسم المريض</p>
+                                    {/* WF-4: Workflow status badges */}
+                                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                                        <ProductionStatusBadge status={getEffectiveProductionStatus(order)} />
+                                        <IssueStateBadge state={getEffectiveIssueState(order)} />
+                                        <CaseLocationChip location={getCaseLocation(
+                                            getEffectiveProductionStatus(order),
+                                            getEffectiveIssueState(order),
+                                            { workflowType: order.workflowType, supplierId: order.supplierId }
+                                        )} />
+                                    </div>
                                 </div>
                             </div>
 
@@ -644,38 +593,15 @@ export default function OrderCard({
                     <div className="bg-black/5 dark:bg-white/5 px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-3">
                         {/* Left: Quick Actions */}
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1">
-                            {/* Status Dropdown */}
-                            <div className="relative group w-full sm:w-auto min-w-[150px]">
-                                <select
-                                    title="Order Status"
-                                    aria-label="Change Order Status"
-                                    value={order.status || 'New Case'}
-                                    onChange={(e) => handleStatusChangeClick(e.target.value as Order['status'])}
-                                    className={clsx(
-                                        "appearance-none pl-3 pr-8 py-2 sm:py-1.5 rounded-lg text-xs font-bold border shadow-sm cursor-pointer outline-none transition-all w-full focus:ring-2",
-                                        order.status === 'Delivered'
-                                            ? 'bg-green-100 text-green-800 border-green-300 ring-green-200'
-                                            : order.status === 'Rejected'
-                                                ? 'bg-red-100 text-red-800 border-red-300 ring-red-200'
-                                                : 'bg-white text-surface-700 border-surface-200 hover:border-primary-300 focus:ring-primary-100'
-                                    )}
-                                    disabled={userRole === 'lab' && order.status === 'Delivered'}
-                                >
-                                    <option value="Pending Review">📝 Pending Review</option>
-                                    <option value="New Case">✨ New Case</option>
-                                    <option value="Under Design">🎨 Under Design</option>
-                                    <option value="Waiting Dr Approval">⏳ Waiting Approval</option>
-                                    <option value="Under Production">⚙️ Under Production</option>
-                                    <option value="Try In">🦷 Try In</option>
-                                    <option value="Try In Approved">✅ Try In Approved</option>
-                                    <option value="Ready">📦 Ready</option>
-                                    <option value="Delivered">🚚 Delivered</option>
-                                    <option value="Returned for Adjustments">↩️ Returned</option>
-                                    <option value="Rejected">❌ Rejected</option>
-                                    <option value="Cancelled">🚫 Cancelled</option>
-                                </select>
-                                <ChevronRight size={14} className="absolute inset-y-0 right-2 my-auto text-surface-400 pointer-events-none rotate-90" />
-                            </div>
+                            {/* Workflow Action Bar (WF-4) */}
+                            <WorkflowActionBar
+                                order={order}
+                                userRole={userRole}
+                                onStatusChange={onStatusChange}
+                                onRedo={onRedo}
+                                showLegacyFallback={userRole === 'admin'}
+                                disabled={userRole === 'lab' && order.status === 'Delivered'}
+                            />
 
                             {/* Archive Action for Cancelled/Rejected only — NOT for Returned orders */}
                             {canArchiveOrders && isRedStatus && !order.isArchived && (
@@ -731,19 +657,6 @@ export default function OrderCard({
                                 </>
                             )}
 
-                            {/* Redo Action - Admin Only */}
-                            {userRole === 'admin' && onRequestRedo && (
-                                <>
-                                    <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
-                                    <button
-                                        onClick={() => onRequestRedo(order)}
-                                        className={`p-1.5 rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors ${order.isRedo ? 'bg-red-100 text-red-700' : ''}`}
-                                        title={order.isRedo ? 'تم تسجيله كإعادة' : 'تسجيل كإعادة (Redo)'}
-                                    >
-                                        <History size={14} />
-                                    </button>
-                                </>
-                            )}
                         </div>
 
                         {/* Right: Admin Tools */}
@@ -784,39 +697,6 @@ export default function OrderCard({
                 showBusinessTimeline={canViewBusinessTimeline}
             />
 
-            {/* Confirmation Dialog */}
-            <ConfirmDialog
-                isOpen={confirmOpen}
-                title={confirmAction.title}
-                message={confirmAction.message}
-                variant={confirmAction.variant}
-                confirmLabel="نعم، متأكد"
-                cancelLabel="تراجع"
-                onConfirm={confirmStatusChange}
-                onCancel={() => {
-                    setConfirmOpen(false);
-                    setPendingStatus(null);
-                    setRejectedLabCost('');
-                }}
-            >
-                {pendingStatus === 'Rejected' && (order.supplierId || order.designerId) && (
-                    <div className="text-right">
-                        <label className="block text-sm font-medium text-surface-700 mb-1">
-                            تكلفة الاستحقاق للمعمل/المصمم في حالة الرفض (اختياري)
-                        </label>
-                        <Input
-                            type="number"
-                            min="0"
-                            placeholder="أدخل التكلفة (اختياري)"
-                            value={rejectedLabCost}
-                            onChange={(e) => setRejectedLabCost(e.target.value ? Number(e.target.value) : '')}
-                        />
-                        <p className="text-xs text-surface-500 mt-1">
-                            سيتم حساب بيع بـ 0، وشراء بهذه التكلفة في حسابات المعمل الخارجي/المصمم.
-                        </p>
-                    </div>
-                )}
-            </ConfirmDialog>
 
             {/* Edit Rejection Cost Dialog */}
             <ConfirmDialog

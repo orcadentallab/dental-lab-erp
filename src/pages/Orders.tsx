@@ -22,8 +22,11 @@ import { Input } from '../components/ui/Input';
 import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
+import { PRODUCTION_STATUSES, ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
+import RepEditModal from '../components/orders/RepEditModal';
+import RedoOrderModal from '../components/orders/RedoOrderModal';
 
 function isCaseCodeSearchTerm(term: string): boolean {
     const normalized = term.trim().replace(/^#/, '').replace(/\s+/g, '');
@@ -79,6 +82,8 @@ export default function Orders() {
     // Filter state (server-side)
     const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
     const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
+    const [productionStatusFilter, setProductionStatusFilter] = useState(() => searchParams.get('productionStatus') || '');
+    const [issueStateFilter, setIssueStateFilter] = useState(() => searchParams.get('issueState') || '');
     const [doctorFilter, setDoctorFilter] = useState(() => searchParams.get('doctor') || '');
     const [supplierFilter, setSupplierFilter] = useState(() => searchParams.get('supplier') || '');
     const [designerFilter, setDesignerFilter] = useState(() => searchParams.get('designer') || '');
@@ -96,6 +101,8 @@ export default function Orders() {
     const [designLinkUrl, setDesignLinkUrl] = useState('');
     const [designLinkTargetStatus, setDesignLinkTargetStatus] = useState<'Waiting Dr Approval' | 'Under Production'>('Waiting Dr Approval');
     const [acceptingOrder, setAcceptingOrder] = useState<Order | null>(null);
+    const [repEditingOrder, setRepEditingOrder] = useState<Order | null>(null);
+    const [redoOrder, setRedoOrder] = useState<Order | null>(null);
 
     const setOrderPageParams = (updates: Record<string, string | number | boolean | null | undefined>) => {
         const nextParams = new URLSearchParams(searchParams);
@@ -119,6 +126,8 @@ export default function Orders() {
     const buildFilters = () => {
         const filters: {
             status?: string;
+            productionStatus?: string;
+            issueState?: string;
             startDate?: string;
             endDate?: string;
             doctorId?: string;
@@ -132,6 +141,8 @@ export default function Orders() {
         } = {};
 
         if (statusFilter) filters.status = statusFilter;
+        if (productionStatusFilter) filters.productionStatus = productionStatusFilter;
+        if (issueStateFilter) filters.issueState = issueStateFilter;
         if (startDate) filters.startDate = startDate;
         if (endDate) filters.endDate = endDate;
         if (doctorFilter) filters.doctorId = doctorFilter;
@@ -192,6 +203,8 @@ export default function Orders() {
 
         setOrDelete('q', searchQuery);
         setOrDelete('status', statusFilter);
+        setOrDelete('productionStatus', productionStatusFilter);
+        setOrDelete('issueState', issueStateFilter);
         setOrDelete('doctor', doctorFilter);
         setOrDelete('supplier', supplierFilter);
         setOrDelete('designer', designerFilter);
@@ -206,7 +219,7 @@ export default function Orders() {
         if (nextParams.toString() !== searchParams.toString()) {
             setSearchParams(nextParams, { replace: true });
         }
-    }, [searchQuery, statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams]);
+    }, [searchQuery, statusFilter, productionStatusFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams]);
 
     useEffect(() => {
         const { modal, orderId } = initialModalRef.current;
@@ -260,7 +273,7 @@ export default function Orders() {
         }, 150);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]);
+    }, [statusFilter, productionStatusFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]);
 
     // Page change handler
     const handlePageChange = (page: number) => {
@@ -335,7 +348,7 @@ export default function Orders() {
     };
 
     // CENTRALIZED STATUS UPDATE - ensures status/designStatus sync for Split Workflows
-    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => {
+    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => {
         if (status === 'same' && !context) {
             await refreshOrders();
             return;
@@ -778,7 +791,7 @@ export default function Orders() {
 
                         {/* Row 2: All Filters & Checkbox 2 */}
                         <div className="flex flex-col lg:flex-row gap-2">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2 flex-1">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 flex-1">
                                 {/* Status */}
                                 <div className="col-span-1 relative group">
                                     <select
@@ -803,6 +816,42 @@ export default function Orders() {
                                     </select>
                                     <Filter className={filterIconClass(Boolean(statusFilter))} />
                                     <ChevronDown className={filterChevronClass(Boolean(statusFilter), true)} />
+                                </div>
+
+                                {/* Production Status Filter (WF-4) */}
+                                <div className="col-span-1 relative group">
+                                    <select
+                                        title="Production Status Filter"
+                                        aria-label="Filter by Production Status"
+                                        value={productionStatusFilter}
+                                        onChange={(e) => setProductionStatusFilter(e.target.value)}
+                                        className={filterSelectClass(Boolean(productionStatusFilter), true)}
+                                    >
+                                        <option value="">مرحلة الإنتاج</option>
+                                        {PRODUCTION_STATUSES.map(s => (
+                                            <option key={s} value={s}>{PRODUCTION_STATUS_LABELS_AR[s]}</option>
+                                        ))}
+                                    </select>
+                                    <Filter className={filterIconClass(Boolean(productionStatusFilter))} />
+                                    <ChevronDown className={filterChevronClass(Boolean(productionStatusFilter), true)} />
+                                </div>
+
+                                {/* Issue State Filter (WF-4) */}
+                                <div className="col-span-1 relative group">
+                                    <select
+                                        title="Issue State Filter"
+                                        aria-label="Filter by Issue State"
+                                        value={issueStateFilter}
+                                        onChange={(e) => setIssueStateFilter(e.target.value)}
+                                        className={filterSelectClass(Boolean(issueStateFilter), true)}
+                                    >
+                                        <option value="">حالة المشكلة</option>
+                                        {ISSUE_STATES.filter(s => s !== 'none').map(s => (
+                                            <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>
+                                        ))}
+                                    </select>
+                                    <Filter className={filterIconClass(Boolean(issueStateFilter))} />
+                                    <ChevronDown className={filterChevronClass(Boolean(issueStateFilter), true)} />
                                 </div>
 
                                 {canFilterByDoctorAndSupplier && (
@@ -905,12 +954,19 @@ export default function Orders() {
                     orders={orders}
                     onStatusChange={handleStatusUpdate}
                     userRole={user?.role}
-                    onEdit={openFullEdit}
+                    onEdit={(order) => {
+                        if (user?.role === 'representative') {
+                            setRepEditingOrder(order);
+                        } else {
+                            openFullEdit(order);
+                        }
+                    }}
                     onAddNote={openAddNote}
                     onDelete={handleDeleteOrder}
                     onUpdateDesignUrl={openDesignLinkModal}
                     highlightedOrderId={highlightedOrderId}
                     onAccept={openAcceptOrder}
+                    onRedo={(order) => setRedoOrder(order)}
                     onExportInvoice={handleExportInvoice}
                     currentUser={user || undefined}
                 />
@@ -919,8 +975,15 @@ export default function Orders() {
                     orders={orders}
                     onStatusChange={handleStatusUpdate}
                     userRole={user?.role}
-                    onEdit={openFullEdit}
+                    onEdit={(order) => {
+                        if (user?.role === 'representative') {
+                            setRepEditingOrder(order);
+                        } else {
+                            openFullEdit(order);
+                        }
+                    }}
                     onAddNote={openAddNote}
+                    onRedo={(order) => setRedoOrder(order)}
                 />
             )}
 
@@ -1123,6 +1186,24 @@ export default function Orders() {
                             </div>
                         </motion.div>
                     </motion.div>
+                )}
+                {repEditingOrder && (
+                    <RepEditModal
+                        order={repEditingOrder}
+                        isOpen={!!repEditingOrder}
+                        onClose={() => setRepEditingOrder(null)}
+                        onSuccess={refreshOrders}
+                        suppliers={suppliers}
+                        designers={users.filter(u => isDesignerUser(u))}
+                    />
+                )}
+                {redoOrder && (
+                    <RedoOrderModal
+                        order={redoOrder}
+                        isOpen={!!redoOrder}
+                        onClose={() => setRedoOrder(null)}
+                        onSuccess={refreshOrders}
+                    />
                 )}
                 {acceptingOrder && (
                     <AcceptOrderModal

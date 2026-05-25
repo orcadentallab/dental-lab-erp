@@ -1,4 +1,11 @@
 import type { Order, Transaction } from '../services/db';
+import {
+    isProductionStatus,
+    isIssueState,
+    type ProductionStatus as WfProductionStatus,
+    type IssueState as WfIssueState,
+    type CaseLocation,
+} from './workflow';
 
 export const LEGACY_ORDER_STATUSES = {
     completed: 'Completed',
@@ -263,4 +270,83 @@ export function getFinancialSummary(order: LifecycleOrder) {
         isFinalReady: isFinalReady(order),
         isTryIn: isTryInOrder(order),
     };
+}
+
+// ─── WF-2: Column-first helpers ──────────────────────────────────────────────
+
+function mapLegacyToWfStatus(legacy: ProductionStatus): WfProductionStatus {
+    switch (legacy) {
+        case 'delivered': return 'final_delivered';
+        case 'ready': return 'final_ready';
+        case 'try_in': return 'try_in_ready';
+        case 'try_in_approved': return 'finalization';
+        case 'in_production': return 'in_production';
+        case 'sent_to_lab': return 'in_production';
+        case 'designing': return 'designing';
+        case 'not_started': return 'not_started';
+        default: return 'not_started';
+    }
+}
+
+function mapLegacyToWfIssueState(legacy: IssueStatus): WfIssueState {
+    switch (legacy) {
+        case 'remake_requested': return 'returned';
+        case 'rejected': return 'rejected';
+        case 'cancelled': return 'cancelled';
+        case 'none': return 'none';
+        default: return 'none';
+    }
+}
+
+/**
+ * Column-first production status: uses orders.production_status if populated
+ * and valid; falls back to the legacy derived getProductionStatus().
+ *
+ * WF-2 bridge — once WF-5 removes the legacy column, this collapses to
+ * a direct read. Until then, BOTH paths must agree for delivered orders
+ * (hard invariant).
+ */
+export function getEffectiveProductionStatus(order: LifecycleOrder): WfProductionStatus {
+    const col = (order as any).productionStatus || (order as any).production_status;
+    if (col && isProductionStatus(col)) return col;
+    // Fallback: map legacy ProductionStatus → WfProductionStatus
+    return mapLegacyToWfStatus(getProductionStatus(order));
+}
+
+/**
+ * Column-first issue state.
+ */
+export function getEffectiveIssueState(order: LifecycleOrder): WfIssueState {
+    const col = (order as any).issueState || (order as any).issue_state;
+    if (col && isIssueState(col)) return col;
+    return mapLegacyToWfIssueState(getIssueStatus(order));
+}
+
+/**
+ * Derive the physical case location from production_status + issue_state.
+ * Pure function — no DB calls.
+ */
+export function getCaseLocation(
+    productionStatus: WfProductionStatus,
+    issueState: WfIssueState,
+    context?: { workflowType?: string | null; supplierId?: string | null }
+): CaseLocation {
+    if (issueState === 'on_hold') return 'on_hold';
+    if (issueState === 'cancelled') return 'closed';
+    if (issueState === 'returned' || issueState === 'rejected' || issueState === 'redo') return 'issue_review';
+
+    switch (productionStatus) {
+        case 'not_started': return 'pending_intake';
+        case 'designing':
+            return context?.workflowType === 'split' ? 'with_designer' : 'internal_design';
+        case 'in_production':
+            return context?.supplierId ? 'with_external_lab' : 'internal_production';
+        case 'try_in_ready':
+        case 'waiting_doctor':
+            return 'with_doctor_waiting';
+        case 'finalization': return 'internal_finalization';
+        case 'final_ready': return 'internal_ready_final';
+        case 'final_delivered': return 'with_doctor_final';
+        default: return 'pending_intake';
+    }
 }

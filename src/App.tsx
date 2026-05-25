@@ -15,6 +15,7 @@ import QualityDashboard from './pages/Quality';
 import AIAnalytics from './pages/AIAnalytics';
 import CaseRegistration from './pages/CaseRegistration';
 import Staff from './pages/Staff';
+import IssuesReport from './pages/IssuesReport';
 import NewOrderRequest from './pages/doctor/NewOrderRequest';
 import DoctorOrders from './pages/doctor/DoctorOrders';
 import DoctorFinance from './pages/doctor/DoctorFinance';
@@ -96,6 +97,7 @@ function App() {
                       <Route path="/ai-analytics" element={<AIAnalytics />} />
                       <Route path="/users" element={<UsersPage />} />
                       <Route path="/services" element={<ServicesPage />} />
+                      <Route path="/issues-report" element={<IssuesReport />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
 
 

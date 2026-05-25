@@ -498,6 +498,8 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
 // Filter options for getOrders
 export interface OrderFilters {
     status?: string;
+    productionStatus?: string;
+    issueState?: string;
     startDate?: string; // YYYY-MM-DD
     endDate?: string;   // YYYY-MM-DD
     doctorId?: string;
@@ -563,6 +565,14 @@ export async function getOrders(
     // Apply filters
     if (filters.status) {
         query = query.eq('status', filters.status);
+    }
+
+    if (filters.productionStatus) {
+        query = query.eq('production_status', filters.productionStatus);
+    }
+
+    if (filters.issueState) {
+        query = query.eq('issue_state', filters.issueState);
     }
 
     if (filters.startDate) {
@@ -1529,7 +1539,7 @@ export async function getRecentOrderHistory(limit: number = 200): Promise<OrderH
 // ============================================================================
 
 export interface StatusUpdateContext {
-    designUrl?: string;      // When designer uploads a design
+    designUrl?: string | null;      // When designer uploads a design or clearing it
     comment?: string;        // Optional comment to add
     userId?: string;         // User making the change
     userName?: string;       // User name for comment attribution
@@ -1592,8 +1602,8 @@ export async function updateOrderStatus(
         }
     }
 
-    // Handle design URL if provided
-    if (context.designUrl) {
+    // Handle design URL if provided (allow explicit null to clear it)
+    if (context.designUrl !== undefined) {
         updates.designUrl = context.designUrl;
     }
 
@@ -1640,6 +1650,10 @@ export async function updateOrderStatus(
                 previousLegacyStatus: currentOrder.status,
                 productionStatus: getProductionStatus(updatedOrder),
                 previousProductionStatus: getProductionStatus(currentOrder),
+                wfProductionStatus: (updatedOrder as any).productionStatus || null,
+                wfIssueState: (updatedOrder as any).issueState || null,
+                previousWfProductionStatus: (currentOrder as any).productionStatus || null,
+                previousWfIssueState: (currentOrder as any).issueState || null,
                 designStatus: updatedOrder.designStatus || null,
                 previousDesignStatus: currentOrder.designStatus || null,
                 ...(isNowDelivered && autoMarkedReady ? {
@@ -1811,4 +1825,34 @@ export async function getDoctorTotalCost(doctorId: string): Promise<number> {
     }
 
     return (data || []).reduce((sum, order) => sum + (order.cost || 0), 0);
+}
+
+export async function getOrderIssues(filters?: {
+    issueType?: string;
+    startDate?: string;
+    endDate?: string;
+}): Promise<import('../db').OrderIssue[]> {
+    let query = supabase
+        .from('order_issues')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (filters?.issueType) query = query.eq('issue_type', filters.issueType);
+    if (filters?.startDate) query = query.gte('created_at', filters.startDate);
+    if (filters?.endDate) query = query.lte('created_at', filters.endDate);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map((r: any) => ({
+        id: r.id,
+        orderId: r.order_id,
+        issueType: r.issue_type,
+        causeCategory: r.cause_category,
+        notes: r.notes,
+        reporterId: r.reporter_id,
+        reporterName: r.reporter_name,
+        resolvedAt: r.resolved_at,
+        resolutionNotes: r.resolution_notes,
+        createdAt: r.created_at,
+    }));
 }

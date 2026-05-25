@@ -70,6 +70,7 @@ export default function Sidebar() {
                 { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
                 { name: t.nav.caseRegistration, href: '/case-registration', icon: FileText, roles: ['admin', 'accountant'] },
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
+                { name: 'تقرير المشكلات', href: '/issues-report', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
                 { name: 'تحليلات التسويق', href: '/marketing-analytics', icon: Megaphone, roles: ['admin'] },
             ]

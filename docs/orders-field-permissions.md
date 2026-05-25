@@ -26,9 +26,11 @@ Selector: `orders.delivery_type` (`'TryIn'` → try-in workflow; `'Final'` or `N
 
 **Hard invariant**: legacy `orders.status='Delivered'` always maps to `production_status='final_delivered'` and `issue_state='none'`, regardless of `delivery_type`. Existing financial obligations on these rows are never voided by backfill.
 
-## 3. Issue State (5 values, orthogonal)
+## 3. Issue State (6 values, orthogonal)
 
-`none`, `returned`, `rejected`, `cancelled`, `on_hold`.
+`none`, `returned`, `rejected`, `cancelled`, `on_hold`, `redo`.
+
+`redo` — admin-only; closes the current order (sets `issue_state='redo'`, `status='Rejected'`) and creates a new linked order pre-filled with the same data. Added by migration 087.
 
 `production_status` is **never auto-rewound** when `issue_state` changes. Reason and responsibility are recorded in `order_events`.
 

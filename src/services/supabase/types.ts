@@ -88,7 +88,7 @@ export interface DbOrder {
     // Default values are 'not_started' and 'none'; finance helpers do NOT depend
     // on these yet — they remain compatibility/shadow fields.
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
-    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold';
+    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo';
 }
 
 export interface DbTransaction {

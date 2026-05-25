@@ -12,6 +12,9 @@ import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
 import { isDesignerUser, isRepresentativeUser } from '../../lib/userRoles';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
+import { canEditOrderField, type WorkflowRole } from '../../lib/workflowPermissions';
+import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import type { ProductionStatus, IssueState } from '../../constants/workflow';
 
 interface OrderFormProps {
     onCancel: () => void;
@@ -159,6 +162,19 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     const [manualCost, setManualCost] = useState<number | null>(initialData?.manualCost ?? null);
     const isAdmin = user?.role === 'admin';
+    const userRole = (user?.role || 'doctor') as WorkflowRole;
+    const effectivePS: ProductionStatus = initialData
+        ? getEffectiveProductionStatus(initialData)
+        : 'not_started';
+    const effectiveIS: IssueState = initialData
+        ? getEffectiveIssueState(initialData)
+        : 'none';
+
+    const isFieldDisabled = (dbField: string): boolean => {
+        if (readOnly) return true;
+        if (!initialData) return false;
+        return !canEditOrderField(userRole, dbField, effectivePS, effectiveIS, initialData.workflowType);
+    };
 
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
         serviceType: i.serviceType,
@@ -422,6 +438,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-sm text-surface-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
                             value={representativeId}
                             onChange={(e) => setRepresentativeId(e.target.value)}
+                            disabled={isFieldDisabled('representative_id')}
                         >
                             <option value="">المندوب المستلم</option>
                             {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
@@ -523,6 +540,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     placeholder="اسم المريض..."
                                     value={patientName}
                                     onChange={(e) => setPatientName(e.target.value)}
+                                    disabled={isFieldDisabled('patient_name')}
                                 />
                             </div>
                         </div>
@@ -545,6 +563,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                         placeholder="A1"
                                         value={shade}
                                         onChange={(e) => setShade(e.target.value)}
+                                        disabled={isFieldDisabled('shade')}
                                     />
                                 </div>
                             </div>
@@ -629,12 +648,12 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         <Card className="p-5 bg-white border border-surface-100 shadow-sm">
                             <label className="block text-xs font-bold text-surface-500 mb-2 flex items-center gap-1"><LinkIcon size={12} /> رابط ملف STL</label>
                             <div className="relative">
-                                <Input value={stlUrl} onChange={(e) => setStlUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" />
+                                <Input value={stlUrl} onChange={(e) => setStlUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" disabled={isFieldDisabled('stl_url')} />
                                 <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
                             </div>
                             <label className="block text-xs font-bold text-surface-500 my-2 flex items-center gap-1"><Image size={12} /> رابط الصور</label>
                             <div className="relative">
-                                <Input value={imagesUrl} onChange={(e) => setImagesUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" />
+                                <Input value={imagesUrl} onChange={(e) => setImagesUrl(e.target.value)} placeholder="https://..." className="text-xs py-2 font-mono text-blue-600 pl-8" disabled={isFieldDisabled('images_url')} />
                                 <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
                             </div>
                         </Card>
@@ -644,6 +663,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 placeholder="ملاحظات فنية إضافية للمعمل..."
                                 value={instructions}
                                 onChange={(e) => setInstructions(e.target.value)}
+                                disabled={isFieldDisabled('instructions')}
                             />
                         </Card>
                     </div>
@@ -665,7 +685,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 <div className={clsx("w-5 h-5 rounded-md border flex items-center justify-center transition-colors", isUrgent ? "bg-red-500 border-red-500 text-white" : "bg-white border-surface-300")}>
                                     {isUrgent && <CheckCircle size={12} />}
                                 </div>
-                                <input type="checkbox" className="hidden" checked={isUrgent} onChange={() => setIsUrgent(!isUrgent)} />
+                                <input type="checkbox" className="hidden" checked={isUrgent} onChange={() => setIsUrgent(!isUrgent)} disabled={isFieldDisabled('is_urgent')} />
                                 <span className={clsx("text-xs font-bold whitespace-nowrap", isUrgent ? "text-red-700" : "text-surface-600")}>مستعجل</span>
                             </label>
                         </div>
@@ -691,12 +711,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     className={fieldClass}
                                     value={deliveryDate}
                                     onChange={(e) => setDeliveryDate(e.target.value)}
+                                    disabled={isFieldDisabled('delivery_date')}
                                 />
                             </div>
                         </div>
                         <div className={clsx(segmentWrapClass, "mt-3")}>
-                            <button type="button" onClick={() => setDeliveryType('Final')} className={clsx(segmentButtonClass, deliveryType === 'Final' ? 'bg-emerald-100 text-emerald-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Final</button>
-                            <button type="button" onClick={() => setDeliveryType('TryIn')} className={clsx(segmentButtonClass, deliveryType === 'TryIn' ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Try-In</button>
+                            <button type="button" onClick={() => setDeliveryType('Final')} disabled={isFieldDisabled('delivery_type')} className={clsx(segmentButtonClass, deliveryType === 'Final' ? 'bg-emerald-100 text-emerald-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Final</button>
+                            <button type="button" onClick={() => setDeliveryType('TryIn')} disabled={isFieldDisabled('delivery_type')} className={clsx(segmentButtonClass, deliveryType === 'TryIn' ? 'bg-amber-100 text-amber-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Try-In</button>
                         </div>
                     </Card>
 
@@ -709,13 +730,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             تنفيذ العمل
                         </h3>
                         <div className={clsx(segmentWrapClass, "mb-3")}>
-                            <button type="button" onClick={() => setWorkflowType('full')} className={clsx(segmentButtonClass, workflowType === 'full' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Full Lab</button>
-                            <button type="button" onClick={() => setWorkflowType('split')} className={clsx(segmentButtonClass, workflowType === 'split' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Split</button>
+                            <button type="button" onClick={() => setWorkflowType('full')} disabled={isFieldDisabled('workflow_type')} className={clsx(segmentButtonClass, workflowType === 'full' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Full Lab</button>
+                            <button type="button" onClick={() => setWorkflowType('split')} disabled={isFieldDisabled('workflow_type')} className={clsx(segmentButtonClass, workflowType === 'split' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Split</button>
                         </div>
 
                         {workflowType === 'split' ? (
                             <div className="space-y-3 animate-in slide-in-from-top-2 fade-in">
-                                <select title="Designer" aria-label="Select Designer" className={selectClass} value={designerId} onChange={e => setDesignerId(e.target.value)}>
+                                <select title="Designer" aria-label="Select Designer" className={selectClass} value={designerId} onChange={e => setDesignerId(e.target.value)} disabled={isFieldDisabled('designer_id')}>
                                     <option value="">اختر المصمم...</option>
                                     {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                 </select>
@@ -725,6 +746,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     className={selectClass}
                                     value={selectedSupplier}
                                     onChange={e => setSelectedSupplier(e.target.value)}
+                                    disabled={isFieldDisabled('supplier_id')}
                                 >
                                     <option value="">اختر المعمل...</option>
                                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -737,6 +759,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 className={selectClass}
                                 value={selectedSupplier}
                                 onChange={e => setSelectedSupplier(e.target.value)}
+                                disabled={isFieldDisabled('supplier_id')}
                             >
                                 <option value="">-- معمل داخلي (أفتراضي) --</option>
                                 {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
@@ -763,6 +786,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     className="w-full bg-transparent text-right text-sm font-bold outline-none text-white placeholder-surface-600"
                                     value={discount}
                                     onChange={(e) => setDiscount(Number(e.target.value))}
+                                    disabled={isFieldDisabled('discount')}
                                     placeholder="0"
                                 />
                             </div>

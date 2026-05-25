@@ -21,13 +21,14 @@ const statuses = [
 
 interface OrderBoardProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
     userRole?: string;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
+    onRedo?: (order: Order) => void;
 }
 
-export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }: OrderBoardProps) {
+export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote, onRedo: _onRedo }: OrderBoardProps) {
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
     const [suppliersMap, setSuppliersMap] = useState<Record<string, string>>({});
 

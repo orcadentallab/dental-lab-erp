@@ -129,7 +129,7 @@ export interface Order {
     designerId?: string;
     designStatus?: 'pending' | 'accepted' | 'in_progress' | 'waiting_approval' | 'completed' | 'returned';
     designPrice?: number; // Snapshot of cost
-    designUrl?: string; // Design Link (STL/Zip)
+    designUrl?: string | null; // Design Link (STL/Zip)
 
     // QA & Delivery Tracking
     actualDeliveryDate?: string; // When status becomes Delivered
@@ -156,7 +156,7 @@ export interface Order {
     // WF-1: shadow workflow columns. Optional for backwards-compat with all
     // existing call sites; finance helpers do not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
-    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold';
+    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo';
 }
 
 export interface OrderHistoryEntry {
@@ -192,6 +192,19 @@ export interface OrderEvent {
     relatedAllocationId?: string | null;
     relatedIssueId?: string | null;
     metadata: Record<string, unknown>;
+    createdAt: string;
+}
+
+export interface OrderIssue {
+    id: string;
+    orderId: string;
+    issueType: 'returned' | 'rejected' | 'cancelled' | 'redo';
+    causeCategory: 'lab' | 'doctor' | 'scan' | 'design' | 'communication' | 'other';
+    notes?: string;
+    reporterId?: string;
+    reporterName?: string;
+    resolvedAt?: string;
+    resolutionNotes?: string;
     createdAt: string;
 }
 
@@ -699,7 +712,7 @@ class MockDB {
     async updateOrderStatus(
         orderId: string,
         newStatus: Order['status'],
-        context?: { designUrl?: string; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number }
+        context?: { designUrl?: string | null; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);
@@ -810,7 +823,11 @@ class MockDB {
         return updateSupplier(id, updates);
     }
 
-    // --- BACKUP ---
+    async getOrderIssues(filters?: { issueType?: string; startDate?: string; endDate?: string }): Promise<OrderIssue[]> {
+        const { getOrderIssues } = await import('./supabase/orders');
+        return getOrderIssues(filters);
+    }
+
     exportData() { return '{}'; }
     async importData(jsonString: string): Promise<{ success: boolean; error?: string }> {
         try {

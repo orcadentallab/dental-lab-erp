@@ -4,13 +4,11 @@ import { Package, Star } from 'lucide-react';
 import type { Order } from '../../services/db';
 import { db } from '../../services/db';
 import clsx from 'clsx';
-import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
-import { generateCaseId } from '../../utils/caseId';
 import OrderCard from './OrderCard';
 
 interface OrderListProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
     userRole?: string;
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)
@@ -20,10 +18,11 @@ interface OrderListProps {
     onExportInvoice?: (order: Order) => void;
     highlightedOrderId?: string | null; // Order ID to highlight and scroll to
     onAccept?: (order: Order) => void;
+    onRedo?: (order: Order) => void;
     currentUser?: any; // Avoiding strict type for now to prevent import cycles, but ideally User
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, currentUser, onExportInvoice }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, onRedo, currentUser, onExportInvoice }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [fullDoctors, setFullDoctors] = useState<any[]>([]); // Store full objects to resolve parent relationships
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
@@ -90,53 +89,6 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         }
     }, [orders, onStatusChange]);
 
-    // --- Quality Assurance Logic ---
-
-    const handleRequestRedo = useCallback(async (order: Order) => {
-        if (!confirm('⚠️ هل أنت متأكد من طلب إعادة تصنيع (Redo)؟\nسيتم إنشاء أوردر جديد بسعر "صفر" للدكتور، وسيتم احتساب التكلفة بناءً على نسبة تحمل المعمل.')) return;
-
-        // 1. Calculate Redo Cost
-        let redoCost = order.cost; // Default full cost
-        if (order.supplierId) {
-            const suppliersList = await db.getSuppliers();
-            const supplier = suppliersList.find(s => s.id === order.supplierId);
-            if (supplier && supplier.redoCostPercentage !== undefined) {
-                redoCost = order.cost * (supplier.redoCostPercentage / 100);
-            }
-        }
-
-        const redoDoctor = fullDoctors.find(d => d.id === order.doctorId);
-        const redoCaseId = redoDoctor
-            ? await generateNextCaseIdForDoctor(redoDoctor, fullDoctors)
-            : generateCaseId(order.caseId.split('-')[0] || 'REDO', Math.floor((Date.now() / 1000) % 9000) + 1);
-
-        // 2. Create New Order
-        const newOrder: Order = {
-            ...order,
-            id: Math.random().toString(36).substr(2, 9),
-            caseId: redoCaseId,
-            status: 'New Case',
-            technicianStatus: 'Pending',
-            createdAt: new Date().toISOString(),
-            deliveryDate: new Date().toISOString().split('T')[0],
-            actualDeliveryDate: undefined,
-            feedback: undefined,
-            isRedo: true,
-            originalOrderId: order.id,
-            totalPrice: 0,
-            cost: redoCost,
-            comments: []
-        };
-
-        try {
-            await db.addOrder(newOrder);
-            alert('تم إنشاء طلب إعادة برقم ' + newOrder.caseId);
-            onStatusChange(order.id, 'same');
-        } catch (error) {
-            console.error('Error creating redo order:', error);
-        }
-    }, [fullDoctors, onStatusChange]);
-
     const handleSubmitFeedback = async () => {
         if (!feedbackOrder) return;
 
@@ -193,7 +145,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         onAddNote={onAddNote}
                         onUpdateDesignUrl={onUpdateDesignUrl}
                         onTechAction={handleTechAction}
-                        onRequestRedo={handleRequestRedo}
+                        onRedo={onRedo}
                         onFeedback={() => setFeedbackOrder(order)}
                         hideSensitiveInfo={hideSensitiveInfo}
                         onDelete={onDelete}
