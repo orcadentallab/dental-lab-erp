@@ -27,6 +27,10 @@ interface StatementTabProps {
     suppliers: Supplier[];
     designers: User[];
     services: Service[];
+    /** When provided, overrides the internal time filter and hides the dropdown */
+    externalStartDate?: string;
+    externalEndDate?: string;
+    externalRangeLabel?: string;
 }
 
 type TimeFilter = 'today' | 'week' | 'month' | 'current_month' | 'prev_month' | 'prev_prev_month' | '3months' | 'year' | 'all' | 'custom';
@@ -45,6 +49,9 @@ interface ServiceStats {
     topDoctor: string;
     topDoctorRevenue: number;
     topDoctorCases: number;
+    rejectedCases: number;
+    rejectedCost: number;
+    rejectionRate: number;
 }
 
 export default function StatementTab({
@@ -54,8 +61,12 @@ export default function StatementTab({
     doctors,
     suppliers,
     designers: _designers,
-    services
+    services,
+    externalStartDate,
+    externalEndDate,
+    externalRangeLabel,
 }: StatementTabProps) {
+    const usesExternalDates = externalStartDate !== undefined || externalEndDate !== undefined;
     const [selectedServiceId, setSelectedServiceId] = useState<string>('');
     const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
     const [selectedExpenseCategory, setSelectedExpenseCategory] = useState<string>('');
@@ -115,6 +126,8 @@ export default function StatementTab({
 
     // Resolve date range to start/end strings
     const resolvedDates = useMemo(() => {
+        // External dates from parent override internal filter
+        if (usesExternalDates) return { start: externalStartDate || '', end: externalEndDate || '' };
         if (timeFilter === 'custom') return { start: customDateRange.start, end: customDateRange.end };
         if (timeFilter === 'all') return { start: '', end: '' };
 
@@ -132,7 +145,7 @@ export default function StatementTab({
             case 'year': return { start: fmt(new Date(today.getFullYear(), 0, 1)), end: fmt(new Date(today.getFullYear(), 11, 31)) };
             default: return { start: '', end: '' };
         }
-    }, [timeFilter, customDateRange]);
+    }, [timeFilter, customDateRange, usesExternalDates, externalStartDate, externalEndDate]);
 
     // Orders that count for service analytics:
     //   DELIVERED statuses → revenue + cost
@@ -163,6 +176,8 @@ export default function StatementTab({
             units: number;
             revenue: number;
             cost: number;
+            rejectedCases: Set<string>;
+            rejectedCost: number;
             doctorStats: Map<string, { rev: number; cases: Set<string> }>;
         }>();
 
@@ -222,13 +237,17 @@ export default function StatementTab({
                 }
 
                 if (!map.has(svcName)) {
-                    map.set(svcName, { cases: new Set(), units: 0, revenue: 0, cost: 0, doctorStats: new Map() });
+                    map.set(svcName, { cases: new Set(), units: 0, revenue: 0, cost: 0, rejectedCases: new Set(), rejectedCost: 0, doctorStats: new Map() });
                 }
                 const entry = map.get(svcName)!;
                 if (o.id) entry.cases.add(o.id);
                 entry.units += count;
                 entry.revenue += itemRevenue;
                 entry.cost += costPerUnit * count;
+                if (isRejected && o.id) {
+                    entry.rejectedCases.add(o.id);
+                    entry.rejectedCost += costPerUnit * count;
+                }
 
                 const drId = o.doctorId || '';
                 if (!entry.doctorStats.has(drId)) entry.doctorStats.set(drId, { rev: 0, cases: new Set() });
@@ -263,6 +282,9 @@ export default function StatementTab({
                 topDoctor: doctors.find(d => d.id === topDoctorId)?.name || '',
                 topDoctorRevenue: topDoctorRev,
                 topDoctorCases,
+                rejectedCases: entry.rejectedCases.size,
+                rejectedCost: entry.rejectedCost,
+                rejectionRate: entry.cases.size > 0 ? (entry.rejectedCases.size / entry.cases.size) * 100 : 0,
             });
         });
 
@@ -404,14 +426,111 @@ export default function StatementTab({
                 items: d.items,
                 peakMonth: Array.from(d.monthlyMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || '',
                 peakMonthAmount: Array.from(d.monthlyMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[1] || 0,
+                monthlyTrend: Array.from(d.monthlyMap.entries())
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([month, amount]) => ({ month, amount })),
             }))
             .sort((a, b) => b.total - a.total);
     }, [expenseData, targetType]);
+
+    // Non-operational payments aggregate (supplier_payment + designer_payment)
+    const nonOperationalPayments = useMemo(() => {
+        if (targetType !== 'expense') return { supplierTotal: 0, designerTotal: 0, supplierCount: 0, designerCount: 0 };
+        const { start, end } = resolvedDates;
+        let supplierTotal = 0, designerTotal = 0, supplierCount = 0, designerCount = 0;
+        transactions.forEach(t => {
+            if (t.type !== 'expense') return;
+            if (!NON_OPERATIONAL_CATEGORIES.includes(t.category || '')) return;
+            if (!t.amount || t.amount <= 0) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((t as any).status === 'rejected') return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
+            if (start && txDate < start) return;
+            if (end && txDate > end) return;
+            if (t.category === 'supplier_payment') { supplierTotal += t.amount; supplierCount++; }
+            else if (t.category === 'designer_payment') { designerTotal += t.amount; designerCount++; }
+        });
+        return { supplierTotal, designerTotal, supplierCount, designerCount };
+    }, [transactions, targetType, resolvedDates]);
+
+    // Total income (for expense-to-revenue ratio)
+    const totalIncomeForRatio = useMemo(() => {
+        if (targetType !== 'expense') return 0;
+        const { start, end } = resolvedDates;
+        return transactions
+            .filter(t => {
+                if (t.type !== 'income') return false;
+                if (!t.amount || t.amount <= 0) return false;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                if ((t as any).status === 'rejected') return false;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
+                if (start && txDate < start) return false;
+                if (end && txDate > end) return false;
+                return true;
+            })
+            .reduce((s, t) => s + (t.amount || 0), 0);
+    }, [transactions, targetType, resolvedDates]);
 
     const totalRevenue = serviceAnalytics.reduce((s, x) => s + x.totalRevenue, 0);
     const totalUnits = serviceAnalytics.reduce((s, x) => s + x.totalUnits, 0);
     const totalCost = serviceAnalytics.reduce((s, x) => s + x.totalCost, 0);
     const totalGrossProfit = totalRevenue - totalCost;
+
+    // Doctor × Service Matrix: top doctors (by revenue) × top services (by units)
+    const doctorServiceMatrix = useMemo(() => {
+        if (targetType !== 'service' || filteredOrders.length === 0) return null;
+
+        // Build {doctorId: {serviceName: units}}
+        const matrix = new Map<string, Map<string, number>>();
+        const doctorRevenue = new Map<string, number>();
+        const serviceUnits = new Map<string, number>();
+
+        filteredOrders.forEach(o => {
+            const dId = o.doctorId || '';
+            if (!dId) return;
+            if (!matrix.has(dId)) matrix.set(dId, new Map());
+            const dRow = matrix.get(dId)!;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const items = (o.items as any[]) || [];
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            items.forEach((item: any) => {
+                const svc = item.serviceType as string;
+                if (!svc) return;
+                const cnt = Array.isArray(item.teethNumbers) ? item.teethNumbers.length : 1;
+                dRow.set(svc, (dRow.get(svc) || 0) + cnt);
+                serviceUnits.set(svc, (serviceUnits.get(svc) || 0) + cnt);
+            });
+            doctorRevenue.set(dId, (doctorRevenue.get(dId) || 0) + (o.totalPrice || 0));
+        });
+
+        // Top 6 doctors by revenue
+        const topDocIds = Array.from(doctorRevenue.entries())
+            .sort((a, b) => b[1] - a[1]).slice(0, 6).map(x => x[0]);
+        // Top 6 services by units
+        const topSvcNames = Array.from(serviceUnits.entries())
+            .sort((a, b) => b[1] - a[1]).slice(0, 6).map(x => x[0]);
+
+        // Max cell value for color scaling
+        let maxCell = 0;
+        topDocIds.forEach(dId => {
+            const row = matrix.get(dId);
+            topSvcNames.forEach(s => {
+                const v = row?.get(s) || 0;
+                if (v > maxCell) maxCell = v;
+            });
+        });
+
+        const rows = topDocIds.map(dId => ({
+            doctorId: dId,
+            doctorName: doctors.find(d => d.id === dId)?.name || 'غير معروف',
+            totalRev: doctorRevenue.get(dId) || 0,
+            cells: topSvcNames.map(s => matrix.get(dId)?.get(s) || 0),
+        }));
+
+        return { rows, services: topSvcNames, maxCell };
+    }, [filteredOrders, doctors, targetType]);
     const overallMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0;
 
     const handleExportExcel = () => {
@@ -465,25 +584,48 @@ export default function StatementTab({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50/50 rounded-xl border border-gray-100">
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">الفترة الزمنية</label>
-                        <select aria-label="الفترة الزمنية" value={timeFilter} onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
-                            className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5">
-                            <option value="today">اليوم</option>
-                            <option value="week">آخر 7 أيام</option>
-                            <option value="month">آخر 30 يوم</option>
-                            <option value="current_month">{format(new Date(), 'MMMM')} (الشهر الحالي)</option>
-                            <option value="prev_month">{format(subMonths(new Date(), 1), 'MMMM')} (الشهر السابق)</option>
-                            <option value="prev_prev_month">{format(subMonths(new Date(), 2), 'MMMM')}</option>
-                            <option value="3months">آخر 3 شهور</option>
-                            <option value="year">هذا العام</option>
-                            <option value="custom">فترة مخصصة...</option>
-                            <option value="all">كل الأوقات</option>
-                        </select>
+                {/* Active main-filter chip when external dates are in use */}
+                {usesExternalDates && (
+                    <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl w-fit">
+                        <BarChart3 size={14} className="text-blue-600" />
+                        <span className="text-xs font-bold text-blue-700">الفترة الزمنية:</span>
+                        <span className="text-xs font-bold text-blue-900">
+                            {externalRangeLabel || (
+                                externalStartDate && externalEndDate
+                                    ? `${externalStartDate} → ${externalEndDate}`
+                                    : 'كل الأوقات'
+                            )}
+                        </span>
+                        <span className="text-[10px] text-blue-500 mr-2">(من فلتر الصفحة الرئيسي)</span>
                     </div>
+                )}
 
-                    {timeFilter === 'custom' && (
+                <div className={clsx(
+                    "grid gap-4 p-4 bg-gray-50/50 rounded-xl border border-gray-100",
+                    usesExternalDates
+                        ? "grid-cols-1 md:grid-cols-2"
+                        : "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
+                )}>
+                    {!usesExternalDates && (
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">الفترة الزمنية</label>
+                            <select aria-label="الفترة الزمنية" value={timeFilter} onChange={(e) => setTimeFilter(e.target.value as TimeFilter)}
+                                className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-lg focus:ring-teal-500 focus:border-teal-500 block p-2.5">
+                                <option value="today">اليوم</option>
+                                <option value="week">آخر 7 أيام</option>
+                                <option value="month">آخر 30 يوم</option>
+                                <option value="current_month">{format(new Date(), 'MMMM')} (الشهر الحالي)</option>
+                                <option value="prev_month">{format(subMonths(new Date(), 1), 'MMMM')} (الشهر السابق)</option>
+                                <option value="prev_prev_month">{format(subMonths(new Date(), 2), 'MMMM')}</option>
+                                <option value="3months">آخر 3 شهور</option>
+                                <option value="year">هذا العام</option>
+                                <option value="custom">فترة مخصصة...</option>
+                                <option value="all">كل الأوقات</option>
+                            </select>
+                        </div>
+                    )}
+
+                    {!usesExternalDates && timeFilter === 'custom' && (
                         <div className="space-y-1.5 col-span-1 lg:col-span-2">
                             <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">من - إلى</label>
                             <div className="flex gap-2">
@@ -575,6 +717,63 @@ export default function StatementTab({
                             </p>
                         </div>
                     </div>
+
+                    {/* Service Mix Visual */}
+                    {serviceAnalytics.length > 1 && totalRevenue > 0 && (
+                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                                <BarChart3 size={16} className="text-teal-600" />
+                                <h3 className="font-bold text-gray-800 text-sm">توزيع الإيراد بين الخدمات</h3>
+                                <span className="text-xs text-gray-400">(Service Mix)</span>
+                            </div>
+                            {(() => {
+                                const COLORS = ['bg-teal-500', 'bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-400', 'bg-cyan-400', 'bg-indigo-400'];
+                                const top = serviceAnalytics.slice(0, 8);
+                                const otherShare = serviceAnalytics.slice(8).reduce((s, x) => s + x.totalRevenue, 0);
+                                return (
+                                    <>
+                                        <div className="w-full h-7 rounded-full flex overflow-hidden gap-0.5 mb-3 bg-slate-100">
+                                            {top.map((svc, i) => {
+                                                const pct = (svc.totalRevenue / totalRevenue) * 100;
+                                                if (pct < 0.5) return null;
+                                                return (
+                                                    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                                                    <div key={svc.serviceName} className={clsx(COLORS[i % COLORS.length], 'transition-all hover:opacity-80')}
+                                                        style={{ width: `${pct}%` }}
+                                                        title={`${svc.serviceName}: ${pct.toFixed(1)}%`} />
+                                                );
+                                            })}
+                                            {otherShare > 0 && (
+                                                // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                                                <div className="bg-slate-400"
+                                                    style={{ width: `${(otherShare / totalRevenue) * 100}%` }}
+                                                    title={`أخرى: ${((otherShare / totalRevenue) * 100).toFixed(1)}%`} />
+                                            )}
+                                        </div>
+                                        <div className="flex flex-wrap gap-3 text-xs">
+                                            {top.map((svc, i) => {
+                                                const pct = (svc.totalRevenue / totalRevenue) * 100;
+                                                return (
+                                                    <div key={svc.serviceName} className="flex items-center gap-1.5">
+                                                        <div className={clsx('w-3 h-3 rounded-sm', COLORS[i % COLORS.length])} />
+                                                        <span className="text-slate-600 font-medium">{svc.serviceName}</span>
+                                                        <span className="text-slate-400 font-bold">{pct.toFixed(1)}%</span>
+                                                    </div>
+                                                );
+                                            })}
+                                            {otherShare > 0 && (
+                                                <div className="flex items-center gap-1.5">
+                                                    <div className="w-3 h-3 rounded-sm bg-slate-400" />
+                                                    <span className="text-slate-600 font-medium">أخرى</span>
+                                                    <span className="text-slate-400 font-bold">{((otherShare / totalRevenue) * 100).toFixed(1)}%</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
 
                     {/* Services Table */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -686,6 +885,16 @@ export default function StatementTab({
                                                                     <p className="text-[10px] text-gray-400">{svc.topDoctorCases} حالة</p>
                                                                 </div>
                                                             ) : <span className="text-gray-300 text-xs">—</span>}
+                                                            {svc.rejectedCases > 0 ? (
+                                                                <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                                                                    <span className={clsx(
+                                                                        "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                                                                        svc.rejectionRate > 10 ? "bg-rose-100 text-rose-700" : "bg-amber-50 text-amber-600"
+                                                                    )} title={`تكلفة الرفض: ${Math.round(svc.rejectedCost).toLocaleString()} ج.م`}>
+                                                                        رفض {svc.rejectionRate.toFixed(1)}% ({svc.rejectedCases})
+                                                                    </span>
+                                                                </div>
+                                                            ) : null}
                                                         </td>
                                                         <td className="p-3 text-center">
                                                             <button onClick={() => setExpandedService(isExpanded ? null : svc.serviceName)}
@@ -798,6 +1007,56 @@ export default function StatementTab({
                         )}
                     </div>
 
+                    {/* Doctor × Service Matrix */}
+                    {doctorServiceMatrix && doctorServiceMatrix.rows.length > 0 && doctorServiceMatrix.services.length > 0 && (
+                        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
+                                <Users size={18} className="text-teal-600" />
+                                <h3 className="font-bold text-gray-800">مصفوفة الأطباء × الخدمات</h3>
+                                <span className="text-xs text-gray-400">— عدد الوحدات لكل تقاطع</span>
+                            </div>
+                            <div className="overflow-x-auto p-4">
+                                <table className="w-full text-sm text-right border-collapse">
+                                    <thead>
+                                        <tr className="text-xs">
+                                            <th className="p-2 font-semibold text-slate-600 text-right border-b-2 border-slate-200 sticky right-0 bg-white">الطبيب</th>
+                                            {doctorServiceMatrix.services.map(svc => (
+                                                <th key={svc} className="p-2 font-semibold text-slate-600 text-center border-b-2 border-slate-200 min-w-[80px]">{svc}</th>
+                                            ))}
+                                            <th className="p-2 font-semibold text-slate-700 text-center border-b-2 border-slate-200 min-w-[100px]">إجمالي الإيراد</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {doctorServiceMatrix.rows.map(row => (
+                                            <tr key={row.doctorId} className="hover:bg-teal-50/20 border-b border-gray-50">
+                                                <td className="p-2 font-bold text-slate-700 text-xs sticky right-0 bg-white">{row.doctorName}</td>
+                                                {row.cells.map((cellVal, ci) => {
+                                                    const intensity = doctorServiceMatrix.maxCell > 0 ? cellVal / doctorServiceMatrix.maxCell : 0;
+                                                    const colorClass = cellVal === 0
+                                                        ? 'bg-gray-50 text-gray-300'
+                                                        : intensity > 0.66 ? 'bg-teal-500 text-white font-bold'
+                                                            : intensity > 0.33 ? 'bg-teal-200 text-teal-900 font-bold'
+                                                                : 'bg-teal-50 text-teal-700';
+                                                    return (
+                                                        <td key={ci} className={clsx("p-2 text-center text-sm transition-all", colorClass)}>
+                                                            {cellVal > 0 ? cellVal : '—'}
+                                                        </td>
+                                                    );
+                                                })}
+                                                <td className="p-2 text-center font-black text-emerald-700 text-sm">
+                                                    {Math.round(row.totalRev).toLocaleString()} <span className="text-[10px] text-gray-400 font-normal">ج.م</span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <p className="text-[10px] text-gray-400 mt-2 px-2">
+                                    اللون الأغمق يدل على إقبال أعلى من الطبيب على الخدمة. أعلى 6 أطباء × أعلى 6 خدمات.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Best performing service insight */}
                     {serviceAnalytics.length > 1 && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -840,7 +1099,7 @@ export default function StatementTab({
             {targetType === 'expense' && (
                 <>
                     {/* KPI Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
                         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
                             <div className="p-3 rounded-xl bg-rose-50 text-rose-600"><TrendingDown size={22} /></div>
                             <div>
@@ -848,6 +1107,35 @@ export default function StatementTab({
                                 <h4 className="text-xl font-black">{Math.round(expenseData.totalAmount).toLocaleString()} <span className="text-xs font-normal text-gray-400">ج.م</span></h4>
                             </div>
                         </div>
+                        {/* Expense to Revenue ratio */}
+                        {(() => {
+                            const ratio = totalIncomeForRatio > 0 ? (expenseData.totalAmount / totalIncomeForRatio) * 100 : 0;
+                            const isHigh = ratio > 30;
+                            return (
+                                <div className={clsx(
+                                    "bg-white p-5 rounded-2xl border shadow-sm flex items-center gap-3",
+                                    isHigh ? "border-rose-200" : ratio > 0 ? "border-emerald-100" : "border-gray-100"
+                                )}>
+                                    <div className={clsx(
+                                        "p-3 rounded-xl",
+                                        isHigh ? "bg-rose-50 text-rose-600" : ratio > 0 ? "bg-emerald-50 text-emerald-600" : "bg-gray-50 text-gray-400"
+                                    )}>
+                                        <BarChart3 size={22} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs text-gray-500 font-medium">% من الإيراد</p>
+                                        <h4 className="text-xl font-black">
+                                            {totalIncomeForRatio > 0 ? `${ratio.toFixed(1)}%` : '—'}
+                                            {totalIncomeForRatio > 0 && (
+                                                <span className={clsx("text-[10px] font-bold mr-1.5", isHigh ? "text-rose-500" : "text-emerald-500")}>
+                                                    {isHigh ? '↑ مرتفع' : '✓ مقبول'}
+                                                </span>
+                                            )}
+                                        </h4>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                         <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
                             <div className="p-3 rounded-xl bg-slate-50 text-slate-600"><FileText size={22} /></div>
                             <div>
@@ -940,9 +1228,31 @@ export default function StatementTab({
                                                         </td>
                                                         <td className="p-3 text-center">
                                                             {cat.peakMonth ? (
-                                                                <div>
-                                                                    <p className="font-bold text-slate-700 text-xs">{cat.peakMonth}</p>
-                                                                    <p className="text-[10px] text-gray-400">{Math.round(cat.peakMonthAmount).toLocaleString()} ج.م</p>
+                                                                <div className="flex flex-col items-center gap-1.5">
+                                                                    <div>
+                                                                        <p className="font-bold text-slate-700 text-xs">{cat.peakMonth}</p>
+                                                                        <p className="text-[10px] text-gray-400">{Math.round(cat.peakMonthAmount).toLocaleString()} ج.م</p>
+                                                                    </div>
+                                                                    {/* Sparkline — last 6 months */}
+                                                                    {cat.monthlyTrend.length > 1 && (() => {
+                                                                        const last = cat.monthlyTrend.slice(-6);
+                                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                                        const maxAmt = Math.max(...last.map((x: any) => x.amount));
+                                                                        return (
+                                                                            <div className="flex items-end gap-0.5 h-6" title="تطور آخر 6 شهور">
+                                                                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                                                                                {last.map((m: any, i: number) => {
+                                                                                    const h = maxAmt > 0 ? Math.max(8, Math.round((m.amount / maxAmt) * 100)) : 8;
+                                                                                    return (
+                                                                                        // eslint-disable-next-line
+                                                                                        <div key={i} className="w-1.5 bg-rose-300 rounded-sm hover:bg-rose-500 transition-all"
+                                                                                            style={{ height: `${h}%` }}
+                                                                                            title={`${m.month}: ${Math.round(m.amount).toLocaleString()} ج.م`} />
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        );
+                                                                    })()}
                                                                 </div>
                                                             ) : <span className="text-gray-300">—</span>}
                                                         </td>
@@ -1041,6 +1351,33 @@ export default function StatementTab({
                                             </>
                                         ) : null;
                                     })()}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Non-operational payments (Suppliers + Designers) */}
+                    {(nonOperationalPayments.supplierTotal > 0 || nonOperationalPayments.designerTotal > 0) && (
+                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                            <div className="flex items-center gap-2 mb-3">
+                                <DollarSign size={18} className="text-slate-500" />
+                                <h4 className="font-bold text-slate-700">المدفوعات للموردين والمصممين</h4>
+                                <span className="text-xs text-slate-400">(غير تشغيلية — مستبعدة من الجدول أعلاه)</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-slate-500 mb-1">مدفوعات الموردين</p>
+                                        <p className="text-xl font-black text-slate-800">{Math.round(nonOperationalPayments.supplierTotal).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                    </div>
+                                    <span className="bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-xs">{nonOperationalPayments.supplierCount} حركة</span>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-slate-500 mb-1">مدفوعات المصممين</p>
+                                        <p className="text-xl font-black text-slate-800">{Math.round(nonOperationalPayments.designerTotal).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                    </div>
+                                    <span className="bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-xs">{nonOperationalPayments.designerCount} حركة</span>
                                 </div>
                             </div>
                         </div>

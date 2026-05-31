@@ -67,6 +67,23 @@ export interface TopExpenseCategory {
     total: number;
 }
 
+export interface DoctorReceivable {
+    doctorId: string;
+    doctorName: string;
+    doctorPhone: string | null;
+    totalBilled: number;
+    totalPaid: number;
+    balance: number;
+    aging_0_30: number;
+    aging_31_60: number;
+    aging_61_90: number;
+    aging_90_plus: number;
+    orderCount: number;
+    unpaidOrderCount: number;
+    oldestUnpaidDate: string | null;
+    maxDaysOverdue: number | null;
+}
+
 export interface FinanceDashboard {
     total_income: number;
     production_costs: number;
@@ -155,6 +172,21 @@ export const analyticsService = {
         }
 
         return (data || []) as unknown as TopExpenseCategory[];
+    },
+
+    /**
+     * Fetches per-doctor receivables breakdown with aging.
+     * Read-only — uses same calculation as get_analytics_summary, grouped by doctor.
+     */
+    async getDoctorReceivablesBreakdown(): Promise<DoctorReceivable[]> {
+        const { data, error } = await supabase.rpc('get_doctor_receivables_breakdown');
+
+        if (error) {
+            console.error('Error fetching doctor receivables breakdown:', error);
+            throw error;
+        }
+
+        return (data || []) as unknown as DoctorReceivable[];
     },
 
     /**

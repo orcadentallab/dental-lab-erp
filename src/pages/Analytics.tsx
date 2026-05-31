@@ -6,6 +6,7 @@ import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard
 import clsx from 'clsx';
 import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
+import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type User, type Service } from '../services/db';
 import { isDesignerUser } from '../lib/userRoles';
 
@@ -90,6 +91,9 @@ export default function Analytics() {
         totalUnits: 0,
         totalUnitsRevenue: 0,
         returnCount: 0,
+        redoCount: 0,
+        redoCost: 0,
+        urgentCount: 0,
         topExpenseCategory: '',
         topExpenseAmount: 0
     });
@@ -135,14 +139,20 @@ export default function Analytics() {
         totalCollections: 0,
         totalPayments: 0,
         netCashFlow: 0,
+        doctorCollections: 0,
+        supplierPayments: 0,
+        designerPayments: 0,
         // P&L
         salesRevenue: 0,
         cogs: 0,
+        productionCosts: 0,
+        designerCogs: 0,
         grossProfit: 0,
         grossMargin: 0,
         operatingExpenses: 0,
         operatingIncome: 0,
         operatingMargin: 0,
+        breakEvenRevenue: 0,
         // Receivables
         totalReceivables: 0,
         aging0to30: 0,
@@ -159,6 +169,10 @@ export default function Analytics() {
     const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'current_month' | 'prev_month' | 'prev_prev_month' | 'year' | 'all' | 'custom'>('current_month');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
+
+    // Doctor receivables detail modal
+    const [receivablesModalOpen, setReceivablesModalOpen] = useState(false);
+    const [receivablesModalBucket, setReceivablesModalBucket] = useState<'all' | '0_30' | '31_60' | '61_90' | '90_plus'>('all');
 
     const { startDate, endDate } = useMemo(() => {
         if (dateRange === 'custom') {
@@ -264,6 +278,9 @@ export default function Analytics() {
                 totalUnits,
                 totalUnitsRevenue,
                 returnCount: summary.return_count,
+                redoCount: summary.redo_count,
+                redoCost: summary.redo_cost,
+                urgentCount: summary.urgent_count,
                 topExpenseCategory,
                 topExpenseAmount
             });
@@ -280,22 +297,36 @@ export default function Analytics() {
             const operatingIncome = grossProfit - summary.operating_expenses;
             const operatingMargin = salesRevenue > 0 ? (operatingIncome / salesRevenue) * 100 : 0;
 
-            // DSO calculation
-            const daysInPeriod = dateRange === 'month' ? 30 : dateRange === 'year' ? 365 : 30;
+            // DSO calculation — derive actual days in the chosen period
+            const daysInPeriod = startDate && endDate
+                ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                : 30;
             const avgDailyRevenue = salesRevenue / daysInPeriod;
             const dso = avgDailyRevenue > 0 ? Math.round(summary.total_receivables / avgDailyRevenue) : 0;
+
+            // Break-even revenue = fixed opex / contribution margin ratio
+            const contributionRatio = salesRevenue > 0 ? grossProfit / salesRevenue : 0;
+            const breakEvenRevenue = contributionRatio > 0
+                ? summary.operating_expenses / contributionRatio
+                : 0;
 
             setFinancialStats({
                 totalCollections,
                 totalPayments,
                 netCashFlow: totalCollections - totalPayments,
+                doctorCollections: summary.doctor_collections,
+                supplierPayments: summary.supplier_payments,
+                designerPayments: summary.designer_payments,
                 salesRevenue,
                 cogs,
+                productionCosts: summary.production_costs,
+                designerCogs: summary.designer_payments,
                 grossProfit,
                 grossMargin,
                 operatingExpenses: summary.operating_expenses,
                 operatingIncome,
                 operatingMargin,
+                breakEvenRevenue,
                 totalReceivables: summary.total_receivables,
                 aging0to30: summary.aging_0_30,
                 aging30to60: summary.aging_31_60,
@@ -505,6 +536,139 @@ export default function Analytics() {
                             percentageLabel="هامش صافي"
                         />
                     </div>
+
+                    {/* Secondary KPIs Row — Operational health indicators */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* Pending Revenue */}
+                        <div className="bg-gradient-to-br from-amber-50 to-white p-5 rounded-2xl border border-amber-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
+                            title="إيراد الأعمال المسلّمة اللي فلوسها لسه ما اتحصّلتش = إجمالي المبيعات المسلّمة ناقص التحصيلات الفعلية">
+                            <div className="p-3 bg-amber-100 rounded-xl">
+                                <CreditCard size={22} className="text-amber-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-amber-600 text-xs font-bold mb-1">إيراد معلّق</p>
+                                <p className="text-xl sm:text-2xl font-black text-amber-900 truncate">
+                                    {Math.round(stats.pendingRevenue).toLocaleString()}
+                                    <span className="text-xs font-normal text-amber-400 mr-1">ج.م</span>
+                                </p>
+                                <p className="text-[10px] text-amber-500 mt-0.5">مبيعات مسلّمة − تحصيلات فعلية</p>
+                            </div>
+                        </div>
+
+                        {/* Production Cost */}
+                        <div className="bg-gradient-to-br from-purple-50 to-white p-5 rounded-2xl border border-purple-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
+                            <div className="p-3 bg-purple-100 rounded-xl">
+                                <Package size={22} className="text-purple-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-purple-600 text-xs font-bold mb-1">تكلفة الإنتاج</p>
+                                <p className="text-xl sm:text-2xl font-black text-purple-900 truncate">
+                                    {Math.round(stats.productionCosts).toLocaleString()}
+                                    <span className="text-xs font-normal text-purple-400 mr-1">ج.م</span>
+                                </p>
+                                <p className="text-[10px] text-purple-500 mt-0.5">موردين + مصممين</p>
+                            </div>
+                        </div>
+
+                        {/* Problem Cases (Redos + Rejections) */}
+                        <div className="bg-gradient-to-br from-orange-50 to-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
+                            title="إجمالي الحالات اللي فيها مشاكل أو خسائر: إعادات (تصليح) + حالات مرفوضة بالكامل">
+                            <div className="p-3 bg-orange-100 rounded-xl">
+                                <RefreshCcw size={22} className="text-orange-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-orange-600 text-xs font-bold mb-1">حالات بمشاكل</p>
+                                <p className="text-xl sm:text-2xl font-black text-orange-900">
+                                    {stats.redoCount + stats.returnCount}
+                                    <span className="text-xs font-normal text-orange-500 mr-1">
+                                        ({stats.orderCount > 0 ? (((stats.redoCount + stats.returnCount) / stats.orderCount) * 100).toFixed(1) : 0}%)
+                                    </span>
+                                </p>
+                                <p className="text-[10px] text-orange-500 mt-0.5">
+                                    {stats.redoCount} إعادة + {stats.returnCount} رفض · خسائر {Math.round(stats.redoCost).toLocaleString()} ج.م
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Overdue Receivables (90+ days) */}
+                        <div className="bg-gradient-to-br from-red-50 to-white p-5 rounded-2xl border border-red-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
+                            title="المبالغ المستحقة على الأطباء ولسه ما اتحصلتش لأكثر من 90 يوم — تحتاج إجراء تحصيل عاجل">
+                            <div className="p-3 bg-red-100 rounded-xl">
+                                <Zap size={22} className="text-red-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-red-600 text-xs font-bold mb-1">ذمم متأخرة +90 يوم</p>
+                                <p className="text-xl sm:text-2xl font-black text-red-900 truncate">
+                                    {Math.round(financialStats.aging90plus).toLocaleString()}
+                                    <span className="text-xs font-normal text-red-400 mr-1">ج.م</span>
+                                </p>
+                                <p className="text-[10px] text-red-500 mt-0.5">
+                                    {financialStats.totalReceivables > 0
+                                        ? `${((financialStats.aging90plus / financialStats.totalReceivables) * 100).toFixed(1)}% من إجمالي الذمم`
+                                        : 'تحتاج إجراء تحصيل عاجل'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Smart Insight Banner */}
+                    {(() => {
+                        const netMargin = stats.deliveredRevenue > 0 ? (stats.netProfit / stats.deliveredRevenue) * 100 : 0;
+                        const collectionRate = stats.deliveredRevenue > 0 ? (stats.totalRevenue / stats.deliveredRevenue) * 100 : 0;
+                        const problemRate = stats.orderCount > 0 ? ((stats.redoCount + stats.returnCount) / stats.orderCount) * 100 : 0;
+                        const overdueShare = financialStats.totalReceivables > 0 ? (financialStats.aging90plus / financialStats.totalReceivables) * 100 : 0;
+
+                        const issues: { text: string; severity: 'high' | 'med' }[] = [];
+                        if (problemRate > 10) issues.push({ text: `حالات المشاكل مرتفعة (${problemRate.toFixed(1)}%: ${stats.redoCount} إعادة + ${stats.returnCount} رفض) — راجع جودة الإنتاج`, severity: 'high' });
+                        if (collectionRate > 0 && collectionRate < 70) issues.push({ text: `التحصيل ضعيف (${collectionRate.toFixed(1)}%) — تابع مع الأطباء المتأخرين`, severity: 'high' });
+                        if (overdueShare > 20 && financialStats.aging90plus > 0) issues.push({ text: `${overdueShare.toFixed(1)}% من الذمم متأخرة +90 يوم (${Math.round(financialStats.aging90plus).toLocaleString()} ج.م) — تحتاج تحصيل عاجل`, severity: 'high' });
+                        if (netMargin < 20 && stats.deliveredRevenue > 0) issues.push({ text: `هامش الربح منخفض (${netMargin.toFixed(1)}%) — راجع التسعير أو المصروفات`, severity: 'med' });
+
+                        if (issues.length === 0 && stats.deliveredRevenue > 0) {
+                            return (
+                                <div className="bg-gradient-to-r from-emerald-50 to-white border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
+                                    <div className="p-2 bg-emerald-100 rounded-xl flex-shrink-0">
+                                        <TrendingUp size={20} className="text-emerald-600" />
+                                    </div>
+                                    <div>
+                                        <p className="font-bold text-emerald-800 text-sm">✅ الأداء العام جيد</p>
+                                        <p className="text-xs text-emerald-600 mt-0.5">جميع المؤشرات الرئيسية في النطاق الصحي</p>
+                                    </div>
+                                </div>
+                            );
+                        }
+
+                        if (issues.length === 0) return null;
+                        const hasHigh = issues.some(i => i.severity === 'high');
+                        return (
+                            <div className={clsx(
+                                "border rounded-2xl p-4",
+                                hasHigh ? "bg-gradient-to-r from-rose-50 to-white border-rose-200" : "bg-gradient-to-r from-amber-50 to-white border-amber-200"
+                            )}>
+                                <div className="flex items-start gap-3">
+                                    <div className={clsx("p-2 rounded-xl flex-shrink-0", hasHigh ? "bg-rose-100" : "bg-amber-100")}>
+                                        <Zap size={20} className={hasHigh ? "text-rose-600" : "text-amber-600"} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className={clsx("font-bold text-sm mb-2", hasHigh ? "text-rose-800" : "text-amber-800")}>
+                                            تنبيهات الأداء ({issues.length})
+                                        </p>
+                                        <ul className="space-y-1">
+                                            {issues.map((iss, i) => (
+                                                <li key={i} className={clsx(
+                                                    "text-xs flex items-start gap-2",
+                                                    iss.severity === 'high' ? "text-rose-700" : "text-amber-700"
+                                                )}>
+                                                    <span className="font-bold mt-0.5">•</span>
+                                                    <span>{iss.text}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Main Content Grid */}
                     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
@@ -781,19 +945,47 @@ export default function Analytics() {
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Collections with breakdown */}
                             <div className="bg-gradient-to-br from-emerald-50 to-white p-5 rounded-xl border border-emerald-100">
                                 <div className="flex items-center gap-2 mb-3">
                                     <ArrowUpRight size={18} className="text-emerald-600" />
                                     <span className="text-sm font-medium text-slate-600">المقبوضات</span>
                                 </div>
-                                <p className="text-2xl font-black text-emerald-700">{financialStats.totalCollections.toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                <p className="text-2xl font-black text-emerald-700 mb-2">{Math.round(financialStats.totalCollections).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                <div className="mt-3 pt-3 border-t border-emerald-100/50 space-y-1">
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-slate-500">↳ تحصيلات الأطباء</span>
+                                        <span className="font-bold text-emerald-700">{Math.round(financialStats.doctorCollections).toLocaleString()} ج.م</span>
+                                    </div>
+                                    {financialStats.totalCollections - financialStats.doctorCollections > 0 && (
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-slate-500">↳ مقبوضات أخرى</span>
+                                            <span className="font-bold text-emerald-600">{Math.round(financialStats.totalCollections - financialStats.doctorCollections).toLocaleString()} ج.م</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
+                            {/* Payments with breakdown */}
                             <div className="bg-gradient-to-br from-rose-50 to-white p-5 rounded-xl border border-rose-100">
                                 <div className="flex items-center gap-2 mb-3">
                                     <TrendingDown size={18} className="text-rose-600" />
                                     <span className="text-sm font-medium text-slate-600">المدفوعات</span>
                                 </div>
-                                <p className="text-2xl font-black text-rose-700">{financialStats.totalPayments.toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                <p className="text-2xl font-black text-rose-700 mb-2">{Math.round(financialStats.totalPayments).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                <div className="mt-3 pt-3 border-t border-rose-100/50 space-y-1">
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-slate-500">↳ الموردين</span>
+                                        <span className="font-bold text-rose-600">{Math.round(financialStats.supplierPayments).toLocaleString()} ج.م</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-slate-500">↳ المصممين</span>
+                                        <span className="font-bold text-rose-600">{Math.round(financialStats.designerPayments).toLocaleString()} ج.م</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs">
+                                        <span className="text-slate-500">↳ مصروفات تشغيلية</span>
+                                        <span className="font-bold text-rose-600">{Math.round(financialStats.operatingExpenses).toLocaleString()} ج.م</span>
+                                    </div>
+                                </div>
                             </div>
                             <div className={clsx(
                                 "bg-gradient-to-br p-5 rounded-xl border",
@@ -830,10 +1022,24 @@ export default function Analytics() {
                                 <span className="font-medium text-slate-700">إجمالي المبيعات</span>
                                 <span className="text-xl font-bold text-slate-800">{financialStats.salesRevenue.toLocaleString()} ج.م</span>
                             </div>
-                            {/* COGS Row */}
-                            <div className="flex items-center justify-between p-4 bg-rose-50 rounded-xl">
-                                <span className="font-medium text-slate-700">تكلفة البضائع المباعة (COGS)</span>
-                                <span className="text-xl font-bold text-rose-600">({financialStats.cogs.toLocaleString()}) ج.م</span>
+                            {/* COGS Row with breakdown */}
+                            <div className="bg-rose-50 rounded-xl overflow-hidden">
+                                <div className="flex items-center justify-between p-4">
+                                    <span className="font-medium text-slate-700">تكلفة البضائع المباعة (COGS)</span>
+                                    <span className="text-xl font-bold text-rose-600">({Math.round(financialStats.cogs).toLocaleString()}) ج.م</span>
+                                </div>
+                                {(financialStats.productionCosts > 0 || financialStats.designerCogs > 0) && (
+                                    <div className="px-6 pb-3 space-y-1 border-t border-rose-100">
+                                        <div className="flex items-center justify-between pt-2 text-sm">
+                                            <span className="text-slate-600">↳ مدفوعات الموردين (الإنتاج)</span>
+                                            <span className="font-medium text-rose-500">{Math.round(financialStats.productionCosts).toLocaleString()} ج.م</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-slate-600">↳ مدفوعات المصممين</span>
+                                            <span className="font-medium text-rose-500">{Math.round(financialStats.designerCogs).toLocaleString()} ج.م</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             {/* Gross Profit Row */}
                             <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-xl border-r-4 border-emerald-500">
@@ -866,7 +1072,7 @@ export default function Analytics() {
 
                     {/* Receivables & Payables Section */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Accounts Receivable */}
+                            {/* Accounts Receivable */}
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
                             <div className="flex justify-between items-start mb-6">
                                 <div className="flex items-center gap-3">
@@ -881,6 +1087,12 @@ export default function Analytics() {
                                 <div className="text-right">
                                     <p className="text-3xl font-black text-slate-800">{financialStats.totalReceivables.toLocaleString()}</p>
                                     <p className="text-xs text-slate-400 font-medium mt-1">إجمالي المستحق على العملاء</p>
+                                    <button
+                                        onClick={() => { setReceivablesModalBucket('all'); setReceivablesModalOpen(true); }}
+                                        className="text-xs font-bold text-amber-600 hover:text-amber-700 mt-2 underline underline-offset-2"
+                                    >
+                                        عرض التفاصيل →
+                                    </button>
                                 </div>
                             </div>
 
@@ -895,57 +1107,51 @@ export default function Analytics() {
                                     {/* Segmented Progress Bar */}
                                     <div className="h-4 bg-slate-100 rounded-full flex overflow-hidden">
                                         {[
-                                            { val: financialStats.aging0to30, color: 'bg-emerald-500', label: '0-30' },
-                                            { val: financialStats.aging30to60, color: 'bg-blue-500', label: '30-60' },
-                                            { val: financialStats.aging60to90, color: 'bg-amber-500', label: '60-90' },
-                                            { val: financialStats.aging90plus, color: 'bg-rose-500', label: '+90' }
+                                            { val: financialStats.aging0to30, color: 'bg-emerald-500', label: '0-30', bucket: '0_30' as const },
+                                            { val: financialStats.aging30to60, color: 'bg-blue-500', label: '30-60', bucket: '31_60' as const },
+                                            { val: financialStats.aging60to90, color: 'bg-amber-500', label: '60-90', bucket: '61_90' as const },
+                                            { val: financialStats.aging90plus, color: 'bg-rose-500', label: '+90', bucket: '90_plus' as const }
                                         ].map((segment, idx) => {
                                             const width = financialStats.totalReceivables > 0
                                                 ? (segment.val / financialStats.totalReceivables) * 100
                                                 : 0;
                                             if (width === 0) return null;
                                             return (
-                                                // eslint-disable-next-line -- Dynamic width required for aging bar
+                                                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                                                 <div
                                                     key={idx}
-                                                    className={segment.color}
+                                                    className={clsx(segment.color, 'cursor-pointer hover:opacity-80 transition-opacity')}
                                                     style={{ width: `${width}%` }}
-                                                    title={`${segment.label} يوم: ${segment.val.toLocaleString()}`}
+                                                    title={`${segment.label} يوم: ${segment.val.toLocaleString()} — اضغط للتفاصيل`}
+                                                    onClick={() => { setReceivablesModalBucket(segment.bucket); setReceivablesModalOpen(true); }}
                                                 />
                                             );
                                         })}
                                     </div>
 
-                                    {/* Legend / Breakdown */}
+                                    {/* Legend / Breakdown — clickable */}
                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2">
-                                        <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-100/50">
-                                            <div className="flex items-center gap-1.5 mb-1">
-                                                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                                <span className="text-[10px] text-slate-500 font-bold">0-30 يوم</span>
-                                            </div>
-                                            <p className="text-sm font-bold text-emerald-700">{financialStats.aging0to30.toLocaleString()}</p>
-                                        </div>
-                                        <div className="bg-blue-50 p-2 rounded-lg border border-blue-100/50">
-                                            <div className="flex items-center gap-1.5 mb-1">
-                                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                                <span className="text-[10px] text-slate-500 font-bold">30-60 يوم</span>
-                                            </div>
-                                            <p className="text-sm font-bold text-blue-700">{financialStats.aging30to60.toLocaleString()}</p>
-                                        </div>
-                                        <div className="bg-amber-50 p-2 rounded-lg border border-amber-100/50">
-                                            <div className="flex items-center gap-1.5 mb-1">
-                                                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-                                                <span className="text-[10px] text-slate-500 font-bold">60-90 يوم</span>
-                                            </div>
-                                            <p className="text-sm font-bold text-amber-700">{financialStats.aging60to90.toLocaleString()}</p>
-                                        </div>
-                                        <div className="bg-rose-50 p-2 rounded-lg border border-rose-100/50">
-                                            <div className="flex items-center gap-1.5 mb-1">
-                                                <div className="w-2 h-2 rounded-full bg-rose-500"></div>
-                                                <span className="text-[10px] text-slate-500 font-bold">+90 يوم</span>
-                                            </div>
-                                            <p className="text-sm font-bold text-rose-700">{financialStats.aging90plus.toLocaleString()}</p>
-                                        </div>
+                                        {([
+                                            { val: financialStats.aging0to30, color: 'bg-emerald-500', bg: 'bg-emerald-50', border: 'border-emerald-100/50', text: 'text-emerald-700', label: '0-30 يوم', bucket: '0_30' as const },
+                                            { val: financialStats.aging30to60, color: 'bg-blue-500', bg: 'bg-blue-50', border: 'border-blue-100/50', text: 'text-blue-700', label: '30-60 يوم', bucket: '31_60' as const },
+                                            { val: financialStats.aging60to90, color: 'bg-amber-500', bg: 'bg-amber-50', border: 'border-amber-100/50', text: 'text-amber-700', label: '60-90 يوم', bucket: '61_90' as const },
+                                            { val: financialStats.aging90plus, color: 'bg-rose-500', bg: 'bg-rose-50', border: 'border-rose-100/50', text: 'text-rose-700', label: '+90 يوم', bucket: '90_plus' as const }
+                                        ]).map((item) => (
+                                            <button
+                                                key={item.bucket}
+                                                onClick={() => { setReceivablesModalBucket(item.bucket); setReceivablesModalOpen(true); }}
+                                                className={clsx(
+                                                    item.bg, 'p-2 rounded-lg border text-right transition-all hover:shadow-sm',
+                                                    item.border
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-1.5 mb-1">
+                                                    <div className={clsx("w-2 h-2 rounded-full", item.color)} />
+                                                    <span className="text-[10px] text-slate-500 font-bold">{item.label}</span>
+                                                </div>
+                                                <p className={clsx("text-sm font-bold", item.text)}>{item.val.toLocaleString()}</p>
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
                             </div>
@@ -1002,6 +1208,76 @@ export default function Analytics() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Break-even Analysis */}
+                    {financialStats.salesRevenue > 0 && (
+                        <div className={clsx(
+                            "p-6 rounded-2xl border shadow-sm",
+                            financialStats.salesRevenue >= financialStats.breakEvenRevenue
+                                ? "bg-gradient-to-br from-emerald-50 to-white border-emerald-200"
+                                : "bg-gradient-to-br from-rose-50 to-white border-rose-200"
+                        )}>
+                            <div className="flex items-start gap-4">
+                                <div className={clsx(
+                                    "p-3 rounded-xl flex-shrink-0",
+                                    financialStats.salesRevenue >= financialStats.breakEvenRevenue
+                                        ? "bg-emerald-100" : "bg-rose-100"
+                                )}>
+                                    <Activity size={22} className={
+                                        financialStats.salesRevenue >= financialStats.breakEvenRevenue
+                                            ? "text-emerald-600" : "text-rose-600"
+                                    } />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-lg text-slate-800 mb-1">نقطة التعادل (Break-even)</h3>
+                                    <p className="text-xs text-slate-500 mb-4">
+                                        الحد الأدنى للمبيعات لتغطية كل المصروفات التشغيلية مع تكلفة الإنتاج
+                                    </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                            <p className="text-xs text-slate-500 mb-1">نقطة التعادل</p>
+                                            <p className="text-lg font-black text-slate-800">
+                                                {Math.round(financialStats.breakEvenRevenue).toLocaleString()}
+                                                <span className="text-xs font-normal text-slate-400 mr-1">ج.م</span>
+                                            </p>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                            <p className="text-xs text-slate-500 mb-1">المبيعات الفعلية</p>
+                                            <p className="text-lg font-black text-slate-800">
+                                                {Math.round(financialStats.salesRevenue).toLocaleString()}
+                                                <span className="text-xs font-normal text-slate-400 mr-1">ج.م</span>
+                                            </p>
+                                        </div>
+                                        <div className={clsx(
+                                            "p-3 rounded-xl border",
+                                            financialStats.salesRevenue >= financialStats.breakEvenRevenue
+                                                ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100"
+                                        )}>
+                                            <p className="text-xs text-slate-500 mb-1">
+                                                {financialStats.salesRevenue >= financialStats.breakEvenRevenue ? 'فوق التعادل' : 'تحت التعادل'}
+                                            </p>
+                                            <p className={clsx(
+                                                "text-lg font-black",
+                                                financialStats.salesRevenue >= financialStats.breakEvenRevenue ? "text-emerald-700" : "text-rose-700"
+                                            )}>
+                                                {financialStats.salesRevenue >= financialStats.breakEvenRevenue ? '+' : ''}
+                                                {Math.round(financialStats.salesRevenue - financialStats.breakEvenRevenue).toLocaleString()}
+                                                <span className="text-xs font-normal text-slate-400 mr-1">ج.م</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <p className={clsx(
+                                        "text-xs mt-3 font-medium",
+                                        financialStats.salesRevenue >= financialStats.breakEvenRevenue ? "text-emerald-600" : "text-rose-600"
+                                    )}>
+                                        {financialStats.salesRevenue >= financialStats.breakEvenRevenue
+                                            ? `✅ تجاوزت نقطة التعادل بمقدار ${Math.round(financialStats.salesRevenue - financialStats.breakEvenRevenue).toLocaleString()} ج.م`
+                                            : `⚠️ تحت نقطة التعادل بـ ${Math.round(financialStats.breakEvenRevenue - financialStats.salesRevenue).toLocaleString()} ج.م — تحتاج زيادة المبيعات أو تقليل المصروفات`}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -1018,7 +1294,7 @@ export default function Analytics() {
                 />
             )}
 
-            {/* Expense Analysis Tab Content */}
+            {/* Expense Analysis Tab Content — uses main page time filter */}
             {activeTab === 'expense_analysis' && (
                 <StatementTab
                     type="expense"
@@ -1028,8 +1304,18 @@ export default function Analytics() {
                     suppliers={suppliers}
                     designers={designers}
                     services={services}
+                    externalStartDate={dateRange === 'all' ? '' : (startDate || '')}
+                    externalEndDate={dateRange === 'all' ? '' : (endDate || '')}
+                    externalRangeLabel={dateRangeLabels[dateRange] || (dateRange === 'custom' ? `${startDate} → ${endDate}` : '')}
                 />
             )}
+
+            {/* Doctor Receivables Detail Modal */}
+            <DoctorReceivablesModal
+                isOpen={receivablesModalOpen}
+                onClose={() => setReceivablesModalOpen(false)}
+                initialBucket={receivablesModalBucket}
+            />
         </div>
     );
 }
