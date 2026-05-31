@@ -3,15 +3,23 @@ import { X, Search, Download, Phone, Calendar, AlertTriangle, ArrowUpDown, Chevr
 import clsx from 'clsx';
 import { analyticsService, type DoctorReceivable } from '../../services/supabase/analyticsService';
 import { exportToExcel } from '../../lib/exportUtils';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 
 type AgingBucket = 'all' | '0_30' | '31_60' | '61_90' | '90_plus';
 type SortKey = 'balance' | 'maxDaysOverdue' | 'doctorName' | 'aging_90_plus';
+
+interface OrderLike { id: string; doctorId: string; totalPrice: number; status: string; deliveryDate?: string | null; createdAt?: string; isArchived?: boolean | null; }
+interface TransactionLike { entityId?: string; entityType?: string; type: string; amount: number; }
+interface DoctorLike { id: string; name: string; phone?: string | null; parentId?: string | null; }
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
     initialBucket?: AgingBucket;
+    // Optional client-side fallback data when RPC is not yet deployed
+    fallbackOrders?: OrderLike[];
+    fallbackTransactions?: TransactionLike[];
+    fallbackDoctors?: DoctorLike[];
 }
 
 const BUCKET_META: Record<Exclude<AgingBucket, 'all'>, { label: string; color: string; textColor: string; bg: string; field: keyof DoctorReceivable; daysFn: (d: number) => boolean }> = {
@@ -21,7 +29,111 @@ const BUCKET_META: Record<Exclude<AgingBucket, 'all'>, { label: string; color: s
     '90_plus': { label: '+90 يوم', color: 'bg-rose-500', textColor: 'text-rose-700', bg: 'bg-rose-50', field: 'aging_90_plus', daysFn: d => d > 90 },
 };
 
-export default function DoctorReceivablesModal({ isOpen, onClose, initialBucket = 'all' }: Props) {
+function computeClientSideReceivables(
+    orders: OrderLike[],
+    transactions: TransactionLike[],
+    doctors: DoctorLike[]
+): DoctorReceivable[] {
+    // Map each doctor to their financial entity: child -> parent center, independent -> self
+    const entityIdOf = new Map<string, string>();
+    const entityName = new Map<string, string>();
+    const entityPhone = new Map<string, string | null>();
+    for (const d of doctors) {
+        const entityId = d.parentId || d.id;
+        entityIdOf.set(d.id, entityId);
+        if (!entityName.has(entityId)) {
+            const parent = d.parentId ? doctors.find(p => p.id === d.parentId) : undefined;
+            entityName.set(entityId, parent?.name || d.name);
+            entityPhone.set(entityId, parent?.phone || d.phone || null);
+        }
+    }
+
+    const deliveredOrders = orders.filter(o =>
+        ['Delivered', 'Completed'].includes(o.status) &&
+        !o.isArchived
+    );
+
+    const entityBilled = new Map<string, number>();
+    const entityPaid = new Map<string, number>();
+    const entityOrders = new Map<string, OrderLike[]>();
+
+    for (const o of deliveredOrders) {
+        const eid = entityIdOf.get(o.doctorId) || o.doctorId;
+        entityBilled.set(eid, (entityBilled.get(eid) || 0) + o.totalPrice);
+        const list = entityOrders.get(eid) || [];
+        list.push(o);
+        entityOrders.set(eid, list);
+    }
+
+    for (const t of transactions) {
+        if (t.entityType === 'doctor' && t.type === 'income') {
+            const eid = entityIdOf.get(t.entityId || '') || t.entityId || '';
+            entityPaid.set(eid, (entityPaid.get(eid) || 0) + t.amount);
+        }
+    }
+
+    const today = new Date();
+    const result: DoctorReceivable[] = [];
+
+    for (const [entityId, billed] of entityBilled) {
+        const paid = entityPaid.get(entityId) || 0;
+        const balance = Math.max(0, billed - paid);
+        if (balance <= 0) continue;
+
+        const docOrders = entityOrders.get(entityId) || [];
+        const oldestDate = docOrders
+            .map(o => o.deliveryDate ? new Date(o.deliveryDate) : new Date(o.createdAt || o.id))
+            .sort((a, b) => a.getTime() - b.getTime())[0];
+        const oldestUnpaidDate = oldestDate ? format(oldestDate, 'yyyy-MM-dd') : null;
+        const daysOverdue = oldestDate ? Math.max(0, differenceInDays(today, oldestDate)) : null;
+
+        // FIFO-like allocation: allocate payments to oldest orders first
+        let remainingPaid = paid;
+        let aging_0_30 = 0, aging_31_60 = 0, aging_61_90 = 0, aging_90_plus = 0;
+
+        const sortedOrders = [...docOrders].sort((a, b) => {
+            const da = a.deliveryDate ? new Date(a.deliveryDate) : new Date(a.createdAt || a.id);
+            const db = b.deliveryDate ? new Date(b.deliveryDate) : new Date(b.createdAt || b.id);
+            return da.getTime() - db.getTime();
+        });
+
+        for (const o of sortedOrders) {
+            const orderDate = o.deliveryDate ? new Date(o.deliveryDate) : new Date(o.createdAt || o.id);
+            const days = Math.max(0, differenceInDays(today, orderDate));
+            const orderBal = Math.max(0, o.totalPrice - remainingPaid);
+            remainingPaid = Math.max(0, remainingPaid - o.totalPrice);
+
+            if (days <= 30) aging_0_30 += orderBal;
+            else if (days <= 60) aging_31_60 += orderBal;
+            else if (days <= 90) aging_61_90 += orderBal;
+            else aging_90_plus += orderBal;
+        }
+
+        result.push({
+            doctorId: entityId,
+            doctorName: entityName.get(entityId) || '—',
+            doctorPhone: entityPhone.get(entityId) || null,
+            totalBilled: billed,
+            totalPaid: paid,
+            balance,
+            aging_0_30,
+            aging_31_60,
+            aging_61_90,
+            aging_90_plus,
+            orderCount: docOrders.length,
+            unpaidOrderCount: docOrders.length,
+            oldestUnpaidDate: oldestUnpaidDate,
+            maxDaysOverdue: daysOverdue,
+        });
+    }
+
+    return result;
+}
+
+export default function DoctorReceivablesModal({
+    isOpen, onClose, initialBucket = 'all',
+    fallbackOrders, fallbackTransactions, fallbackDoctors
+}: Props) {
     const [data, setData] = useState<DoctorReceivable[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -42,10 +154,21 @@ export default function DoctorReceivablesModal({ isOpen, onClose, initialBucket 
         setError(null);
         analyticsService.getDoctorReceivablesBreakdown()
             .then(rows => { if (!cancelled) setData(rows); })
-            .catch(err => { if (!cancelled) setError(err?.message || 'حدث خطأ في تحميل البيانات'); })
+            .catch(err => {
+                if (cancelled) return;
+                const msg = err?.message || '';
+                const isSchemaError = msg.includes('Could not find the function') || msg.includes('schema cache') || msg.includes('404') || msg.includes('PGRST');
+                if (isSchemaError && fallbackOrders && fallbackTransactions && fallbackDoctors) {
+                    // Client-side fallback when RPC not yet deployed
+                    const rows = computeClientSideReceivables(fallbackOrders, fallbackTransactions, fallbackDoctors);
+                    if (!cancelled) setData(rows);
+                } else {
+                    if (!cancelled) setError(err?.message || 'حدث خطأ في تحميل البيانات');
+                }
+            })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-    }, [isOpen]);
+    }, [isOpen, fallbackOrders, fallbackTransactions, fallbackDoctors]);
 
     const filtered = useMemo(() => {
         let rows = data;

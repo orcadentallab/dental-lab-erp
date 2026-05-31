@@ -164,6 +164,8 @@ export default function Analytics() {
         totalPayables: 0
     });
 
+    const [isLoading, setIsLoading] = useState(true);
+
     // Date Range Logic - use useMemo instead of useEffect to derive dates
 
     const [dateRange, setDateRange] = useState<'today' | 'week' | 'month' | 'current_month' | 'prev_month' | 'prev_prev_month' | 'year' | 'all' | 'custom'>('current_month');
@@ -241,6 +243,7 @@ export default function Analytics() {
      * - Paginated order browsing uses getOrders(page, limit, filters)
      */
     const calculateStats = useCallback(async () => {
+        setIsLoading(true);
         try {
             // Date params — null means "all time" for the RPC
             const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
@@ -338,6 +341,8 @@ export default function Analytics() {
 
         } catch (error) {
             console.error('Error loading analytics:', error);
+        } finally {
+            setIsLoading(false);
         }
     }, [startDate, endDate, dateRange]);
 
@@ -345,6 +350,28 @@ export default function Analytics() {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- Data fetching requires setting state after async operations
         if ((startDate && endDate) || dateRange === 'all') calculateStats();
     }, [startDate, endDate, dateRange, calculateStats]);
+
+    // Scroll position persistence across refreshes
+    useEffect(() => {
+        const key = 'analytics_scroll_y';
+        const handleBeforeUnload = () => {
+            sessionStorage.setItem(key, String(window.scrollY));
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
+
+    useEffect(() => {
+        const key = 'analytics_scroll_y';
+        const saved = sessionStorage.getItem(key);
+        if (saved) {
+            const y = parseInt(saved, 10);
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: y, behavior: 'auto' });
+            });
+            sessionStorage.removeItem(key);
+        }
+    }, [isLoading]); // restore after main data finishes loading
 
     const dateRangeLabels: Record<string, string> = {
         today: 'اليوم',
@@ -1315,6 +1342,9 @@ export default function Analytics() {
                 isOpen={receivablesModalOpen}
                 onClose={() => setReceivablesModalOpen(false)}
                 initialBucket={receivablesModalBucket}
+                fallbackOrders={orders}
+                fallbackTransactions={transactions}
+                fallbackDoctors={doctors}
             />
         </div>
     );
