@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { db, type Order } from '../../services/db';
+import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Input } from '../ui/Input';
 
 interface Props {
@@ -38,25 +39,42 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
             } as Partial<Order>);
 
             // 2. Create new linked order (copy all data)
-            const newOrderData: Partial<Order> = {
+            const doctors = await db.getDoctors();
+            const doctor = doctors.find(d => d.id === order.doctorId);
+            const caseId = doctor
+                ? await generateNextCaseIdForDoctor(doctor, doctors)
+                : `${order.caseId}-REDO`;
+
+            const newOrderData: Omit<Order, 'id' | 'createdAt'> = {
+                caseId,
                 doctorId: order.doctorId,
                 patientName: order.patientName,
-                items: order.items,
-                discount: order.discount,
-                shade: order.shade,
+                items: order.items || [],
+                discount: order.discount || 0,
+                totalPrice: order.totalPrice || 0,
+                shade: order.shade || '',
                 deliveryDate: order.deliveryDate,
+                cost: order.cost || 0,
+                manualCost: order.manualCost ?? null,
                 deliveryType: order.deliveryType,
                 workflowType: order.workflowType,
                 designerId: order.designerId,
+                designPrice: order.designPrice || 0,
+                designStatus: order.workflowType === 'split' ? 'pending' : undefined,
+                designUrl: order.designUrl,
                 supplierId: order.supplierId,
                 representativeId: order.representativeId,
                 instructions: order.instructions,
                 stlUrl: order.stlUrl,
                 imagesUrl: order.imagesUrl,
-                priority: order.priority,
+                priority: order.priority || 'Normal',
+                isUrgent: order.isUrgent || false,
+                needsDesignReview: order.needsDesignReview || false,
+                technicianStatus: 'Pending',
                 isRedo: true,
                 originalOrderId: order.id,
                 status: 'New Case',
+                isRegistered: false,
                 comments: [{
                     id: crypto.randomUUID(),
                     text: `إعادة إنتاج من #${order.caseId} — السبب: ${REDO_REASONS.find(r => r.value === reason)?.label} — ${notes}`,
@@ -66,7 +84,7 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                 }],
             };
 
-            await db.addOrder(newOrderData as Omit<Order, 'id' | 'createdAt'>);
+            await db.addOrder(newOrderData);
             onSuccess();
             onClose();
         } catch (err) {
