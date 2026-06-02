@@ -1164,6 +1164,8 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     if (updates.actualDeliveryDate !== undefined) dbUpdates.actual_delivery_date = updates.actualDeliveryDate || null;
     if (updates.feedback !== undefined) dbUpdates.feedback = updates.feedback || null;
     if (updates.isRedo !== undefined) dbUpdates.is_redo = updates.isRedo;
+    if (updates.issueState !== undefined) dbUpdates.issue_state = updates.issueState;
+    if (updates.productionStatus !== undefined) dbUpdates.production_status = updates.productionStatus;
 
     if (updates.originalOrderId !== undefined) dbUpdates.original_order_id = updates.originalOrderId;
     if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
