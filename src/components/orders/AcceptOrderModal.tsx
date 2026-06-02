@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { type Order, type User, type Doctor, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { X, Check, Building2, User as UserIcon, ArrowRight } from 'lucide-react';
@@ -35,6 +35,10 @@ export default function AcceptOrderModal({
     const [supplierId, setSupplierId] = useState('');
     const [designerId, setDesignerId] = useState('');
     const [workflowType, setWorkflowType] = useState<'full' | 'split'>('full');
+    const visibleSuppliers = useMemo(
+        () => suppliers.filter(supplier => supplier.isActive !== false),
+        [suppliers]
+    );
 
     // Calculate recommended case ID
     const doctor = doctors.find(d => d.id === order.doctorId);
@@ -201,7 +205,7 @@ export default function AcceptOrderModal({
                                 onChange={e => setSupplierId(e.target.value)}
                             >
                                 <option value="">-- اختر المعمل --</option>
-                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
                     </div>

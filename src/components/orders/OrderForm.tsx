@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock } from 'lucide-react';
@@ -184,6 +184,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     })) : [{ serviceType: '', teethNumbers: [], price: 0 }]);
 
     const setItems = (newItems: FormOrderItem[]) => itemsSet(newItems);
+
+    const visibleRepresentatives = useMemo(
+        () => representatives.filter(rep => rep.isActive !== false || rep.id === representativeId),
+        [representatives, representativeId]
+    );
+
+    const visibleSuppliers = useMemo(
+        () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === selectedSupplier),
+        [suppliers, selectedSupplier]
+    );
 
     useEffect(() => {
         setInstructions(initialData?.instructions || '');
@@ -441,7 +451,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             disabled={isFieldDisabled('representative_id')}
                         >
                             <option value="">المندوب المستلم</option>
-                            {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                            {visibleRepresentatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                         </select>
                     </div>
                     <Button type="button" variant="ghost" disabled={isSubmitting} className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
@@ -749,7 +759,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     disabled={isFieldDisabled('supplier_id')}
                                 >
                                     <option value="">اختر المعمل...</option>
-                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                 </select>
                             </div>
                         ) : (
@@ -762,7 +772,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 disabled={isFieldDisabled('supplier_id')}
                             >
                                 <option value="">-- معمل داخلي (أفتراضي) --</option>
-                                {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                                {visibleSuppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
                             </select>
                         )}
                     </Card>

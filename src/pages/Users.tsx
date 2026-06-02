@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db, type User, type Supplier, type Doctor } from '../services/db';
 import { Plus, Trash2, Edit2, User as UserIcon, Shield, Settings } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -33,6 +33,11 @@ export default function Users() {
     const [baseSalary, setBaseSalary] = useState(''); // New State for Payroll
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
     const [worksAsDesigner, setWorksAsDesigner] = useState(false);
+    const [isActive, setIsActive] = useState(true);
+    const visibleSuppliers = useMemo(
+        () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === entityId),
+        [suppliers, entityId]
+    );
 
     // Permissions Modal State
     const [showPermissionsModal, setShowPermissionsModal] = useState(false);
@@ -104,6 +109,7 @@ export default function Users() {
             setBaseSalary(user.baseSalary?.toString() || '');
             setUnitRate(user.unitRate?.toString() || '');
             setWorksAsDesigner(Boolean(user.customPermissions?.[DUAL_ROLE_DESIGNER_PERMISSION]));
+            setIsActive(user.isActive !== false);
         } else {
             setEditingUser(null);
             setName('');
@@ -115,6 +121,7 @@ export default function Users() {
             setBaseSalary('');
             setUnitRate('');
             setWorksAsDesigner(false);
+            setIsActive(true);
         }
         setShowModal(true);
     };
@@ -129,6 +136,10 @@ export default function Users() {
             }
 
             const nextCustomPermissions = { ...(editingUser?.customPermissions || {}) };
+            const wasActive = editingUser?.isActive !== false;
+            const deactivatedAt = isActive
+                ? undefined
+                : (wasActive ? new Date().toISOString() : editingUser?.deactivatedAt);
 
             if ((role === 'representative' || role === 'admin') && worksAsDesigner) {
                 nextCustomPermissions[DUAL_ROLE_DESIGNER_PERMISSION] = true;
@@ -149,7 +160,9 @@ export default function Users() {
                 baseSalary: (role === 'representative' || role === 'admin') ? parseFloat(baseSalary) || 0 : undefined,
                 unitRate: role === 'designer' ? parseFloat(unitRate) || 0 : undefined,
                 auth_id: editingUser?.auth_id,
-                customPermissions: Object.keys(nextCustomPermissions).length > 0 ? nextCustomPermissions : undefined
+                customPermissions: Object.keys(nextCustomPermissions).length > 0 ? nextCustomPermissions : undefined,
+                isActive,
+                deactivatedAt
             };
 
 
@@ -301,7 +314,12 @@ export default function Users() {
                                     <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                                         <UserIcon size={16} />
                                     </div>
-                                    {user.name}
+                                    <div>
+                                        <span>{user.name}</span>
+                                        {user.isActive === false && (
+                                            <span className="mr-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-500">غير فعال</span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td className="p-4 font-mono text-gray-600">{user.username}</td>
                                 <td className="p-4">{getRoleBadge(user.role, user)}</td>
@@ -411,7 +429,7 @@ export default function Users() {
                                         onChange={e => setEntityId(e.target.value)}
                                     >
                                         <option value="">-- اختر المعمل --</option>
-                                        {suppliers.map(s => (
+                                        {visibleSuppliers.map(s => (
                                             <option key={s.id} value={s.id}>{s.name}</option>
                                         ))}
                                     </select>
@@ -472,6 +490,25 @@ export default function Users() {
                                         </div>
                                     </label>
                                 </div>
+                            )}
+
+                            {(role === 'representative' || role === 'admin' || role === 'lab') && username !== 'admin' && (
+                                <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-1"
+                                        checked={isActive}
+                                        onChange={e => setIsActive(e.target.checked)}
+                                    />
+                                    <div>
+                                        <span className="block text-sm font-bold text-gray-800">فعال في التشغيل</span>
+                                        <span className="block text-xs text-gray-600 mt-1">
+                                            {role === 'lab'
+                                                ? 'عند إيقاف مستخدم المعمل لن يتغير تاريخ الأوردرات القديمة، لكن المعمل نفسه يجب إيقافه من صفحة الموردين لمنع اختياره في أوردرات جديدة.'
+                                                : 'عند إيقاف المندوب لن يظهر في إنشاء الأوردرات، ولن يظهر في رواتب الشهر الحالي وما بعده. الشهور السابقة تظل كما هي.'}
+                                        </span>
+                                    </div>
+                                </label>
                             )}
 
                             {role === 'designer' && (

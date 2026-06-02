@@ -14,6 +14,13 @@ const getCommissionRate = (totalSales: number) => {
     return 0.01;
 };
 
+const isVisibleForPayrollMonth = (user: User, selectedMonth: string) => {
+    if (user.isActive !== false) return true;
+    const inactiveMonth = user.deactivatedAt?.slice(0, 7);
+    if (!inactiveMonth) return false;
+    return selectedMonth < inactiveMonth;
+};
+
 const expenseCategories = [
     { id: 'shipping', label: 'شحن وتوصيل', icon: Truck },
     { id: 'meetings', label: 'اجتماعات ونثريات', icon: Coffee },
@@ -72,8 +79,9 @@ export default function Staff() {
             // Representatives = role='representative' OR (role='admin' AND username !== 'admin')
             // Super Admin (username='admin') is excluded
             const representatives = allUsers.filter(u =>
-                u.role === 'representative' ||
-                (u.role === 'admin' && u.username !== 'admin')
+                (u.role === 'representative' ||
+                    (u.role === 'admin' && u.username !== 'admin')) &&
+                isVisibleForPayrollMonth(u, selectedMonth)
             );
 
             // Filter expenses related to staff (reps + admins)

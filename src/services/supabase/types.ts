@@ -134,6 +134,7 @@ export interface DbSupplier {
     supplier_code?: string | null;
     username?: string | null;
     phone: string;
+    is_active?: boolean | null;
     custom_prices?: Record<string, number> | null; // JSONB
     milling_prices?: Record<string, number> | null; // JSONB
     redo_cost_percentage?: number | null;
@@ -153,6 +154,8 @@ export interface DbUser {
     base_salary?: number | null;
     unit_rate?: number | null;
     custom_permissions?: Record<string, boolean> | null; // JSONB
+    is_active?: boolean | null;
+    deactivated_at?: string | null;
     created_at: string;
     updated_at: string;
 }

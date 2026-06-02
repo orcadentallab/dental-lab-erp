@@ -17,7 +17,9 @@ function dbToUser(dbUser: DbUser): User {
         entityId: dbUser.entity_id || undefined,
         baseSalary: dbUser.base_salary || undefined,
         unitRate: dbUser.unit_rate || undefined,
-        customPermissions: dbUser.custom_permissions || undefined
+        customPermissions: dbUser.custom_permissions || undefined,
+        isActive: dbUser.is_active ?? true,
+        deactivatedAt: dbUser.deactivated_at || undefined
     };
 }
 
@@ -32,7 +34,9 @@ function userToDb(user: Omit<User, 'id'>): DbUserInsert {
         entity_id: user.entityId || null,
         base_salary: user.baseSalary || null,
         unit_rate: user.unitRate || null,
-        custom_permissions: user.customPermissions || null
+        custom_permissions: user.customPermissions || null,
+        is_active: user.isActive ?? true,
+        deactivated_at: user.deactivatedAt || null
     };
 }
 
@@ -126,7 +130,9 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
         base_salary: user.baseSalary || null,
         unit_rate: user.unitRate || null,
         email: user.email || null,
-        custom_permissions: user.customPermissions || null
+        custom_permissions: user.customPermissions || null,
+        is_active: user.isActive ?? true,
+        deactivated_at: user.deactivatedAt || null
     };
 
     const { error } = await supabase

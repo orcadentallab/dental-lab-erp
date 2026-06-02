@@ -13,7 +13,9 @@ export const UserSchema = z.object({
     entityId: z.string().uuid().optional().nullable(),
     baseSalary: z.number().min(0).optional().nullable(),
     unitRate: z.number().min(0).optional().nullable(),
-    auth_id: z.string().uuid().optional()
+    auth_id: z.string().uuid().optional(),
+    isActive: z.boolean().optional(),
+    deactivatedAt: z.string().optional().nullable()
 });
 
 export const UserCreateSchema = UserSchema.extend({
@@ -129,6 +131,7 @@ export const SupplierSchema = z.object({
     supplierCode: z.string().max(20).optional().nullable(),
     username: z.string().min(3).max(50).optional().nullable(),
     phone: z.string().min(8).max(20),
+    isActive: z.boolean().optional(),
     customPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     millingPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     redoCostPercentage: z.number().min(0).max(100).optional().nullable()

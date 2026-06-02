@@ -43,6 +43,7 @@ export interface Supplier {
     supplierCode?: string;
     username: string; // for login
     phone: string;
+    isActive?: boolean;
     customPrices?: Record<string, number>; // serviceName -> costPrice
     millingPrices?: Record<string, number>; // serviceName -> millingOnlyPrice
     redoCostPercentage?: number; // 0 to 100 (Percentage of cost covered by us during redo)
@@ -64,6 +65,8 @@ export interface User {
     auth_id?: string;
     // Custom permissions override (set by Super Admin)
     customPermissions?: Record<string, boolean>;
+    isActive?: boolean;
+    deactivatedAt?: string;
 }
 
 export interface Expense {

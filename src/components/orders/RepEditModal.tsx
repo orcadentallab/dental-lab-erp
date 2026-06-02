@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, AlertTriangle, Save } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -41,6 +41,10 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     const [priority, setPriority] = useState<'Normal' | 'Urgent'>(order.priority || 'Normal');
     const [supplierId, setSupplierId] = useState(order.supplierId || '');
     const [designerId, setDesignerId] = useState(order.designerId || '');
+    const visibleSuppliers = useMemo(
+        () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === supplierId),
+        [suppliers, supplierId]
+    );
 
     useEffect(() => {
         if (isOpen) {
@@ -202,7 +206,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                             className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50"
                         >
                             <option value="">— بدون —</option>
-                            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                     </div>
 

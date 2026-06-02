@@ -19,6 +19,7 @@ export default function Suppliers() {
         supplierCode: string;
         username: string;
         phone: string;
+        isActive: boolean;
         redoCostPercentage: number;
         customPrices: Record<string, number>;
         millingPrices: Record<string, number>;
@@ -27,6 +28,7 @@ export default function Suppliers() {
         supplierCode: '',
         username: '',
         phone: '',
+        isActive: true,
         redoCostPercentage: 0,
         customPrices: {},
         millingPrices: {}
@@ -60,13 +62,14 @@ export default function Suppliers() {
                 supplierCode: supplier.supplierCode || '',
                 username: supplier.username,
                 phone: supplier.phone,
+                isActive: supplier.isActive !== false,
                 redoCostPercentage: supplier.redoCostPercentage || 0,
                 customPrices: supplier.customPrices || {},
                 millingPrices: supplier.millingPrices || {}
             });
         } else {
             setEditingSupplier(null);
-            setFormData({ name: '', supplierCode: '', username: '', phone: '', redoCostPercentage: 0, customPrices: {}, millingPrices: {} });
+            setFormData({ name: '', supplierCode: '', username: '', phone: '', isActive: true, redoCostPercentage: 0, customPrices: {}, millingPrices: {} });
         }
         setIsModalOpen(true);
     };
@@ -135,6 +138,7 @@ export default function Suppliers() {
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900">{supplier.name}</h3>
                                 {supplier.supplierCode && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs ml-2">{supplier.supplierCode}</span>}
+                                {supplier.isActive === false && <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-xs font-bold">غير فعال</span>}
                                 <p className="text-sm text-gray-500">@{supplier.username}</p>
                             </div>
                             {user?.role !== 'accountant' && (
@@ -254,6 +258,18 @@ export default function Suppliers() {
                                         100 = نتحملها نحن بالكامل (Full Cost)
                                     </p>
                                 </div>
+                                <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-1"
+                                        checked={formData.isActive}
+                                        onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
+                                    />
+                                    <div>
+                                        <span className="block text-sm font-bold text-gray-800">فعال في إنشاء الأوردرات</span>
+                                        <span className="block text-xs text-gray-500 mt-1">عند إيقافه سيظل موجوداً في الحسابات والأوردرات القديمة، ولن يظهر كاختيار جديد.</span>
+                                    </div>
+                                </label>
                             </div>
 
                             <div className="border-t border-gray-100 pt-6">
