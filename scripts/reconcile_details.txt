@@ -1,0 +1,332 @@
+﻿INVESTIGATION REPORT FOR 17 TARGET ACCOUNTS (PAGINATION FIXED)
+
+======================================================================
+ENTITY: Allstars (external_lab)
+======================================================================
+- Official Balance: 48477.00 (Debits: 575000.00, Credits: 623477.00)
+  ΓööΓöÇ Orders sum: 623477.00 (496 orders included, 16 excluded)
+  ΓööΓöÇ Transactions sum: 575000.00 (15 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 46937.00 (Net Obligs: 621937.00, Allocated: 575000.00)
+  ΓööΓöÇ Active Obligations Count: 488
+- RECONCILIATION DIFFERENCE: -1540.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Missing Obligations] There are 8 ready/delivered orders with cost > 0 with NO 'external_lab_ready' obligation:
+    - CaseId: 5044-260521-502 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    - CaseId: 5021-260506-518 | Status: Delivered | Cost: 1000 | PayableAmt: 1000
+    - CaseId: 6002-260513-516 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    - CaseId: 2004-260515-573 | Status: Delivered | Cost: 280 | PayableAmt: 280
+    - CaseId: 3006-260511-501 | Status: Delivered | Cost: 6700 | PayableAmt: 6700
+    ... and 3 more.
+  [Γä╣∩╕Å Issue Settlements] Found 1 issue settlement obligations:
+    - ObligId: a4d22eed | CaseId: 1034-2104-1346 | Net: 320 | Status: unpaid
+  [Γä╣∩╕Å Excluded Non-Final Payables] There are 14 active orders with costs that aren't Ready/Delivered yet:
+    - CaseId: 5044-260521-504 | Status: New Case | Cost: 750
+    - CaseId: 5036-260521-502 | Status: New Case | Cost: 7000
+    - CaseId: 5034-260521-504 | Status: New Case | Cost: 1120
+    - CaseId: 3001-080226-002 | Status: Try In | Cost: 4760
+    - CaseId: 2004-1804-2029 | Status: Try In | Cost: 480
+    ... and 9 more.
+
+
+======================================================================
+ENTITY: ╪«╪º┘ä╪» ╪º┘ä╪╣╪º┘à╪▒┘è (doctor)
+======================================================================
+- Official Balance: 13450.00 (Debits: 38550.00, Credits: 25100.00)
+  ΓööΓöÇ Orders sum: 37600.00 (28 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 25100.00 (1 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 950.00 (1 adjustments)
+- Proposed Oblig Balance: 12500.00 (Net Obligs: 37600.00, Allocated: 25100.00)
+  ΓööΓöÇ Active Obligations Count: 28
+- RECONCILIATION DIFFERENCE: -950.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Adjustment Gap] There are 1 adjustments not represented in obligations:
+    - Type: charge | Amount: 950 | Date: 2026-02-11
+
+
+======================================================================
+ENTITY: ╪│┘ä┘à┘è ╪╡┘ä╪º╪¡ (doctor)
+======================================================================
+- Official Balance: 0.00 (Debits: 3000.00, Credits: 3000.00)
+  ΓööΓöÇ Orders sum: 3000.00 (1 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 3000.00 (1 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 3000.00 (Net Obligs: 3000.00, Allocated: 0.00)
+  ΓööΓöÇ Active Obligations Count: 1
+- RECONCILIATION DIFFERENCE: 3000.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 3dbb296f | Amount: 3000 | Allocated: 0 | Unallocated: 3000 | Date: 2026-05-16 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪│┘ä┘à┘è ╪╡┘ä╪º╪¡ - ╪¬╪¡╪╡┘è┘ä ╪»/╪┤╪▒┘è┘ü ┘à┘å ╪»/╪│┘ä┘à┘ë ╪╡┘ä╪º╪¡ ╪º┘å╪│╪¬╪º ╪¿╪º┘è ╪¿╪¬╪º╪▒┘è╪« 05/15
+
+
+======================================================================
+ENTITY: ╪│╪º┘ä┘è (doctor)
+======================================================================
+- Official Balance: -1950.00 (Debits: 7500.00, Credits: 9450.00)
+  ΓööΓöÇ Orders sum: 7500.00 (8 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 8500.00 (3 payments/expenses)
+  ΓööΓöÇ Adjustments sum: -950.00 (1 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 7500.00, Allocated: 7500.00)
+  ΓööΓöÇ Active Obligations Count: 8
+- RECONCILIATION DIFFERENCE: 1950.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Adjustment Gap] There are 1 adjustments not represented in obligations:
+    - Type: credit | Amount: 950 | Date: 2026-02-11
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: fa18da1c | Amount: 3000 | Allocated: 2000 | Unallocated: 1000 | Date: 2026-02-24 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪│╪º┘ä┘è - ╪º┘å╪│╪¬╪º ╪¿╪º┘ë 25/2
+
+
+======================================================================
+ENTITY: ╪º┘è┘ç┘à ╪¬╪▒┘â╪º┘ê┘è (doctor)
+======================================================================
+- Official Balance: -250.00 (Debits: 1950.00, Credits: 2200.00)
+  ΓööΓöÇ Orders sum: 1950.00 (3 orders included, 1 excluded)
+  ΓööΓöÇ Transactions sum: 2200.00 (2 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 750.00 (Net Obligs: 1950.00, Allocated: 1200.00)
+  ΓööΓöÇ Active Obligations Count: 3
+- RECONCILIATION DIFFERENCE: 1000.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: a98e047c | Amount: 1800 | Allocated: 800 | Unallocated: 1000 | Date: 2026-05-07 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪º┘è┘ç┘à ╪¬╪▒┘â╪º┘ê┘è - ╪¬╪¡╪╡┘è┘ä ╪»/╪┤╪▒┘è┘ü ┘à┘å ╪»/ ╪º┘è┘ç┘à ╪¬╪▒┘â╪º┘ê┘è ┘ü┘ê╪»╪º┘ü┘ê┘å ┘â╪º╪┤ ╪¿╪¬╪º╪▒┘è╪« 05/05
+
+
+======================================================================
+ENTITY: AB Lab (external_lab)
+======================================================================
+- Official Balance: 40170.00 (Debits: 131600.00, Credits: 171770.00)
+  ΓööΓöÇ Orders sum: 171770.00 (161 orders included, 10 excluded)
+  ΓööΓöÇ Transactions sum: 131600.00 (8 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 35745.00 (Net Obligs: 166215.00, Allocated: 130470.00)
+  ΓööΓöÇ Active Obligations Count: 156
+- RECONCILIATION DIFFERENCE: -4425.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Missing Obligations] There are 11 ready/delivered orders with cost > 0 with NO 'external_lab_ready' obligation:
+    - CaseId: 2016-260425-511 | Status: Delivered | Cost: 1350 | PayableAmt: 1350
+    - CaseId: 1043-260507-503 | Status: Delivered | Cost: 450 | PayableAmt: 450
+    - CaseId: 1044-260511-501 | Status: Delivered | Cost: 100 | PayableAmt: 100
+    - CaseId: 1013-260516-503 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    - CaseId: 2021-260516-502 | Status: Delivered | Cost: 1000 | PayableAmt: 1000
+    ... and 6 more.
+  [Γä╣∩╕Å Issue Settlements] Found 5 issue settlement obligations:
+    - ObligId: fc566db2 | CaseId: 1034-1204-1641 | Net: 425 | Status: unpaid
+    - ObligId: 147f7286 | CaseId: 1001-140226-001 | Net: 500 | Status: unpaid
+    - ObligId: 41778378 | CaseId: 1001-140226-002 | Net: 250 | Status: unpaid
+    - ObligId: 6df860c3 | CaseId: CASE-1771119936390-8 | Net: 550 | Status: unpaid
+    - ObligId: ce24fd54 | CaseId: CASE-1771119936390-14 | Net: 1500 | Status: unpaid
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 9f636867 | Amount: 20000 | Allocated: 18870 | Unallocated: 1130 | Date: 2026-05-18 | Desc: ╪│╪»╪º╪» ┘ä┘ä┘à┘ê╪▒╪» AB Lab - ╪│╪»╪º╪» ╪»/╪│┘ä┘è┘à ╪º┘ä┘è AB lab ╪º┘å╪│╪¬╪º ╪¿╪º┘è ╪¿╪¬╪º╪▒┘è╪« 05/17
+  [Γä╣∩╕Å Excluded Non-Final Payables] There are 8 active orders with costs that aren't Ready/Delivered yet:
+    - CaseId: 1043-260507-501 | Status: Under Design | Cost: 450
+    - CaseId: 1019-260506-599 | Status: Try In | Cost: 1350
+    - CaseId: 1001-260516-523 | Status: Try In | Cost: 1000
+    - CaseId: 1001-260511-520 | Status: Under Design | Cost: 640
+    - CaseId: 1043-260507-502 | Status: Under Production | Cost: 900
+    ... and 3 more.
+
+
+======================================================================
+ENTITY: Dr.M Lab (external_lab)
+======================================================================
+- Official Balance: 12150.00 (Debits: 38210.00, Credits: 50360.00)
+  ΓööΓöÇ Orders sum: 50360.00 (49 orders included, 27 excluded)
+  ΓööΓöÇ Transactions sum: 38210.00 (3 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 13850.00 (Net Obligs: 41060.00, Allocated: 27210.00)
+  ΓööΓöÇ Active Obligations Count: 34
+- RECONCILIATION DIFFERENCE: 1700.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Missing Obligations] There are 16 ready/delivered orders with cost > 0 with NO 'external_lab_ready' obligation:
+    - CaseId: 2022-260516-506 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    - CaseId: 1019-260520-681 | Status: Delivered | Cost: 560 | PayableAmt: 500
+    - CaseId: 1033-260519-517 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    - CaseId: 3006-260519-502 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    - CaseId: 1019-260513-671 | Status: Delivered | Cost: 500 | PayableAmt: 500
+    ... and 11 more.
+  [Γä╣∩╕Å Issue Settlements] Found 1 issue settlement obligations:
+    - ObligId: 21b41755 | CaseId: 1034-2304-1406 | Net: 1200 | Status: unpaid
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 22b40b85 | Amount: 11000 | Allocated: 0 | Unallocated: 11000 | Date: 2026-05-10 | Desc: ╪│╪»╪º╪» ┘ä┘ä┘à┘ê╪▒╪» Dr.M Lab - ╪│╪»╪º╪» ╪»/╪│┘ä┘è┘à ╪º┘ä┘è Dr.m╪º┘å╪│╪¬╪º ╪¿╪º┘è ╪¿╪¬╪º╪▒┘è╪« 05/08
+  [Γä╣∩╕Å Excluded Non-Final Payables] There are 20 active orders with costs that aren't Ready/Delivered yet:
+    - CaseId: 6007-260523-502 | Status: New Case | Cost: 6400
+    - CaseId: 1513-260521-501 | Status: Under Production | Cost: 500
+    - CaseId: 1019-260522-691 | Status: Under Production | Cost: 100
+    - CaseId: 2005-260523-510 | Status: New Case | Cost: 1240
+    - CaseId: 1511-260520-501 | Status: Under Production | Cost: 1680
+    ... and 15 more.
+
+
+======================================================================
+ENTITY: ╪º╪¿┘ê ╪╡╪º┘ä╪¡ (doctor)
+======================================================================
+- Official Balance: -520.00 (Debits: 11550.00, Credits: 12070.00)
+  ΓööΓöÇ Orders sum: 11550.00 (3 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 12070.00 (3 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 11550.00, Allocated: 11550.00)
+  ΓööΓöÇ Active Obligations Count: 3
+- RECONCILIATION DIFFERENCE: 520.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 370d9752 | Amount: 3070 | Allocated: 2550 | Unallocated: 520 | Date: 2026-03-04 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪º╪¿┘ê ╪╡╪º┘ä╪¡ - ╪¬╪¡┘ê┘è┘ä ╪¿┘å┘â┘ë ┘à┘å ╪º┘ä╪│╪╣┘ê╪»┘è╪⌐
+
+
+======================================================================
+ENTITY: ┘à╪¡┘à╪» ╪º╪¡┘à╪» ╪¡╪│┘å (doctor)
+======================================================================
+- Official Balance: -350.00 (Debits: 5500.00, Credits: 5850.00)
+  ΓööΓöÇ Orders sum: 5500.00 (5 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 5850.00 (4 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 5500.00, Allocated: 5500.00)
+  ΓööΓöÇ Active Obligations Count: 5
+- RECONCILIATION DIFFERENCE: 350.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 1ba0fe43 | Amount: 1100 | Allocated: 750 | Unallocated: 350 | Date: 2026-03-05 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ┘à╪¡┘à╪» ╪º╪¡┘à╪» ╪¡╪│┘å - ╪º┘å╪│╪¬╪º ╪¿╪º┘ë 5/3
+
+
+======================================================================
+ENTITY: ╪¿╪¬┘ê┘ä ╪º╪¡┘à╪» (doctor)
+======================================================================
+- Official Balance: -250.00 (Debits: 3750.00, Credits: 4000.00)
+  ΓööΓöÇ Orders sum: 3750.00 (3 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 4000.00 (3 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 3750.00, Allocated: 3750.00)
+  ΓööΓöÇ Active Obligations Count: 3
+- RECONCILIATION DIFFERENCE: 250.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 2a3093c2 | Amount: 750 | Allocated: 500 | Unallocated: 250 | Date: 2026-02-07 | Desc: ╪»┘ü╪╣╪⌐ ┘à┘å ╪¡╪│╪º╪¿
+
+
+======================================================================
+ENTITY: ╪º╪¡┘à╪» ┘à╪º╪▓┘å (doctor)
+======================================================================
+- Official Balance: -225.00 (Debits: 31125.00, Credits: 31350.00)
+  ΓööΓöÇ Orders sum: 31125.00 (4 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 31350.00 (5 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 31125.00, Allocated: 31125.00)
+  ΓööΓöÇ Active Obligations Count: 4
+- RECONCILIATION DIFFERENCE: 225.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 58481494 | Amount: 900 | Allocated: 675 | Unallocated: 225 | Date: 2026-03-27 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪º╪¡┘à╪» ┘à╪º╪▓┘å - ╪º┘å╪│╪¬╪º ╪¿╪º┘ë
+
+
+======================================================================
+ENTITY: ┘à╪¡┘à╪» ╪¼┘ä╪º┘ä (doctor)
+======================================================================
+- Official Balance: -200.00 (Debits: 2250.00, Credits: 2450.00)
+  ΓööΓöÇ Orders sum: 2250.00 (2 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 2450.00 (3 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 2250.00, Allocated: 2250.00)
+  ΓööΓöÇ Active Obligations Count: 2
+- RECONCILIATION DIFFERENCE: 200.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: cec1439f | Amount: 880 | Allocated: 680 | Unallocated: 200 | Date: 2026-01-01 | Desc: ╪»┘ü╪╣╪⌐ ┘à┘å ╪¡╪│╪º╪¿
+
+
+======================================================================
+ENTITY: ╪«╪º┘ä╪» ┘é╪╡╪▒ ╪º┘ä╪╣┘è┘å┘è (doctor)
+======================================================================
+- Official Balance: -200.00 (Debits: 800.00, Credits: 1000.00)
+  ΓööΓöÇ Orders sum: 800.00 (1 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 1000.00 (1 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 800.00, Allocated: 800.00)
+  ΓööΓöÇ Active Obligations Count: 1
+- RECONCILIATION DIFFERENCE: 200.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: ea3301dd | Amount: 1000 | Allocated: 800 | Unallocated: 200 | Date: 2026-02-22 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪«╪º┘ä╪» ┘é╪╡╪▒ ╪º┘ä╪╣┘è┘å┘è - ╪º┘å╪│╪¬╪º ╪¿╪º┘ë 22/2
+
+
+======================================================================
+ENTITY: ╪▒╪│┘à┘ë ┘à╪¡┘à╪» (doctor)
+======================================================================
+- Official Balance: 200.00 (Debits: 4400.00, Credits: 4200.00)
+  ΓööΓöÇ Orders sum: 4400.00 (3 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 4200.00 (2 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 750.00 (Net Obligs: 750.00, Allocated: 0.00)
+  ΓööΓöÇ Active Obligations Count: 1
+- RECONCILIATION DIFFERENCE: 550.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Missing Obligations] There are 2 delivered orders with NO 'doctor_delivered' obligation:
+    - CaseId: 3007-260516-503 | Status: Delivered | Price: 2250 | ReceivableAmt: 2250 | DeliveredDate: 2026-05-19
+    - CaseId: 3007-260512-501 | Status: Delivered | Price: 1400 | ReceivableAmt: 1400 | DeliveredDate: 2026-05-15
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: ed9a8610 | Amount: 1200 | Allocated: 0 | Unallocated: 1200 | Date: 2026-05-17 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪▒╪│┘à┘ë ┘à╪¡┘à╪» - ╪¬╪¡╪╡┘è┘ä ╪»/╪┤╪▒┘è┘ü ┘à┘å ╪»/╪▒╪│┘à┘è ╪º┘å╪│╪¬╪º ╪¿╪º┘è ╪¿╪¬╪º╪▒┘è╪« 05/17
+    - TxId: 9cdcc487 | Amount: 3000 | Allocated: 0 | Unallocated: 3000 | Date: 2026-05-23 | Desc: ╪¬╪¡╪╡┘è┘ä ┘à┘å ╪». ╪▒╪│┘à┘ë ┘à╪¡┘à╪» - ╪¬╪¡╪╡┘è┘ä ╪»/╪┤╪▒┘è┘ü ┘à┘å ╪»/╪▒╪│┘à┘è ┘à╪¡┘à╪» ╪º┘å╪│╪¬╪º ╪¿╪º┘è ╪¿╪¬╪º╪▒┘è╪« 05/23
+
+
+======================================================================
+ENTITY: ╪╣┘ä┘è╪º ╪º┘ä╪»┘è╪▒┘è (doctor)
+======================================================================
+- Official Balance: -150.00 (Debits: 7350.00, Credits: 7500.00)
+  ΓööΓöÇ Orders sum: 7350.00 (4 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 7500.00 (2 payments/expenses)
+  ΓööΓöÇ Adjustments sum: 0.00 (0 adjustments)
+- Proposed Oblig Balance: 0.00 (Net Obligs: 7350.00, Allocated: 7350.00)
+  ΓööΓöÇ Active Obligations Count: 4
+- RECONCILIATION DIFFERENCE: 150.00
+
+INVESTIGATION FINDINGS:
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: 7a15d742 | Amount: 6900 | Allocated: 6750 | Unallocated: 150 | Date: 2026-01-31 | Desc: ╪»┘ü╪╣╪⌐ ┘à┘å ╪¡╪│╪º╪¿
+
+
+======================================================================
+ENTITY: EZ Lab (external_lab)
+======================================================================
+- Official Balance: 0.00 (Debits: 49760.00, Credits: 49760.00)
+  ΓööΓöÇ Orders sum: 42370.00 (32 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 49760.00 (2 payments/expenses)
+  ΓööΓöÇ Adjustments sum: -7390.00 (1 adjustments)
+- Proposed Oblig Balance: 4610.00 (Net Obligs: 42370.00, Allocated: 37760.00)
+  ΓööΓöÇ Active Obligations Count: 32
+- RECONCILIATION DIFFERENCE: 4610.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Adjustment Gap] There are 1 adjustments not represented in obligations:
+    - Type: credit | Amount: 7390 | Date: 2026-04-05
+  [Γä╣∩╕Å Credit Candidate] There are payments/collections that are not fully allocated:
+    - TxId: d79feb70 | Amount: 12000 | Allocated: 0 | Unallocated: 12000 | Date: 2026-04-02 | Desc: ╪│╪»╪º╪» ┘ä┘ä┘à┘ê╪▒╪» EZ Lab - ╪¬┘é┘ü┘è┘ä ╪¡╪│╪º╪¿ EZ╪î ╪»┘ü╪╣ ┘å╪╡ ╪º┘ä┘ü╪▒┘é ╪¿┘è┘å╪º ┘ê╪¿┘è┘å┘ç┘à
+
+
+======================================================================
+ENTITY: ┘ç┘è╪º ╪º┘ä╪│╪╣┘è╪» (doctor)
+======================================================================
+- Official Balance: 0.00 (Debits: 14600.00, Credits: 14600.00)
+  ΓööΓöÇ Orders sum: 14600.00 (4 orders included, 0 excluded)
+  ΓööΓöÇ Transactions sum: 13400.00 (2 payments/expenses)
+  ΓööΓöÇ Adjustments sum: -1200.00 (1 adjustments)
+- Proposed Oblig Balance: 1200.00 (Net Obligs: 14600.00, Allocated: 13400.00)
+  ΓööΓöÇ Active Obligations Count: 4
+- RECONCILIATION DIFFERENCE: 1200.00
+
+INVESTIGATION FINDINGS:
+  [ΓÜá∩╕Å Adjustment Gap] There are 1 adjustments not represented in obligations:
+    - Type: credit | Amount: 1200 | Date: 2026-02-12
+
+

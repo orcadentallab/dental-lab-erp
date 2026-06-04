@@ -16,6 +16,8 @@ import {
     getLabCostMetadata,
     shouldCreateDoctorReceivableObligationForStatusChange,
     shouldCreateExternalLabPayableObligationForStatusChange,
+    shouldCreateDesignerPayableObligationForDesignStatusChange,
+    shouldVoidDesignerPayableObligationForDesignStatusChange,
     shouldVoidDoctorReceivableForStatusOrIssueChange,
     shouldVoidExternalLabReadyObligationForStatusChange,
 } from '../../constants/financialObligations';
@@ -28,10 +30,14 @@ import {
 import {
     createDoctorReceivableObligationForOrder,
     createExternalLabPayableObligationForOrder,
+    createDesignerPayableObligationForOrder,
     findActiveDoctorDeliveredObligationForOrder,
     findActiveExternalLabReadyObligationForOrder,
+    findActiveDesignerApprovedObligationForOrder,
     voidFinancialObligation,
+    reallocatePaymentsAfterObligationVoid,
 } from './financialObligations';
+
 
 // Helper to handle joined data which isn't in DbOrder type
 interface DbOrderWithRelations extends DbOrder {
@@ -63,6 +69,14 @@ const DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
     'Doctor receivable amount was corrected, but shadow doctor receivable obligation could not be updated.';
 const EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
     'External lab cost was corrected, but shadow external lab payable obligation could not be updated.';
+const DESIGNER_PAYABLE_OBLIGATION_FAILURE_MESSAGE =
+    'Design completed, but shadow designer payable obligation could not be created.';
+const DESIGNER_PAYABLE_OBLIGATION_VOID_FAILURE_MESSAGE =
+    'Design status reverted, but shadow designer payable obligation could not be voided.';
+const DESIGNER_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE =
+    'Designer was corrected, but shadow designer payable obligation could not be updated.';
+const DESIGNER_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
+    'Design price was corrected, but shadow designer payable obligation could not be updated.';
 
 async function createOrderEventNonBlocking(
     label: string,
@@ -126,6 +140,8 @@ async function correctDoctorReceivablePartyAfterOrderUpdate(input: {
                     shadowMode: true,
                 }
             );
+            await reallocatePaymentsAfterObligationVoid(oldObligation.id, null, input.changedBy || null);
+
         }
     }
 
@@ -175,6 +191,7 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
                     shadowMode: true,
                 }
             );
+            await reallocatePaymentsAfterObligationVoid(activeObligation.id, null, input.changedBy || null);
         }
         return;
     }
@@ -208,7 +225,7 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
         }
     );
 
-    await createDoctorReceivableObligationForOrder(input.updatedOrder, {
+    const newOblig = await createDoctorReceivableObligationForOrder(input.updatedOrder, {
         createdBy: input.changedBy || null,
         metadata: {
             correctionReason: 'doctor_amount_corrected',
@@ -220,6 +237,13 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
             trackingOnly: true,
         },
     });
+
+    await reallocatePaymentsAfterObligationVoid(
+        activeObligation.id,
+        newOblig ? newOblig.id : null,
+        input.changedBy || null
+    );
+
 }
 
 async function correctExternalLabPayablePartyAfterOrderUpdate(input: {
@@ -263,6 +287,7 @@ async function correctExternalLabPayablePartyAfterOrderUpdate(input: {
                     shadowMode: true,
                 }
             );
+            await reallocatePaymentsAfterObligationVoid(oldObligation.id, null, input.changedBy || null);
         }
     }
 
@@ -318,6 +343,7 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
                     shadowMode: true,
                 }
             );
+            await reallocatePaymentsAfterObligationVoid(activeObligation.id, null, input.changedBy || null);
         }
         return;
     }
@@ -360,7 +386,7 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
         }
     );
 
-    await createExternalLabPayableObligationForOrder(input.updatedOrder, {
+    const newOblig = await createExternalLabPayableObligationForOrder(input.updatedOrder, {
         ...createContext,
         metadata: {
             correctionReason: 'lab_cost_corrected',
@@ -373,6 +399,156 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
             trackingOnly: true,
         },
     });
+
+    await reallocatePaymentsAfterObligationVoid(
+        activeObligation.id,
+        newOblig ? newOblig.id : null,
+        input.changedBy || null
+    );
+
+}
+
+// ---------------------------------------------------------------------------
+// Designer payable corrections
+// ---------------------------------------------------------------------------
+
+async function correctDesignerPayablePartyAfterOrderUpdate(input: {
+    previousOrder: Order;
+    updatedOrder: Order;
+    changedBy?: string | null;
+}): Promise<void> {
+    const previousDesignerId = input.previousOrder.designerId || null;
+    const newDesignerId = input.updatedOrder.designerId || null;
+
+    if (previousDesignerId === newDesignerId) return;
+
+    const isPayableEligible =
+        input.updatedOrder.workflowType === 'split'
+        && input.updatedOrder.designStatus === 'completed'
+        && (input.updatedOrder.designPrice ?? 0) > 0;
+
+    if (!isPayableEligible) return;
+
+    let replacedObligationId: string | null = null;
+
+    if (previousDesignerId) {
+        const oldObligation = await findActiveDesignerApprovedObligationForOrder(input.updatedOrder.id, previousDesignerId);
+        if (oldObligation) {
+            replacedObligationId = oldObligation.id;
+            await voidFinancialObligation(
+                oldObligation.id,
+                `Designer corrected from ${previousDesignerId} to ${newDesignerId || 'none'}`,
+                {
+                    voidReason: 'designer_corrected',
+                    previousDesignerId,
+                    newDesignerId,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                }
+            );
+            await reallocatePaymentsAfterObligationVoid(oldObligation.id, null, input.changedBy || null);
+        }
+    }
+
+    if (!newDesignerId) return;
+
+    await createDesignerPayableObligationForOrder(input.updatedOrder, {
+        createdBy: input.changedBy || null,
+        metadata: {
+            correctionReason: previousDesignerId ? 'designer_corrected' : 'designer_added_after_completed',
+            previousDesignerId,
+            newDesignerId,
+            replacedObligationId,
+            shadowMode: true,
+            trackingOnly: true,
+        },
+    });
+}
+
+async function correctDesignerPayableAmountAfterOrderUpdate(input: {
+    previousOrder: Order;
+    updatedOrder: Order;
+    changedBy?: string | null;
+}): Promise<void> {
+    const isPayableEligible =
+        input.updatedOrder.workflowType === 'split'
+        && input.updatedOrder.designStatus === 'completed'
+        && !!input.updatedOrder.designerId;
+
+    if (!isPayableEligible) return;
+
+    const newAmount = input.updatedOrder.designPrice ?? 0;
+    const activeObligation = await findActiveDesignerApprovedObligationForOrder(
+        input.updatedOrder.id,
+        input.updatedOrder.designerId
+    );
+    const previousAmount = activeObligation?.grossAmount ?? (input.previousOrder.designPrice ?? 0);
+
+    if (newAmount <= 0) {
+        if (activeObligation) {
+            await voidFinancialObligation(
+                activeObligation.id,
+                `Designer payable amount corrected from ${activeObligation.grossAmount} to 0`,
+                {
+                    voidReason: 'design_price_zero_or_removed',
+                    previousAmount: activeObligation.grossAmount,
+                    newAmount: 0,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                }
+            );
+            await reallocatePaymentsAfterObligationVoid(activeObligation.id, null, input.changedBy || null);
+        }
+        return;
+    }
+
+    if (!activeObligation) {
+        await createDesignerPayableObligationForOrder(input.updatedOrder, {
+            createdBy: input.changedBy || null,
+            metadata: {
+                correctionReason: 'design_price_added_after_completed',
+                previousAmount,
+                newAmount,
+                changedBy: input.changedBy || null,
+                shadowMode: true,
+                trackingOnly: true,
+            },
+        });
+        return;
+    }
+
+    if (activeObligation.grossAmount === newAmount) return;
+
+    await voidFinancialObligation(
+        activeObligation.id,
+        `Designer payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}`,
+        {
+            voidReason: 'design_price_corrected',
+            previousAmount: activeObligation.grossAmount,
+            newAmount,
+            changedBy: input.changedBy || null,
+            shadowMode: true,
+        }
+    );
+
+    const newOblig = await createDesignerPayableObligationForOrder(input.updatedOrder, {
+        createdBy: input.changedBy || null,
+        metadata: {
+            correctionReason: 'design_price_corrected',
+            previousAmount: activeObligation.grossAmount,
+            newAmount,
+            replacedObligationId: activeObligation.id,
+            changedBy: input.changedBy || null,
+            shadowMode: true,
+            trackingOnly: true,
+        },
+    });
+
+    await reallocatePaymentsAfterObligationVoid(
+        activeObligation.id,
+        newOblig ? newOblig.id : null,
+        input.changedBy || null
+    );
 }
 
 // Transform database record to application format
@@ -1096,9 +1272,11 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
         supplierChanged: boolean;
         doctorAmountChanged: boolean;
         labCostChanged: boolean;
+        designerChanged: boolean;
+        designPriceChanged: boolean;
     } | null = null;
 
-    if (updates.doctorId !== undefined || updates.supplierId !== undefined || updates.totalPrice !== undefined || updates.discount !== undefined || updates.cost !== undefined || updates.manualCost !== undefined || updates.status !== undefined || updates.productionStatus !== undefined || updates.issueState !== undefined) {
+    if (updates.doctorId !== undefined || updates.supplierId !== undefined || updates.totalPrice !== undefined || updates.discount !== undefined || updates.cost !== undefined || updates.manualCost !== undefined || updates.status !== undefined || updates.productionStatus !== undefined || updates.issueState !== undefined || updates.designerId !== undefined || updates.designPrice !== undefined || updates.designStatus !== undefined) {
         const currentOrder = await getCurrentOrderForUpdate();
         if (currentOrder) {
             const oldDoctorId = currentOrder.doctorId || null;
@@ -1112,6 +1290,10 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             // so that changing only manualCost still triggers the payable correction.
             const oldLabCost = getLabCostMetadata(currentOrder).cost;
             const newLabCost = getLabCostMetadata(nextOrderForAmount).cost;
+            const oldDesignerId = currentOrder.designerId || null;
+            const newDesignerId = updates.designerId !== undefined ? (updates.designerId || null) : oldDesignerId;
+            const oldDesignPrice = currentOrder.designPrice ?? 0;
+            const newDesignPrice = updates.designPrice !== undefined ? (updates.designPrice ?? 0) : oldDesignPrice;
 
             financialPartyCorrection = {
                 previousOrder: currentOrder,
@@ -1119,6 +1301,8 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
                 supplierChanged: oldSupplierId !== newSupplierId,
                 doctorAmountChanged: oldDoctorAmount !== newDoctorAmount,
                 labCostChanged: oldLabCost !== newLabCost,
+                designerChanged: oldDesignerId !== newDesignerId,
+                designPriceChanged: oldDesignPrice !== newDesignPrice,
             };
         }
     }
@@ -1342,6 +1526,7 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
                     shadowMode: true,
                     reviewNeeded: true,
                 });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
             } else {
                 console.debug('No active shadow doctor receivable obligation found to void after leaving final delivered workflow', {
                     orderId: id,
@@ -1434,6 +1619,42 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
                     error,
                 });
                 throw new Error(EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (financialPartyCorrection.designerChanged) {
+            try {
+                await correctDesignerPayablePartyAfterOrderUpdate({
+                    previousOrder: financialPartyCorrection.previousOrder,
+                    updatedOrder,
+                    changedBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(DESIGNER_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: id,
+                    previousDesignerId: financialPartyCorrection.previousOrder.designerId || null,
+                    newDesignerId: updatedOrder.designerId || null,
+                    error,
+                });
+                throw new Error(DESIGNER_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (financialPartyCorrection.designPriceChanged && !financialPartyCorrection.designerChanged) {
+            try {
+                await correctDesignerPayableAmountAfterOrderUpdate({
+                    previousOrder: financialPartyCorrection.previousOrder,
+                    updatedOrder,
+                    changedBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(DESIGNER_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: id,
+                    previousAmount: financialPartyCorrection.previousOrder.designPrice ?? 0,
+                    newAmount: updatedOrder.designPrice ?? 0,
+                    error,
+                });
+                throw new Error(DESIGNER_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
             }
         }
     }
@@ -1690,6 +1911,7 @@ export async function updateOrderStatus(
                     voidedAt: new Date().toISOString(),
                     shadowMode: true,
                 });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
             } else {
                 console.debug('No active shadow doctor receivable obligation found to void after Delivered reversal', {
                     orderId,
@@ -1725,6 +1947,7 @@ export async function updateOrderStatus(
                     reviewNeeded: true,
                     issueSettlementMayBeNeeded: true,
                 });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
             } else {
                 console.debug('No active shadow external lab ready obligation found to void after leaving Final Ready/Delivered workflow', {
                     orderId,
@@ -1788,6 +2011,36 @@ export async function updateOrderStatus(
         }
     }
 
+    // Designer payable: void when design is reverted, create when it completes
+    if (updatedOrder && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
+        if (shouldVoidDesignerPayableObligationForDesignStatusChange(currentOrder, updatedOrder)) {
+            try {
+                const obligation = await findActiveDesignerApprovedObligationForOrder(orderId);
+                if (obligation) {
+                    await voidFinancialObligation(obligation.id, `Design status reverted to ${updatedOrder.designStatus}`, {
+                        voidReason: 'design_status_reverted',
+                        previousDesignStatus: currentOrder.designStatus || null,
+                        newDesignStatus: updatedOrder.designStatus || null,
+                        shadowMode: true,
+                    });
+                    await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
+                }
+            } catch (error) {
+                console.error(DESIGNER_PAYABLE_OBLIGATION_VOID_FAILURE_MESSAGE, { orderId, error });
+                throw new Error(DESIGNER_PAYABLE_OBLIGATION_VOID_FAILURE_MESSAGE);
+            }
+        } else if (shouldCreateDesignerPayableObligationForDesignStatusChange(currentOrder, updatedOrder)) {
+            try {
+                await createDesignerPayableObligationForOrder(updatedOrder, {
+                    createdBy: context.userId || null,
+                });
+            } catch (error) {
+                console.error(DESIGNER_PAYABLE_OBLIGATION_FAILURE_MESSAGE, { orderId, error });
+                throw new Error(DESIGNER_PAYABLE_OBLIGATION_FAILURE_MESSAGE);
+            }
+        }
+    }
+
     return updatedOrder;
 }
 
@@ -1836,7 +2089,13 @@ export async function getOrderIssues(filters?: {
 }): Promise<import('../db').OrderIssue[]> {
     let query = supabase
         .from('order_issues')
-        .select('*')
+        .select(`
+            *,
+            orders (
+                *,
+                order_items (*)
+            )
+        `)
         .order('created_at', { ascending: false });
 
     if (filters?.issueType) query = query.eq('issue_type', filters.issueType);
@@ -1845,16 +2104,20 @@ export async function getOrderIssues(filters?: {
 
     const { data, error } = await query;
     if (error) throw error;
-    return (data || []).map((r: any) => ({
-        id: r.id,
-        orderId: r.order_id,
-        issueType: r.issue_type,
-        causeCategory: r.cause_category,
-        notes: r.notes,
-        reporterId: r.reporter_id,
-        reporterName: r.reporter_name,
-        resolvedAt: r.resolved_at,
-        resolutionNotes: r.resolution_notes,
-        createdAt: r.created_at,
-    }));
+    return (data || []).map((r) => {
+        const dbOrder = r.orders ? (Array.isArray(r.orders) ? r.orders[0] : r.orders) : null;
+        return {
+            id: r.id,
+            orderId: r.order_id,
+            issueType: r.issue_type,
+            causeCategory: r.cause_category,
+            notes: r.notes,
+            reporterId: r.reporter_id,
+            reporterName: r.reporter_name,
+            resolvedAt: r.resolved_at,
+            resolutionNotes: r.resolution_notes,
+            createdAt: r.created_at,
+            order: dbOrder ? dbToOrder(dbOrder as unknown as DbOrderWithRelations) : undefined,
+        };
+    });
 }

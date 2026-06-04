@@ -6,6 +6,7 @@ import {
     OBLIGATION_TRIGGER_TYPES,
     buildExternalLabPayableCandidate,
     buildDoctorReceivableCandidate,
+    buildDesignerPayableCandidate,
     calculateNetAmount,
     validateFinancialObligationAmounts,
     type FinancialObligationCandidate,
@@ -154,6 +155,20 @@ async function resolveReviewEntityNames(rows: FinancialObligationReviewItem[]): 
             console.error('Failed to resolve financial obligation supplier names', error);
         } else {
             (data || []).forEach(row => names.set(`external_lab:${row.id}`, row.name));
+        }
+    }
+
+    const designerIds = Array.from(new Set(rows.filter(row => row.entityType === 'designer').map(row => row.entityId)));
+    if (designerIds.length > 0) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('id', designerIds);
+
+        if (error) {
+            console.error('Failed to resolve financial obligation designer names', error);
+        } else {
+            (data || []).forEach(row => names.set(`designer:${row.id}`, row.name));
         }
     }
 
@@ -307,6 +322,34 @@ export async function createExternalLabPayableObligationForOrder(
             shadowMode: true,
             trackingOnly: true,
             normalExternalLabPayable: true,
+        },
+    });
+}
+
+export async function createDesignerPayableObligationForOrder(
+    order: Partial<Order>,
+    context: {
+        createdBy?: string | null;
+        triggerDate?: string;
+        metadata?: Record<string, unknown>;
+    } = {}
+): Promise<FinancialObligation | null> {
+    const candidate = buildDesignerPayableCandidate(order, {
+        triggerDate: context.triggerDate,
+    });
+    if (!candidate) return null;
+
+    const dueDate = await calculateObligationDueDate(candidate);
+
+    return createFinancialObligation({
+        ...candidate,
+        dueDate,
+        createdBy: context.createdBy || null,
+        metadata: {
+            ...candidate.metadata,
+            ...(context.metadata || {}),
+            shadowMode: true,
+            trackingOnly: true,
         },
     });
 }
@@ -491,6 +534,36 @@ export async function findActiveExternalLabReadyObligationForOrder(
     return data ? dbToFinancialObligation(data as FinancialObligationRow) : null;
 }
 
+export async function findActiveDesignerApprovedObligationForOrder(
+    orderId: string,
+    entityId?: string | null
+): Promise<FinancialObligation | null> {
+    const supabase = await getSupabaseClient();
+    let query = supabase
+        .from('financial_obligations')
+        .select('*')
+        .eq('order_id', orderId)
+        .eq('entity_type', 'designer')
+        .eq('direction', OBLIGATION_DIRECTIONS.payable)
+        .eq('trigger_type', OBLIGATION_TRIGGER_TYPES.designerApproved)
+        .eq('source', OBLIGATION_SOURCES.order)
+        .neq('status', OBLIGATION_STATUSES.void);
+
+    if (entityId) {
+        query = query.eq('entity_id', entityId);
+    }
+
+    const { data, error } = await query
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'findActiveDesignerApprovedObligationForOrder');
+    }
+
+    return data ? dbToFinancialObligation(data as FinancialObligationRow) : null;
+}
+
 export async function voidFinancialObligation(
     id: string,
     notes?: string,
@@ -530,3 +603,223 @@ export async function voidFinancialObligation(
 
     return data ? dbToFinancialObligation(data as FinancialObligationRow) : null;
 }
+
+export async function reallocatePaymentsAfterObligationVoid(
+    voidedObligationId: string,
+    newObligationId: string | null,
+    changedBy: string | null
+): Promise<void> {
+    const supabase = await getSupabaseClient();
+
+    // 1. Fetch active allocations for the voided obligation
+    const { data: allocations, error: allocError } = await supabase
+        .from('payment_allocations')
+        .select('*')
+        .eq('obligation_id', voidedObligationId)
+        .eq('status', 'active');
+
+    if (allocError) {
+        throw ErrorHandler.handle(allocError, 'reallocatePaymentsAfterObligationVoid.fetchAllocations');
+    }
+
+    if (!allocations || allocations.length === 0) {
+        return; // No active allocations to reallocate
+    }
+
+    // 2. Fetch the voided obligation to get entity details and current allocated_amount
+    const { data: voidedData, error: obligError } = await supabase
+        .from('financial_obligations')
+        .select('*')
+        .eq('id', voidedObligationId)
+        .single();
+
+    if (obligError) {
+        throw ErrorHandler.handle(obligError, 'reallocatePaymentsAfterObligationVoid.fetchVoidedObligation');
+    }
+    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+    const voidedOblig = voidedData as FinancialObligationRow;
+
+
+    // 3. If newObligationId is provided, fetch it
+    let newOblig: FinancialObligationRow | null = null;
+    if (newObligationId) {
+        const { data, error } = await supabase
+            .from('financial_obligations')
+            .select('*')
+            .eq('id', newObligationId)
+            .single();
+        if (error) {
+            throw ErrorHandler.handle(error, 'reallocatePaymentsAfterObligationVoid.fetchNewObligation');
+        }
+        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+        newOblig = data as FinancialObligationRow;
+    }
+
+    for (const alloc of allocations) {
+        const val = Number(alloc.allocated_amount);
+        if (val <= 0) continue;
+
+        // A. Reverse the old allocation
+        const { error: revAllocError } = await supabase
+            .from('payment_allocations')
+            .update({
+                status: 'reversed',
+                reversed_by: changedBy || null,
+                reversed_at: new Date().toISOString(),
+                reversal_reason: 'obligation_voided',
+            })
+            .eq('id', alloc.id);
+
+        if (revAllocError) {
+            throw ErrorHandler.handle(revAllocError, 'reallocatePaymentsAfterObligationVoid.reverseAlloc');
+        }
+
+        // B. Decrement allocated_amount on the voided obligation
+        const newVoidedAllocated = Math.max(0, Number(voidedOblig.allocated_amount || 0) - val);
+        voidedOblig.allocated_amount = newVoidedAllocated;
+
+        const { error: decError } = await supabase
+            .from('financial_obligations')
+            .update({
+                allocated_amount: newVoidedAllocated,
+            })
+            .eq('id', voidedObligationId);
+
+        if (decError) {
+            console.error('Failed to decrement allocated_amount on voided obligation', decError);
+        }
+
+        let excess = val;
+
+        // C. Allocate to new obligation if available
+        if (newOblig) {
+            // Re-fetch new obligation in case allocated_amount changed in this loop
+            const { data: currentNewOblig, error: refreshError } = await supabase
+                .from('financial_obligations')
+                .select('*')
+                .eq('id', newObligationId)
+                .single();
+
+            if (refreshError) {
+                throw ErrorHandler.handle(refreshError, 'reallocatePaymentsAfterObligationVoid.refreshNewOblig');
+            }
+            newOblig = currentNewOblig;
+
+            if (!newOblig) continue;
+
+            const remaining = Number(newOblig.net_amount || 0) - Number(newOblig.allocated_amount || 0);
+
+            if (remaining > 0) {
+                const amountToAllocate = Math.min(excess, remaining);
+                excess -= amountToAllocate;
+
+                // Create new allocation
+                const { data: newAllocData, error: insAllocError } = await supabase
+                    .from('payment_allocations')
+                    .insert({
+                        payment_transaction_id: alloc.payment_transaction_id,
+                        obligation_id: newObligationId,
+                        entity_type: voidedOblig.entity_type,
+                        entity_id: voidedOblig.entity_id,
+                        direction: voidedOblig.direction,
+                        allocated_amount: amountToAllocate,
+                        allocation_method: 'fifo',
+                        status: 'active',
+                        allocated_by: changedBy || null,
+                        metadata: {
+                            reallocatedFrom: voidedObligationId,
+                            reallocatedFromAllocationId: alloc.id,
+                        },
+                    })
+                    .select('*')
+                    .single();
+
+                if (insAllocError) {
+                    throw ErrorHandler.handle(insAllocError, 'reallocatePaymentsAfterObligationVoid.insertNewAlloc');
+                }
+                // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                const newAllocId = (newAllocData as FinancialObligationRow & { id: string })?.id ?? '';
+
+                // Increment allocated_amount on the new obligation
+                const newAllocated = Number(newOblig.allocated_amount || 0) + amountToAllocate;
+                const newStatus = newAllocated >= Number(newOblig.net_amount) ? 'paid' : 'partially_paid';
+
+                const { error: incError } = await supabase
+                    .from('financial_obligations')
+                    .update({
+                        allocated_amount: newAllocated,
+                        status: newStatus,
+                    })
+                    .eq('id', newObligationId);
+
+                if (incError) {
+                    throw ErrorHandler.handle(incError, 'reallocatePaymentsAfterObligationVoid.incrementNewOblig');
+                }
+
+                // Create allocation event
+                await supabase.from('allocation_events').insert({
+                    event_type: 'allocation_created',
+                    allocation_id: newAllocId,
+                    transaction_id: alloc.payment_transaction_id,
+                    obligation_id: newObligationId,
+                    entity_type: voidedOblig.entity_type,
+                    entity_id: voidedOblig.entity_id,
+                    amount: amountToAllocate,
+                    reason: 'reallocated after obligation void',
+                    changed_by: changedBy || null,
+                    metadata: {
+                        voidedObligationId,
+                        voidedAllocationId: alloc.id,
+                    },
+                });
+            }
+        }
+
+        // D. Convert remaining excess to account credit
+        if (excess > 0) {
+            const { data: newCreditData, error: insCreditError } = await supabase
+                .from('account_credits')
+                .insert({
+                    entity_type: voidedOblig.entity_type,
+                    entity_id: voidedOblig.entity_id,
+                    amount: excess,
+                    remaining_amount: excess,
+                    source: 'correction_excess',
+                    source_transaction_id: alloc.payment_transaction_id,
+                    source_allocation_id: alloc.id,
+                    source_obligation_id: voidedObligationId,
+                    status: 'active',
+                    created_by: changedBy || null,
+                    metadata: {
+                        voidedObligationId,
+                        newObligationId: newObligationId || null,
+                    },
+                })
+                .select('*')
+                .single();
+
+            if (insCreditError) {
+                throw ErrorHandler.handle(insCreditError, 'reallocatePaymentsAfterObligationVoid.insertCredit');
+            }
+            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+            const newCreditId = (newCreditData as FinancialObligationRow & { id: string })?.id ?? '';
+
+            // Create credit creation event
+            await supabase.from('allocation_events').insert({
+                event_type: 'credit_created',
+                credit_id: newCreditId,
+                transaction_id: alloc.payment_transaction_id,
+                obligation_id: voidedObligationId,
+                entity_type: voidedOblig.entity_type,
+                entity_id: voidedOblig.entity_id,
+                amount: excess,
+                reason: 'excess from voided obligation reallocation',
+                changed_by: changedBy || null,
+                metadata: {
+                    voidedAllocationId: alloc.id,
+                },
+            });
+        }
+    }
+}
+

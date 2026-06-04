@@ -187,8 +187,39 @@ export function buildExternalLabPayableCandidate(
     };
 }
 
-export function buildDesignerPayableCandidate(): null {
-    return null;
+export function buildDesignerPayableCandidate(
+    order: CandidateOrder,
+    options: { triggerDate?: string } = {}
+): FinancialObligationCandidate | null {
+    if (
+        !order.id
+        || !order.designerId
+        || order.workflowType !== 'split'
+        || order.designStatus !== 'completed'
+    ) {
+        return null;
+    }
+
+    const designPrice = order.designPrice ?? 0;
+    if (designPrice <= 0) return null;
+
+    return {
+        orderId: order.id,
+        entityType: BILLING_ENTITY_TYPES.designer,
+        entityId: order.designerId,
+        direction: OBLIGATION_DIRECTIONS.payable,
+        triggerType: OBLIGATION_TRIGGER_TYPES.designerApproved,
+        triggerStatus: order.designStatus ?? null,
+        triggerDate: options.triggerDate || getOrderTriggerDate(order),
+        grossAmount: designPrice,
+        adjustmentAmount: 0,
+        source: OBLIGATION_SOURCES.order,
+        metadata: {
+            caseId: order.caseId || null,
+            designPrice,
+            workflowType: order.workflowType,
+        },
+    };
 }
 
 export function shouldCreateDoctorReceivableObligationForStatusChange(
@@ -212,6 +243,38 @@ export function shouldCreateExternalLabPayableObligationForStatusChange(
         shouldCreate: becameFinalReady || directDeliveredImpliesFinalReady,
         impliedFinalReady: directDeliveredImpliesFinalReady,
     };
+}
+
+/**
+ * Returns true when the order has just entered designStatus='completed' for the
+ * first time – the trigger point for a designer payable obligation.
+ */
+export function shouldCreateDesignerPayableObligationForDesignStatusChange(
+    previousOrder: CandidateOrder,
+    updatedOrder: CandidateOrder
+): boolean {
+    return (
+        updatedOrder.workflowType === 'split'
+        && !!updatedOrder.designerId
+        && (updatedOrder.designPrice ?? 0) > 0
+        && previousOrder.designStatus !== 'completed'
+        && updatedOrder.designStatus === 'completed'
+    );
+}
+
+/**
+ * Returns true when a previously-completed designer payable must be voided
+ * because the design was reverted (e.g. returned for adjustments).
+ */
+export function shouldVoidDesignerPayableObligationForDesignStatusChange(
+    previousOrder: CandidateOrder,
+    updatedOrder: CandidateOrder
+): boolean {
+    return (
+        previousOrder.designStatus === 'completed'
+        && updatedOrder.designStatus !== 'completed'
+        && updatedOrder.designStatus !== undefined
+    );
 }
 
 export function shouldVoidExternalLabReadyObligationForStatusChange(

@@ -209,6 +209,7 @@ export interface OrderIssue {
     resolvedAt?: string;
     resolutionNotes?: string;
     createdAt: string;
+    order?: Order;
 }
 
 export interface EntityBillingSettings {

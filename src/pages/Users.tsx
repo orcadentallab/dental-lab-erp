@@ -17,6 +17,7 @@ export default function Users() {
     const [isLoading, setIsLoading] = useState(false);
     const { user: currentUser } = useAuth();
     const isSuperAdmin = currentUser?.username === 'admin'; // Only 'admin' can add/delete users
+    const isAdmin = currentUser?.role === 'admin'; // Any admin can edit permissions & details
     const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; userId: string | null; userName: string }>({
         isOpen: false,
         userId: null,
@@ -284,7 +285,7 @@ export default function Users() {
                     <h1 className="text-2xl font-bold text-gray-800">إدارة المستخدمين والصلاحيات</h1>
                     {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري التحميل...</span>}
                 </div>
-                {isSuperAdmin && (
+                {isAdmin && (
                     <button
                         onClick={() => handleOpenModal()}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition"
@@ -353,11 +354,19 @@ export default function Users() {
                                     ) : '---'}
                                 </td>
                                 <td className="p-4 flex gap-2">
-                                    {user.username !== 'admin' && isSuperAdmin && (
+                                    {user.username !== 'admin' && isAdmin && (
                                         <>
-                                            <button onClick={() => handleOpenPermissionsModal(user)} className="text-teal-600 hover:bg-teal-50 p-2 rounded-lg" title="الصلاحيات"><Settings size={18} /></button>
-                                            <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg" title="تعديل"><Edit2 size={18} /></button>
-                                            <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg" title="حذف"><Trash2 size={18} /></button>
+                                            {/* Any admin can view/edit permissions (but not edit another admin unless super admin) */}
+                                            {(isSuperAdmin || user.role !== 'admin') && (
+                                                <button onClick={() => handleOpenPermissionsModal(user)} className="text-teal-600 hover:bg-teal-50 p-2 rounded-lg" title="الصلاحيات"><Settings size={18} /></button>
+                                            )}
+                                            {(isSuperAdmin || user.role !== 'admin') && (
+                                                <button onClick={() => handleOpenModal(user)} className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg" title="تعديل"><Edit2 size={18} /></button>
+                                            )}
+                                            {/* Only super admin can delete users */}
+                                            {isSuperAdmin && (
+                                                <button onClick={() => handleDeleteClick(user)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg" title="حذف"><Trash2 size={18} /></button>
+                                            )}
                                         </>
                                     )}
                                 </td>
