@@ -17,6 +17,7 @@ export interface Service {
     name: string;
     sellingPrice: number;
     costPrice: number;
+    designerPrice?: number; // Default designer cost per unit (0 = not billed to designer)
     millingPrice?: number; // Default milling price (can be overridden per supplier)
     sortOrder?: number; // Manual display order
 }
@@ -60,7 +61,8 @@ export interface User {
     // Payroll Info (for Representatives)
     baseSalary?: number;
     // For Designers
-    unitRate?: number;
+    unitRate?: number; // Global fallback rate per unit
+    designerServicePrices?: Record<string, number>; // Per-service price override (serviceName -> price per unit)
     // Link to Supabase Auth (required)
     auth_id?: string;
     // Custom permissions override (set by Super Admin)
@@ -132,6 +134,7 @@ export interface Order {
     designerId?: string;
     designStatus?: 'pending' | 'accepted' | 'in_progress' | 'waiting_approval' | 'completed' | 'returned';
     designPrice?: number; // Snapshot of cost
+    manualDesignPrice?: number | null; // Admin override for designPrice
     designUrl?: string | null; // Design Link (STL/Zip)
 
     // QA & Delivery Tracking

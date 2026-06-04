@@ -765,6 +765,7 @@ export default function Finance() {
                                 transactions={transactions}
                                 orders={orders}
                                 adjustments={adjustments}
+                                designers={designers}
                                 className="h-full min-h-[300px]"
                             />
                         </div>
@@ -858,6 +859,7 @@ export default function Finance() {
                                 transactions={transactions}
                                 orders={orders}
                                 adjustments={adjustments}
+                                designers={designers}
                                 className="h-full min-h-[300px]"
                             />
                         </div>

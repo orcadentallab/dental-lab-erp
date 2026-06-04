@@ -13,6 +13,7 @@ export const UserSchema = z.object({
     entityId: z.string().uuid().optional().nullable(),
     baseSalary: z.number().min(0).optional().nullable(),
     unitRate: z.number().min(0).optional().nullable(),
+    designerServicePrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     auth_id: z.string().uuid().optional(),
     isActive: z.boolean().optional(),
     deactivatedAt: z.string().optional().nullable()

@@ -17,6 +17,7 @@ function dbToUser(dbUser: DbUser): User {
         entityId: dbUser.entity_id || undefined,
         baseSalary: dbUser.base_salary || undefined,
         unitRate: dbUser.unit_rate || undefined,
+        designerServicePrices: dbUser.designer_service_prices || undefined,
         customPermissions: dbUser.custom_permissions || undefined,
         isActive: dbUser.is_active ?? true,
         deactivatedAt: dbUser.deactivated_at || undefined
@@ -34,6 +35,7 @@ function userToDb(user: Omit<User, 'id'>): DbUserInsert {
         entity_id: user.entityId || null,
         base_salary: user.baseSalary || null,
         unit_rate: user.unitRate || null,
+        designer_service_prices: user.designerServicePrices || null,
         custom_permissions: user.customPermissions || null,
         is_active: user.isActive ?? true,
         deactivated_at: user.deactivatedAt || null
@@ -90,7 +92,6 @@ export async function addUser(user: User & { password?: string }): Promise<void>
     }
 
     // Remove password from user object before saving to database
-    // Remove password from user object before saving to database
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...userWithoutPassword } = user;
     const dbUser = userToDb({ ...userWithoutPassword, auth_id: authId });
@@ -113,7 +114,6 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
     }
 
     // If password is provided, reject - password changes must be done via Supabase Auth
-    // If password is provided, reject - password changes must be done via Supabase Auth
     if (user.password) {
         throw new ValidationError('تغيير كلمة المرور يجب أن يتم عبر Supabase Auth مباشرة');
     }
@@ -129,6 +129,7 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
         entity_id: user.entityId || null,
         base_salary: user.baseSalary || null,
         unit_rate: user.unitRate || null,
+        designer_service_prices: user.designerServicePrices || null,
         email: user.email || null,
         custom_permissions: user.customPermissions || null,
         is_active: user.isActive ?? true,

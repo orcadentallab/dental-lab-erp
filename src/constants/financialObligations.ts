@@ -91,7 +91,7 @@ type CandidateOrder = Partial<Order> & {
 
 export type LabCostSource = 'manual' | 'default' | 'legacy_manual_inferred' | 'unknown';
 
-export function getLabCostMetadata(order: CandidateOrder): {
+export function getLabCostMetadata(order: CandidateOrder, isSalariedDesigner = false): {
     cost: number;
     manualCost: number | null;
     defaultCost: number | null;
@@ -101,12 +101,39 @@ export function getLabCostMetadata(order: CandidateOrder): {
     const manualCost = order.manualCost ?? null;
     const defaultCost = order.defaultCost ?? null;
 
-    // The effective lab cost is the manual override when present, otherwise
-    // the stored `cost` (which is the calculated/default value). This guards
-    // against any divergence between `cost` and `manualCost` so payable
-    // obligations always reflect the admin's manual override.
     if (manualCost !== null) {
-        return { cost: manualCost, manualCost, defaultCost, costSource: 'manual' };
+        let labCost = manualCost;
+        if (order.workflowType === 'split') {
+            const designPrice = order.designPrice || 0;
+            const expectedMilling = defaultCost !== null ? defaultCost : 0;
+            // If manualCost is equal to total cost (e.g. 550) instead of milling cost (500)
+            if (designPrice > 0 && Math.abs(manualCost - expectedMilling - designPrice) < Math.abs(manualCost - expectedMilling)) {
+                labCost = Math.max(0, manualCost - designPrice);
+            }
+        }
+        return { cost: labCost, manualCost, defaultCost, costSource: 'manual' };
+    }
+
+    if (order.workflowType === 'split') {
+        const designPrice = order.designPrice || 0;
+        const expectedMilling = defaultCost !== null ? defaultCost : 0;
+        let isDesignPriceIncluded = true;
+        if (isSalariedDesigner) {
+            // For salaried designers, in the old logic rawCost was saved as milling cost only.
+            // In the new logic rawCost is saved as milling + design.
+            // We detect this by checking which expected value is closer to rawCost.
+            if (Math.abs(rawCost - expectedMilling) < Math.abs(rawCost - expectedMilling - designPrice)) {
+                isDesignPriceIncluded = false;
+            }
+        }
+        const effectiveDesignPrice = isDesignPriceIncluded ? designPrice : 0;
+        const labCost = Math.max(0, rawCost - effectiveDesignPrice);
+        return {
+            cost: labCost,
+            manualCost,
+            defaultCost,
+            costSource: 'default',
+        };
     }
 
     if (defaultCost !== null) {
@@ -157,10 +184,11 @@ export function buildDoctorReceivableCandidate(order: CandidateOrder): Financial
 
 export function buildExternalLabPayableCandidate(
     order: CandidateOrder,
-    options: { impliedFinalReady?: boolean; triggerDate?: string } = {}
+    options: { impliedFinalReady?: boolean; triggerDate?: string } = {},
+    isSalariedDesigner = false
 ): FinancialObligationCandidate | null {
     const isEligibleFinalReady = isFinalReady(order) || options.impliedFinalReady === true;
-    const labCostMetadata = getLabCostMetadata(order);
+    const labCostMetadata = getLabCostMetadata(order, isSalariedDesigner);
 
     if (!order.id || !order.supplierId || !isEligibleFinalReady || labCostMetadata.cost <= 0) {
         return null;
@@ -189,7 +217,8 @@ export function buildExternalLabPayableCandidate(
 
 export function buildDesignerPayableCandidate(
     order: CandidateOrder,
-    options: { triggerDate?: string } = {}
+    options: { triggerDate?: string } = {},
+    isSalariedDesigner = false
 ): FinancialObligationCandidate | null {
     if (
         !order.id
@@ -200,8 +229,8 @@ export function buildDesignerPayableCandidate(
         return null;
     }
 
-    const designPrice = order.designPrice ?? 0;
-    if (designPrice <= 0) return null;
+    const designPrice = isSalariedDesigner ? 0 : (order.designPrice ?? 0);
+    if (!isSalariedDesigner && designPrice <= 0) return null;
 
     return {
         orderId: order.id,
@@ -216,8 +245,9 @@ export function buildDesignerPayableCandidate(
         source: OBLIGATION_SOURCES.order,
         metadata: {
             caseId: order.caseId || null,
-            designPrice,
+            designPrice: order.designPrice ?? 0,
             workflowType: order.workflowType,
+            isSalariedDesigner,
         },
     };
 }

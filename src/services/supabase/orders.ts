@@ -422,10 +422,22 @@ async function correctDesignerPayablePartyAfterOrderUpdate(input: {
 
     if (previousDesignerId === newDesignerId) return;
 
+    let isSalariedDesigner = false;
+    if (newDesignerId) {
+        const { data: userData } = await supabase
+            .from('users')
+            .select('custom_permissions')
+            .eq('id', newDesignerId)
+            .maybeSingle();
+        if (userData?.custom_permissions?.['designer_fixed_salary']) {
+            isSalariedDesigner = true;
+        }
+    }
+
     const isPayableEligible =
         input.updatedOrder.workflowType === 'split'
         && input.updatedOrder.designStatus === 'completed'
-        && (input.updatedOrder.designPrice ?? 0) > 0;
+        && (isSalariedDesigner || (input.updatedOrder.designPrice ?? 0) > 0);
 
     if (!isPayableEligible) return;
 
@@ -477,15 +489,29 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
 
     if (!isPayableEligible) return;
 
-    const newAmount = input.updatedOrder.designPrice ?? 0;
+    let isSalariedDesigner = false;
+    if (input.updatedOrder.designerId) {
+        const { data: userData } = await supabase
+            .from('users')
+            .select('custom_permissions')
+            .eq('id', input.updatedOrder.designerId)
+            .maybeSingle();
+        if (userData?.custom_permissions?.['designer_fixed_salary']) {
+            isSalariedDesigner = true;
+        }
+    }
+
+    const newAmount = isSalariedDesigner ? 0 : (input.updatedOrder.designPrice ?? 0);
     const activeObligation = await findActiveDesignerApprovedObligationForOrder(
         input.updatedOrder.id,
         input.updatedOrder.designerId
     );
-    const previousAmount = activeObligation?.grossAmount ?? (input.previousOrder.designPrice ?? 0);
+    const previousAmount = activeObligation?.grossAmount ?? (isSalariedDesigner ? 0 : (input.previousOrder.designPrice ?? 0));
 
     if (newAmount <= 0) {
         if (activeObligation) {
+            if (activeObligation.grossAmount === 0) return;
+
             await voidFinancialObligation(
                 activeObligation.id,
                 `Designer payable amount corrected from ${activeObligation.grossAmount} to 0`,
@@ -497,7 +523,35 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
                     shadowMode: true,
                 }
             );
-            await reallocatePaymentsAfterObligationVoid(activeObligation.id, null, input.changedBy || null);
+            const newOblig = await createDesignerPayableObligationForOrder(input.updatedOrder, {
+                createdBy: input.changedBy || null,
+                metadata: {
+                    correctionReason: 'design_price_zero_or_removed',
+                    previousAmount: activeObligation.grossAmount,
+                    newAmount: 0,
+                    replacedObligationId: activeObligation.id,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                    trackingOnly: true,
+                },
+            });
+            await reallocatePaymentsAfterObligationVoid(
+                activeObligation.id,
+                newOblig ? newOblig.id : null,
+                input.changedBy || null
+            );
+        } else {
+            await createDesignerPayableObligationForOrder(input.updatedOrder, {
+                createdBy: input.changedBy || null,
+                metadata: {
+                    correctionReason: 'design_price_added_after_completed',
+                    previousAmount,
+                    newAmount: 0,
+                    changedBy: input.changedBy || null,
+                    shadowMode: true,
+                    trackingOnly: true,
+                },
+            });
         }
         return;
     }
@@ -611,6 +665,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         designUrl: dbOrder.design_url || undefined,
         designStatus: dbOrder.design_status || undefined,
         designPrice: dbOrder.design_price || undefined,
+        manualDesignPrice: dbOrder.manual_design_price ?? undefined,
         actualDeliveryDate: dbOrder.actual_delivery_date || undefined,
         feedback: dbOrder.feedback || undefined,
         isRedo: dbOrder.is_redo || undefined,
@@ -656,6 +711,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         design_url: order.designUrl || null,
         design_status: order.designStatus || null,
         design_price: order.designPrice || null,
+        manual_design_price: order.manualDesignPrice ?? null,
         actual_delivery_date: order.actualDeliveryDate || null,
         feedback: order.feedback || null,
         is_redo: order.isRedo || false,
@@ -987,7 +1043,7 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
-        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, workflow_type, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost')
+        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost')
         .order('created_at', { ascending: false })
         .range(0, 9999);
 
@@ -1003,7 +1059,10 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         totalPrice: d.total_price,
         cost: d.cost,
         designPrice: d.design_price || undefined,
+        manualCost: d.manual_cost ?? null,
+        manualDesignPrice: d.manual_design_price ?? null,
         workflowType: d.workflow_type || undefined,
+        designStatus: d.design_status || undefined,
         createdAt: d.created_at,
         deliveryDate: d.delivery_date,
         actualDeliveryDate: d.actual_delivery_date || undefined,
@@ -1288,8 +1347,23 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             const newDoctorAmount = getDoctorReceivableAmount(nextOrderForAmount);
             // Compare effective lab cost (manualCost overrides cost when present)
             // so that changing only manualCost still triggers the payable correction.
-            const oldLabCost = getLabCostMetadata(currentOrder).cost;
-            const newLabCost = getLabCostMetadata(nextOrderForAmount).cost;
+            let isCurrentDesignerSalaried = false;
+            if (currentOrder.designerId) {
+                const { data: u } = await supabase.from('users').select('custom_permissions').eq('id', currentOrder.designerId).maybeSingle();
+                isCurrentDesignerSalaried = Boolean(u?.custom_permissions?.['designer_fixed_salary']);
+            }
+            let isNextDesignerSalaried = isCurrentDesignerSalaried;
+            if (updates.designerId !== undefined) {
+                if (updates.designerId) {
+                    const { data: u } = await supabase.from('users').select('custom_permissions').eq('id', updates.designerId).maybeSingle();
+                    isNextDesignerSalaried = Boolean(u?.custom_permissions?.['designer_fixed_salary']);
+                } else {
+                    isNextDesignerSalaried = false;
+                }
+            }
+
+            const oldLabCost = getLabCostMetadata(currentOrder, isCurrentDesignerSalaried).cost;
+            const newLabCost = getLabCostMetadata(nextOrderForAmount, isNextDesignerSalaried).cost;
             const oldDesignerId = currentOrder.designerId || null;
             const newDesignerId = updates.designerId !== undefined ? (updates.designerId || null) : oldDesignerId;
             const oldDesignPrice = currentOrder.designPrice ?? 0;

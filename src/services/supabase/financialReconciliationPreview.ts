@@ -2,6 +2,7 @@ import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementI
 import { ErrorHandler } from '../../lib/errorHandler';
 import type { Adjustment } from '../financeService';
 import type { Order } from '../db';
+import { getLabCostMetadata } from '../../constants/financialObligations';
 
 export type FinancialReconciliationEntityType = 'all' | 'doctor' | 'external_lab';
 
@@ -74,10 +75,12 @@ type OrderRow = {
     id: string;
     doctor_id: string | null;
     supplier_id: string | null;
+    designer_id: string | null;
     status: string;
     total_price: number | null;
     cost: number | null;
     design_price: number | null;
+    manual_cost: number | null;
     workflow_type: string | null;
     delivery_date: string | null;
     actual_delivery_date: string | null;
@@ -140,10 +143,12 @@ function toLifecycleOrder(row: OrderRow) {
         id: row.id,
         doctorId: row.doctor_id || '',
         supplierId: row.supplier_id || undefined,
+        designerId: row.designer_id || undefined,
         status: row.status as Order['status'],
         totalPrice: row.total_price || 0,
         cost: row.cost || 0,
         designPrice: row.design_price || undefined,
+        manualCost: row.manual_cost ?? null,
         workflowType: row.workflow_type as 'full' | 'split' | undefined,
         deliveryDate: row.delivery_date || '',
         actualDeliveryDate: row.actual_delivery_date || undefined,
@@ -161,7 +166,7 @@ function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>)
     return !order.isArchived;
 }
 
-function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>): number | null {
+function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {
     const hasRejectionCost = order.status === 'Rejected' && typeof order.rejectedLabCost === 'number';
     const isRelevant = (order.status !== 'Rejected' || hasRejectionCost)
         && ((order.status || '').toLowerCase() === 'delivered'
@@ -170,10 +175,11 @@ function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrde
 
     if (!isRelevant) return null;
 
-    let cost = (order.status === 'Cancelled' || order.status === 'Rejected' ? 0 : (order.cost || 0));
-    if (hasRejectionCost) cost = order.rejectedLabCost || 0;
-    if (order.workflowType === 'split' && order.designPrice && order.status !== 'Cancelled' && order.status !== 'Rejected' && !hasRejectionCost) {
-        cost -= order.designPrice;
+    const isSalaried = order.designerId ? salariedDesignerIds.has(order.designerId) : false;
+    let cost = getLabCostMetadata(order, isSalaried).cost;
+    if (order.status === 'Cancelled') cost = 0;
+    else if (order.status === 'Rejected') {
+        cost = hasRejectionCost ? order.rejectedLabCost || 0 : 0;
     }
     return cost;
 }
@@ -248,13 +254,15 @@ export async function previewFinancialReconciliation(
         transactionsResult,
         obligationsResult,
         adjustmentsResult,
+        usersResult,
     ] = await Promise.all([
         supabase.from('doctors').select('id, name, parent_id, is_center'),
         supabase.from('suppliers').select('id, name'),
-        supabase.from('orders').select('id, doctor_id, supplier_id, status, total_price, cost, design_price, workflow_type, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost'),
+        supabase.from('orders').select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost'),
         supabase.from('transactions').select('id, type, amount, date, category, description, entity_id, entity_type'),
         supabase.from('financial_obligations').select('order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status').neq('status', 'void'),
         supabase.from('adjustments').select('entity_type, entity_id, amount, type, date'),
+        supabase.from('users').select('id, custom_permissions'),
     ]);
 
     if (doctorsResult.error) throw ErrorHandler.handle(doctorsResult.error, 'previewFinancialReconciliation.doctors');
@@ -263,6 +271,7 @@ export async function previewFinancialReconciliation(
     if (transactionsResult.error) throw ErrorHandler.handle(transactionsResult.error, 'previewFinancialReconciliation.transactions');
     if (obligationsResult.error) throw ErrorHandler.handle(obligationsResult.error, 'previewFinancialReconciliation.obligations');
     if (adjustmentsResult.error) throw ErrorHandler.handle(adjustmentsResult.error, 'previewFinancialReconciliation.adjustments');
+    if (usersResult.error) throw ErrorHandler.handle(usersResult.error, 'previewFinancialReconciliation.users');
 
     const doctors = (doctorsResult.data || []) as DoctorRow[];
     const suppliers = (suppliersResult.data || []) as SupplierRow[];
@@ -270,6 +279,12 @@ export async function previewFinancialReconciliation(
     const transactions = (transactionsResult.data || []) as TransactionRow[];
     const obligations = (obligationsResult.data || []) as ObligationRow[];
     const adjustments = (adjustmentsResult.data || []) as Adjustment[];
+
+    const salariedDesignerIds = new Set(
+        (usersResult.data || [])
+            .filter(u => u.custom_permissions && u.custom_permissions['designer_fixed_salary'])
+            .map(u => u.id)
+    );
 
     const parentByDoctorId = new Map(doctors.map(doctor => [doctor.id, doctor.parent_id || doctor.id]));
     const doctorNames = new Map(doctors.map(doctor => [doctor.id, doctor.name]));
@@ -293,7 +308,7 @@ export async function previewFinancialReconciliation(
         if (order.supplierId) {
             const supplierDate = getOperationalOrderDate(order);
             if (isInRange(supplierDate, params)) {
-                const amount = getSupplierOfficialOrderAmount(order);
+                const amount = getSupplierOfficialOrderAmount(order, salariedDesignerIds);
                 if (amount !== null) addTo(officialSupplierCredits, order.supplierId, amount);
             }
         }

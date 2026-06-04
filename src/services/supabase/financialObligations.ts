@@ -304,10 +304,27 @@ export async function createExternalLabPayableObligationForOrder(
         metadata?: Record<string, unknown>;
     } = {}
 ): Promise<FinancialObligation | null> {
-    const candidate = buildExternalLabPayableCandidate(order, {
-        impliedFinalReady: context.impliedFinalReady,
-        triggerDate: context.triggerDate,
-    });
+    const supabase = await getSupabaseClient();
+    let isSalariedDesigner = false;
+    if (order.designerId) {
+        const { data: userData } = await supabase
+            .from('users')
+            .select('custom_permissions')
+            .eq('id', order.designerId)
+            .maybeSingle();
+        if (userData?.custom_permissions?.['designer_fixed_salary']) {
+            isSalariedDesigner = true;
+        }
+    }
+
+    const candidate = buildExternalLabPayableCandidate(
+        order,
+        {
+            impliedFinalReady: context.impliedFinalReady,
+            triggerDate: context.triggerDate,
+        },
+        isSalariedDesigner
+    );
     if (!candidate) return null;
 
     const dueDate = await calculateObligationDueDate(candidate);
@@ -334,9 +351,26 @@ export async function createDesignerPayableObligationForOrder(
         metadata?: Record<string, unknown>;
     } = {}
 ): Promise<FinancialObligation | null> {
-    const candidate = buildDesignerPayableCandidate(order, {
-        triggerDate: context.triggerDate,
-    });
+    const supabase = await getSupabaseClient();
+    let isSalariedDesigner = false;
+    if (order.designerId) {
+        const { data: userData } = await supabase
+            .from('users')
+            .select('custom_permissions')
+            .eq('id', order.designerId)
+            .maybeSingle();
+        if (userData?.custom_permissions?.['designer_fixed_salary']) {
+            isSalariedDesigner = true;
+        }
+    }
+
+    const candidate = buildDesignerPayableCandidate(
+        order,
+        {
+            triggerDate: context.triggerDate,
+        },
+        isSalariedDesigner
+    );
     if (!candidate) return null;
 
     const dueDate = await calculateObligationDueDate(candidate);

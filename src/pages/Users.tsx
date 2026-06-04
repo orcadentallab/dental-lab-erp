@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useMemo } from 'react';
-import { db, type User, type Supplier, type Doctor } from '../services/db';
+import { db, type User, type Supplier, type Doctor, type Service } from '../services/db';
 import { Plus, Trash2, Edit2, User as UserIcon, Shield, Settings } from 'lucide-react';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ErrorHandler } from '../lib/errorHandler';
@@ -12,6 +12,7 @@ export default function Users() {
     const [users, setUsers] = useState<User[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [services, setServices] = useState<Service[]>([]);
     const [showModal, setShowModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -35,6 +36,7 @@ export default function Users() {
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
     const [worksAsDesigner, setWorksAsDesigner] = useState(false);
     const [isActive, setIsActive] = useState(true);
+    const [designerServicePrices, setDesignerServicePrices] = useState<Record<string, number>>({});
     const visibleSuppliers = useMemo(
         () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === entityId),
         [suppliers, entityId]
@@ -83,14 +85,16 @@ export default function Users() {
     const loadData = async () => {
         setIsLoading(true);
         try {
-            const [usersData, suppliersData, doctorsData] = await Promise.all([
+            const [usersData, suppliersData, doctorsData, servicesData] = await Promise.all([
                 db.getUsers(),
                 db.getSuppliers(),
-                db.getDoctors()
+                db.getDoctors(),
+                db.getServices()
             ]);
             setUsers(usersData);
             setSuppliers(suppliersData);
             setDoctors(doctorsData);
+            setServices(servicesData);
         } catch (error) {
             console.error(error);
         } finally {
@@ -111,6 +115,7 @@ export default function Users() {
             setUnitRate(user.unitRate?.toString() || '');
             setWorksAsDesigner(Boolean(user.customPermissions?.[DUAL_ROLE_DESIGNER_PERMISSION]));
             setIsActive(user.isActive !== false);
+            setDesignerServicePrices(user.designerServicePrices || {});
         } else {
             setEditingUser(null);
             setName('');
@@ -123,6 +128,7 @@ export default function Users() {
             setUnitRate('');
             setWorksAsDesigner(false);
             setIsActive(true);
+            setDesignerServicePrices({});
         }
         setShowModal(true);
     };
@@ -160,6 +166,7 @@ export default function Users() {
                 entityId: (role === 'lab' || role === 'doctor') ? entityId : undefined,
                 baseSalary: (role === 'representative' || role === 'admin') ? parseFloat(baseSalary) || 0 : undefined,
                 unitRate: role === 'designer' ? parseFloat(unitRate) || 0 : undefined,
+                designerServicePrices: role === 'designer' ? designerServicePrices : undefined,
                 auth_id: editingUser?.auth_id,
                 customPermissions: Object.keys(nextCustomPermissions).length > 0 ? nextCustomPermissions : undefined,
                 isActive,
@@ -295,6 +302,8 @@ export default function Users() {
                     </button>
                 )}
             </div>
+            
+
 
             {/* Users List */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -521,19 +530,60 @@ export default function Users() {
                             )}
 
                             {role === 'designer' && (
-                                <div className="bg-amber-50 p-3 rounded-lg border border-amber-100 space-y-2">
-                                    <p className="text-xs text-amber-700">سيتمكن هذا المستخدم من رؤية الحالات الموكلة إليه للتصميم فقط.</p>
-                                    <div>
-                                        <label className="block text-sm font-bold text-amber-800 mb-1">سعر القطعة (Unit Rate)</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            className="w-full p-2 border rounded-lg border-amber-200"
-                                            value={unitRate}
-                                            onChange={e => setUnitRate(e.target.value)}
-                                            placeholder="مثلاً: 50"
-                                        />
-                                        <p className="text-xs text-amber-600 mt-1">المبلغ الذي يتقاضاه المصمم عن كل قطعة (Unit) يقوم بتصميمها.</p>
+                                <div className="space-y-3">
+                                    <div className="bg-amber-50 p-3 rounded-lg border border-amber-100 space-y-2">
+                                        <p className="text-xs text-amber-700">سيتمكن هذا المستخدم من رؤية الحالات الموكلة إليه للتصميم فقط.</p>
+                                        <div>
+                                            <label className="block text-sm font-bold text-amber-800 mb-1">السعر الافتراضي للقطعة (Unit Rate)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full p-2 border rounded-lg border-amber-200"
+                                                value={unitRate}
+                                                onChange={e => setUnitRate(e.target.value)}
+                                                placeholder="مثلاً: 50"
+                                            />
+                                            <p className="text-xs text-amber-600 mt-1">يُستخدم إذا لم يتم تحديد سعر مخصص للخدمة في الأسفل ولا يوجد سعر للمصمم في إعدادات الخدمة.</p>
+                                        </div>
+                                    </div>
+                                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 space-y-4">
+                                        <div className="flex items-start gap-2">
+                                            <div className="p-2 bg-amber-100 rounded-lg text-amber-700 mt-1">
+                                                <Settings size={18} />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-bold text-amber-900">تخصيص أسعار التصميم</h4>
+                                                <p className="text-xs text-amber-700 mt-1">تحديد سعر مخصص لهذا المصمم لكل خدمة. إذا تم ترك السعر فارغاً، سيتم استخدام السعر الافتراضي للمصمم المحدد في صفحة الخدمات.</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                            {services.map(service => (
+                                                <div key={service.id} className="flex flex-col gap-1 p-2 bg-white rounded-lg border border-amber-100">
+                                                    <span className="text-xs font-bold text-gray-700 truncate" title={service.name}>{service.name}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.5"
+                                                            className="w-full p-1.5 text-sm border rounded-lg border-amber-200 focus:ring-1 focus:ring-amber-500 placeholder-gray-400"
+                                                            value={designerServicePrices[service.name] !== undefined ? designerServicePrices[service.name] : ''}
+                                                            onChange={e => {
+                                                                const val = e.target.value;
+                                                                setDesignerServicePrices(prev => {
+                                                                    const next = { ...prev };
+                                                                    if (val === '') delete next[service.name];
+                                                                    else next[service.name] = Number(val);
+                                                                    return next;
+                                                                });
+                                                            }}
+                                                            placeholder={`افتراضي: ${service.designerPrice !== undefined ? service.designerPrice : 0}`}
+                                                        />
+                                                        <span className="text-xs text-gray-500 whitespace-nowrap">ج.م</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             )}

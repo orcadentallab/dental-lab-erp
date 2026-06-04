@@ -70,6 +70,7 @@ export interface DbOrder {
     design_url?: string | null;
     design_status?: 'pending' | 'accepted' | 'in_progress' | 'waiting_approval' | 'completed' | 'returned' | null;
     design_price?: number | null;
+    manual_design_price?: number | null;
     actual_delivery_date?: string | null;
     feedback?: DbOrderFeedback | null;
     is_redo: boolean;
@@ -85,8 +86,6 @@ export interface DbOrder {
     is_archived?: boolean;
     rejected_lab_cost?: number | null;
     // WF-1: shadow workflow columns (added by migration 086).
-    // Default values are 'not_started' and 'none'; finance helpers do NOT depend
-    // on these yet — they remain compatibility/shadow fields.
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo';
 }
@@ -123,6 +122,7 @@ export interface DbService {
     name: string;
     selling_price: number;
     cost_price: number;
+    designer_price?: number | null; // Default designer cost per unit (0 = not billed to designer)
     milling_price?: number | null;
     created_at: string;
     updated_at: string;
@@ -153,6 +153,7 @@ export interface DbUser {
     entity_id?: string | null;
     base_salary?: number | null;
     unit_rate?: number | null;
+    designer_service_prices?: Record<string, number> | null; // JSONB: serviceName -> price per unit override
     custom_permissions?: Record<string, boolean> | null; // JSONB
     is_active?: boolean | null;
     deactivated_at?: string | null;
@@ -171,7 +172,7 @@ export interface DbOrderItemRow {
     id: string;
     order_id: string;
     product_type: string;
-    teeth_numbers: string[]; // JSONB in DB, auto-converted to array by Supabase if defined right, else we handle it
+    teeth_numbers: string[]; // JSONB in DB
     shade?: string | null;
     price: number;
     count: number;

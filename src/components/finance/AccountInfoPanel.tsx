@@ -1,8 +1,10 @@
 import { ArrowDownLeft, ArrowUpRight, History, Wallet } from 'lucide-react';
 import clsx from 'clsx';
-import type { Transaction, Order, Doctor } from '../../services/db';
+import type { Transaction, Order, Doctor, User } from '../../services/db';
 import type { Adjustment } from '../../services/financeService';
 import { getDoctorReceivableAmount, isDoctorStatementIncluded } from '../../constants/orderLifecycle';
+import { getLabCostMetadata } from '../../constants/financialObligations';
+import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
 
 interface AccountInfoPanelProps {
     entityId: string;
@@ -12,6 +14,7 @@ interface AccountInfoPanelProps {
     orders: Order[]; // For doctors (revenue) and suppliers/designers (cost)
     adjustments?: Adjustment[];
     doctors?: Doctor[];
+    designers?: User[];
     className?: string;
 }
 
@@ -23,6 +26,7 @@ export function AccountInfoPanel({
     orders,
     adjustments = [],
     doctors = [],
+    designers = [],
     className,
 }: AccountInfoPanelProps) {
     if (!entityId) {
@@ -91,8 +95,13 @@ export function AccountInfoPanel({
             
             if (isRelevant) {
                 let cost = o.cost || 0;
-                if (hasRejectionCost) cost = o.rejectedLabCost!;
-                if (o.workflowType === 'split' && o.designPrice && !hasRejectionCost) cost -= o.designPrice;
+                if (hasRejectionCost) {
+                    cost = o.rejectedLabCost!;
+                } else if (o.workflowType === 'split') {
+                    const designer = designers.find(d => d.id === o.designerId);
+                    const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+                    cost = getLabCostMetadata(o, isSalaried).cost;
+                }
                 calculatedWork += cost;
             }
         });
@@ -111,10 +120,10 @@ export function AccountInfoPanel({
         let calculatedWork = 0;
         entityOrders.forEach(o => {
             const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
-            const isRelevant = o.workflowType === 'split' && ((o.status || '').toLowerCase() === 'delivered' || hasRejectionCost);
+            const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
 
             if (isRelevant) {
-                let price = hasRejectionCost ? o.rejectedLabCost! : (o.designPrice || 0);
+                let price = hasRejectionCost && o.rejectedLabCost !== undefined ? o.rejectedLabCost : (o.designPrice || 0);
                 calculatedWork += price;
             }
         });

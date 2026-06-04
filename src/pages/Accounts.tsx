@@ -1,16 +1,19 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { db, type Doctor, type Supplier, type Order, type Transaction, type User } from '../services/db';
+import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type Service } from '../services/db';
 import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 import { statementService, type StatementResult } from '../services/statementService';
 import { generateDoctorStatementPDF, generateBulkStatementsPDF } from '../services/pdfService';
 import { financeService, type Adjustment } from '../services/financeService';
+import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
+import { getLabCostMetadata } from '../constants/financialObligations';
 import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -156,12 +159,34 @@ export default function Accounts() {
     // Data
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [services, setServices] = useState<Service[]>([]);
     const [orders, setOrders] = useState<Partial<Order>[]>([]);
     const [transactions, setTransactions] = useState<Partial<Transaction>[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+    const getEffectiveDesignPrice = (o: Partial<Order>) => {
+        if (o.designPrice && o.designPrice > 0) return o.designPrice;
+        if (o.workflowType !== 'split' || !o.designerId) return 0;
+        
+        const designer = designers.find(d => d.id === o.designerId);
+        if (!designer) return 0;
+
+        const isSalaried = hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION);
+        if (!isSalaried) return o.designPrice || 0;
+
+        const items = o.items || [];
+        let calculatedPrice = 0;
+        for (const item of items) {
+            const svc = services.find(s => s.name === item.serviceType);
+            const unitCost = designer.designerServicePrices?.[item.serviceType] ?? svc?.designerPrice ?? 0;
+            const count = item.teethNumbers ? (Array.isArray(item.teethNumbers) ? item.teethNumbers.length : 1) : 0;
+            calculatedPrice += count * unitCost;
+        }
+        return calculatedPrice;
+    };
 
     // Permissions
     const canEditOrder = user?.role === 'admin' || !!user?.customPermissions?.edit_orders;
@@ -176,14 +201,16 @@ export default function Accounts() {
     const fetchData = async () => {
         // 1. Load Entities (Critical)
         try {
-            const [docs, sups, users] = await Promise.all([
+            const [docs, sups, users, svcs] = await Promise.all([
                 db.getDoctors(),
                 db.getSuppliers(),
-                db.getUsers()
+                db.getUsers(),
+                db.getServices()
             ]);
             setDoctors(docs);
             setSuppliers(sups);
-            setDesigners(users.filter(u => u.role === 'designer'));
+            setDesigners(users.filter(u => isDesignerUser(u)));
+            setServices(svcs);
         } catch (error: unknown) {
             const errorMessage = error instanceof Error ? error.message : 'خطأ غير معروف';
             console.error('Error loading entities:', error);
@@ -344,9 +371,13 @@ export default function Accounts() {
                 if (isRelevant) {
                     const stats = getStats(o.supplierId);
                     stats.count++;
-                    let cost = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.cost || 0));
-                    if (hasRejectionCost) cost = o.rejectedLabCost!;
-                    if (o.workflowType === 'split' && o.designPrice && o.status !== 'Cancelled' && o.status !== 'Rejected' && !hasRejectionCost) cost -= o.designPrice;
+                    const designer = designers.find(d => d.id === o.designerId);
+                    const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+                    let cost = getLabCostMetadata(o, isSalaried).cost;
+                    if (o.status === 'Cancelled') cost = 0;
+                    else if (o.status === 'Rejected') {
+                        cost = hasRejectionCost ? o.rejectedLabCost! : 0;
+                    }
                     stats.totalCredit += cost;
                     stats.totalSales += cost;
                 }
@@ -354,13 +385,12 @@ export default function Accounts() {
                 if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const isRelevant = o.workflowType === 'split' &&
-                    (o.status !== 'Rejected' || hasRejectionCost) &&
-                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled' || hasRejectionCost);
+                    (showAllOrders || o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
 
                 if (isRelevant) {
                     const stats = getStats(o.designerId);
                     stats.count++;
-                    let price = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : (o.designPrice || 0));
+                    let price = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : getEffectiveDesignPrice(o));
                     if (hasRejectionCost) price = o.rejectedLabCost!;
                     stats.totalCredit += price;
                     stats.totalSales += price;
@@ -448,19 +478,23 @@ export default function Accounts() {
                 totalCredit = oStats.totalCredit;
                 balance = totalCredit - totalDebit;
             } else if (activeTab === 'designers') {
+                const designerUser = designers.find(d => d.id === entity.id);
+                const isSalaried = designerUser ? hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 totalDebit = tStats.totalDebit;
-                totalCredit = oStats.totalCredit;
+                totalCredit = isSalaried ? 0 : oStats.totalCredit;
                 balance = totalCredit - totalDebit;
             }
 
             const code = activeTab === 'doctors' ? (entity as Doctor).doctorCode : undefined;
+            const designerUser = activeTab === 'designers' ? designers.find(d => d.id === entity.id) : null;
+            const isSalariedDesigner = designerUser ? hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION) : false;
 
             return {
                 id: entity.id,
                 name: entity.name,
                 code: code,
                 totalOrders: oStats.count,
-                totalSales: oStats.totalSales,
+                totalSales: isSalariedDesigner ? 0 : oStats.totalSales,
                 totalDebit,
                 totalCredit,
                 balance,
@@ -583,8 +617,9 @@ export default function Accounts() {
                 return orderDate < dateRange.start && o.status !== 'Rejected' && o.status === 'Delivered';
             });
             openingCredit = beforeOrders.reduce((sum, o) => {
-                let cost = o.cost || 0;
-                if (o.workflowType === 'split' && o.designPrice) cost -= o.designPrice;
+                const designer = designers.find(d => d.id === o.designerId);
+                const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+                const cost = getLabCostMetadata(o, isSalaried).cost;
                 return sum + cost;
             }, 0);
 
@@ -613,9 +648,13 @@ export default function Accounts() {
                 if (!isVisibleInAccountStatement(o)) return false;
                 if (o.designerId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
-                return orderDate < dateRange.start && o.workflowType === 'split' && o.status !== 'Rejected' && o.status === 'Delivered';
+                return orderDate < dateRange.start && o.workflowType === 'split' && (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled');
             });
-            openingCredit = beforeOrders.reduce((sum, o) => sum + (o.designPrice || 0), 0);
+            const designerUser = designers.find(d => d.id === selectedEntityId);
+            const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
+            const hideVirtualCosts = isSalariedDesigner;
+
+            openingCredit = beforeOrders.reduce((sum, o) => sum + (hideVirtualCosts ? 0 : getEffectiveDesignPrice(o)), 0);
 
             const beforeTx = relevantTransactions.filter(t =>
                 (t.entityType === 'designer' || !t.entityType) &&
@@ -640,7 +679,7 @@ export default function Accounts() {
         }
 
         return 0;
-    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments, childDoctorFilter, doctors]);
+    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments, childDoctorFilter, doctors, designers, isDesigner]);
 
     // Helper: Logic for Individual Statement
     const individualStatement = useMemo(() => {
@@ -718,8 +757,9 @@ export default function Accounts() {
             const supOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
             items = supOrders.map(o => {
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
-                let cost = o.cost || 0;
-                if (o.workflowType === 'split' && o.designPrice && !hasRejectionCost) cost -= o.designPrice;
+                const designer = designers.find(d => d.id === o.designerId);
+                const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+                let cost = getLabCostMetadata(o, isSalaried).cost;
 
                 // If Rejected or Cancelled, set cost to 0 (unless it has a rejection cost)
                 if (o.status === 'Cancelled') cost = 0;
@@ -756,14 +796,19 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.status === 'Delivered' || o.status === 'Rejected' || o.status === 'Cancelled'));
+            const desOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled'));
+            
+            const designerUser = designers.find(d => d.id === selectedEntityId);
+            const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
+            const hideVirtualCosts = isSalariedDesigner;
+
             items = desOrders.map(o => {
                 const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
                 
-                let price = o.designPrice || 0;
+                let price = hideVirtualCosts ? 0 : getEffectiveDesignPrice(o);
                 if (o.status === 'Cancelled') price = 0;
                 else if (o.status === 'Rejected') {
                     price = hasRejectionCost ? o.rejectedLabCost! : 0;
@@ -777,7 +822,8 @@ export default function Accounts() {
                     amount: price,
                     status: o.status,
                     services,
-                    count
+                    count,
+                    details: isSalariedDesigner ? `تكلفة مراجعة افتراضية: ${getEffectiveDesignPrice(o)} ج.م` : ''
                 };
             });
 

@@ -100,13 +100,14 @@ export default function ServicesPage() {
                             const sellingPrice = Number(formData.get('sellingPrice'));
                             const costPrice = Number(formData.get('costPrice'));
                             const millingPrice = Number(formData.get('millingPrice')) || 0;
+                            const designerPrice = formData.get('designerPrice') !== '' ? Number(formData.get('designerPrice')) : undefined;
 
                             try {
                                 if (editingService) {
-                                    await db.updateService(editingService.id, { name, sellingPrice, costPrice, millingPrice });
+                                    await db.updateService(editingService.id, { name, sellingPrice, costPrice, millingPrice, designerPrice });
                                     setEditingService(null);
                                 } else {
-                                    await db.addService({ name, sellingPrice, costPrice, millingPrice });
+                                    await db.addService({ name, sellingPrice, costPrice, millingPrice, designerPrice });
                                 }
                                 const updatedServices = await db.getServices();
                                 setServices(updatedServices);
@@ -125,13 +126,29 @@ export default function ServicesPage() {
                                     <input aria-label="سعر البيع" name="sellingPrice" required type="number" defaultValue={editingService?.sellingPrice} key={`s-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">التكلفة</label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">التكلفة (المعمل)</label>
                                     <input aria-label="سعر التكلفة" name="costPrice" required type="number" defaultValue={editingService?.costPrice} key={`c-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all" />
                                 </div>
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">سعر الخراطة (للمعامل)</label>
-                                <input aria-label="سعر الخراطة" name="millingPrice" type="number" defaultValue={editingService?.millingPrice} key={`m-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all" />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">سعر المصمم الافتراضي</label>
+                                    <input
+                                        aria-label="سعر المصمم"
+                                        name="designerPrice"
+                                        type="number"
+                                        min="0"
+                                        step="0.5"
+                                        defaultValue={editingService?.designerPrice ?? ''}
+                                        key={`d-${editingService?.id}`}
+                                        placeholder="0 = مبتتحسبش"
+                                        className="w-full p-2.5 bg-amber-50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-400 transition-all"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">سعر الخراطة (للمعامل)</label>
+                                    <input aria-label="سعر الخراطة" name="millingPrice" type="number" defaultValue={editingService?.millingPrice} key={`m-${editingService?.id}`} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 transition-all" />
+                                </div>
                             </div>
                             <div className="flex gap-3 pt-2">
                                 <button type="submit" className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all active:scale-[0.98]">
@@ -185,6 +202,7 @@ export default function ServicesPage() {
                                     <th className="p-4 font-medium">الخدمة</th>
                                     <th className="p-4 font-medium">سعر البيع</th>
                                     <th className="p-4 font-medium">التكلفة</th>
+                                    <th className="p-4 font-medium">سعر المصمم</th>
                                     <th className="p-4 font-medium">الخراطة</th>
                                     <th className="p-4 font-medium text-center">إجراءات</th>
                                 </tr>
@@ -205,6 +223,15 @@ export default function ServicesPage() {
                                         <td className="p-4 font-bold text-gray-800">{s.name}</td>
                                         <td className="p-4 text-emerald-600 font-bold">{s.sellingPrice}</td>
                                         <td className="p-4 text-rose-600">{s.costPrice}</td>
+                                        <td className="p-4">
+                                            {s.designerPrice === undefined ? (
+                                                <span className="text-gray-300 text-xs">-</span>
+                                            ) : s.designerPrice === 0 ? (
+                                                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-bold">مجاني</span>
+                                            ) : (
+                                                <span className="text-amber-600 font-bold">{s.designerPrice}</span>
+                                            )}
+                                        </td>
                                         <td className="p-4 text-gray-500">{s.millingPrice || '-'}</td>
                                         <td className="p-4 text-center">
                                             <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

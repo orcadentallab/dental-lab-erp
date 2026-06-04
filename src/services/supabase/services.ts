@@ -10,6 +10,7 @@ function dbToService(dbService: DbService): Service {
         name: dbService.name,
         sellingPrice: dbService.selling_price,
         costPrice: dbService.cost_price,
+        designerPrice: dbService.designer_price ?? undefined,
         millingPrice: dbService.milling_price ?? undefined,
         sortOrder: (dbService as unknown as Record<string, unknown>).sort_order as number | undefined,
     };
@@ -22,10 +23,13 @@ function serviceToDb(service: Omit<Service, 'id'>): DbServiceInsert {
         cost_price: service.costPrice,
     };
 
-    // Only include milling_price if it has a meaningful value
-    // This prevents "Column not found" errors if the DB migration hasn't been run
-    if (service.millingPrice && service.millingPrice > 0) {
+    // Only include optional fields if they have meaningful values
+    // to avoid "Column not found" errors if migrations haven't run
+    if (service.millingPrice !== undefined && service.millingPrice > 0) {
         dbService.milling_price = service.millingPrice;
+    }
+    if (service.designerPrice !== undefined) {
+        dbService.designer_price = service.designerPrice;
     }
 
     return dbService;
@@ -66,6 +70,7 @@ export async function updateService(id: string, updates: Partial<Omit<Service, '
     if (updates.sellingPrice !== undefined) dbUpdates.selling_price = updates.sellingPrice;
     if (updates.costPrice !== undefined) dbUpdates.cost_price = updates.costPrice;
     if (updates.millingPrice !== undefined) dbUpdates.milling_price = updates.millingPrice;
+    if (updates.designerPrice !== undefined) dbUpdates.designer_price = updates.designerPrice;
     if ((updates as Service).sortOrder !== undefined) (dbUpdates as Record<string, unknown>).sort_order = (updates as Service).sortOrder;
 
     const { data, error } = await supabase

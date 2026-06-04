@@ -10,7 +10,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
-import { isDesignerUser, isRepresentativeUser } from '../../lib/userRoles';
+import { isDesignerUser, isRepresentativeUser, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { canEditOrderField, type WorkflowRole } from '../../lib/workflowPermissions';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
@@ -37,7 +37,8 @@ const calculateOrderCost = (
     suppliers: Supplier[],
     selectedSupplier: string,
     designers: User[],
-    designerId: string
+    designerId: string,
+    designerBillingModes: Record<string, string> = {}
 ) => {
     if (workflowType === 'full') {
         return items.reduce((sum, item) => {
@@ -55,14 +56,54 @@ const calculateOrderCost = (
     const designer = designers.find(d => d.id === designerId);
     const sup = suppliers.find(s => s.id === selectedSupplier);
     return items.reduce((sum, item) => {
-        const count = item.teethNumbers ? item.teethNumbers.length : 0;
+        const count = item.teethNumbers && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
         const svc = services.find(s => s.name === item.serviceType);
-        const dCost = (designer?.unitRate || 0) * count;
+        // Priority: per-designer override -> service default designer price -> 0
+        const designUnitCost = designer?.designerServicePrices?.[item.serviceType] !== undefined
+            ? designer.designerServicePrices![item.serviceType]
+            : (svc?.designerPrice ?? 0);
+        const isSalaried = designerBillingModes[designerId] === 'monthly_cycle' || hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION);
+        const dCost = isSalaried ? 0 : designUnitCost * count;
         let mCost = 0;
         if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
         else if (svc?.millingPrice) mCost = svc.millingPrice * count;
         else if (svc) mCost = (svc.costPrice * 0.5) * count;
         return sum + dCost + mCost;
+    }, 0);
+};
+
+const calculateAutomaticMillingPrice = (
+    items: FormOrderItem[],
+    services: Service[],
+    suppliers: Supplier[],
+    selectedSupplier: string
+) => {
+    const sup = suppliers.find(s => s.id === selectedSupplier);
+    return items.reduce((sum, item) => {
+        const count = item.teethNumbers && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
+        const svc = services.find(s => s.name === item.serviceType);
+        let mCost = 0;
+        if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+        else if (svc?.millingPrice) mCost = svc.millingPrice * count;
+        else if (svc) mCost = (svc.costPrice * 0.5) * count;
+        return sum + mCost;
+    }, 0);
+};
+
+const calculateAutomaticDesignPrice = (
+    items: FormOrderItem[],
+    services: Service[],
+    designers: User[],
+    designerId: string
+) => {
+    const designer = designers.find(d => d.id === designerId);
+    return items.reduce((sum, item) => {
+        const count = item.teethNumbers && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
+        const svc = services.find(s => s.name === item.serviceType);
+        const designUnitCost = designer?.designerServicePrices?.[item.serviceType] !== undefined
+            ? designer.designerServicePrices![item.serviceType]
+            : (svc?.designerPrice ?? 0);
+        return sum + (designUnitCost * count);
     }, 0);
 };
 
@@ -74,6 +115,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
+    const [designerBillingModes, setDesignerBillingModes] = useState<Record<string, string>>({});
     // removed: existingOrders state
 
 
@@ -99,7 +141,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const handleAddDoctorFull = async () => {
         setDoctorError(null);
         try {
-            let finalNewDoctor = { ...newDoctor };
+            const finalNewDoctor = { ...newDoctor };
 
             // If it's a child doctor, inherit from parent and simplify
             if (newDoctor.parentId) {
@@ -161,6 +203,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     const [manualCost, setManualCost] = useState<number | null>(initialData?.manualCost ?? null);
+    const [manualDesignPrice, setManualDesignPrice] = useState<number | null>(
+        initialData?.manualDesignPrice ?? null
+    );
     const isAdmin = user?.role === 'admin';
     const userRole = (user?.role || 'doctor') as WorkflowRole;
     const effectivePS: ProductionStatus = initialData
@@ -227,29 +272,74 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 setRepresentatives(usersData.filter(u => isRepresentativeUser(u)));
                 setDesigners(designersData);
 
+                const billingModes: Record<string, string> = {};
+                await Promise.all(designersData.map(async (d) => {
+                    try {
+                        const settings = await db.getEntityBillingSettings('designer', d.id);
+                        if (settings?.billingMode) {
+                            billingModes[d.id] = settings.billingMode;
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }));
+                setDesignerBillingModes(billingModes);
+
                 if (initialData) {
+                    const initialItems = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
+                        serviceType: i.serviceType,
+                        teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (typeof i.teethNumbers === 'string' ? (i.teethNumbers as string).split(',') : []),
+                        price: i.price,
+                        customPrice: undefined
+                    })) : [{ serviceType: '', teethNumbers: [], price: 0 }];
+
                     if (initialData.manualCost !== undefined && initialData.manualCost !== null) {
-                        setManualCost(initialData.manualCost);
+                        const designPrice = initialData.designPrice || 0;
+                        const autoMilling = calculateAutomaticMillingPrice(initialItems, servicesData, suppliersData, initialData.supplierId || '');
+                        // If manualCost is equal to total cost (e.g. 550) instead of milling cost (500)
+                        if (initialData.workflowType === 'split' && designPrice > 0 && Math.abs(initialData.manualCost - autoMilling - designPrice) < Math.abs(initialData.manualCost - autoMilling)) {
+                            setManualCost(initialData.manualCost - designPrice);
+                        } else {
+                            setManualCost(initialData.manualCost);
+                        }
                     } else {
-                        const initialItems = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
-                            serviceType: i.serviceType,
-                            teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (typeof i.teethNumbers === 'string' ? (i.teethNumbers as string).split(',') : []),
-                            price: i.price,
-                            customPrice: undefined
-                        })) : [{ serviceType: '', teethNumbers: [], price: 0 }];
-                        const automaticCost = calculateOrderCost(
-                            initialData.workflowType || 'full',
-                            initialItems,
-                            servicesData,
-                            suppliersData,
-                            initialData.supplierId || '',
-                            designersData,
-                            initialData.designerId || ''
-                        );
-                        setManualCost(Math.abs((initialData.cost || 0) - automaticCost) > 0.0001 ? initialData.cost : null);
+                        if (initialData.workflowType === 'split') {
+                            const autoMilling = calculateAutomaticMillingPrice(initialItems, servicesData, suppliersData, initialData.supplierId || '');
+                            const initialDesigner = designersData.find(d => d.id === initialData.designerId);
+                            const isInitialSalaried = billingModes[initialData.designerId || ''] === 'monthly_cycle' || hasCustomPermission(initialDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
+                            
+                            // Detect if initialData.cost includes designPrice:
+                            const designPrice = initialData.designPrice || 0;
+                            let isDesignPriceIncluded = true;
+                            if (isInitialSalaried) {
+                                if (Math.abs((initialData.cost || 0) - autoMilling) < Math.abs((initialData.cost || 0) - autoMilling - designPrice)) {
+                                    isDesignPriceIncluded = false;
+                                }
+                            }
+                            
+                            const initialMilling = (initialData.cost || 0) - (isDesignPriceIncluded ? designPrice : 0);
+                            setManualCost(Math.abs(initialMilling - autoMilling) > 0.0001 ? initialMilling : null);
+                        } else {
+                            const automaticCost = calculateOrderCost(
+                                initialData.workflowType || 'full',
+                                initialItems,
+                                servicesData,
+                                suppliersData,
+                                initialData.supplierId || '',
+                                designersData,
+                                initialData.designerId || '',
+                                billingModes
+                            );
+                            setManualCost(Math.abs((initialData.cost || 0) - automaticCost) > 0.0001 ? initialData.cost : null);
+                        }
+                    }
+                    
+                    if (initialData.manualDesignPrice !== undefined) {
+                        setManualDesignPrice(initialData.manualDesignPrice);
                     }
                 } else {
                     setManualCost(null);
+                    setManualDesignPrice(null);
                 }
 
                 // Auto-set representativeId for representatives creating new orders
@@ -331,8 +421,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     const total = subTotal - discount;
 
+    const currentDesigner = designers.find(d => d.id === designerId);
+    const isSalaried = designerBillingModes[designerId] === 'monthly_cycle' || hasCustomPermission(currentDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
+
     const calculateAutomaticCost = () => {
-        return calculateOrderCost(workflowType, items, services, suppliers, selectedSupplier, designers, designerId);
+        return calculateOrderCost(workflowType, items, services, suppliers, selectedSupplier, designers, designerId, designerBillingModes);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -363,13 +456,17 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         const calculatedCost = calculateAutomaticCost();
 
         let totalDesignPrice = 0;
+        let finalCost = calculatedCost;
         if (workflowType === 'split') {
-            const designer = designers.find(d => d.id === designerId);
-            const designerRate = designer?.unitRate || 0;
-            totalDesignPrice = items.reduce((sum, item) => {
-                const count = item.teethNumbers ? item.teethNumbers.length : 0;
-                return sum + (designerRate * count);
-            }, 0);
+            if (isAdmin && manualDesignPrice !== null) {
+                totalDesignPrice = manualDesignPrice;
+            } else {
+                totalDesignPrice = calculateAutomaticDesignPrice(items, services, designers, designerId);
+            }
+            const finalMillingCost = (isAdmin && manualCost !== null) ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier);
+            finalCost = finalMillingCost + (isSalaried ? 0 : totalDesignPrice);
+        } else if (isAdmin && manualCost !== null) {
+            finalCost = manualCost;
         }
 
         setIsSubmitting(true);
@@ -405,12 +502,13 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 deliveryDate,
                 createdAt: new Date(receivedDate).toISOString(),
                 totalPrice: total,
-                cost: (isAdmin && manualCost !== null) ? manualCost : calculatedCost,
+                cost: finalCost,
                 manualCost: (isAdmin && manualCost !== null) ? manualCost : null,
                 workflowType,
                 designerId: workflowType === 'split' ? designerId : undefined,
                 designStatus: initialData ? initialData.designStatus : (workflowType === 'split' ? 'pending' : undefined),
                 designPrice: workflowType === 'split' ? totalDesignPrice : 0,
+                manualDesignPrice: workflowType === 'split' ? manualDesignPrice : null,
                 discount,
                 priority: isUrgent ? 'Urgent' : 'Normal',
                 deliveryType,
@@ -802,36 +900,130 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             </div>
                         </div>
 
-                        {/* Admin-only: Manual Cost Override */}
-                        {isAdmin && (
-                            <div className="mt-3 border-t border-white/10 pt-3">
-                                <div className="flex items-center gap-1.5 mb-2">
-                                    <Lock size={12} className="text-amber-400" />
-                                    <span className="text-[10px] font-bold text-amber-400">التكلفة اليدوية اختيارية (أدمن فقط)</span>
+                        {/* Admin-only: Lab and Designer Cost Split */}
+                        {isAdmin && workflowType === 'split' && (
+                            <div className="mt-4 border-t border-white/10 pt-4">
+                                <div className="mb-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-bold text-surface-200">إجمالي التكلفة للحالة</span>
+                                        <span className="text-lg font-black text-white">
+                                            {((manualCost !== null ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier)) + 
+                                              (isSalaried ? 0 : (manualDesignPrice !== null ? manualDesignPrice : calculateAutomaticDesignPrice(items, services, designers, designerId)))).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-surface-500 mt-1 text-left">مجموع تكلفة المعمل والمصمم (يحفظ كالتكلفة الإجمالية)</p>
                                 </div>
-                                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                                    <span className="font-bold text-surface-300">التكلفة الافتراضية</span>
-                                    <span className="font-mono font-bold text-surface-100">
-                                        {calculateAutomaticCost().toLocaleString()}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center gap-3">
-                                    <span className="text-xs font-bold text-surface-300">تكلفة يدوية</span>
-                                    <div className="flex h-9 w-32 items-center gap-1 rounded-lg border border-amber-500/30 bg-white/5 px-2">
-                                        <DollarSign size={12} className="text-amber-400" />
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            className="w-full bg-transparent text-right text-sm font-bold outline-none text-amber-300 placeholder-surface-600"
-                                            value={manualCost ?? ''}
-                                            onChange={(e) => setManualCost(e.target.value === '' ? null : Number(e.target.value))}
-                                            placeholder="تلقائي"
-                                        />
+
+                                {/* Milling Cost Section */}
+                                <div className="mb-4 rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
+                                    <div className="flex items-center gap-1.5 mb-3 border-b border-surface-700/50 pb-2">
+                                        <Lock size={12} className="text-amber-400" />
+                                        <span className="text-xs font-bold text-amber-400">تكلفة المعمل (التصنيع)</span>
+                                    </div>
+                                    <div className="mb-3 flex items-center justify-between gap-3 text-xs">
+                                        <span className="font-bold text-surface-300">الرقم الافتراضي</span>
+                                        <span className="font-mono font-bold text-surface-100">
+                                            {calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="text-xs font-bold text-surface-300">خانة اليدوي</span>
+                                        <div className="flex h-9 w-32 items-center gap-1 rounded-lg border border-amber-500/30 bg-black/20 px-2 focus-within:border-amber-500/60 transition-colors">
+                                            <DollarSign size={12} className="text-amber-400" />
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full bg-transparent text-right text-sm font-bold outline-none text-amber-300 placeholder-surface-600"
+                                                value={manualCost ?? ''}
+                                                onChange={(e) => setManualCost(e.target.value === '' ? null : Number(e.target.value))}
+                                                placeholder="تلقائي"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                                <p className="mt-1 text-left text-[10px] text-surface-500">
-                                    المحفوظ عند الحفظ: {((manualCost !== null ? manualCost : calculateAutomaticCost())).toLocaleString()}
-                                </p>
+
+                                {/* Designer Cost Section */}
+                                <div className="rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
+                                    <div className="flex items-center gap-1.5 mb-3 border-b border-surface-700/50 pb-2">
+                                        <Lock size={12} className="text-indigo-400" />
+                                        <span className="text-xs font-bold text-indigo-400">تكلفة المصمم</span>
+                                        {isSalaried && (
+                                            <span className="ml-auto text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">
+                                                مرتب ثابت (وهمي للمراجعة)
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="mb-3 flex items-center justify-between gap-3 text-xs">
+                                        <span className="font-bold text-surface-300">
+                                            {isSalaried ? 'الرقم الافتراضي (للمراجعة)' : 'الرقم الافتراضي'}
+                                        </span>
+                                        <div className="flex gap-2 items-center">
+                                            {isSalaried && (
+                                                <span className="font-mono font-bold text-surface-400 line-through">0</span>
+                                            )}
+                                            <span className={clsx("font-mono font-bold", isSalaried ? "text-indigo-300" : "text-surface-100")}>
+                                                {calculateAutomaticDesignPrice(items, services, designers, designerId).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="text-xs font-bold text-surface-300">خانة اليدوي</span>
+                                        <div className="flex h-9 w-32 items-center gap-1 rounded-lg border border-indigo-500/30 bg-black/20 px-2 focus-within:border-indigo-500/60 transition-colors">
+                                            <DollarSign size={12} className="text-indigo-400" />
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full bg-transparent text-right text-sm font-bold outline-none text-indigo-300 placeholder-surface-600"
+                                                value={manualDesignPrice ?? ''}
+                                                onChange={(e) => setManualDesignPrice(e.target.value === '' ? null : Number(e.target.value))}
+                                                placeholder="تلقائي"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Admin-only: Manual Cost Override (Full Workflow) */}
+                        {isAdmin && workflowType === 'full' && (
+                            <div className="mt-4 border-t border-white/10 pt-4">
+                                <div className="mb-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-bold text-surface-200">إجمالي التكلفة للحالة</span>
+                                        <span className="text-lg font-black text-white">
+                                            {(manualCost !== null ? manualCost : calculateAutomaticCost()).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-surface-500 mt-1 text-left">التكلفة الإجمالية للمعمل (شاملة)</p>
+                                </div>
+
+                                {/* Lab Cost Section */}
+                                <div className="rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
+                                    <div className="flex items-center gap-1.5 mb-3 border-b border-surface-700/50 pb-2">
+                                        <Lock size={12} className="text-amber-400" />
+                                        <span className="text-xs font-bold text-amber-400">تكلفة المعمل (شاملة)</span>
+                                    </div>
+                                    <div className="mb-3 flex items-center justify-between gap-3 text-xs">
+                                        <span className="font-bold text-surface-300">الرقم الافتراضي</span>
+                                        <span className="font-mono font-bold text-surface-100">
+                                            {calculateAutomaticCost().toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="text-xs font-bold text-surface-300">خانة اليدوي</span>
+                                        <div className="flex h-9 w-32 items-center gap-1 rounded-lg border border-amber-500/30 bg-black/20 px-2 focus-within:border-amber-500/60 transition-colors">
+                                            <DollarSign size={12} className="text-amber-400" />
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full bg-transparent text-right text-sm font-bold outline-none text-amber-300 placeholder-surface-600"
+                                                value={manualCost ?? ''}
+                                                onChange={(e) => setManualCost(e.target.value === '' ? null : Number(e.target.value))}
+                                                placeholder="تلقائي"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
                     </Card>
