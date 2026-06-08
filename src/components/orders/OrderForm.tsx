@@ -464,7 +464,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 totalDesignPrice = calculateAutomaticDesignPrice(items, services, designers, designerId);
             }
             const finalMillingCost = (isAdmin && manualCost !== null) ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier);
-            finalCost = finalMillingCost + totalDesignPrice;
+            finalCost = finalMillingCost + (isSalaried ? 0 : totalDesignPrice);
         } else if (isAdmin && manualCost !== null) {
             finalCost = manualCost;
         }
@@ -908,7 +908,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                         <span className="text-sm font-bold text-surface-200">إجمالي التكلفة للحالة</span>
                                         <span className="text-lg font-black text-white">
                                             {((manualCost !== null ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier)) + 
-                                              (manualDesignPrice !== null ? manualDesignPrice : calculateAutomaticDesignPrice(items, services, designers, designerId))).toLocaleString()}
+                                              (isSalaried ? 0 : (manualDesignPrice !== null ? manualDesignPrice : calculateAutomaticDesignPrice(items, services, designers, designerId)))).toLocaleString()}
                                         </span>
                                     </div>
                                     <p className="text-[10px] text-surface-500 mt-1 text-left">مجموع تكلفة المعمل والمصمم (يحفظ كالتكلفة الإجمالية)</p>

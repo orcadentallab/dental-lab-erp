@@ -107,18 +107,9 @@ export function getLabCostMetadata(order: CandidateOrder, isSalariedDesigner = f
 
     if (order.workflowType === 'split') {
         const designPrice = order.designPrice || 0;
-        let isDesignPriceIncluded = true;
-        if (isSalariedDesigner) {
-            // For salaried designers, in the old logic rawCost was saved as milling cost only.
-            // In the new logic rawCost is saved as milling + design.
-            // We detect this by checking the order creation date.
-            // All orders created before June 8th 2026 13:30 UTC do not have design price in rawCost.
-            const createdAtStr = order.createdAt || order.created_at;
-            const isOldOrder = !createdAtStr || new Date(createdAtStr).getTime() < new Date('2026-06-08T13:30:00Z').getTime();
-            if (isOldOrder) {
-                isDesignPriceIncluded = false;
-            }
-        }
+        // For salaried designers, the design price is never included in order.cost (which represents the milling cost only).
+        // For per-piece designers, the design price is included in order.cost.
+        const isDesignPriceIncluded = !isSalariedDesigner;
         const effectiveDesignPrice = isDesignPriceIncluded ? designPrice : 0;
         const labCost = Math.max(0, rawCost - effectiveDesignPrice);
         return {
