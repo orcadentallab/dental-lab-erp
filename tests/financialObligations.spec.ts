@@ -253,6 +253,41 @@ test.describe('financial obligation amounts and due dates', () => {
         });
     });
 
+    test('detects lab cost for salaried vs per-piece designers correctly based on order date', () => {
+        // Per-piece designer (isSalariedDesigner = false): always subtract designPrice
+        expect(getLabCostMetadata({
+            ...baseOrder,
+            workflowType: 'split',
+            cost: 2000,
+            designPrice: 150,
+            createdAt: '2026-04-01T10:00:00.000Z'
+        }, false)).toMatchObject({
+            cost: 1850
+        });
+
+        // Salaried designer (isSalariedDesigner = true) - Old order: do NOT subtract designPrice
+        expect(getLabCostMetadata({
+            ...baseOrder,
+            workflowType: 'split',
+            cost: 1850,
+            designPrice: 150,
+            createdAt: '2026-04-01T10:00:00.000Z'
+        }, true)).toMatchObject({
+            cost: 1850
+        });
+
+        // Salaried designer (isSalariedDesigner = true) - New order: DO subtract designPrice
+        expect(getLabCostMetadata({
+            ...baseOrder,
+            workflowType: 'split',
+            cost: 2000,
+            designPrice: 150,
+            createdAt: '2026-06-09T10:00:00.000Z'
+        }, true)).toMatchObject({
+            cost: 1850
+        });
+    });
+
     test('external lab payable helper uses order cost and preserves manual cost metadata', () => {
         const candidate = buildExternalLabPayableCandidate({
             ...baseOrder,

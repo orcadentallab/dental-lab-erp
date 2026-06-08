@@ -102,27 +102,20 @@ export function getLabCostMetadata(order: CandidateOrder, isSalariedDesigner = f
     const defaultCost = order.defaultCost ?? null;
 
     if (manualCost !== null) {
-        let labCost = manualCost;
-        if (order.workflowType === 'split') {
-            const designPrice = order.designPrice || 0;
-            const expectedMilling = defaultCost !== null ? defaultCost : 0;
-            // If manualCost is equal to total cost (e.g. 550) instead of milling cost (500)
-            if (designPrice > 0 && Math.abs(manualCost - expectedMilling - designPrice) < Math.abs(manualCost - expectedMilling)) {
-                labCost = Math.max(0, manualCost - designPrice);
-            }
-        }
-        return { cost: labCost, manualCost, defaultCost, costSource: 'manual' };
+        return { cost: manualCost, manualCost, defaultCost, costSource: 'manual' };
     }
 
     if (order.workflowType === 'split') {
         const designPrice = order.designPrice || 0;
-        const expectedMilling = defaultCost !== null ? defaultCost : 0;
         let isDesignPriceIncluded = true;
         if (isSalariedDesigner) {
             // For salaried designers, in the old logic rawCost was saved as milling cost only.
             // In the new logic rawCost is saved as milling + design.
-            // We detect this by checking which expected value is closer to rawCost.
-            if (Math.abs(rawCost - expectedMilling) < Math.abs(rawCost - expectedMilling - designPrice)) {
+            // We detect this by checking the order creation date.
+            // All orders created before June 8th 2026 13:30 UTC do not have design price in rawCost.
+            const createdAtStr = order.createdAt || order.created_at;
+            const isOldOrder = !createdAtStr || new Date(createdAtStr).getTime() < new Date('2026-06-08T13:30:00Z').getTime();
+            if (isOldOrder) {
                 isDesignPriceIncluded = false;
             }
         }
