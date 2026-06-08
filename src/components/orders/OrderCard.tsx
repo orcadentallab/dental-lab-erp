@@ -695,6 +695,9 @@ export default function OrderCard({
                 eventsLoading={eventsLoading}
                 eventsError={eventsError}
                 showBusinessTimeline={canViewBusinessTimeline}
+                doctors={doctors}
+                suppliers={suppliers}
+                users={users}
             />
 
 

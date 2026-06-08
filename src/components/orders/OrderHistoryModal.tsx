@@ -13,6 +13,9 @@ interface OrderHistoryModalProps {
     eventsLoading?: boolean;
     eventsError?: boolean;
     showBusinessTimeline?: boolean;
+    doctors?: Record<string, string>;
+    suppliers?: Record<string, string>;
+    users?: Record<string, string>;
 }
 
 const EVENT_LABELS: Record<string, string> = {
@@ -85,6 +88,117 @@ function renderEventDetails(event: OrderEvent) {
     );
 }
 
+const FIELD_LABELS: Record<string, string> = {
+    status: 'الحالة العامة',
+    technician_status: 'حالة الفني',
+    design_status: 'حالة التصميم',
+    design_url: 'رابط التصميم',
+    patient_name: 'اسم المريض',
+    cost: 'تكلفة المعمل',
+    manual_cost: 'التكلفة اليدوية للمعمل',
+    total_price: 'إجمالي السعر',
+    design_price: 'تكلفة التصميم',
+    manual_design_price: 'التكلفة اليدوية للتصميم',
+    discount: 'الخصم',
+    delivery_date: 'تاريخ التسليم',
+    priority: 'الأولوية',
+    delivery_type: 'نوع التسليم',
+    doctor_id: 'الطبيب المعالج',
+    supplier_id: 'المورد / المعمل الخارجي',
+    designer_id: 'المصمم',
+    is_redo: 'طلب إعادة العمل',
+    is_urgent: 'حالة عاجلة',
+};
+
+function formatDiffValue(
+    key: string,
+    val: unknown,
+    doctors?: Record<string, string>,
+    suppliers?: Record<string, string>,
+    users?: Record<string, string>
+): string {
+    if (val === null || val === undefined || val === '') {
+        return 'فارغ';
+    }
+    if (val === true || val === 'true') {
+        return 'نعم';
+    }
+    if (val === false || val === 'false') {
+        return 'لا';
+    }
+
+    const valStr = String(val);
+
+    // Resolve IDs using lookup tables
+    if (key === 'doctor_id' && doctors) {
+        return doctors[valStr] || valStr;
+    }
+    if (key === 'supplier_id' && suppliers) {
+        return suppliers[valStr] || valStr;
+    }
+    if (key === 'designer_id' && users) {
+        return users[valStr] || valStr;
+    }
+
+    // Format monetary values
+    const monetaryFields = ['cost', 'manual_cost', 'total_price', 'design_price', 'manual_design_price', 'discount'];
+    if (monetaryFields.includes(key)) {
+        const num = Number(val);
+        if (!isNaN(num)) {
+            return `${num.toLocaleString('en-EG')} ج.م`;
+        }
+    }
+
+    // Priority translations
+    if (key === 'priority') {
+        if (valStr === 'Urgent') return 'عاجل';
+        if (valStr === 'Normal') return 'عادي';
+    }
+
+    // Delivery type translations
+    if (key === 'delivery_type') {
+        if (valStr === 'Final') return 'نهائي (Final)';
+        if (valStr === 'Try-In' || valStr === 'TryIn') return 'تجربة (Try-In)';
+    }
+
+    // General status translations
+    if (key === 'status') {
+        const statusMap: Record<string, string> = {
+            'Pending Review': 'قيد المراجعة',
+            'Under Production': 'تحت الإنتاج',
+            'Ready': 'جاهز التسليم',
+            'Delivered': 'تم التسليم',
+            'Cancelled': 'ملغي',
+            'Rejected': 'مرفوض',
+            'Returned for Adjustments': 'مرتجع للتعديل',
+        };
+        return statusMap[valStr] || valStr;
+    }
+
+    if (key === 'technician_status') {
+        const techStatusMap: Record<string, string> = {
+            'Pending': 'معلق',
+            'Approved': 'مقبول',
+            'Rejected': 'مرفوض',
+            'NeedDetails': 'بحاجة لتفاصيل',
+            'PMMA_First': 'PMMA أولاً',
+        };
+        return techStatusMap[valStr] || valStr;
+    }
+
+    if (key === 'design_status') {
+        const designStatusMap: Record<string, string> = {
+            'Pending': 'معلق',
+            'Approved': 'مقبول',
+            'Rejected': 'مرفوض',
+            'NeedDetails': 'بحاجة لتفاصيل',
+        };
+        return designStatusMap[valStr] || valStr;
+    }
+
+    return valStr;
+}
+
 export default function OrderHistoryModal({
     isOpen,
     onClose,
@@ -94,6 +208,9 @@ export default function OrderHistoryModal({
     eventsLoading = false,
     eventsError = false,
     showBusinessTimeline = false,
+    doctors = {},
+    suppliers = {},
+    users = {},
 }: OrderHistoryModalProps) {
     const [activeTab, setActiveTab] = useState<'events' | 'history'>(showBusinessTimeline ? 'events' : 'history');
 
@@ -246,10 +363,14 @@ export default function OrderHistoryModal({
 
                                                         return (
                                                             <div key={key} className="flex items-center gap-2">
-                                                                <span className="font-semibold text-gray-400">{key}:</span>
-                                                                <span className="text-red-500 line-through bg-red-50 px-1 rounded">{String(safeVal.old || 'Empty')}</span>
+                                                                <span className="font-semibold text-gray-700">{FIELD_LABELS[key] || key}:</span>
+                                                                <span className="text-red-500 line-through bg-red-50 px-1 rounded">
+                                                                    {formatDiffValue(key, safeVal.old, doctors, suppliers, users)}
+                                                                </span>
                                                                 <ArrowRight size={10} className="text-gray-400" />
-                                                                <span className="text-green-600 font-bold bg-green-50 px-1 rounded">{String(safeVal.new || 'Empty')}</span>
+                                                                <span className="text-green-600 font-bold bg-green-50 px-1 rounded">
+                                                                    {formatDiffValue(key, safeVal.new, doctors, suppliers, users)}
+                                                                </span>
                                                             </div>
                                                         );
                                                     })
