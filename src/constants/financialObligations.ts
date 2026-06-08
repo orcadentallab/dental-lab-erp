@@ -216,12 +216,13 @@ export function buildExternalLabPayableCandidate(
 }
 
 export function buildDesignerPayableCandidate(
-    order: CandidateOrder,
+    order?: CandidateOrder,
     options: { triggerDate?: string } = {},
     isSalariedDesigner = false
 ): FinancialObligationCandidate | null {
     if (
-        !order.id
+        !order
+        || !order.id
         || !order.designerId
         || order.workflowType !== 'split'
         || order.designStatus !== 'completed'

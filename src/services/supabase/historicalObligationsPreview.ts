@@ -199,7 +199,8 @@ function baseRow(
 export function classifyHistoricalOrderForObligationPreview(
     order: Partial<Order>,
     existingObligations: ExistingObligationRow[],
-    names: { doctorName?: string | null; supplierName?: string | null } = {}
+    names: { doctorName?: string | null; supplierName?: string | null } = {},
+    salariedDesignerIds?: Set<string>
 ): HistoricalObligationPreviewRow[] {
     const rows: HistoricalObligationPreviewRow[] = [];
     const productionStatus = getProductionStatus(order);
@@ -304,7 +305,8 @@ export function classifyHistoricalOrderForObligationPreview(
     if (labEligible) {
         const labDate = getDateWithBasis(order, { allowActualDeliveryDate: isDelivered });
         const labBase = baseRow(order, names, labDate);
-        const labCostMetadata = getLabCostMetadata(order);
+        const isSalariedDesigner = Boolean(order.designerId && salariedDesignerIds?.has(order.designerId));
+        const labCostMetadata = getLabCostMetadata(order, isSalariedDesigner);
         if (!order.supplierId) {
             rows.push({
                 ...labBase,
@@ -443,6 +445,20 @@ export async function previewHistoricalObligationsBackfill(
         existingObligations = (obligationRows || []) as ExistingObligationRow[];
     }
 
+    const designerIds = Array.from(new Set(orders.map(order => order.designerId).filter(Boolean) as string[]));
+    const salariedDesignerIds = new Set<string>();
+    if (designerIds.length > 0) {
+        const { data: userData } = await supabase
+            .from('users')
+            .select('id, custom_permissions')
+            .in('id', designerIds);
+        (userData || []).forEach(u => {
+            if (u.custom_permissions?.['designer_fixed_salary']) {
+                salariedDesignerIds.add(u.id);
+            }
+        });
+    }
+
     const { doctorNames, supplierNames } = await resolveNames(doctorIds, supplierIds);
     const classifiedRows = orders.flatMap(order => classifyHistoricalOrderForObligationPreview(
         order,
@@ -450,7 +466,8 @@ export async function previewHistoricalObligationsBackfill(
         {
             doctorName: order.doctorId ? doctorNames.get(order.doctorId) || null : null,
             supplierName: order.supplierId ? supplierNames.get(order.supplierId) || null : null,
-        }
+        },
+        salariedDesignerIds
     ));
     const rows = filterPreviewRows(classifiedRows, params);
 

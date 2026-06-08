@@ -325,10 +325,31 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
     const isPayableEligible = (isFinalReady(input.updatedOrder) || impliedFinalReady) && !!input.updatedOrder.supplierId;
     if (!isPayableEligible) return;
 
-    const labCostMetadata = getLabCostMetadata(input.updatedOrder);
+    let isUpdatedDesignerSalaried = false;
+    if (input.updatedOrder.designerId) {
+        const { data: u } = await supabase
+            .from('users')
+            .select('custom_permissions')
+            .eq('id', input.updatedOrder.designerId)
+            .maybeSingle();
+        isUpdatedDesignerSalaried = Boolean(u?.custom_permissions?.['designer_fixed_salary']);
+    }
+
+    const labCostMetadata = getLabCostMetadata(input.updatedOrder, isUpdatedDesignerSalaried);
     const newAmount = labCostMetadata.cost;
     const activeObligation = await findActiveExternalLabReadyObligationForOrder(input.updatedOrder.id, input.updatedOrder.supplierId);
-    const previousAmount = activeObligation?.grossAmount ?? getLabCostMetadata(input.previousOrder).cost;
+
+    let isPreviousDesignerSalaried = false;
+    if (input.previousOrder.designerId) {
+        const { data: u } = await supabase
+            .from('users')
+            .select('custom_permissions')
+            .eq('id', input.previousOrder.designerId)
+            .maybeSingle();
+        isPreviousDesignerSalaried = Boolean(u?.custom_permissions?.['designer_fixed_salary']);
+    }
+
+    const previousAmount = activeObligation?.grossAmount ?? getLabCostMetadata(input.previousOrder, isPreviousDesignerSalaried).cost;
 
     if (newAmount <= 0) {
         if (activeObligation) {

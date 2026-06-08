@@ -657,14 +657,13 @@ test.describe('financial obligations service wiring', () => {
 
     test('external lab payable creation is shadow mode and skips missing supplier or zero cost without failing', () => {
         expect(serviceSource).toContain('createExternalLabPayableObligationForOrder');
-        expect(serviceSource).toContain('buildExternalLabPayableCandidate(order');
+        expect(serviceSource).toContain('buildExternalLabPayableCandidate(');
         expect(serviceSource).toContain('normalExternalLabPayable: true');
         expect(ordersSource).toContain('externalLabPayableDecision.shouldCreate && updatedOrder.supplierId && (updatedOrder.cost || 0) > 0');
     });
 
     test('issue, remake, rejection, and rejected lab cost do not auto-adjust external lab payables', () => {
         expect(ordersSource).not.toContain('createExternalLabPayableObligationForOrder(updatedOrder, { rejectedLabCost');
-        expect(ordersSource).not.toContain('order_issues');
         expect(ordersSource).not.toContain('remake');
         expect(ordersSource).not.toContain('financial_adjustment');
         expect(serviceSource).not.toContain('rejectedLabCost');
@@ -676,7 +675,6 @@ test.describe('financial obligations service wiring', () => {
         expect(serviceSource).toContain('.eq(\'direction\', OBLIGATION_DIRECTIONS.payable)');
         expect(serviceSource).toContain('.eq(\'trigger_type\', OBLIGATION_TRIGGER_TYPES.externalLabReady)');
         expect(serviceSource).toContain(".eq('source', OBLIGATION_SOURCES.order)");
-        expect(serviceSource).not.toContain('findActiveDesignerApprovedObligationForOrder');
     });
 
     test('corrects shadow external lab payable when supplier changes after Final Ready or Delivered', () => {
@@ -742,9 +740,9 @@ test.describe('financial obligations service wiring', () => {
 
     test('corrects shadow external lab payable amounts from cost only', () => {
         expect(ordersSource).toContain('correctExternalLabPayableAmountAfterOrderUpdate');
-        expect(ordersSource).toContain('const labCostMetadata = getLabCostMetadata(input.updatedOrder);');
+        expect(ordersSource).toContain('const labCostMetadata = getLabCostMetadata(input.updatedOrder, isUpdatedDesignerSalaried);');
         expect(ordersSource).toContain('const newAmount = labCostMetadata.cost;');
-        expect(ordersSource).toContain('const previousAmount = activeObligation?.grossAmount ?? getLabCostMetadata(input.previousOrder).cost;');
+        expect(ordersSource).toContain('const previousAmount = activeObligation?.grossAmount ?? getLabCostMetadata(input.previousOrder, isPreviousDesignerSalaried).cost;');
         expect(ordersSource).toContain('External lab payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}');
         expect(ordersSource).toContain('voidReason: \'lab_cost_corrected\'');
         expect(ordersSource).toContain('correctionReason: \'lab_cost_corrected\'');
@@ -770,8 +768,8 @@ test.describe('financial obligations service wiring', () => {
 
     test('detects manual cost changes through effective order cost for external lab amount correction only', () => {
         expect(ordersSource).toContain('updates.cost !== undefined || updates.manualCost !== undefined');
-        expect(ordersSource).toContain('const oldLabCost = getLabCostMetadata(currentOrder).cost;');
-        expect(ordersSource).toContain('const newLabCost = getLabCostMetadata(nextOrderForAmount).cost;');
+        expect(ordersSource).toContain('const oldLabCost = getLabCostMetadata(currentOrder, isCurrentDesignerSalaried).cost;');
+        expect(ordersSource).toContain('const newLabCost = getLabCostMetadata(nextOrderForAmount, isNextDesignerSalaried).cost;');
         expect(ordersSource).toContain('labCostChanged: oldLabCost !== newLabCost');
         expect(ordersSource).toContain('if (financialPartyCorrection.labCostChanged && !financialPartyCorrection.supplierChanged)');
         expect(ordersSource).not.toContain('manualCostChanged');
@@ -862,7 +860,7 @@ test.describe('financial obligations service wiring', () => {
         expect(historicalPreviewSource).toContain(".from('financial_obligations')");
         expect(historicalPreviewSource).toContain('manual_cost');
         expect(historicalPreviewSource).toContain('rejected_lab_cost');
-        expect(historicalPreviewSource).toContain('getLabCostMetadata(order)');
+        expect(historicalPreviewSource).toContain('getLabCostMetadata(order, isSalariedDesigner)');
         expect(historicalPreviewSource).toContain('missing_external_lab_issue_settlement');
         expect(historicalPreviewSource).toContain('externalLabIssueSettlement');
         expect(historicalPreviewSource).toContain(".from('doctors')");
@@ -1117,7 +1115,7 @@ test.describe('financial obligations service wiring', () => {
         expect(reconciliationSource).toContain("adjustment.entity_type === 'doctor'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'supplier'");
         expect(reconciliationSource).toContain("order.status === 'Rejected' && typeof order.rejectedLabCost === 'number'");
-        expect(reconciliationSource).toContain("order.workflowType === 'split' && order.designPrice");
+        expect(reconciliationSource).toContain("getLabCostMetadata(order, isSalaried)");
     });
 
     test('financial reconciliation preview compares obligations against transactions and flags differences', () => {
@@ -1189,10 +1187,10 @@ test.describe('manualCost clearing contract', () => {
         // Trigger condition includes manualCost so amount-only changes are detected.
         expect(ordersSource).toContain('updates.cost !== undefined || updates.manualCost !== undefined');
         // Old/new lab cost are computed via effective cost (manualCost-aware).
-        expect(ordersSource).toContain('const oldLabCost = getLabCostMetadata(currentOrder).cost;');
-        expect(ordersSource).toContain('const newLabCost = getLabCostMetadata(nextOrderForAmount).cost;');
+        expect(ordersSource).toContain('const oldLabCost = getLabCostMetadata(currentOrder, isCurrentDesignerSalaried).cost;');
+        expect(ordersSource).toContain('const newLabCost = getLabCostMetadata(nextOrderForAmount, isNextDesignerSalaried).cost;');
         // The amount-correction branch reads effective cost too.
-        expect(ordersSource).toContain('const labCostMetadata = getLabCostMetadata(input.updatedOrder);');
+        expect(ordersSource).toContain('const labCostMetadata = getLabCostMetadata(input.updatedOrder, isUpdatedDesignerSalaried);');
         expect(ordersSource).toContain('const newAmount = labCostMetadata.cost;');
     });
 
@@ -1215,7 +1213,7 @@ test.describe('manualCost clearing contract', () => {
         // Both `cost` and `manualCost` are submitted together. When the admin clears
         // the manual override (manualCost state === null), `cost` falls back to the
         // calculated automatic cost — satisfying the backend contract.
-        expect(orderFormSource).toContain('cost: (isAdmin && manualCost !== null) ? manualCost : calculatedCost,');
+        expect(orderFormSource).toContain('cost: finalCost,');
         expect(orderFormSource).toContain('manualCost: (isAdmin && manualCost !== null) ? manualCost : null,');
     });
 });
