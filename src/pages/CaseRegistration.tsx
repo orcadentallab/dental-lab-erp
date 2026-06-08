@@ -85,21 +85,30 @@ export default function CaseRegistration() {
     const fetchOrders = async () => {
         setLoading(true);
         try {
-            const statuses = ['Delivered', 'Completed', 'Returned for Adjustments', 'Rejected', 'Cancelled'];
-            
+            // Statuses eligible for accounting registration.
+            // 'Cancelled' and 'Returned for Adjustments' are intentionally excluded:
+            //   - Cancelled: order was voided, no financial entry needed.
+            //   - Returned for Adjustments: order is back in progress, not final yet.
+            const registrableStatuses = ['Delivered', 'Completed', 'Rejected'];
+
             const { data } = await db.getOrders(1, 1000, {
-                // Fetch recent orders, we'll filter locally for now to support complex search/filters easily
                 includeArchived: true
             });
 
             const filtered = data.filter(order => {
+                // Cancelled orders never appear in registration — not in pending, not in history.
+                if (order.status === 'Cancelled') return false;
+                // Returned for Adjustments orders are back in progress — exclude from registration flow.
+                if (order.status === 'Returned for Adjustments') return false;
+
                 if (order.isArchived) {
+                    // Archived path: only show orders archived AFTER an accounting change was made.
                     return activeTab === 'pending'
                         ? isArchivedAfterRegistration(order) && !order.isRegistered
                         : order.isRegistered;
                 }
 
-                return statuses.includes(order.status) &&
+                return registrableStatuses.includes(order.status) &&
                     (activeTab === 'pending' ? !order.isRegistered : order.isRegistered);
             }).sort((a, b) => {
                 const dateA = a.actualDeliveryDate || a.deliveryDate || a.createdAt;

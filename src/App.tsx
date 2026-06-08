@@ -19,6 +19,7 @@ import IssuesReport from './pages/IssuesReport';
 import NewOrderRequest from './pages/doctor/NewOrderRequest';
 import DoctorOrders from './pages/doctor/DoctorOrders';
 import DoctorFinance from './pages/doctor/DoctorFinance';
+import BalanceSnapshot from './pages/BalanceSnapshot';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -87,6 +88,7 @@ function App() {
                       <Route path="/finance" element={<Finance />} />
                       <Route path="/suppliers" element={<Suppliers />} />
                       <Route path="/case-registration" element={<CaseRegistration />} />
+                      <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
                     </Route>
                   </Route>
 
