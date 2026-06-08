@@ -37,8 +37,7 @@ const calculateOrderCost = (
     suppliers: Supplier[],
     selectedSupplier: string,
     designers: User[],
-    designerId: string,
-    designerBillingModes: Record<string, string> = {}
+    designerId: string
 ) => {
     if (workflowType === 'full') {
         return items.reduce((sum, item) => {
@@ -62,7 +61,7 @@ const calculateOrderCost = (
         const designUnitCost = designer?.designerServicePrices?.[item.serviceType] !== undefined
             ? designer.designerServicePrices![item.serviceType]
             : (svc?.designerPrice ?? 0);
-        const isSalaried = designerBillingModes[designerId] === 'monthly_cycle' || hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION);
+        const isSalaried = hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION);
         const dCost = isSalaried ? 0 : designUnitCost * count;
         let mCost = 0;
         if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
@@ -115,7 +114,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
-    const [designerBillingModes, setDesignerBillingModes] = useState<Record<string, string>>({});
     // removed: existingOrders state
 
 
@@ -272,18 +270,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 setRepresentatives(usersData.filter(u => isRepresentativeUser(u)));
                 setDesigners(designersData);
 
-                const billingModes: Record<string, string> = {};
-                await Promise.all(designersData.map(async (d) => {
-                    try {
-                        const settings = await db.getEntityBillingSettings('designer', d.id);
-                        if (settings?.billingMode) {
-                            billingModes[d.id] = settings.billingMode;
-                        }
-                    } catch (e) {
-                        // ignore
-                    }
-                }));
-                setDesignerBillingModes(billingModes);
+
 
                 if (initialData) {
                     const initialItems = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
@@ -306,7 +293,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         if (initialData.workflowType === 'split') {
                             const autoMilling = calculateAutomaticMillingPrice(initialItems, servicesData, suppliersData, initialData.supplierId || '');
                             const initialDesigner = designersData.find(d => d.id === initialData.designerId);
-                            const isInitialSalaried = billingModes[initialData.designerId || ''] === 'monthly_cycle' || hasCustomPermission(initialDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
+                            const isInitialSalaried = hasCustomPermission(initialDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
                             
                             // Detect if initialData.cost includes designPrice:
                             const designPrice = initialData.designPrice || 0;
@@ -327,8 +314,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 suppliersData,
                                 initialData.supplierId || '',
                                 designersData,
-                                initialData.designerId || '',
-                                billingModes
+                                initialData.designerId || ''
                             );
                             setManualCost(Math.abs((initialData.cost || 0) - automaticCost) > 0.0001 ? initialData.cost : null);
                         }
@@ -422,10 +408,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const total = subTotal - discount;
 
     const currentDesigner = designers.find(d => d.id === designerId);
-    const isSalaried = designerBillingModes[designerId] === 'monthly_cycle' || hasCustomPermission(currentDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
+    const isSalaried = hasCustomPermission(currentDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
 
     const calculateAutomaticCost = () => {
-        return calculateOrderCost(workflowType, items, services, suppliers, selectedSupplier, designers, designerId, designerBillingModes);
+        return calculateOrderCost(workflowType, items, services, suppliers, selectedSupplier, designers, designerId);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
