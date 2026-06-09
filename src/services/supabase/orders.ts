@@ -1298,10 +1298,12 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     }
 
     const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
+    const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost'];
     const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
     const updateFields = Object.keys(updates) as (keyof Order)[];
     const businessUpdateFields = updateFields.filter(field => !workflowFields.includes(field));
     const isFinancialAdminOnly = businessUpdateFields.length > 0
+        && businessUpdateFields.some(field => moneyFields.includes(field))
         && businessUpdateFields.every(field => financialAdminFields.includes(field));
 
     if (isFinancialAdminOnly) {

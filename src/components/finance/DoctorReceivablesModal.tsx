@@ -29,6 +29,8 @@ const BUCKET_META: Record<Exclude<AgingBucket, 'all'>, { label: string; color: s
     '90_plus': { label: '+90 يوم', color: 'bg-rose-500', textColor: 'text-rose-700', bg: 'bg-rose-50', field: 'aging_90_plus', daysFn: d => d > 90 },
 };
 
+const BUCKET_KEYS: Array<Exclude<AgingBucket, 'all'>> = ['0_30', '31_60', '61_90', '90_plus'];
+
 function computeClientSideReceivables(
     orders: OrderLike[],
     transactions: TransactionLike[],
@@ -135,23 +137,26 @@ export default function DoctorReceivablesModal({
     fallbackOrders, fallbackTransactions, fallbackDoctors
 }: Props) {
     const [data, setData] = useState<DoctorReceivable[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(isOpen);
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState('');
     const [bucket, setBucket] = useState<AgingBucket>(initialBucket);
     const [sortKey, setSortKey] = useState<SortKey>('balance');
     const [sortAsc, setSortAsc] = useState(false);
 
-    useEffect(() => {
-        if (!isOpen) return;
-        setBucket(initialBucket);
-    }, [isOpen, initialBucket]);
+    const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+    if (isOpen !== prevIsOpen) {
+        setPrevIsOpen(isOpen);
+        if (isOpen) {
+            setBucket(initialBucket);
+            setLoading(true);
+            setError(null);
+        }
+    }
 
     useEffect(() => {
         if (!isOpen) return;
         let cancelled = false;
-        setLoading(true);
-        setError(null);
         analyticsService.getDoctorReceivablesBreakdown()
             .then(rows => { if (!cancelled) setData(rows); })
             .catch(err => {
@@ -266,7 +271,7 @@ export default function DoctorReceivablesModal({
                     >
                         الكل ({data.length})
                     </button>
-                    {(Object.keys(BUCKET_META) as Array<Exclude<AgingBucket, 'all'>>).map(key => {
+                    {BUCKET_KEYS.map(key => {
                         const meta = BUCKET_META[key];
                         const count = data.filter(r => Number(r[meta.field]) > 0).length;
                         const active = bucket === key;

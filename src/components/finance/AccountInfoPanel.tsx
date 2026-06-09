@@ -123,7 +123,7 @@ export function AccountInfoPanel({
             const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
 
             if (isRelevant) {
-                let price = hasRejectionCost && o.rejectedLabCost !== undefined ? o.rejectedLabCost : (o.designPrice || 0);
+                const price = hasRejectionCost && o.rejectedLabCost !== undefined ? o.rejectedLabCost : (o.designPrice || 0);
                 calculatedWork += price;
             }
         });

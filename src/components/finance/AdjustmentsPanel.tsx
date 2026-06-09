@@ -43,12 +43,6 @@ export default function AdjustmentsPanel() {
         reason: ''
     });
 
-    useEffect(() => {
-        if (isAllowed) loadData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAllowed]);
-
-    if (!isAllowed) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
     async function loadData() {
         try {
             const [adjs, docs, sups] = await Promise.all([
@@ -63,6 +57,16 @@ export default function AdjustmentsPanel() {
             console.error(e);
         }
     }
+
+    useEffect(() => {
+        if (isAllowed) {
+            Promise.resolve().then(() => {
+                loadData().catch(console.error);
+            });
+        }
+    }, [isAllowed]);
+
+    if (!isAllowed) return <div className="p-8 text-center text-red-500">غير مصرح لك بدخول هذه الصفحة</div>;
 
     async function handleAdd(e: React.FormEvent) {
         e.preventDefault();

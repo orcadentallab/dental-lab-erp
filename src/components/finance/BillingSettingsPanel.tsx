@@ -170,26 +170,29 @@ export default function BillingSettingsPanel({ entityType, entityId, title, canE
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">النظام</label>
                         <div className="grid grid-cols-2 gap-2">
-                            {([
-                                { value: BILLING_MODES.perOrder, label: copy.perOrder },
-                                { value: BILLING_MODES.monthlyCycle, label: copy.monthlyCycle },
-                            ] as { value: BillingMode; label: string }[]).map(option => (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    disabled={disabled}
-                                    onClick={() => updateSettings({
-                                        billingMode: option.value,
-                                        billingDay: option.value === BILLING_MODES.monthlyCycle ? settings.billingDay : null,
-                                    })}
-                                    className={`rounded-lg border px-3 py-2 text-sm font-bold transition-colors ${settings.billingMode === option.value
-                                        ? 'border-blue-500 bg-white text-blue-700 shadow-sm'
-                                        : 'border-gray-200 bg-white/60 text-gray-500 hover:bg-white'
-                                        } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
-                                >
-                                    {option.label}
-                                </button>
-                            ))}
+                            {(() => {
+                                const options: { value: BillingMode; label: string }[] = [
+                                    { value: BILLING_MODES.perOrder, label: copy.perOrder },
+                                    { value: BILLING_MODES.monthlyCycle, label: copy.monthlyCycle },
+                                ];
+                                return options.map(option => (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() => updateSettings({
+                                            billingMode: option.value,
+                                            billingDay: option.value === BILLING_MODES.monthlyCycle ? settings.billingDay : null,
+                                        })}
+                                        className={`rounded-lg border px-3 py-2 text-sm font-bold transition-colors ${settings.billingMode === option.value
+                                            ? 'border-blue-500 bg-white text-blue-700 shadow-sm'
+                                            : 'border-gray-200 bg-white/60 text-gray-500 hover:bg-white'
+                                            } ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ));
+                            })()}
                         </div>
                     </div>
 

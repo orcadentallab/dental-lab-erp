@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
@@ -661,7 +661,7 @@ export default function OrderCard({
 
                         {/* Right: Admin Tools */}
                         <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
-                            {(userRole === 'admin' || currentUser?.customPermissions?.edit_orders) && onEdit && (
+                            {(userRole === 'admin' || userRole === 'representative' || currentUser?.customPermissions?.edit_orders) && onEdit && (
                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />
                                 </Button>

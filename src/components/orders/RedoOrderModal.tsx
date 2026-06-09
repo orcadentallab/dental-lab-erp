@@ -32,11 +32,12 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
         setIsLoading(true);
         try {
             // 1. Mark old order as redo
-            await db.updateOrder(order.id, {
+            const updateFields: Partial<Order> = {
                 issueState: 'redo',
                 status: 'Rejected',
                 ...(rejectedLabCost !== '' ? { rejectedLabCost: Number(rejectedLabCost) } : {}),
-            } as Partial<Order>);
+            };
+            await db.updateOrder(order.id, updateFields);
 
             // 2. Create new linked order (copy all data)
             const doctors = await db.getDoctors();

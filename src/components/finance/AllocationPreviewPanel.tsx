@@ -101,7 +101,12 @@ export default function AllocationPreviewPanel({ doctors, suppliers }: Allocatio
                         <select
                             aria-label="نوع الطرف"
                             value={entityType}
-                            onChange={event => handleEntityTypeChange(event.target.value as EntityType)}
+                            onChange={event => {
+                                const val = event.target.value;
+                                if (val === 'doctor' || val === 'external_lab') {
+                                    handleEntityTypeChange(val);
+                                }
+                            }}
                             className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
                         >
                             <option value="doctor">طبيب</option>

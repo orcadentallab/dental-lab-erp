@@ -6,6 +6,14 @@ import { db, type HistoricalObligationsBackfillActionRow, type HistoricalObligat
 type EntityTypeFilter = 'all' | 'doctor' | 'external_lab';
 type ReasonFilter = 'all' | 'missing_doctor_receivable' | 'missing_external_lab_payable' | 'missing_external_lab_issue_settlement';
 
+const isEntityTypeFilter = (val: string): val is EntityTypeFilter => {
+    return ['all', 'doctor', 'external_lab'].includes(val);
+};
+
+const isReasonFilter = (val: string): val is ReasonFilter => {
+    return ['all', 'missing_doctor_receivable', 'missing_external_lab_payable', 'missing_external_lab_issue_settlement'].includes(val);
+};
+
 const DEFAULT_PAGE_SIZE = 25;
 
 const emptyResult: HistoricalObligationsBackfillBatchResult = {
@@ -115,11 +123,15 @@ export default function HistoricalObligationsBackfillDryRun() {
     };
     const resetEntityType = (value: string) => {
         setPage(1);
-        setEntityType(value as EntityTypeFilter);
+        if (isEntityTypeFilter(value)) {
+            setEntityType(value);
+        }
     };
     const resetReason = (value: string) => {
         setPage(1);
-        setReason(value as ReasonFilter);
+        if (isReasonFilter(value)) {
+            setReason(value);
+        }
     };
 
     const handlePageSizeChange = (value: string) => {

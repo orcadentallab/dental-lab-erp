@@ -54,13 +54,55 @@ interface ServiceStats {
     rejectionRate: number;
 }
 
+const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
+
+// Robust Arabic normalization: unify letter variants → canonical form
+const normalizeArabic = (text: string): string =>
+    text.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u064B-\u065F\u0670]/g, '')  // strip diacritics
+        .replace(/[أإآٱ]/g, 'ا')                // alef variants → ا
+        .replace(/ة/g, 'ه')                     // ة → ه
+        .replace(/ى/g, 'ي')                     // ى → ي
+        .replace(/ؤ/g, 'و')
+        .replace(/ئ/g, 'ي')
+        .toLowerCase();
+
+// Semantic aliases: English keys + common Arabic variants → canonical Arabic
+const SEMANTIC_ALIASES: [string, string][] = [
+    ['salaries',                'مرتبات وأجور'],
+    ['مرتبات واجور',            'مرتبات وأجور'],
+    ['shipping',                'شحن وتوصيل'],
+    ['meetings',                'اجتماعات ونثريات'],
+    ['material',                'خامات ومستهلكات'],
+    ['other',                   'مصروفات أخرى'],
+    ['bonus',                   'منحة/مكافأة'],
+    ['deduction',               'خصم/جزاء'],
+    ['advertising',             'دعاية وسوشيال ميديا'],
+    ['marketing',               'دعاية وسوشيال ميديا'],
+    ['دعايا وسوشيال ميديا',    'دعاية وسوشيال ميديا'],
+    ['دعايه وسوشيال ميديا',    'دعاية وسوشيال ميديا'],
+];
+
+// Normalize: alias lookup on normalized key, fallback to trimmed original
+const normalizeCategory = (cat: string | undefined): string => {
+    if (!cat) return 'أخرى';
+    const trimmed = cat.trim();
+    const normed = normalizeArabic(trimmed);
+    for (const [alias, canonical] of SEMANTIC_ALIASES) {
+        if (normalizeArabic(alias) === normed) return canonical;
+    }
+    return trimmed || 'أخرى';
+};
+
+const EXCLUDE_STATUSES = new Set(['New Case', 'In Progress', 'Pending', 'Wait', 'Cancelled']);
+
 export default function StatementTab({
     type: targetType,
     orders,
     transactions,
     doctors,
     suppliers,
-    designers: _designers,
     services,
     externalStartDate,
     externalEndDate,
@@ -83,46 +125,7 @@ export default function StatementTab({
         'اجتماعات ونثريات', 'خامات ومستهلكات', 'مصروفات أخرى',
     ];
 
-    const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
 
-    // Robust Arabic normalization: unify letter variants → canonical form
-    const normalizeArabic = (text: string): string =>
-        text.trim()
-            .replace(/\s+/g, ' ')
-            .replace(/[\u064B-\u065F\u0670]/g, '')  // strip diacritics
-            .replace(/[أإآٱ]/g, 'ا')                // alef variants → ا
-            .replace(/ة/g, 'ه')                     // ة → ه
-            .replace(/ى/g, 'ي')                     // ى → ي
-            .replace(/ؤ/g, 'و')
-            .replace(/ئ/g, 'ي')
-            .toLowerCase();
-
-    // Semantic aliases: English keys + common Arabic variants → canonical Arabic
-    const SEMANTIC_ALIASES: [string, string][] = [
-        ['salaries',                'مرتبات وأجور'],
-        ['مرتبات واجور',            'مرتبات وأجور'],
-        ['shipping',                'شحن وتوصيل'],
-        ['meetings',                'اجتماعات ونثريات'],
-        ['material',                'خامات ومستهلكات'],
-        ['other',                   'مصروفات أخرى'],
-        ['bonus',                   'منحة/مكافأة'],
-        ['deduction',               'خصم/جزاء'],
-        ['advertising',             'دعاية وسوشيال ميديا'],
-        ['marketing',               'دعاية وسوشيال ميديا'],
-        ['دعايا وسوشيال ميديا',    'دعاية وسوشيال ميديا'],
-        ['دعايه وسوشيال ميديا',    'دعاية وسوشيال ميديا'],
-    ];
-
-    // Normalize: alias lookup on normalized key, fallback to trimmed original
-    const normalizeCategory = (cat: string | undefined): string => {
-        if (!cat) return 'أخرى';
-        const trimmed = cat.trim();
-        const normed = normalizeArabic(trimmed);
-        for (const [alias, canonical] of SEMANTIC_ALIASES) {
-            if (normalizeArabic(alias) === normed) return canonical;
-        }
-        return trimmed || 'أخرى';
-    };
 
     // Resolve date range to start/end strings
     const resolvedDates = useMemo(() => {
@@ -147,11 +150,7 @@ export default function StatementTab({
         }
     }, [timeFilter, customDateRange, usesExternalDates, externalStartDate, externalEndDate]);
 
-    // Orders that count for service analytics:
-    //   DELIVERED statuses → revenue + cost
-    //   Rejected → revenue=0, cost=rejectedLabCost (financial loss)
-    //   Exclude: still in progress (New Case, In Progress, Pending, Cancelled)
-    const EXCLUDE_STATUSES = new Set(['New Case', 'In Progress', 'Pending', 'Wait', 'Cancelled']);
+
 
     const filteredOrders = useMemo(() => {
         const { start, end } = resolvedDates;

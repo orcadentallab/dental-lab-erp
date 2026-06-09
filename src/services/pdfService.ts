@@ -783,6 +783,133 @@ async function generateStatementsZip(
     URL.revokeObjectURL(url);
 }
 
+// ===================== CASES INVOICE PDF (مطالبة) =====================
+
+export interface CasesInvoiceItem {
+    id: string;
+    date: string;
+    description: string;
+    services?: string;
+    count?: number;
+    amount: number;
+}
+
+export async function generateCasesInvoicePDF(
+    items: CasesInvoiceItem[],
+    doctorInfo: { name: string; code?: string },
+    dateRange: { start: string; end: string },
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _labInfo?: LabInfo
+): Promise<void> {
+    const html = buildCasesInvoiceHTML(items, doctorInfo, dateRange);
+    const doc = createPdf();
+    await htmlToPdfPage(doc, html);
+    const safeName = (doctorInfo.name || 'doctor').replace(/[/\\?%*:|"<>]/g, '_');
+    const dateLabel = dateRange.start || new Date().toISOString().split('T')[0];
+    doc.save(`invoice_${safeName}_${dateLabel}.pdf`);
+}
+
+function buildCasesInvoiceHTML(
+    items: CasesInvoiceItem[],
+    doctorInfo: { name: string; code?: string },
+    dateRange: { start: string; end: string }
+): string {
+    const startLabel = dateRange.start || '-';
+    const endLabel = dateRange.end || new Date().toLocaleDateString('en-GB');
+    const grandTotal = items.reduce((sum, i) => sum + i.amount, 0);
+
+    const rows = items.length > 0
+        ? items.map((item, idx) => `
+            <tr>
+                <td style="text-align:center;color:${COLORS.muted};font-size:10px;font-family:'Courier New',monospace">${idx + 1}</td>
+                <td style="text-align:right">${item.description || '-'}</td>
+                <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
+                <td>${item.count ? `(${item.count})` : '-'}</td>
+                <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
+                <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:700">${formatCurrency(item.amount)}</td>
+            </tr>
+        `).join('')
+        : `<tr><td colspan="6" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
+
+    return `<div class="doc"><style>${styles}</style>
+        <div class="header-split">
+            <div class="header-half header-white">
+                <img src="${window.location.origin}/orca-logo.png" class="header-logo" alt="ORCA" />
+            </div>
+            <div class="header-half header-blue">
+                <div class="header-info-line">ORCA DENTAL LAB</div>
+                <div class="header-info-line">01034141917</div>
+                <div class="header-info-line">CAIRO</div>
+                <div class="header-slogan">.A dentist's touch behind every detail</div>
+            </div>
+            <div class="doc-badge-centered">مطالبة بالسداد</div>
+        </div>
+
+        <div class="body">
+            <div class="meta-strip">
+                <div class="meta-group">
+                    <div class="meta-label">فاتورة إلى</div>
+                    <div class="meta-value large">${doctorInfo.name || '-'}</div>
+                    ${doctorInfo.code ? `<span class="ref-tag">${doctorInfo.code}</span>` : ''}
+                </div>
+                <div class="meta-group" style="text-align:left">
+                    <div class="meta-label">الفترة</div>
+                    <div class="meta-value code">${startLabel}  →  ${endLabel}</div>
+                    <div class="meta-label" style="margin-top:8px">تاريخ الاستخراج</div>
+                    <div class="meta-value code">${new Date().toLocaleDateString('en-GB')}</div>
+                </div>
+            </div>
+
+            <div class="summary-cards" style="grid-template-columns:repeat(2,1fr)">
+                <div class="s-card debit">
+                    <div class="sc-label">عدد الحالات</div>
+                    <div class="sc-value" style="font-family:inherit;font-size:20px">${items.length}</div>
+                </div>
+                <div class="s-card balance">
+                    <div class="sc-label">إجمالي المطالبة</div>
+                    <div class="sc-value">${formatCurrency(grandTotal)}</div>
+                </div>
+            </div>
+
+            <table>
+                <thead><tr>
+                    <th style="width:40px">#</th>
+                    <th style="text-align:right">البيان</th>
+                    <th>الخدمات</th>
+                    <th>العدد</th>
+                    <th>التاريخ</th>
+                    <th>المبلغ</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+                <tfoot><tr>
+                    <td colspan="5" style="text-align:right;font-weight:800">الإجمالي المستحق</td>
+                    <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:13px;font-weight:800">${formatCurrency(grandTotal)}</td>
+                </tr></tfoot>
+            </table>
+
+            <div class="balance-banner">
+                <span class="bb-label">إجمالي المطالبة بالسداد</span>
+                <span class="bb-value">${formatCurrency(grandTotal)} EGP</span>
+            </div>
+
+            <div class="doc-notice">
+                تم استخراج هذا المستند آلياً من نظام ORCA — يرجى المراجعة والإفادة خلال ٣ أيام عمل
+            </div>
+
+            <div class="doc-footer">
+                <div class="footer-social">
+                    <div class="social-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="white" style="margin-left:4px"><path d="M12 2.04c-5.5 0-10 4.5-10 10 0 5 3.66 9.15 8.44 9.9v-7h-2.54v-2.9h2.54V9.82c0-2.5 1.49-3.89 3.77-3.89 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.86h2.78l-.45 2.9h-2.33v7c4.78-.75 8.44-4.9 8.44-9.9 0-5.5-4.5-10-10-10z"/></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+                        <span style="direction:ltr">orca.labeg</span>
+                    </div>
+                </div>
+                <div class="footer-slogan">A dentist's touch behind every detail.</div>
+            </div>
+        </div>
+    </div>`;
+}
+
 // ===================== ORDERS LIST PDF =====================
 
 export async function generateOrdersListPDF(

@@ -11,9 +11,7 @@ import type { ProductionStatus, IssueState } from '../constants/workflow';
 export const WORKFLOW_ROLES = ['admin', 'lab', 'accountant', 'designer', 'representative', 'doctor'] as const;
 export type WorkflowRole = typeof WORKFLOW_ROLES[number];
 
-// ─── Representative audit-gated allow-list (WF-1) ────────────────────────────
-// These are the ONLY fields a representative may change, and ONLY through the
-// audited RPC `rep_update_order_fields_with_audit`. items / teeth deferred to WF-1b.
+// ─── Representative audit-gated allow-list (WF-1) ────────────────
 export const REP_AUDITED_ALLOW_LIST = [
     'patient_name',
     'stl_url',
@@ -23,6 +21,11 @@ export const REP_AUDITED_ALLOW_LIST = [
     'priority',
     'supplier_id',
     'designer_id',
+    'instructions',
+    'items',
+    'total_price',
+    'cost',
+    'design_price',
 ] as const;
 
 export type RepAuditedField = typeof REP_AUDITED_ALLOW_LIST[number];
@@ -41,6 +44,11 @@ export const REP_AUDITED_ALLOW_LIST_CAMEL = [
     'priority',
     'supplierId',
     'designerId',
+    'instructions',
+    'items',
+    'totalPrice',
+    'cost',
+    'designPrice',
 ] as const satisfies readonly (keyof Order)[];
 
 export type RepAuditedFieldCamel = typeof REP_AUDITED_ALLOW_LIST_CAMEL[number];
@@ -55,6 +63,11 @@ export const REP_FIELD_TO_DB: Record<RepAuditedFieldCamel, RepAuditedField> = {
     priority: 'priority',
     supplierId: 'supplier_id',
     designerId: 'designer_id',
+    instructions: 'instructions',
+    items: 'items',
+    totalPrice: 'total_price',
+    cost: 'cost',
+    designPrice: 'design_price',
 };
 
 // ─── Hard deny-list (every role except admin) ────────────────────────────────
@@ -67,12 +80,11 @@ export const REP_HARD_DENY_LIST = [
     'status', 'production_status', 'issue_state', 'actual_delivery_date',
     'design_status', 'technician_status', 'external_lab_status', 'external_lab_notes',
     'workflow_type', 'delivery_type', 'needs_design_review',
-    'total_price', 'cost', 'manual_cost', 'design_price', 'discount', 'rejected_lab_cost',
+    'manual_cost', 'discount', 'rejected_lab_cost',
     'is_registered',
     'doctor_id', 'representative_id',
     'design_url',
     'shade',
-    'items',  // deferred to WF-1b
 ] as const;
 
 // ─── Lab issue_state restrictions (enforced by trigger; mirrored for UI) ─────
@@ -89,22 +101,26 @@ export interface RepStateGuardContext {
 }
 
 export const REP_FIELD_STATE_GUARDS: Record<RepAuditedField, (ctx: RepStateGuardContext) => boolean> = {
-    patient_name: ctx => ctx.productionStatus !== 'final_delivered' && ctx.issueState === 'none',
-    stl_url: ctx => ctx.productionStatus !== 'final_delivered' && ctx.issueState === 'none',
-    images_url: ctx => ctx.productionStatus !== 'final_delivered',
-    delivery_date: ctx => ctx.productionStatus !== 'final_delivered' && ctx.issueState === 'none',
-    priority: ctx => ctx.productionStatus !== 'final_delivered' && ctx.issueState === 'none',
+    patient_name: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    stl_url: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    images_url: () => true,
+    delivery_date: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    priority: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
     is_urgent: () => true,
     supplier_id: ctx =>
-        ctx.productionStatus !== 'final_ready' &&
-        ctx.productionStatus !== 'final_delivered' &&
-        ctx.issueState === 'none',
+        ctx.productionStatus === 'final_delivered' ||
+        (ctx.productionStatus !== 'final_ready' && ctx.issueState === 'none'),
     designer_id: ctx =>
-        ctx.productionStatus !== 'finalization' &&
-        ctx.productionStatus !== 'final_ready' &&
-        ctx.productionStatus !== 'final_delivered' &&
-        ctx.issueState === 'none' &&
-        ctx.workflowType === 'split',
+        ctx.productionStatus === 'final_delivered' ||
+        (ctx.productionStatus !== 'finalization' &&
+            ctx.productionStatus !== 'final_ready' &&
+            ctx.issueState === 'none' &&
+            ctx.workflowType === 'split'),
+    instructions: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    items: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    total_price: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    cost: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
+    design_price: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
 };
 
 // ─── UI / predicate helpers (WF-2) ───────────────────────────────────────────

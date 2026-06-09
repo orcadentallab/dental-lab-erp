@@ -28,7 +28,7 @@ interface OrderBoardProps {
     onRedo?: (order: Order) => void;
 }
 
-export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote, onRedo: _onRedo }: OrderBoardProps) {
+export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }: OrderBoardProps) {
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
     const [suppliersMap, setSuppliersMap] = useState<Record<string, string>>({});
 

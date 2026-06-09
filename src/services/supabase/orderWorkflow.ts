@@ -41,7 +41,8 @@ export class NotImplementedError extends Error {
 
 export interface RepEditChanges extends Partial<Pick<Order,
     'patientName' | 'stlUrl' | 'imagesUrl' | 'deliveryDate' |
-    'isUrgent' | 'priority' | 'supplierId' | 'designerId'
+    'isUrgent' | 'priority' | 'supplierId' | 'designerId' |
+    'instructions' | 'items' | 'totalPrice' | 'cost' | 'designPrice'
 >> {}
 
 // ─── repUpdateOrderWithAudit (LIVE) ──────────────────────────────────────────
@@ -213,5 +214,32 @@ export async function addOrderEvent(input: {
 
     if (error) {
         throw ErrorHandler.handle(error, 'addOrderEvent');
+    }
+}
+
+/**
+ * Admin review endpoint for representative order edit proposals.
+ * Calls the `admin_review_order_edit` RPC.
+ */
+export async function adminReviewOrderEdit(
+    eventId: string,
+    action: 'approve' | 'reject',
+    adminNotes?: string | null
+): Promise<void> {
+    if (!eventId || typeof eventId !== 'string') {
+        throw new ValidationError('eventId is required');
+    }
+    if (!action || !['approve', 'reject'].includes(action)) {
+        throw new ValidationError('Invalid action');
+    }
+
+    const { error } = await supabase.rpc('admin_review_order_edit', {
+        p_event_id: eventId,
+        p_action: action,
+        p_admin_notes: adminNotes ?? null,
+    });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'adminReviewOrderEdit');
     }
 }

@@ -329,7 +329,7 @@ export interface HistoricalObligationsPreviewParams {
 
 export interface HistoricalObligationPreviewRow {
     rowType: 'missing_obligation' | 'missing_data_warning';
-    entityType: 'doctor' | 'external_lab' | null;
+    entityType: 'doctor' | 'external_lab' | 'designer' | null;
     reason:
         | 'missing_doctor_receivable'
         | 'missing_external_lab_payable'
@@ -435,6 +435,10 @@ export interface FinancialReconciliationPreviewRow {
         | 'issue_settlement_present'
         | 'possible_date_range_mismatch'
         | 'data_missing'
+        | 'account_closing_or_dispute_settlement_needed'
+        | 'stale_doctor_receivable_after_rejection'
+        | 'doctor_payment_missing'
+        | 'obligations_include_item_not_in_official_logic'
     )[];
     notes: string[];
     totalDoctorReceivableObligations?: number;
@@ -557,14 +561,14 @@ class MockDB {
         params: HistoricalObligationsBackfillBatchParams = {}
     ): Promise<HistoricalObligationsBackfillBatchResult> {
         const { createHistoricalObligationsBackfillBatch } = await import('./supabase/historicalObligationsBackfill');
-        return createHistoricalObligationsBackfillBatch(params) as Promise<HistoricalObligationsBackfillBatchResult>;
+        return createHistoricalObligationsBackfillBatch(params);
     }
 
     async previewFinancialReconciliation(
         params: FinancialReconciliationPreviewParams = {}
     ): Promise<FinancialReconciliationPreviewResult> {
         const { previewFinancialReconciliation } = await import('./supabase/financialReconciliationPreview');
-        return previewFinancialReconciliation(params) as Promise<FinancialReconciliationPreviewResult>;
+        return previewFinancialReconciliation(params);
     }
 
     async voidFinancialObligation(id: string, notes?: string): Promise<FinancialObligation | null> {
@@ -712,6 +716,15 @@ class MockDB {
         return repUpdateOrderWithAudit(orderId, changes, reasonCode, reasonNote);
     }
 
+    async adminReviewOrderEdit(
+        eventId: string,
+        action: 'approve' | 'reject',
+        adminNotes?: string | null
+    ): Promise<void> {
+        const { adminReviewOrderEdit } = await import('./supabase/orderWorkflow');
+        return adminReviewOrderEdit(eventId, action, adminNotes);
+    }
+
     /**
      * CENTRALIZED STATUS UPDATE - Use this for all status changes.
      * Ensures status/designStatus synchronization for Split Workflows.
@@ -833,6 +846,35 @@ class MockDB {
     async getOrderIssues(filters?: { issueType?: string; startDate?: string; endDate?: string }): Promise<OrderIssue[]> {
         const { getOrderIssues } = await import('./supabase/orders');
         return getOrderIssues(filters);
+    }
+
+    async getPendingOrderEditProposals(): Promise<OrderEvent[]> {
+        const { supabase } = await import('../lib/supabase');
+        const { dbToOrderEvent } = await import('./supabase/orderEvents');
+        const { data, error } = await supabase
+            .from('order_events')
+            .select('*')
+            .eq('event_type', 'order_edit_proposed')
+            .eq('approval_status', 'pending')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        type RowType = Parameters<typeof dbToOrderEvent>[0];
+        return (data || []).map((row: RowType) => dbToOrderEvent(row));
+    }
+
+    async getAppliedOrderEdits(): Promise<OrderEvent[]> {
+        const { supabase } = await import('../lib/supabase');
+        const { dbToOrderEvent } = await import('./supabase/orderEvents');
+        const { data, error } = await supabase
+            .from('order_events')
+            .select('*')
+            .in('event_type', ['order_edit_applied', 'order_edit_proposed'])
+            .neq('approval_status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(50);
+        if (error) throw error;
+        type RowType = Parameters<typeof dbToOrderEvent>[0];
+        return (data || []).map((row: RowType) => dbToOrderEvent(row));
     }
 
     exportData() { return '{}'; }

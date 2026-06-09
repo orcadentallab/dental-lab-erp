@@ -67,12 +67,12 @@ function formatEventActor(event: OrderEvent) {
 
 function renderEventDetails(event: OrderEvent) {
     const details = [
-        event.reason && { label: 'السبب', value: event.reason },
-        event.notes && { label: 'ملاحظات', value: event.notes },
-        event.responsibilityParty && { label: 'المسؤولية', value: event.responsibilityParty },
-        event.approvalStatus && event.approvalStatus !== 'none' && { label: 'الاعتماد', value: event.approvalStatus },
-        event.financialImpact !== null && event.financialImpact !== undefined && { label: 'الأثر المالي', value: event.financialImpact.toLocaleString() },
-    ].filter(Boolean) as { label: string; value: string }[];
+        event.reason ? { label: 'السبب', value: event.reason } : undefined,
+        event.notes ? { label: 'ملاحظات', value: event.notes } : undefined,
+        event.responsibilityParty ? { label: 'المسؤولية', value: event.responsibilityParty } : undefined,
+        event.approvalStatus && event.approvalStatus !== 'none' ? { label: 'الاعتماد', value: event.approvalStatus } : undefined,
+        event.financialImpact !== null && event.financialImpact !== undefined ? { label: 'الأثر المالي', value: event.financialImpact.toLocaleString() } : undefined,
+    ].filter((item): item is { label: string; value: string } => item !== undefined);
 
     if (details.length === 0) return null;
 
@@ -198,6 +198,10 @@ function formatDiffValue(
 
     return valStr;
 }
+
+const isRecord = (v: unknown): v is Record<string, unknown> => {
+    return typeof v === 'object' && v !== null;
+};
 
 export default function OrderHistoryModal({
     isOpen,
@@ -358,18 +362,17 @@ export default function OrderHistoryModal({
                                                     Object.entries(item.changes).map(([key, val]) => {
                                                         // Safety check: ensure val is an object with old/new
                                                         if (!val || typeof val !== 'object') return null;
-                                                        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
-                                                        const safeVal = val as Record<string, unknown>;
+                                                        if (!isRecord(val)) return null;
 
                                                         return (
                                                             <div key={key} className="flex items-center gap-2">
                                                                 <span className="font-semibold text-gray-700">{FIELD_LABELS[key] || key}:</span>
                                                                 <span className="text-red-500 line-through bg-red-50 px-1 rounded">
-                                                                    {formatDiffValue(key, safeVal.old, doctors, suppliers, users)}
+                                                                    {formatDiffValue(key, val.old, doctors, suppliers, users)}
                                                                 </span>
                                                                 <ArrowRight size={10} className="text-gray-400" />
                                                                 <span className="text-green-600 font-bold bg-green-50 px-1 rounded">
-                                                                    {formatDiffValue(key, safeVal.new, doctors, suppliers, users)}
+                                                                    {formatDiffValue(key, val.new, doctors, suppliers, users)}
                                                                 </span>
                                                             </div>
                                                         );

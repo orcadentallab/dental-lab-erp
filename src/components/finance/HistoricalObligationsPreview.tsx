@@ -44,6 +44,14 @@ const costSourceLabels: Record<string, string> = {
     unknown: 'غير محدد',
 };
 
+const isEntityTypeParam = (val: string): val is NonNullable<HistoricalObligationsPreviewParams['entityType']> => {
+    return ['all', 'doctor', 'external_lab'].includes(val);
+};
+
+const isRowTypeParam = (val: string): val is NonNullable<HistoricalObligationsPreviewParams['rowType']> => {
+    return ['all', 'missing_obligation', 'missing_data_warning'].includes(val);
+};
+
 const formatMoney = (value: number) => `${value.toLocaleString()} ج.م`;
 
 const formatDate = (date?: string | null) => {
@@ -128,11 +136,15 @@ export default function HistoricalObligationsPreview() {
     };
     const resetEntityType = (value: string) => {
         setPage(1);
-        setEntityType(value as HistoricalObligationsPreviewParams['entityType']);
+        if (isEntityTypeParam(value)) {
+            setEntityType(value);
+        }
     };
     const resetRowType = (value: string) => {
         setPage(1);
-        setRowType(value as HistoricalObligationsPreviewParams['rowType']);
+        if (isRowTypeParam(value)) {
+            setRowType(value);
+        }
     };
 
     const handlePageSizeChange = (value: string) => {

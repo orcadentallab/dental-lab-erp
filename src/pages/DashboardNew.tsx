@@ -2,7 +2,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { differenceInCalendarDays, format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type Supplier, type User, type Doctor, type OrderHistoryEntry } from '../services/db';
+import { db, type Order, type Supplier, type User, type Doctor, type OrderHistoryEntry, type OrderEvent } from '../services/db';
+import { ORDER_EDIT_REASON_LABELS_AR, type OrderEditReasonCode } from '../constants/orderEditReasons';
 import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare, Search } from 'lucide-react';
 import { contactService, type ContactInquiry } from '../services/contactService';
 import AlertCard from '../components/dashboard/AlertCard';
@@ -43,6 +44,46 @@ interface DashboardCache {
     recentOrderHistory?: OrderHistoryEntry[];
 }
 
+interface ProposalItem {
+    serviceType: string;
+    teethNumbers: string[];
+}
+
+function isRecord(val: unknown): val is Record<string, unknown> {
+    return typeof val === 'object' && val !== null;
+}
+
+function isProposalItemArray(val: unknown): val is ProposalItem[] {
+    if (!Array.isArray(val)) return false;
+    return val.every(item => {
+        if (!isRecord(item)) return false;
+        return typeof item.serviceType === 'string' && Array.isArray(item.teethNumbers);
+    });
+}
+
+const normalizeDeliveryDate = (date: string) => {
+    const directDateMatch = date.match(/^\d{4}-\d{2}-\d{2}/);
+    if (directDateMatch) return directDateMatch[0];
+
+    const parsedDate = new Date(date);
+    if (Number.isNaN(parsedDate.getTime())) return '';
+
+    return parsedDate.toISOString().split('T')[0];
+};
+
+function parseDeliveryDateAuditComment(text: string) {
+    if (!text.startsWith(`${DELIVERY_DATE_AUDIT_PREFIX}|`)) return null;
+
+    const [, oldDate, newDate, userId, userName, role] = text.split('|');
+    return {
+        oldDate: normalizeDeliveryDate(oldDate || ''),
+        newDate: normalizeDeliveryDate(newDate || ''),
+        userId: userId || '',
+        userName: userName || 'Unknown',
+        role: role || '',
+    };
+}
+
 export default function DashboardNew() {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -69,6 +110,12 @@ export default function DashboardNew() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [pendingProposals, setPendingProposals] = useState<OrderEvent[]>([]);
+    const [appliedEdits, setAppliedEdits] = useState<OrderEvent[]>([]);
+    const [reviewingProposal, setReviewingProposal] = useState<OrderEvent | null>(null);
+    const [adminNotes, setAdminNotes] = useState('');
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+    const [refreshKey, setRefreshKey] = useState(0);
 
     // Modal states
     const [showOrderForm, setShowOrderForm] = useState(false);
@@ -161,14 +208,16 @@ export default function DashboardNew() {
                     db.getOrdersWithComments().catch(() => [] as Order[]),
                 ] as const;
 
-                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, designerOrdersData, recentOrderHistoryData] =
+                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, designerOrdersData, recentOrderHistoryData, pendingProposalsData, appliedEditsData] =
                     user?.role === 'admin'
                         ? await Promise.all([
                             ...baseRequests,
                             db.getDesignerDashboardOrders().catch(() => [] as Order[]),
                             db.getRecentOrderHistory(250).catch(() => [] as OrderHistoryEntry[]),
+                            db.getPendingOrderEditProposals().catch(() => [] as OrderEvent[]),
+                            db.getAppliedOrderEdits().catch(() => [] as OrderEvent[]),
                         ] as const)
-                        : [...await Promise.all(baseRequests), undefined, undefined] as const;
+                        : [...await Promise.all(baseRequests), undefined, undefined, [], []] as const;
 
                 // Apply role-based filtering
                 let filteredOrders = ordersData;
@@ -194,6 +243,8 @@ export default function DashboardNew() {
                 setOrdersWithComments(commentOrdersData);
                 setDesignerOrders((designerOrdersData as Order[] | undefined) || []);
                 setRecentOrderHistory((recentOrderHistoryData as OrderHistoryEntry[] | undefined) || []);
+                setPendingProposals((pendingProposalsData as OrderEvent[] | undefined) || []);
+                setAppliedEdits((appliedEditsData as OrderEvent[] | undefined) || []);
 
                 try {
                     const cachePayload: DashboardCache = {
@@ -221,7 +272,7 @@ export default function DashboardNew() {
             }
         };
         loadData();
-    }, [user]);
+    }, [user, refreshKey]);
 
     // Computed alert data
     const today = new Date().toISOString().split('T')[0];
@@ -255,16 +306,6 @@ export default function DashboardNew() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowKey = tomorrow.toISOString().split('T')[0];
 
-    const normalizeDeliveryDate = (date: string) => {
-        const directDateMatch = date.match(/^\d{4}-\d{2}-\d{2}/);
-        if (directDateMatch) return directDateMatch[0];
-
-        const parsedDate = new Date(date);
-        if (Number.isNaN(parsedDate.getTime())) return '';
-
-        return parsedDate.toISOString().split('T')[0];
-    };
-
     const dueTodayOrders = activeDeliveryOrders.filter(o => normalizeDeliveryDate(o.deliveryDate) === today);
     const dueTomorrowOrders = activeDeliveryOrders.filter(o => normalizeDeliveryDate(o.deliveryDate) === tomorrowKey);
     const dueLaterOrders = activeDeliveryOrders.filter(o => normalizeDeliveryDate(o.deliveryDate) > tomorrowKey);
@@ -281,9 +322,15 @@ export default function DashboardNew() {
         !o.supplierId && o.status !== 'Delivered' && o.status !== 'Rejected'
     );
 
-    // Orders needing attention (PMMA or NeedDetails requested by lab/designer)
+    // Designer feedback orders (Rejected or NeedDetails)
+    const designerFeedbackOrders = orders.filter(o =>
+        o.technicianStatus === 'Rejected' || o.technicianStatus === 'NeedDetails'
+    );
+
+    // Orders needing attention (PMMA requested by lab/designer)
+    // We excluded 'NeedDetails' here to show them specifically in the designer feedback card.
     const needsAttentionOrders = orders.filter(o =>
-        o.technicianStatus === 'PMMA_First' || o.technicianStatus === 'NeedDetails'
+        o.technicianStatus === 'PMMA_First'
     );
 
     // Orders from Doctors needing review
@@ -476,6 +523,75 @@ export default function DashboardNew() {
         });
     };
 
+    const FIELD_NAMES_AR: Record<string, string> = {
+        patientName: 'اسم المريض',
+        patient_name: 'اسم المريض',
+        stlUrl: 'رابط STL',
+        stl_url: 'رابط STL',
+        imagesUrl: 'رابط الصور',
+        images_url: 'رابط الصور',
+        deliveryDate: 'تاريخ التسليم',
+        delivery_date: 'تاريخ التسليم',
+        isUrgent: 'طارئ',
+        is_urgent: 'طارئ',
+        priority: 'الأولوية',
+        supplierId: 'المعمل',
+        supplier_id: 'المعمل',
+        designerId: 'المصمم',
+        designer_id: 'المصمم',
+        instructions: 'التعليمات / الملاحظات',
+        items: 'الخدمات المطلوبة',
+        totalPrice: 'السعر الإجمالي',
+        total_price: 'السعر الإجمالي',
+        cost: 'التكلفة الإجمالية',
+        designPrice: 'مستحقات المصمم',
+        design_price: 'مستحقات المصمم'
+    };
+
+    const renderProposalValue = (key: string, val: unknown) => {
+        if (val === undefined || val === null || val === '') return '—';
+        if (key === 'isUrgent' || key === 'is_urgent') {
+            return val === true || String(val) === 'true' ? 'نعم' : 'لا';
+        }
+        if (key === 'supplierId' || key === 'supplier_id') {
+            const idStr = typeof val === 'string' ? val : String(val);
+            return suppliers.find(s => s.id === idStr)?.name || idStr;
+        }
+        if (key === 'designerId' || key === 'designer_id') {
+            const idStr = typeof val === 'string' ? val : String(val);
+            return users.find(u => u.id === idStr)?.name || idStr;
+        }
+        if (key === 'items') {
+            if (isProposalItemArray(val)) {
+                return val.map(it => {
+                    const teeth = it.teethNumbers && it.teethNumbers.length > 0
+                        ? it.teethNumbers.join(', ')
+                        : 'بدون';
+                    return `${it.serviceType} [أسنان: ${teeth}]`;
+                }).join(' ، ');
+            }
+            return String(val);
+        }
+        return String(val);
+    };
+
+    const handleReviewSubmit = async (action: 'approve' | 'reject') => {
+        if (!reviewingProposal) return;
+        setIsSubmittingReview(true);
+        try {
+            await db.adminReviewOrderEdit(reviewingProposal.id, action, adminNotes.trim() || null);
+            toast.success(action === 'approve' ? 'تمت الموافقة على التعديل وتطبيقه بنجاح' : 'تم رفض طلب التعديل بنجاح');
+            setReviewingProposal(null);
+            setAdminNotes('');
+            setRefreshKey(prev => prev + 1);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'فشل في مراجعة التعديل';
+            toast.error(msg);
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
+
     // Build flat list of unresolved comments across all orders with comments
     const unresolvedCommentItems = canViewCommentAlerts
         ? ordersWithComments.flatMap(order =>
@@ -484,19 +600,6 @@ export default function DashboardNew() {
                 .map(c => ({ comment: c, order }))
         )
         : [];
-
-    function parseDeliveryDateAuditComment(text: string) {
-        if (!text.startsWith(`${DELIVERY_DATE_AUDIT_PREFIX}|`)) return null;
-
-        const [, oldDate, newDate, userId, userName, role] = text.split('|');
-        return {
-            oldDate: normalizeDeliveryDate(oldDate || ''),
-            newDate: normalizeDeliveryDate(newDate || ''),
-            userId: userId || '',
-            userName: userName || 'Unknown',
-            role: role || '',
-        };
-    }
 
     const representativeUserIds = useMemo(() => {
         return new Set(
@@ -804,6 +907,69 @@ export default function DashboardNew() {
         }
     };
 
+    const handleReturnToDesigner = async (order: Order) => {
+        try {
+            const nextComments = [...(order.comments || [])];
+            nextComments.push({
+                id: crypto.randomUUID(),
+                text: `[رد الإدارة]: تم حل المشكلة وإرجاع الحالة للمصمم`,
+                userId: user?.id || 'system',
+                userName: user?.name || 'System',
+                createdAt: new Date().toISOString()
+            });
+            const updatedOrder = await db.updateOrder(order.id, {
+                technicianStatus: 'Pending',
+                comments: nextComments
+            });
+            if (updatedOrder) {
+                setOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+                setDesignerOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+                toast.success('تم إرجاع الحالة للمصمم بنجاح');
+                if (designerFeedbackOrders.length <= 1) {
+                    setActiveModal(null);
+                }
+            }
+        } catch (error) {
+            console.error('Error returning order to designer:', error);
+            toast.error('حدث خطأ أثناء إرجاع الحالة');
+        }
+    };
+
+    const handleRejectDesignerCase = async (order: Order) => {
+        if (!confirm('هل أنت متأكد من رفض الحالة بالكامل بناءً على تقييم المصمم؟ سيتم تغيير الحالة إلى مرفوضة نهائياً.')) {
+            return;
+        }
+        try {
+            const nextComments = [...(order.comments || [])];
+            nextComments.push({
+                id: crypto.randomUUID(),
+                text: `[رد الإدارة]: تم رفض الحالة نهائياً من قبل المعمل بناءً على تقييم المصمم`,
+                userId: user?.id || 'system',
+                userName: user?.name || 'System',
+                createdAt: new Date().toISOString()
+            });
+            
+            // First update comments, then status
+            await db.updateOrder(order.id, { comments: nextComments });
+            const updatedOrder = await db.updateOrderStatus(order.id, 'Rejected', {
+                userId: user?.id,
+                actorRole: user?.role
+            });
+
+            if (updatedOrder) {
+                setOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+                setDesignerOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
+                toast.success('تم رفض الحالة بنجاح');
+                if (designerFeedbackOrders.length <= 1) {
+                    setActiveModal(null);
+                }
+            }
+        } catch (error) {
+            console.error('Error rejecting designer case:', error);
+            toast.error('حدث خطأ أثناء رفض الحالة');
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex items-center justify-center h-64">
@@ -986,7 +1152,7 @@ export default function DashboardNew() {
             <div className="space-y-6">
 
                 {/* 1. URGENT / ATTENTION (Red/Orange) */}
-                {(rejectedOrders.length > 0 || returnedOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0) && (
+                {(rejectedOrders.length > 0 || returnedOrders.length > 0 || needsAttentionOrders.length > 0 || doctorRequests.length > 0 || designerFeedbackOrders.length > 0) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <AlertTriangle size={16} />
@@ -1042,6 +1208,16 @@ export default function DashboardNew() {
                                     colorClass="yellow"
                                     useModal
                                     onExpand={() => setActiveModal('needs-attention')}
+                                />
+                            )}
+                            {designerFeedbackOrders.length > 0 && (
+                                <AlertCard
+                                    title="ملاحظات المصممين"
+                                    count={designerFeedbackOrders.length}
+                                    icon={AlertTriangle}
+                                    colorClass="yellow"
+                                    useModal
+                                    onExpand={() => setActiveModal('designer-feedback')}
                                 />
                             )}
                         </div>
@@ -1151,6 +1327,38 @@ export default function DashboardNew() {
                                     colorClass="yellow"
                                     useModal
                                     onExpand={() => setActiveModal('delivery-change-review')}
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. REPRESENTATIVE EDITS AND PROPOSALS REVIEW (Admin Only) */}
+                {user?.role === 'admin' && (pendingProposals.length > 0 || appliedEdits.length > 0) && (
+                    <div>
+                        <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
+                            <AlertTriangle size={16} />
+                            مراجعة تعديلات الأوردرات من المندوبين
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {pendingProposals.length > 0 && (
+                                <AlertCard
+                                    title="طلبات تعديل معلقة لموافقة الأدمن"
+                                    count={pendingProposals.length}
+                                    icon={AlertTriangle}
+                                    colorClass="red"
+                                    useModal
+                                    onExpand={() => setActiveModal('pending-proposals')}
+                                />
+                            )}
+                            {appliedEdits.length > 0 && (
+                                <AlertCard
+                                    title="سجل التعديلات والطلبات المنتهية"
+                                    count={appliedEdits.length}
+                                    icon={CheckCircle}
+                                    colorClass="blue"
+                                    useModal
+                                    onExpand={() => setActiveModal('applied-edits')}
                                 />
                             )}
                         </div>
@@ -1727,6 +1935,48 @@ export default function DashboardNew() {
             </OrderListModal>
 
             <OrderListModal
+                title="ملاحظات المصممين"
+                isOpen={activeModal === 'designer-feedback'}
+                onClose={() => setActiveModal(null)}
+            >
+                {designerFeedbackOrders.map(order => {
+                    const designerReasonComment = [...(order.comments || [])].reverse().find(c => c.text.includes('[رفض المصمم]') || c.text.includes('[طلب تفاصيل]'));
+                    const designerReasonText = designerReasonComment ? designerReasonComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '') : 'لم يتم توضيح سبب محدد.';
+
+                    return (
+                        <OrderListItem
+                            key={order.id}
+                            order={order}
+                            labName={getLabName(order.supplierId)}
+                            designerName={getDesignerName(order.designerId)}
+                            customDetails={
+                                <div className="bg-orange-50 dark:bg-orange-900/20 p-2 rounded text-sm text-orange-800 dark:text-orange-200 mt-2 border border-orange-100 dark:border-orange-800/50">
+                                    <span className="font-bold">سبب المصمم: </span>
+                                    <span>{designerReasonText}</span>
+                                </div>
+                            }
+                            customActions={
+                                <>
+                                    <button
+                                        onClick={() => handleReturnToDesigner(order)}
+                                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                                    >
+                                        إرجاع للمصمم
+                                    </button>
+                                    <button
+                                        onClick={() => handleRejectDesignerCase(order)}
+                                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                                    >
+                                        رفض الحالة بالكامل
+                                    </button>
+                                </>
+                            }
+                        />
+                    );
+                })}
+            </OrderListModal>
+
+            <OrderListModal
                 title="في مرحلة التصميم/الموافقة"
                 isOpen={activeModal === 'design'}
                 onClose={() => setActiveModal(null)}
@@ -1906,16 +2156,244 @@ export default function DashboardNew() {
                 />
             )}
 
+            {/* Pending Proposals List Modal */}
+            <OrderListModal
+                title="طلبات تعديل معلقة لموافقة الأدمن"
+                isOpen={activeModal === 'pending-proposals'}
+                onClose={() => setActiveModal(null)}
+                showDoctor
+            >
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {pendingProposals.map(proposal => {
+                        const relOrder = orders.find(o => o.id === proposal.orderId);
+                        const repUser = users.find(u => u.id === proposal.changedBy);
+                        return (
+                            <div key={proposal.id} className="p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-right" dir="rtl">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="font-mono text-xs text-blue-500 font-bold">#{relOrder?.caseId || '—'}</span>
+                                        <span className="font-bold text-sm text-gray-800 dark:text-white">{relOrder?.patientName || '—'}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 space-y-1">
+                                        <p>المندوب: {repUser?.name || 'غير معروف'} | السبب: {ORDER_EDIT_REASON_LABELS_AR[proposal.reason as OrderEditReasonCode] || proposal.reason}</p>
+                                        <p className="text-[10px] text-gray-400">تاريخ الطلب: {new Date(proposal.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setReviewingProposal(proposal);
+                                        setActiveModal(null);
+                                    }}
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all hover:scale-105"
+                                >
+                                    مراجعة التعديلات
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+            </OrderListModal>
+
+            {/* Applied Edits List Modal */}
+            <OrderListModal
+                title="آخر التعديلات المطبقة على الحالات"
+                isOpen={activeModal === 'applied-edits'}
+                onClose={() => setActiveModal(null)}
+                showDoctor
+            >
+                <div className="divide-y divide-gray-100 dark:divide-gray-700 max-h-[70vh] overflow-y-auto">
+                    {appliedEdits.map(edit => {
+                        const relOrder = orders.find(o => o.id === edit.orderId);
+                        const repUser = users.find(u => u.id === edit.changedBy);
+                        const metadata = edit.metadata;
+                        let changesObj: Record<string, unknown> = {};
+                        if (isRecord(metadata) && isRecord(metadata.changes)) {
+                            changesObj = metadata.changes;
+                        }
+                        const changedFields = Object.keys(changesObj).map(k => FIELD_NAMES_AR[k] || k).join(' ، ');
+
+                        const isApproved = edit.approvalStatus === 'approved';
+                        const isRejected = edit.approvalStatus === 'rejected';
+
+                        let statusBadge = (
+                            <span className="text-[10px] bg-blue-105 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                                تعديل مباشر
+                            </span>
+                        );
+                        if (isApproved) {
+                            statusBadge = (
+                                <span className="text-[10px] bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-bold">
+                                    تمت الموافقة
+                                </span>
+                            );
+                        } else if (isRejected) {
+                            statusBadge = (
+                                <span className="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-bold">
+                                    تم الرفض
+                                </span>
+                            );
+                        }
+
+                        return (
+                            <div key={edit.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-right" dir="rtl">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-mono text-xs text-blue-500 font-bold">#{relOrder?.caseId || '—'}</span>
+                                            <span className="font-bold text-sm text-gray-800 dark:text-white">{relOrder?.patientName || '—'}</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">المندوب: {repUser?.name || 'غير معروف'}</p>
+                                    </div>
+                                    {statusBadge}
+                                </div>
+                                <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                                    <p><strong className="text-gray-700 dark:text-gray-200">الحقول المعدلة:</strong> {changedFields || 'لا يوجد'}</p>
+                                    {edit.notes && <p><strong className="text-gray-700 dark:text-gray-200">ملاحظات التعديل:</strong> {edit.notes}</p>}
+                                    <p className="text-[10px] text-gray-400">تاريخ التعديل: {new Date(edit.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </OrderListModal>
+
+            {/* Proposal Review Detail Modal */}
+            {reviewingProposal && (() => {
+                const relOrder = orders.find(o => o.id === reviewingProposal.orderId);
+                const repUser = users.find(u => u.id === reviewingProposal.changedBy);
+                const metadata = reviewingProposal.metadata;
+                let changes: Record<string, unknown> = {};
+                let oldValues: Record<string, unknown> = {};
+                if (isRecord(metadata)) {
+                    if (isRecord(metadata.changes)) {
+                        changes = metadata.changes;
+                    }
+                    if (isRecord(metadata.oldValues)) {
+                        oldValues = metadata.oldValues;
+                    }
+                }
+                const changedKeys = Object.keys(changes);
+
+                return (
+                    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+                        <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-2xl shadow-2xl border border-gray-150 dark:border-gray-700 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+                            <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">مراجعة طلب التعديل المعلق</h2>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        الحالة: #{relOrder?.caseId || '—'} - {relOrder?.patientName || '—'}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setReviewingProposal(null);
+                                        setAdminNotes('');
+                                    }}
+                                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="p-6 overflow-y-auto space-y-6 flex-1 text-right" dir="rtl">
+                                <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-100 dark:border-gray-800">
+                                    <div>
+                                        <span className="text-xs text-gray-400 block mb-1">المندوب طالب التعديل</span>
+                                        <span className="font-bold text-sm text-gray-800 dark:text-white">{repUser?.name || 'غير معروف'}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-xs text-gray-400 block mb-1">تاريخ الطلب</span>
+                                        <span className="font-bold text-sm text-gray-800 dark:text-white">
+                                            {new Date(reviewingProposal.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="text-xs text-gray-400 block mb-1">سبب التعديل</span>
+                                        <span className="font-bold text-sm text-gray-800 dark:text-white">
+                                            {ORDER_EDIT_REASON_LABELS_AR[reviewingProposal.reason as OrderEditReasonCode] || reviewingProposal.reason}
+                                            {reviewingProposal.notes && <span className="block text-xs font-normal text-gray-500 mt-1">{reviewingProposal.notes}</span>}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300">التغييرات المطلوبة:</h3>
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                        <table className="w-full text-right text-xs">
+                                            <thead className="bg-gray-50 dark:bg-gray-900/80 text-gray-500 dark:text-gray-400 font-bold border-b border-gray-200 dark:border-gray-700">
+                                                <tr>
+                                                    <th className="p-3 w-1/4">الحقل</th>
+                                                    <th className="p-3 w-3/8 text-red-600 dark:text-red-400">القيمة الحالية (القديمة)</th>
+                                                    <th className="p-3 w-3/8 text-green-600 dark:text-green-400">القيمة المقترحة (الجديدة)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-150 dark:divide-gray-700">
+                                                {changedKeys.map(key => (
+                                                    <tr key={key} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                                                        <td className="p-3 font-bold text-gray-700 dark:text-gray-300">{FIELD_NAMES_AR[key] || key}</td>
+                                                        <td className="p-3 font-mono text-gray-500 break-words line-through bg-red-50/20">{renderProposalValue(key, oldValues[key])}</td>
+                                                        <td className="p-3 font-mono font-bold text-gray-800 dark:text-gray-100 break-words bg-green-50/20">{renderProposalValue(key, changes[key])}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300">ملاحظات الأدمن للرد على الطلب (اختياري)</label>
+                                    <textarea
+                                        value={adminNotes}
+                                        onChange={e => setAdminNotes(e.target.value)}
+                                        placeholder="اكتب ملاحظاتك هنا للمندوب..."
+                                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-white resize-none"
+                                        rows={3}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex justify-between items-center gap-3">
+                                <div className="flex gap-2">
+                                    <Button
+                                        onClick={() => handleReviewSubmit('approve')}
+                                        disabled={isSubmittingReview}
+                                        className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                                    >
+                                        {isSubmittingReview ? 'جاري الحفظ...' : '✓ موافقة وتطبيق'}
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleReviewSubmit('reject')}
+                                        disabled={isSubmittingReview}
+                                        className="bg-red-600 hover:bg-red-700 text-white font-bold"
+                                    >
+                                        {isSubmittingReview ? 'جاري الحفظ...' : '✕ رفض التعديل'}
+                                    </Button>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setReviewingProposal(null);
+                                        setAdminNotes('');
+                                    }}
+                                    disabled={isSubmittingReview}
+                                >
+                                    إلغاء
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
             {editingDeliveryOrder && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-md shadow-xl border border-gray-100 dark:border-gray-700">
-                        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 text-right" dir="rtl">
                             <h2 className="text-lg font-bold text-gray-800 dark:text-white">تعديل تاريخ التسليم</h2>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                                 #{editingDeliveryOrder.caseId} - {editingDeliveryOrder.patientName}
                             </p>
                         </div>
-                        <div className="p-4 space-y-4">
+                        <div className="p-4 space-y-4 text-right" dir="rtl">
                             <Input
                                 type="date"
                                 label="تاريخ التسليم الجديد"
@@ -1945,7 +2423,7 @@ export default function DashboardNew() {
                     </div>
                 </div>
             )}
-        </div >
+            </div>
     );
 }
 

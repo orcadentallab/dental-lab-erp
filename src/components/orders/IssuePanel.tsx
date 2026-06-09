@@ -3,6 +3,10 @@ import { AlertTriangle } from 'lucide-react';
 
 export type IssueCauseCategory = 'lab' | 'doctor' | 'scan' | 'design' | 'communication' | 'other';
 
+const isIssueCauseCategory = (val: string): val is IssueCauseCategory => {
+    return ['lab', 'doctor', 'scan', 'design', 'communication', 'other'].includes(val);
+};
+
 interface Props {
     issueType: 'returned' | 'rejected' | 'cancelled' | 'redo';
     onSubmit: (cause: IssueCauseCategory, notes: string) => void;
@@ -40,7 +44,12 @@ export default function IssuePanel({ issueType, onSubmit, onCancel, isLoading }:
                 <label className="block text-xs font-bold text-surface-600 mb-1">نوع السبب</label>
                 <select
                     value={cause}
-                    onChange={(e) => setCause(e.target.value as IssueCauseCategory)}
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        if (isIssueCauseCategory(val)) {
+                            setCause(val);
+                        }
+                    }}
                     className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
                 >
                     {Object.entries(CAUSE_LABELS).map(([k, v]) => (

@@ -3,8 +3,6 @@ import { Search, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { db, type FinancialObligationReviewItem, type FinancialObligationsReviewParams } from '../../services/db';
 
-type SelectValue = string;
-
 const PAGE_SIZE = 25;
 
 const entityTypeLabels: Record<string, string> = {
@@ -61,16 +59,32 @@ const summarizeMetadata = (metadata: Record<string, unknown>) => {
     return parts.length > 0 ? parts.join(' • ') : '-';
 };
 
+const isEntityType = (val: string): val is NonNullable<FinancialObligationsReviewParams['entityType']> => {
+    return ['all', 'doctor', 'external_lab', 'designer'].includes(val);
+};
+
+const isDirection = (val: string): val is NonNullable<FinancialObligationsReviewParams['direction']> => {
+    return ['all', 'receivable', 'payable'].includes(val);
+};
+
+const isStatus = (val: string): val is NonNullable<FinancialObligationsReviewParams['status']> => {
+    return ['all', 'unpaid', 'partially_paid', 'paid', 'void', 'written_off'].includes(val);
+};
+
+const isTriggerType = (val: string): val is NonNullable<FinancialObligationsReviewParams['triggerType']> => {
+    return ['all', 'doctor_delivered', 'external_lab_ready', 'external_lab_issue_settlement', 'designer_approved', 'manual_adjustment'].includes(val);
+};
+
 export default function FinancialObligationsReview() {
     const [items, setItems] = useState<FinancialObligationReviewItem[]>([]);
     const [count, setCount] = useState(0);
     const [page, setPage] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [entityType, setEntityType] = useState<SelectValue>('all');
-    const [direction, setDirection] = useState<SelectValue>('all');
-    const [status, setStatus] = useState<SelectValue>('all');
-    const [triggerType, setTriggerType] = useState<SelectValue>('all');
+    const [entityType, setEntityType] = useState<NonNullable<FinancialObligationsReviewParams['entityType']>>('all');
+    const [direction, setDirection] = useState<NonNullable<FinancialObligationsReviewParams['direction']>>('all');
+    const [status, setStatus] = useState<NonNullable<FinancialObligationsReviewParams['status']>>('all');
+    const [triggerType, setTriggerType] = useState<NonNullable<FinancialObligationsReviewParams['triggerType']>>('all');
     const [createdFrom, setCreatedFrom] = useState('');
     const [createdTo, setCreatedTo] = useState('');
     const [search, setSearch] = useState('');
@@ -80,10 +94,10 @@ export default function FinancialObligationsReview() {
     const params = useMemo<FinancialObligationsReviewParams>(() => ({
         page,
         pageSize: PAGE_SIZE,
-        entityType: entityType as FinancialObligationsReviewParams['entityType'],
-        direction: direction as FinancialObligationsReviewParams['direction'],
-        status: status as FinancialObligationsReviewParams['status'],
-        triggerType: triggerType as FinancialObligationsReviewParams['triggerType'],
+        entityType,
+        direction,
+        status,
+        triggerType,
         createdFrom,
         createdTo,
         search,
@@ -120,7 +134,7 @@ export default function FinancialObligationsReview() {
         };
     }, [params]);
 
-    const resetToFirstPage = (setter: (value: string) => void) => (value: string) => {
+    const resetToFirstPage = <T,>(setter: (value: T) => void) => (value: T) => {
         setPage(1);
         setter(value);
     };
@@ -154,16 +168,56 @@ export default function FinancialObligationsReview() {
                             aria-label="بحث الالتزامات المالية"
                         />
                     </div>
-                    <select aria-label="نوع الجهة" value={entityType} onChange={event => resetToFirstPage(setEntityType)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+                    <select
+                        aria-label="نوع الجهة"
+                        value={entityType}
+                        onChange={event => {
+                            const val = event.target.value;
+                            if (isEntityType(val)) {
+                                resetToFirstPage(setEntityType)(val);
+                            }
+                        }}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                    >
                         {Object.entries(entityTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                    <select aria-label="الاتجاه" value={direction} onChange={event => resetToFirstPage(setDirection)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+                    <select
+                        aria-label="الاتجاه"
+                        value={direction}
+                        onChange={event => {
+                            const val = event.target.value;
+                            if (isDirection(val)) {
+                                resetToFirstPage(setDirection)(val);
+                            }
+                        }}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                    >
                         {Object.entries(directionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                    <select aria-label="الحالة" value={status} onChange={event => resetToFirstPage(setStatus)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+                    <select
+                        aria-label="الحالة"
+                        value={status}
+                        onChange={event => {
+                            const val = event.target.value;
+                            if (isStatus(val)) {
+                                resetToFirstPage(setStatus)(val);
+                            }
+                        }}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                    >
                         {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                    <select aria-label="المحفز" value={triggerType} onChange={event => resetToFirstPage(setTriggerType)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
+                    <select
+                        aria-label="المحفز"
+                        value={triggerType}
+                        onChange={event => {
+                            const val = event.target.value;
+                            if (isTriggerType(val)) {
+                                resetToFirstPage(setTriggerType)(val);
+                            }
+                        }}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                    >
                         {Object.entries(triggerTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                     <input aria-label="من تاريخ الإنشاء" type="date" value={createdFrom} onChange={event => resetToFirstPage(setCreatedFrom)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />

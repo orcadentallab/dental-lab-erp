@@ -4,11 +4,11 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type Service } from '../services/db';
-import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown } from 'lucide-react';
+import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown, Receipt } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 import { statementService, type StatementResult } from '../services/statementService';
-import { generateDoctorStatementPDF, generateBulkStatementsPDF } from '../services/pdfService';
+import { generateDoctorStatementPDF, generateBulkStatementsPDF, generateCasesInvoicePDF, type CasesInvoiceItem } from '../services/pdfService';
 import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
@@ -951,6 +951,30 @@ export default function Accounts() {
         await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO);
     };
 
+    const handleExportCasesInvoice = async () => {
+        if (!selectedEntityId || !individualStatement) return;
+        const entityName = getSelectedEntityName();
+        const doctor = doctors.find(d => d.id === selectedEntityId);
+
+        const debitItems: CasesInvoiceItem[] = individualStatement.items
+            .filter(i => !i.isHidden && i.type === 'debit')
+            .map(i => ({
+                id: i.id,
+                date: i.date,
+                description: i.description,
+                services: i.services,
+                count: i.count,
+                amount: i.amount
+            }));
+
+        await generateCasesInvoicePDF(
+            debitItems,
+            { name: entityName || '', code: doctor?.doctorCode },
+            dateRange,
+            DEFAULT_LAB_INFO
+        );
+    };
+
     // -- RENDER HELPERS --
 
     const filteredSummary = useMemo(() => {
@@ -1713,6 +1737,15 @@ export default function Accounts() {
                     <button onClick={handleExportStatementPDF} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
                         <FileDown size={18} /> PDF
                     </button>
+                    {activeTab === 'doctors' && (
+                        <button
+                            onClick={handleExportCasesInvoice}
+                            className="bg-rose-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-700 shadow-lg shadow-rose-200 transition-all"
+                            title="استخراج فاتورة مطالبة (الحالات فقط بدون المدفوعات)"
+                        >
+                            <Receipt size={18} /> فاتورة
+                        </button>
+                    )}
                 </div>
             </div>
 

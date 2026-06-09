@@ -37,9 +37,9 @@ export default function Sidebar() {
             const checkUnregistered = async () => {
                 try {
                     const response = await db.getOrders();
-                    const allOrders = Array.isArray(response) ? response : (response as any).data || [];
+                    const allOrders = Array.isArray(response) ? response : [];
                     const statuses = ['Delivered', 'Completed', 'Returned for Adjustments', 'Rejected'];
-                    const unreg = allOrders.filter((o: any) => !o.isRegistered && statuses.includes(o.status));
+                    const unreg = allOrders.filter((o) => !o.isRegistered && statuses.includes(o.status));
                     setUnregisteredCount(unreg.length);
                 } catch (error) {
                     console.error('Failed to fetch unregistered orders', error);

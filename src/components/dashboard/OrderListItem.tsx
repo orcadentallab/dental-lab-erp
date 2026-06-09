@@ -21,6 +21,8 @@ interface OrderListItemProps {
     showRegister?: boolean;
     onAccept?: (order: Order) => void;
     onArchive?: (orderId: string) => void;
+    customDetails?: React.ReactNode;
+    customActions?: React.ReactNode;
 }
 
 const OrderListItem = React.memo(function OrderListItem({
@@ -38,7 +40,9 @@ const OrderListItem = React.memo(function OrderListItem({
     onRegister,
     showRegister = false,
     onAccept,
-    onArchive
+    onArchive,
+    customDetails,
+    customActions
 }: OrderListItemProps) {
     const navigate = useNavigate();
     const displayDate = getOrderCardDisplayDate(order);
@@ -133,59 +137,71 @@ const OrderListItem = React.memo(function OrderListItem({
                 </div>
             </div>
 
+            {customDetails && (
+                <div className="mt-2 w-full">
+                    {customDetails}
+                </div>
+            )}
+
             {/* Actions */}
             <div className="flex gap-2 mt-2 md:mt-0 md:mr-4 justify-end">
-                {(order.status === 'Rejected' || order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected') && onArchive && (
-                    <button
-                        onClick={() => {
-                            if (confirm('هل أنت متأكد من أرشفة هذه الحالة؟')) {
-                                onArchive(order.id);
-                            }
-                        }}
-                        className="flex-1 md:flex-none justify-center text-xs bg-surface-100 hover:bg-red-50 text-surface-600 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-surface-200"
-                        title="أرشفة"
-                    >
-                        <Trash2 size={14} />
-                        <span>أرشفة</span>
-                    </button>
-                )}
-                <button
-                    onClick={handleNavigate}
-                    className="flex-1 md:flex-none justify-center text-xs font-bold bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
-                >
-                    تفاصيل
-                </button>
-                {onEditDeliveryDate && (
-                    <button
-                        onClick={() => onEditDeliveryDate(order)}
-                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
-                    >
-                        تعديل التسليم
-                    </button>
-                )}
-                {onMarkReviewed && (
-                    <button
-                        onClick={onMarkReviewed}
-                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
-                    >
-                        تمت المراجعة
-                    </button>
-                )}
-                {showRegister && !order.isRegistered && order.status === 'Delivered' && onRegister && (
-                    <button
-                        onClick={() => onRegister(order.id)}
-                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
-                    >
-                        تسجيل
-                    </button>
-                )}
-                {onAccept && (
-                    <button
-                        onClick={() => onAccept(order)}
-                        className="flex-1 md:flex-none justify-center text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm shadow-teal-200"
-                    >
-                        قبول الحالة
-                    </button>
+                {customActions ? (
+                    customActions
+                ) : (
+                    <>
+                        {(order.status === 'Rejected' || order.status === 'Returned for Adjustments' || order.technicianStatus === 'Rejected') && onArchive && (
+                            <button
+                                onClick={() => {
+                                    if (confirm('هل أنت متأكد من أرشفة هذه الحالة؟')) {
+                                        onArchive(order.id);
+                                    }
+                                }}
+                                className="flex-1 md:flex-none justify-center text-xs bg-surface-100 hover:bg-red-50 text-surface-600 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1 border border-surface-200"
+                                title="أرشفة"
+                            >
+                                <Trash2 size={14} />
+                                <span>أرشفة</span>
+                            </button>
+                        )}
+                        <button
+                            onClick={handleNavigate}
+                            className="flex-1 md:flex-none justify-center text-xs font-bold bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                        >
+                            تفاصيل
+                        </button>
+                        {onEditDeliveryDate && (
+                            <button
+                                onClick={() => onEditDeliveryDate(order)}
+                                className="flex-1 md:flex-none justify-center text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                            >
+                                تعديل التسليم
+                            </button>
+                        )}
+                        {onMarkReviewed && (
+                            <button
+                                onClick={onMarkReviewed}
+                                className="flex-1 md:flex-none justify-center text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                            >
+                                تمت المراجعة
+                            </button>
+                        )}
+                        {showRegister && !order.isRegistered && order.status === 'Delivered' && onRegister && (
+                            <button
+                                onClick={() => onRegister(order.id)}
+                                className="flex-1 md:flex-none justify-center text-xs font-bold bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"
+                            >
+                                تسجيل
+                            </button>
+                        )}
+                        {onAccept && (
+                            <button
+                                onClick={() => onAccept(order)}
+                                className="flex-1 md:flex-none justify-center text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm shadow-teal-200"
+                            >
+                                قبول الحالة
+                            </button>
+                        )}
+                    </>
                 )}
             </div>
         </div>

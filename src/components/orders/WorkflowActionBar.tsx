@@ -61,7 +61,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     });
 
     const issueActions = getIssueActions(issueState, userRole);
-    const canRedo = userRole === 'admin'
+    const canRedo = (userRole === 'admin' || userRole === 'rep')
         && !!onRedo
         && order.issueState !== 'cancelled'
         && order.issueState !== 'redo';
@@ -69,11 +69,13 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
-            if (issueMenuRef.current && !issueMenuRef.current.contains(e.target as Node)) {
-                setShowIssueMenu(false);
-            }
-            if (moreMenuRef.current && !moreMenuRef.current.contains(e.target as Node)) {
-                setShowMore(false);
+            if (e.target instanceof Node) {
+                if (issueMenuRef.current && !issueMenuRef.current.contains(e.target)) {
+                    setShowIssueMenu(false);
+                }
+                if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+                    setShowMore(false);
+                }
             }
         };
         document.addEventListener('mousedown', handler);
