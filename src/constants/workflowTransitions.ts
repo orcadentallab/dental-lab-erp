@@ -170,7 +170,7 @@ export function getIssueActions(
         });
     }
 
-    if (userRole === 'admin' || userRole === 'rep') {
+    if (userRole === 'admin' || userRole === 'representative') {
         actions.push({
             id: 'reject',
             label: 'رفض',

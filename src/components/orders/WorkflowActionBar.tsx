@@ -61,7 +61,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     });
 
     const issueActions = getIssueActions(issueState, userRole);
-    const canRedo = (userRole === 'admin' || userRole === 'rep')
+    const canRedo = (userRole === 'admin' || userRole === 'representative')
         && !!onRedo
         && order.issueState !== 'cancelled'
         && order.issueState !== 'redo';
