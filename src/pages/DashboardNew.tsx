@@ -324,7 +324,8 @@ export default function DashboardNew() {
 
     // Designer feedback orders (Rejected or NeedDetails)
     const designerFeedbackOrders = orders.filter(o =>
-        o.technicianStatus === 'Rejected' || o.technicianStatus === 'NeedDetails'
+        (o.technicianStatus === 'Rejected' || o.technicianStatus === 'NeedDetails') &&
+        !['Rejected', 'Delivered', 'Completed', 'Cancelled'].includes(o.status)
     );
 
     // Orders needing attention (PMMA requested by lab/designer)

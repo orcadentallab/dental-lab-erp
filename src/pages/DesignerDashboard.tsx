@@ -239,9 +239,13 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         try {
             const updates: Partial<Order> = { designStatus: decision };
             if (decision === 'accepted') updates.status = 'Under Design';
-            if (decision === 'waiting_approval') updates.status = 'Waiting Dr Approval';
+            if (decision === 'waiting_approval') {
+                updates.status = 'Waiting Dr Approval';
+                updates.technicianStatus = 'NeedDetails';
+            }
             if (decision === 'returned') {
                 updates.status = 'Under Design';
+                updates.technicianStatus = 'Rejected';
             }
             if (notes) {
                 updates.comments = [
@@ -340,6 +344,18 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     const filteredOrders = useMemo(() => {
         return orders.filter(order => {
+            // Filter out orders that the designer has already rejected or requested details for,
+            // or orders waiting for doctor approval.
+            if (
+                order.technicianStatus === 'Rejected' ||
+                order.technicianStatus === 'NeedDetails' ||
+                order.designStatus === 'waiting_approval' ||
+                order.designStatus === 'returned' ||
+                order.status === 'Waiting Dr Approval'
+            ) {
+                return false;
+            }
+
             const s = (order.designStatus || 'pending');
             const matchesStatus = statusFilter === 'all' || s === statusFilter;
             const matchesDesigner = designerFilter === 'all' || order.designerId === designerFilter;
