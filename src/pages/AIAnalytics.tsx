@@ -6,7 +6,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback } from 'react';
 import { Brain, RefreshCw, Clock, Shield, AlertTriangle, ChevronDown, FileText } from 'lucide-react';
-import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
+import { subMonths, startOfMonth, endOfMonth, format, subDays } from 'date-fns';
 import { analyticsService } from '../services/supabase/analyticsService';
 import clsx from 'clsx';
 import { db } from '../services/db';
@@ -34,6 +34,11 @@ export default function AIAnalytics() {
     const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
+    // Dynamic comparison period selection (defaults to MTD if early in the month)
+    const [comparisonPeriod, setComparisonPeriod] = useState<'month_to_date' | 'full_month' | 'last_7_days' | 'last_30_days'>(
+        new Date().getDate() < 25 ? 'month_to_date' : 'full_month'
+    );
+
     const [insights, setInsights] = useState<UIInsight[]>([]);
     const [executiveSummary, setExecutiveSummary] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -49,11 +54,52 @@ export default function AIAnalytics() {
             const today = new Date();
             const formatDate = (d: Date) => format(d, 'yyyy-MM-dd');
 
-            // Date Ranges
-            const curMonthStart = formatDate(startOfMonth(today));
-            const curMonthEnd = formatDate(endOfMonth(today));
-            const prevMonthStart = formatDate(startOfMonth(subMonths(today, 1)));
-            const prevMonthEnd = formatDate(endOfMonth(subMonths(today, 1)));
+            let curStart = '';
+            let curEnd = '';
+            let prevStart = '';
+            let prevEnd = '';
+            let currentLabel = '';
+            let previousLabel = '';
+
+            if (comparisonPeriod === 'month_to_date') {
+                curStart = formatDate(startOfMonth(today));
+                curEnd = formatDate(today);
+                
+                const prevSameDay = subMonths(today, 1);
+                prevStart = formatDate(startOfMonth(prevSameDay));
+                prevEnd = formatDate(prevSameDay);
+                
+                currentLabel = `الشهر الحالي حتى اليوم (يوم ${format(today, 'd')})`;
+                previousLabel = `الشهر السابق حتى نفس اليوم (يوم ${format(prevSameDay, 'd')})`;
+            } else if (comparisonPeriod === 'last_7_days') {
+                curStart = formatDate(subDays(today, 6));
+                curEnd = formatDate(today);
+
+                prevStart = formatDate(subDays(today, 13));
+                prevEnd = formatDate(subDays(today, 7));
+
+                currentLabel = 'آخر 7 أيام';
+                previousLabel = 'الـ 7 أيام السابقة';
+            } else if (comparisonPeriod === 'last_30_days') {
+                curStart = formatDate(subDays(today, 29));
+                curEnd = formatDate(today);
+
+                prevStart = formatDate(subDays(today, 59));
+                prevEnd = formatDate(subDays(today, 30));
+
+                currentLabel = 'آخر 30 يوم';
+                previousLabel = 'الـ 30 يوم السابقة';
+            } else {
+                // full_month
+                curStart = formatDate(startOfMonth(today));
+                curEnd = formatDate(endOfMonth(today));
+                
+                prevStart = formatDate(startOfMonth(subMonths(today, 1)));
+                prevEnd = formatDate(endOfMonth(subMonths(today, 1)));
+
+                currentLabel = 'الشهر الحالي بالكامل';
+                previousLabel = 'الشهر السابق بالكامل';
+            }
 
             const [
                 summaryAll,
@@ -65,11 +111,11 @@ export default function AIAnalytics() {
                 orders
             ] = await Promise.all([
                 analyticsService.getSummary(), // All time
-                analyticsService.getSummary(curMonthStart, curMonthEnd),
-                analyticsService.getSummary(prevMonthStart, prevMonthEnd),
-                analyticsService.getTopDoctors(curMonthStart, curMonthEnd, 10),
-                analyticsService.getTopServices(curMonthStart, curMonthEnd, 10),
-                analyticsService.getTopDoctors(prevMonthStart, prevMonthEnd, 10),
+                analyticsService.getSummary(curStart, curEnd),
+                analyticsService.getSummary(prevStart, prevEnd),
+                analyticsService.getTopDoctors(curStart, curEnd, 10),
+                analyticsService.getTopServices(curStart, curEnd, 10),
+                analyticsService.getTopDoctors(prevStart, prevEnd, 10),
                 db.getAllOrdersUnpaginated()
             ]);
 
@@ -81,14 +127,14 @@ export default function AIAnalytics() {
                 !['delivered', 'rejected', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())
             ).length;
 
-            // Monthly Delivery Performance
-            // Orders CREATED this month that are already DELIVERED
-            const createdThisMonth = orders.filter(o => o.createdAt >= curMonthStart);
-            const deliveredFromThisMonth = createdThisMonth.filter(o => 
+            // Delivery Performance for current period
+            // Orders CREATED this period that are already DELIVERED
+            const createdThisPeriod = orders.filter(o => o.createdAt >= curStart && o.createdAt <= curEnd + 'T23:59:59');
+            const deliveredFromThisPeriod = createdThisPeriod.filter(o => 
                 ['delivered', 'completed'].includes((o.status || '').toLowerCase())
             ).length;
-            const monthlyDeliveryRate = createdThisMonth.length > 0 
-                ? (deliveredFromThisMonth / createdThisMonth.length) * 100 
+            const periodDeliveryRate = createdThisPeriod.length > 0 
+                ? (deliveredFromThisPeriod / createdThisPeriod.length) * 100 
                 : 0;
 
             // Set Chat Context
@@ -110,6 +156,9 @@ export default function AIAnalytics() {
 
             // Set Analysis Context
             setAnalyzeContext({
+                comparisonPeriod,
+                currentPeriodLabel: currentLabel,
+                previousPeriodLabel: previousLabel,
                 currentMonth: {
                     revenue: summaryCurrent.total_sales_value,
                     profit: summaryCurrent.total_sales_value - (summaryCurrent.production_costs + summaryCurrent.operating_expenses),
@@ -117,8 +166,8 @@ export default function AIAnalytics() {
                     operatingExpenses: summaryCurrent.operating_expenses,
                     completedOrders: summaryCurrent.completed_order_count,
                     pendingOrders: summaryCurrent.active_order_count,
-                    deliveryRate: monthlyDeliveryRate,
-                    newOrders: createdThisMonth.length
+                    deliveryRate: periodDeliveryRate,
+                    newOrders: createdThisPeriod.length
                 },
                 previousMonth: {
                     revenue: summaryPrev.total_sales_value,
@@ -142,7 +191,7 @@ export default function AIAnalytics() {
             console.error('Error loading data context:', err);
             setError('فشل تحميل بيانات المعمل');
         }
-    }, []);
+    }, [comparisonPeriod]);
 
     // Load Reports List
     const loadReports = async () => {
@@ -159,10 +208,6 @@ export default function AIAnalytics() {
                     parseAndSetInsights(latest);
                 }
             } else {
-                // Check if we need to generate one
-                // Ensure context is loaded first!
-                // We'll rely on the user clicking "Update" if it's empty, 
-                // OR we can trigger it if needed, but context might not be ready.
                 setReports([]);
             }
         } catch (err) {
@@ -172,6 +217,17 @@ export default function AIAnalytics() {
             setIsLoading(false);
         }
     };
+
+    // Load reports once on component mount
+    useEffect(() => {
+        loadReports();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Reload data context when comparisonPeriod changes
+    useEffect(() => {
+        loadDataContext();
+    }, [loadDataContext]);
 
     // Helper to parse content - handles both new (v2.0) and legacy formats
     const parseAndSetInsights = (report: InsightReport) => {
@@ -409,6 +465,23 @@ export default function AIAnalytics() {
                                         )}
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Period Selector */}
+                            <div className="relative">
+                                <select
+                                    value={comparisonPeriod}
+                                    onChange={(e) => setComparisonPeriod(e.target.value as any)}
+                                    className="appearance-none pl-9 pr-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl border border-gray-200 transition-colors text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                                >
+                                    <option value="month_to_date">مقارنة متكافئة (MTD)</option>
+                                    <option value="full_month">الشهر بالكامل</option>
+                                    <option value="last_7_days">آخر 7 أيام</option>
+                                    <option value="last_30_days">آخر 30 يوم</option>
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-gray-500">
+                                    <ChevronDown size={16} />
+                                </div>
                             </div>
 
                             <button

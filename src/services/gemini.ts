@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
 /**
  * Gemini Service - Frontend client for AI Analytics
  * Calls Supabase Edge Functions (NOT Gemini directly for security)
@@ -19,7 +18,12 @@ export interface ChatContext {
 }
 
 export interface AnalyzeContext {
-    // Current Monthly Data
+    // Period details for dynamic comparison
+    comparisonPeriod?: 'month_to_date' | 'full_month' | 'last_7_days' | 'last_30_days';
+    currentPeriodLabel?: string;
+    previousPeriodLabel?: string;
+
+    // Current Monthly Data (or chosen current period)
     currentMonth?: {
         revenue: number;
         profit: number;
@@ -30,7 +34,7 @@ export interface AnalyzeContext {
         deliveryRate: number;
         newOrders: number;
     };
-    // Previous Monthly Data
+    // Previous Monthly Data (or chosen comparison period)
     previousMonth?: {
         revenue: number;
         profit: number;

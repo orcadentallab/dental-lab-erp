@@ -27,9 +27,9 @@ const SYSTEM_PROMPT = `You are an AI analytics assistant for a Dental Lab.
 You MUST respond entirely in Arabic (العربية).
 
 MAIN TASKS:
-1. Monthly Comparison: Compare current month revenue/profit with previous month.
-2. Doctor Performance: Check "Top Doctors" of current month vs previous month. If a major doctor from last month is missing or has significantly lower orders, FLAG it as a risk (Account Management).
-3. Operations: Report on "Monthly Delivery Rate" (efficiency).
+1. Period Comparison: Compare the current period revenue/profit with the previous comparison period. Be smart: if it's Month-to-Date (MTD), explain that this is a fair comparison up to the current day of the month, avoiding false claims of "performance decline" when it is just a partial month comparison.
+2. Doctor Performance: Check "Top Doctors" of the current period vs the previous period. If a major doctor from the previous period is missing or has significantly lower orders, FLAG it as a risk (Account Management).
+3. Operations: Report on the current period's delivery rate (efficiency).
 4. Delays: Mention the count of "Delayed Orders" (> 7 days) as a critical operations insight.
 5. Debt: Use "All-time Pending Payments" for the actual financial debt context.
 
@@ -89,25 +89,40 @@ serve(async (req) => {
         const periodTo = today.toISOString().split('T')[0]
         const periodFrom = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
+        // Dynamic labels based on selected period
+        const periodType = context.comparisonPeriod || 'full_month';
+        const currentPeriodLabel = context.currentPeriodLabel || 'الشهر الحالي';
+        const previousPeriodLabel = context.previousPeriodLabel || 'الشهر السابق';
+
+        let periodExplanation = '';
+        if (periodType === 'month_to_date') {
+            periodExplanation = `\n⚠️ تنبيه هام للذكاء الاصطناعي: هذه مقارنة متكافئة لبيانات الشهر الحالي حتى اليوم (Month-to-Date) مقارنة بنفس الفترة من الشهر السابق (نفس عدد الأيام). لا تذكر أن هناك انخفاضاً حاداً في الأداء لمجرد أن الشهر لم ينته بعد، بل قارن الأرقام بإنصاف بناءً على الأيام المنقضية فقط.`;
+        } else if (periodType === 'last_7_days') {
+            periodExplanation = `\n⚠️ تنبيه هام للذكاء الاصطناعي: التحليل يخص آخر 7 أيام مقارنة بالـ 7 أيام التي سبقتها.`;
+        } else if (periodType === 'last_30_days') {
+            periodExplanation = `\n⚠️ تنبيه هام للذكاء الاصطناعي: التحليل يخص آخر 30 يوماً مقارنة بالـ 30 يوماً التي سبقتها.`;
+        }
+
         const userMessage = `
 تحليل معمل الأسنان للفترة الحالية والمقارنة السابقة:
+نوع فترة المقارنة: ${periodType} (${currentPeriodLabel} مقارنة بـ ${previousPeriodLabel})${periodExplanation}
 
 📊 الإجماليات (كل الوقت):
 - إجمالي الإيرادات: ${(context.allTime?.revenue || 0).toLocaleString()} ج.م
 - إجمالي الأرباح: ${(context.allTime?.profit || 0).toLocaleString()} ج.م
 - الديون المعلقة (حقيقية): ${(context.allTime?.pendingPayments || 0).toLocaleString()} ج.م (هذا هو المبلغ الذي لم يتم تحصيله بعد).
 
-📅 الشهر الحالي (نشاط الشهر):
-- إيرادات الشهر: ${(context.currentMonth?.revenue || 0).toLocaleString()} ج.م
-- أرباح الشهر: ${(context.currentMonth?.profit || 0).toLocaleString()} ج.م
+📅 ${currentPeriodLabel} (النشاط الحالي):
+- إيرادات الفترة الحالية: ${(context.currentMonth?.revenue || 0).toLocaleString()} ج.م
+- أرباح الفترة الحالية: ${(context.currentMonth?.profit || 0).toLocaleString()} ج.م
 - الطلبات الجديدة: ${context.currentMonth?.newOrders || 0} طلب.
 - الطلبات المكتملة: ${context.currentMonth?.completedOrders || 0} طلب.
-- نسبة الإنجاز والتسليم (لهذا الشهر): ${(context.currentMonth?.deliveryRate || 0).toFixed(1)}%
+- نسبة الإنجاز والتسليم (لهذه الفترة): ${(context.currentMonth?.deliveryRate || 0).toFixed(1)}%
 - طلبات متأخرة (> 7 أيام بدون تسليم): ${context.delayedOrdersCount || 0} طلب.
 
-📆 الشهر السابق (للمقارنة):
-- إيرادات: ${(context.previousMonth?.revenue || 0).toLocaleString()} ج.م
-- طلبات مكتملة: ${context.previousMonth?.completedOrders || 0} طلب.
+📆 ${previousPeriodLabel} (للمقارنة):
+- إيرادات فترة المقارنة: ${(context.previousMonth?.revenue || 0).toLocaleString()} ج.م
+- طلبات مكتملة في فترة المقارنة: ${context.previousMonth?.completedOrders || 0} طلب.
 
 👨‍⚕️ الأطباء الأكثر نشاطاً (الشهر الحالي):
 ${(context.topDoctors || []).map((d: any, i: number) =>
