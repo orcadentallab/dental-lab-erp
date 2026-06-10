@@ -191,7 +191,7 @@ export default function OrderCard({
             <Card
                 variant={isHighlighted ? 'glass' : 'default'}
                 className={clsx(
-                    "relative overflow-hidden transition-all duration-200 border-l-4",
+                    "relative transition-all duration-200 border-l-4",
                     isHighlighted ? 'ring-2 ring-primary-500 shadow-lg scale-[1.01] z-10' : 'hover:shadow-md',
                     order.isArchived
                         ? 'bg-gray-50 dark:bg-gray-800/50 border-l-gray-400 border-gray-200 opacity-75'

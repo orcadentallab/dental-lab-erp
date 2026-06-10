@@ -43,12 +43,10 @@ interface Props {
 
 export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled }: Props) {
     const [confirmAction, setConfirmAction] = useState<WorkflowAction | null>(null);
-    const [showMore, setShowMore] = useState(false);
     const [showIssueMenu, setShowIssueMenu] = useState(false);
     const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
     const [noteText, setNoteText] = useState('');
     const issueMenuRef = useRef<HTMLDivElement>(null);
-    const moreMenuRef = useRef<HTMLDivElement>(null);
 
     const productionStatus = getEffectiveProductionStatus(order);
     const issueState = getEffectiveIssueState(order);
@@ -72,9 +70,6 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             if (e.target instanceof Node) {
                 if (issueMenuRef.current && !issueMenuRef.current.contains(e.target)) {
                     setShowIssueMenu(false);
-                }
-                if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
-                    setShowMore(false);
                 }
             }
         };
@@ -218,46 +213,42 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
 
                 {/* Legacy Fallback — admin override dropdown */}
                 {showLegacyFallback && userRole === 'admin' && (
-                    <div className="relative" ref={moreMenuRef}>
+                    <div className="relative flex items-center">
                         <button
-                            onClick={() => setShowMore(!showMore)}
-                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-white hover:bg-surface-50 text-surface-500 transition-all"
+                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-white hover:bg-surface-50 text-surface-500 transition-all focus-within:ring-2 focus-within:ring-primary-500"
                             title="خيارات إضافية"
                         >
                             <MoreHorizontal size={14} />
                         </button>
-                        {showMore && (
-                            <div className="absolute bottom-full mb-1.5 left-0 z-50 bg-white border border-surface-200 rounded-xl shadow-xl p-1.5 min-w-[190px] max-h-72 overflow-y-auto">
-                                {[
-                                    { label: 'Pending Review', value: 'Pending Review' },
-                                    { label: 'New Case', value: 'New Case' },
-                                    { label: 'Under Design', value: 'Under Design' },
-                                    { label: 'Waiting Dr Approval', value: 'Waiting Dr Approval' },
-                                    { label: 'Under Production', value: 'Under Production' },
-                                    { label: 'Try In', value: 'Try In' },
-                                    { label: 'Try In Approved', value: 'Try In Approved' },
-                                    { label: 'Ready', value: 'Ready' },
-                                    { label: 'Delivered', value: 'Delivered' },
-                                    { label: 'Returned', value: 'Returned for Adjustments' },
-                                    { label: 'Rejected', value: 'Rejected' },
-                                    { label: 'Cancelled', value: 'Cancelled' },
-                                ].map(opt => (
-                                    <button
-                                        key={opt.value}
-                                        onClick={() => {
-                                            onStatusChange(order.id, opt.value as Order['status']);
-                                            setShowMore(false);
-                                        }}
-                                        className={clsx(
-                                            'block w-full text-right px-3 py-1.5 text-xs rounded hover:bg-surface-50 transition-colors',
-                                            order.status === opt.value ? 'font-bold text-primary-700 bg-primary-50' : 'text-surface-700'
-                                        )}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                        <select
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            value=""
+                            onChange={(e) => {
+                                if (e.target.value) {
+                                    onStatusChange(order.id, e.target.value as Order['status']);
+                                }
+                            }}
+                        >
+                            <option value="" disabled>اختر حالة...</option>
+                            {[
+                                { label: 'Pending Review', value: 'Pending Review' },
+                                { label: 'New Case', value: 'New Case' },
+                                { label: 'Under Design', value: 'Under Design' },
+                                { label: 'Waiting Dr Approval', value: 'Waiting Dr Approval' },
+                                { label: 'Under Production', value: 'Under Production' },
+                                { label: 'Try In', value: 'Try In' },
+                                { label: 'Try In Approved', value: 'Try In Approved' },
+                                { label: 'Ready', value: 'Ready' },
+                                { label: 'Delivered', value: 'Delivered' },
+                                { label: 'Returned', value: 'Returned for Adjustments' },
+                                { label: 'Rejected', value: 'Rejected' },
+                                { label: 'Cancelled', value: 'Cancelled' },
+                            ].map(opt => (
+                                <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </option>
+                            ))}
+                        </select>
                     </div>
                 )}
             </div>

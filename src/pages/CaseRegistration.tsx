@@ -21,8 +21,21 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 import clsx from 'clsx';
-import type { Order, Doctor, Supplier } from '../services/db';
+import type { Order, Doctor, Supplier, User as DbUser } from '../services/db';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment } from '../utils/orderDisplay';
+import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../lib/userRoles';
+import { getLabCostMetadata } from '../constants/financialObligations';
+
+const normalizeArabic = (text: string) => {
+    if (!text) return '';
+    return text
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ى/g, 'ي')
+        .replace(/ة/g, 'ه')
+        .replace(/[\u064B-\u0652]/g, '') // remove diacritics
+        .trim()
+        .toLowerCase();
+};
 
 const ACCOUNTING_CHANGE_MARKER = 'بعد التسجيل المحاسبي';
 
@@ -40,6 +53,7 @@ export default function CaseRegistration() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [doctors, setDoctors] = useState<Record<string, { name: string; code: string; parentId?: string }>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
+    const [designers, setDesigners] = useState<DbUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
@@ -59,9 +73,10 @@ export default function CaseRegistration() {
         const loadData = async () => {
             setLoading(true);
             try {
-                const [docs, sups] = await Promise.all([
+                const [docs, sups, users] = await Promise.all([
                     db.getDoctors(),
-                    db.getSuppliers()
+                    db.getSuppliers(),
+                    db.getUsers()
                 ]);
                 
                 const docMap: Record<string, { name: string; code: string; parentId?: string }> = {};
@@ -71,6 +86,8 @@ export default function CaseRegistration() {
                 const supMap: Record<string, string> = {};
                 sups.forEach((s: Supplier) => supMap[s.id] = s.name);
                 setSuppliers(supMap);
+
+                setDesigners(users.filter((u: DbUser) => u.role === 'designer' || (u.customPermissions && u.customPermissions['secondary_designer'])));
 
                 await fetchOrders();
             } catch (error) {
@@ -210,18 +227,24 @@ export default function CaseRegistration() {
     const handleExport = () => {
         setIsExporting(true);
         try {
-            const exportData = filteredOrders.map(order => ({
-                'رقم الحالة': order.caseId,
-                'التاريخ': order.deliveryDate || order.createdAt.split('T')[0],
-                'المريض': order.patientName,
-                'الطبيب': getBillingDoctor(order.doctorId).name,
-                'الخدمات': order.items.map(i => `${i.serviceType} (x${i.teethNumbers.length})`).join(', '),
-                'سعر البيع': order.totalPrice,
-                'التكلفة': order.cost,
-                'المعمل': (order.supplierId && suppliers[order.supplierId]) || 'داخلي',
-                'الحالة': t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status,
-                'الملاحظات': (order.comments || []).map(c => `${c.userName}: ${c.text}`).join(' | ')
-            }));
+            const exportData = filteredOrders.map(order => {
+                const designer = designers.find(d => d.id === order.designerId);
+                const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+                const labCost = getLabCostMetadata(order, isSalaried).cost;
+
+                return {
+                    'رقم الحالة': order.caseId,
+                    'التاريخ': order.deliveryDate || order.createdAt.split('T')[0],
+                    'المريض': order.patientName,
+                    'الطبيب': getBillingDoctor(order.doctorId).name,
+                    'الخدمات': order.items.map(i => `${i.serviceType} (x${i.teethNumbers.length})`).join(', '),
+                    'سعر البيع': order.totalPrice,
+                    'التكلفة': order.status === 'Rejected' ? (order.rejectedLabCost || 0) : labCost,
+                    'المعمل': (order.supplierId && suppliers[order.supplierId]) || 'داخلي',
+                    'الحالة': t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status,
+                    'الملاحظات': (order.comments || []).map(c => `${c.userName}: ${c.text}`).join(' | ')
+                };
+            });
 
             const ws = XLSX.utils.json_to_sheet(exportData);
             const wb = XLSX.utils.book_new();
@@ -250,13 +273,14 @@ export default function CaseRegistration() {
         const doctor = doctors[order.doctorId];
         const billingDoctor = getBillingDoctor(order.doctorId);
         
+        const normalizedSearch = normalizeArabic(searchTerm);
         const matchesSearch = 
-            order.caseId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            order.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (doctor?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (doctor?.code || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            billingDoctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            billingDoctor.code.toLowerCase().includes(searchTerm.toLowerCase());
+            normalizeArabic(order.caseId).includes(normalizedSearch) ||
+            normalizeArabic(order.patientName).includes(normalizedSearch) ||
+            normalizeArabic(doctor?.name || '').includes(normalizedSearch) ||
+            normalizeArabic(doctor?.code || '').includes(normalizedSearch) ||
+            normalizeArabic(billingDoctor.name).includes(normalizedSearch) ||
+            normalizeArabic(billingDoctor.code).includes(normalizedSearch);
 
         const matchesDoctor = !doctorFilter || order.doctorId === doctorFilter || billingDoctor.id === doctorFilter;
         const matchesSupplier = !supplierFilter || 
@@ -465,6 +489,9 @@ export default function CaseRegistration() {
                                     const latestComment = getLatestVisibleOrderComment(order.comments);
                                     const isDeletedReview = isArchivedAfterRegistration(order);
                                     const isChangedAfterRegistration = hasPostRegistrationChange(order);
+                                    const designer = designers.find(d => d.id === order.designerId);
+                                    const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+                                    const labCost = getLabCostMetadata(order, isSalaried).cost;
                                     
                                     return (
                                         <motion.tr
@@ -577,7 +604,7 @@ export default function CaseRegistration() {
                                                             </div>
                                                             <div className="flex items-center justify-between gap-3 font-black text-slate-700 text-sm">
                                                                 <span className="text-[10px] text-slate-400 font-bold">تكلفة:</span>
-                                                                <span>{order.cost.toLocaleString()}</span>
+                                                                <span>{labCost.toLocaleString()}</span>
                                                             </div>
                                                             {order.discount > 0 && (
                                                                 <span className="text-[10px] text-red-500 font-black bg-red-50 px-1.5 py-0.5 rounded">خصم: {order.discount.toLocaleString()}</span>
