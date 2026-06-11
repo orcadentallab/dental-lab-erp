@@ -92,8 +92,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         if (!confirmAction) return;
         if (confirmAction.requiresNote && !noteText.trim()) return;
         const context: { rejectedLabCost?: number; comment?: string } = {};
-        if (confirmAction.id === 'reject' && rejectedLabCost !== '') {
-            context.rejectedLabCost = Number(rejectedLabCost);
+        if (['reject', 'cancel'].includes(confirmAction.id)) {
+            context.rejectedLabCost = rejectedLabCost !== '' ? Number(rejectedLabCost) : 0;
         }
         if (noteText.trim()) {
             context.comment = noteText.trim();
@@ -279,10 +279,10 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                         />
                     </div>
                 )}
-                {confirmAction?.id === 'reject' && (order.supplierId || order.designerId) && (
+                {['reject', 'cancel'].includes(confirmAction?.id || '') && (order.supplierId || order.designerId) && (
                     <div className="text-right">
                         <label className="block text-sm font-medium text-surface-700 mb-1">
-                            تكلفة الاستحقاق للمعمل/المصمم في حالة الرفض (اختياري)
+                            تكلفة الاستحقاق للمعمل/المصمم في حالة الرفض أو الإلغاء (تلقائياً 0 إذا تُركت فارغة)
                         </label>
                         <Input
                             type="number"

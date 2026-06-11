@@ -7,9 +7,9 @@ import {
     getDeliveryRoute,
     getFinancialSummary,
     getOfficialStatementDate,
-    getIssueStatus,
     getMainStatus,
     getProductionStatus,
+    getEffectiveIssueState,
     isBillableToDoctor,
     canTransitionTo,
     isDeliveredForDoctorReceivable,
@@ -27,29 +27,27 @@ const order = (overrides: Record<string, unknown>) => ({
     ...overrides,
 });
 
-test.describe('legacy lifecycle mapping', () => {
-    test('maps completed and delivered as delivered and doctor billable for legacy accounts', () => {
-        for (const status of ['Completed', 'Delivered']) {
-            const mappedOrder = order({ status });
+test.describe('column-first lifecycle mapping', () => {
+    test('maps final_delivered as delivered and doctor billable', () => {
+        const mappedOrder = order({ productionStatus: 'final_delivered' });
 
-            expect(getProductionStatus(mappedOrder)).toBe('delivered');
-            expect(getMainStatus(mappedOrder)).toBe('delivered');
-            expect(isDeliveredForDoctorReceivable(mappedOrder)).toBe(true);
-            expect(isBillableToDoctor(mappedOrder)).toBe(true);
-        }
+        expect(getProductionStatus(mappedOrder)).toBe('final_delivered');
+        expect(getMainStatus(mappedOrder)).toBe('delivered');
+        expect(isDeliveredForDoctorReceivable(mappedOrder)).toBe(true);
+        expect(isBillableToDoctor(mappedOrder)).toBe(true);
     });
 
-    test('maps ready as operational ready but not doctor billable', () => {
-        const readyOrder = order({ status: 'Ready' });
+    test('maps final_ready as ready but not doctor billable', () => {
+        const readyOrder = order({ productionStatus: 'final_ready' });
 
-        expect(getProductionStatus(readyOrder)).toBe('ready');
+        expect(getProductionStatus(readyOrder)).toBe('final_ready');
         expect(isBillableToDoctor(readyOrder)).toBe(false);
         expect(isDeliveredForDoctorReceivable(readyOrder)).toBe(false);
     });
 
     test('maps try-in statuses as not doctor billable', () => {
-        for (const status of ['Try In', 'Try In Approved']) {
-            const tryInOrder = order({ status });
+        for (const status of ['try_in_ready', 'waiting_doctor', 'finalization']) {
+            const tryInOrder = order({ productionStatus: status });
 
             expect(isTryInOrder(tryInOrder)).toBe(true);
             expect(isBillableToDoctor(tryInOrder)).toBe(false);
@@ -57,42 +55,35 @@ test.describe('legacy lifecycle mapping', () => {
     });
 
     test('maps production, design, and new statuses', () => {
-        expect(getProductionStatus(order({ status: 'Under Production' }))).toBe('in_production');
-        expect(getProductionStatus(order({ status: 'In Progress' }))).toBe('in_production');
-        expect(getProductionStatus(order({ status: 'Under Design' }))).toBe('designing');
-        expect(getProductionStatus(order({ status: 'Waiting Dr Approval' }))).toBe('designing');
-        expect(getProductionStatus(order({ status: 'Sent to External Lab' }))).toBe('sent_to_lab');
-        expect(getProductionStatus(order({ status: 'New Case' }))).toBe('not_started');
-        expect(getProductionStatus(order({ status: 'Pending' }))).toBe('not_started');
-        expect(getProductionStatus(order({ status: 'Pending Review' }))).toBe('not_started');
+        expect(getProductionStatus(order({ productionStatus: 'in_production' }))).toBe('in_production');
+        expect(getProductionStatus(order({ productionStatus: 'designing' }))).toBe('designing');
+        expect(getProductionStatus(order({ productionStatus: 'not_started' }))).toBe('not_started');
     });
 
     test('maps returned, rejected, and cancelled issue states', () => {
-        const returned = order({ status: 'Returned for Adjustments' });
-        const rejected = order({ status: 'Rejected' });
-        const cancelled = order({ status: 'Cancelled' });
+        const returned = order({ productionStatus: 'in_production', issueState: 'returned' });
+        const rejected = order({ productionStatus: 'in_production', issueState: 'rejected' });
+        const cancelled = order({ productionStatus: 'in_production', issueState: 'cancelled' });
 
         expect(getProductionStatus(returned)).toBe('in_production');
-        expect(getIssueStatus(returned)).toBe('remake_requested');
-        expect(getIssueStatus(rejected)).toBe('rejected');
+        expect(getEffectiveIssueState(returned)).toBe('returned');
+        expect(getEffectiveIssueState(rejected)).toBe('rejected');
         expect(isBillableToDoctor(rejected)).toBe(false);
-        expect(getMainStatus(cancelled)).toBe('cancelled');
-        expect(getIssueStatus(cancelled)).toBe('cancelled');
+        expect(getEffectiveIssueState(cancelled)).toBe('cancelled');
         expect(isBillableToDoctor(cancelled)).toBe(false);
     });
 
     test('allows the basic approved forward transitions', () => {
-        expect(canTransitionTo(order({ status: 'New Case' }), 'designing')).toBe(true);
-        expect(canTransitionTo(order({ status: 'Under Design' }), 'sent_to_lab')).toBe(true);
-        expect(canTransitionTo(order({ status: 'Sent to External Lab' }), 'in_production')).toBe(true);
-        expect(canTransitionTo(order({ status: 'Under Production' }), 'ready')).toBe(true);
-        expect(canTransitionTo(order({ status: 'Ready' }), 'delivered')).toBe(true);
+        expect(canTransitionTo(order({ productionStatus: 'not_started', workflowType: 'split' }), 'designing')).toBe(true);
+        expect(canTransitionTo(order({ productionStatus: 'designing', designUrl: 'some-url' }), 'in_production')).toBe(true);
+        expect(canTransitionTo(order({ productionStatus: 'in_production' }), 'final_ready')).toBe(true);
+        expect(canTransitionTo(order({ productionStatus: 'final_ready' }), 'final_delivered')).toBe(true);
     });
 });
 
 test.describe('try-in ready and final ready', () => {
     test('treats final ready as external lab payable eligible only', () => {
-        const finalReady = order({ status: 'Ready' });
+        const finalReady = order({ productionStatus: 'final_ready' });
 
         expect(isFinalReady(finalReady)).toBe(true);
         expect(isTryInReady(finalReady)).toBe(false);
@@ -103,7 +94,7 @@ test.describe('try-in ready and final ready', () => {
 
     test('treats ready with TryIn delivery type as try-in ready', () => {
         for (const deliveryType of ['TryIn', 'try_in']) {
-            const tryInReady = order({ status: 'Ready', deliveryType });
+            const tryInReady = order({ productionStatus: 'try_in_ready', deliveryType });
 
             expect(isTryInOrder(tryInReady)).toBe(true);
             expect(isTryInReady(tryInReady)).toBe(true);
@@ -114,7 +105,7 @@ test.describe('try-in ready and final ready', () => {
     });
 
     test('detects snake_case TryIn delivery type', () => {
-        const tryInReady = order({ status: 'Ready', delivery_type: 'TryIn' });
+        const tryInReady = order({ productionStatus: 'try_in_ready', delivery_type: 'TryIn' });
 
         expect(isTryInReady(tryInReady)).toBe(true);
         expect(isReadyForExternalLabPayable(tryInReady)).toBe(false);
@@ -122,29 +113,29 @@ test.describe('try-in ready and final ready', () => {
 
     test('leaving final ready workflow requires normal external lab payable review/voiding', () => {
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
-            order({ status: 'Ready' }),
-            order({ status: 'Rejected' })
-        )).toBe(true);
+            order({ productionStatus: 'final_ready' }),
+            order({ productionStatus: 'in_production', issueState: 'rejected' })
+        )).toBe(false); // Entering rejected issue state: manually managed
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
-            order({ status: 'Delivered' }),
-            order({ status: 'Returned for Adjustments' })
-        )).toBe(true);
+            order({ productionStatus: 'final_delivered' }),
+            order({ productionStatus: 'in_production', issueState: 'returned' })
+        )).toBe(false); // Entering returned issue state: no void
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
-            order({ status: 'Ready' }),
-            order({ status: 'Ready', deliveryType: 'TryIn' })
-        )).toBe(true);
+            order({ productionStatus: 'final_ready' }),
+            order({ productionStatus: 'try_in_ready', deliveryType: 'TryIn' })
+        )).toBe(true); // Normal workflow transition: void
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
-            order({ status: 'Ready' }),
-            order({ status: 'Delivered' })
+            order({ productionStatus: 'final_ready' }),
+            order({ productionStatus: 'final_delivered' })
         )).toBe(false);
     });
 });
 
 test.describe('delivery route and phase 1 finance summary', () => {
     test('defaults delivery route and keeps route out of finance logic', () => {
-        const finalReady = order({ status: 'Ready' });
+        const finalReady = order({ productionStatus: 'final_ready' });
         const routedFinalReady = order({
-            status: 'Ready',
+            productionStatus: 'final_ready',
             delivery_route: DELIVERY_ROUTES.externalLabToOurLabToDoctor,
         });
 
@@ -163,21 +154,19 @@ test.describe('delivery route and phase 1 finance summary', () => {
 
 test.describe('official statement dates', () => {
     test('uses actualDeliveryDate over deliveryDate for Delivered and legacy Completed orders', () => {
-        for (const status of ['Delivered', 'Completed']) {
-            const deliveredOrder = order({
-                status,
-                actualDeliveryDate: '2026-05-08',
-                deliveryDate: '2026-05-01',
-                createdAt: '2026-04-20T12:00:00.000Z',
-            });
+        const deliveredOrder = order({
+            productionStatus: 'final_delivered',
+            actualDeliveryDate: '2026-05-08',
+            deliveryDate: '2026-05-01',
+            createdAt: '2026-04-20T12:00:00.000Z',
+        });
 
-            expect(getOfficialStatementDate(deliveredOrder)).toBe('2026-05-08');
-        }
+        expect(getOfficialStatementDate(deliveredOrder)).toBe('2026-05-08');
     });
 
     test('falls back to deliveryDate for delivered legacy records missing actualDeliveryDate', () => {
         const deliveredOrder = order({
-            status: 'Delivered',
+            productionStatus: 'final_delivered',
             deliveryDate: '2026-05-01',
             createdAt: '2026-04-20T12:00:00.000Z',
         });
@@ -187,7 +176,7 @@ test.describe('official statement dates', () => {
 
     test('falls back to createdAt for delivered records missing delivery dates', () => {
         const deliveredOrder = order({
-            status: 'Delivered',
+            productionStatus: 'final_delivered',
             createdAt: '2026-04-20T12:00:00.000Z',
         });
 
@@ -196,7 +185,7 @@ test.describe('official statement dates', () => {
 
     test('returns planned deliveryDate for Ready display without making it doctor receivable', () => {
         const readyOrder = order({
-            status: 'Ready',
+            productionStatus: 'final_ready',
             deliveryDate: '2026-05-10',
             actualDeliveryDate: '2026-05-08',
             createdAt: '2026-04-20T12:00:00.000Z',
@@ -208,9 +197,9 @@ test.describe('official statement dates', () => {
     });
 
     test('keeps try-in statuses out of doctor receivables', () => {
-        for (const status of ['Try In', 'Try In Approved']) {
+        for (const status of ['try_in_ready', 'waiting_doctor']) {
             const tryInOrder = order({
-                status,
+                productionStatus: status,
                 deliveryDate: '2026-05-10',
                 createdAt: '2026-04-20T12:00:00.000Z',
             });
@@ -222,8 +211,8 @@ test.describe('official statement dates', () => {
     });
 
     test('official receivable amount logic remains status-based and unchanged', () => {
-        expect(getFinancialSummary(order({ status: 'Delivered' })).doctorReceivableEligible).toBe(true);
-        expect(getFinancialSummary(order({ status: 'Ready' })).doctorReceivableEligible).toBe(false);
+        expect(getFinancialSummary(order({ productionStatus: 'final_delivered' })).doctorReceivableEligible).toBe(true);
+        expect(getFinancialSummary(order({ productionStatus: 'final_ready' })).doctorReceivableEligible).toBe(false);
     });
 });
 
@@ -244,7 +233,7 @@ test.describe('delivered date persistence hotfix', () => {
     });
 
     test('clears actual_delivery_date when Delivered is reverted without touching planned delivery_date', () => {
-        expect(ordersSource).toContain("} else if (updates.status !== undefined && getProductionStatus({ status: updates.status }) !== 'delivered') {");
+        expect(ordersSource).toContain("} else if (updates.status !== undefined && !['Delivered', 'Completed'].includes(updates.status)) {");
         expect(ordersSource).toContain('dbUpdates.actual_delivery_date = null;');
         expect(ordersSource).not.toContain('dbUpdates.delivery_date = null;');
     });

@@ -78,6 +78,18 @@ test.describe('financial obligation candidates', () => {
             { ...baseOrder, status: 'Delivered', issueState: 'rejected' }
         )).toBe(true);
         expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
+            { ...baseOrder, status: 'Delivered', issueState: 'none' },
+            { ...baseOrder, status: 'Delivered', issueState: 'returned' }
+        )).toBe(false);
+        expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
+            { ...baseOrder, status: 'Delivered', issueState: 'none' },
+            { ...baseOrder, status: 'Delivered', issueState: 'on_hold' }
+        )).toBe(false);
+        expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
+            { ...baseOrder, status: 'Delivered' },
+            { ...baseOrder, status: 'Returned for Adjustments' }
+        )).toBe(false);
+        expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
             { ...baseOrder, status: 'Delivered' },
             { ...baseOrder, status: 'Delivered' }
         )).toBe(false);
@@ -167,17 +179,26 @@ test.describe('financial obligation candidates', () => {
     });
 
     test('voids normal external lab ready payable when leaving final-ready workflow', () => {
-        for (const newStatus of ['Rejected', 'Cancelled', 'Returned for Adjustments', 'New Case', 'Under Production', 'Try In']) {
+        // Normal status transitions (issueState = none) should void
+        for (const newStatus of ['New Case', 'Under Production', 'Try In']) {
             expect(shouldVoidExternalLabReadyObligationForStatusChange(
                 { ...baseOrder, status: 'Ready' },
                 { ...baseOrder, status: newStatus }
             )).toBe(true);
         }
 
+        // Transitions entering issue states should NOT void
+        for (const newStatus of ['Rejected', 'Cancelled', 'Returned for Adjustments']) {
+            expect(shouldVoidExternalLabReadyObligationForStatusChange(
+                { ...baseOrder, status: 'Ready' },
+                { ...baseOrder, status: newStatus }
+            )).toBe(false);
+        }
+
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
             { ...baseOrder, status: 'Delivered' },
             { ...baseOrder, status: 'Rejected' }
-        )).toBe(true);
+        )).toBe(false);
 
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
             { ...baseOrder, status: 'Ready' },
@@ -703,7 +724,7 @@ test.describe('financial obligations service wiring', () => {
         expect(ordersSource).toContain('correctExternalLabPayablePartyAfterOrderUpdate');
         expect(ordersSource).toContain('const previousSupplierId = input.previousOrder.supplierId || null;');
         expect(ordersSource).toContain('const newSupplierId = input.updatedOrder.supplierId || null;');
-        expect(ordersSource).toContain('const impliedFinalReady = getProductionStatus(input.updatedOrder) === \'delivered\';');
+        expect(ordersSource).toContain('const impliedFinalReady = getProductionStatus(input.updatedOrder) === \'final_delivered\';');
         expect(ordersSource).toContain('const isPayableEligible = isFinalReady(input.updatedOrder) || impliedFinalReady;');
         expect(ordersSource).toContain('Supplier corrected from ${previousSupplierId} to ${newSupplierId || \'none\'}');
         expect(ordersSource).toContain('voidReason: \'supplier_corrected\'');
@@ -723,7 +744,7 @@ test.describe('financial obligations service wiring', () => {
         expect(ordersSource).toContain('correctDoctorReceivablePartyAfterOrderUpdate');
         expect(ordersSource).toContain('const previousDoctorId = input.previousOrder.doctorId || null;');
         expect(ordersSource).toContain('const newDoctorId = input.updatedOrder.doctorId || null;');
-        expect(ordersSource).toContain('const isReceivableEligible = getProductionStatus(input.updatedOrder) === \'delivered\';');
+        expect(ordersSource).toContain('const isReceivableEligible = getProductionStatus(input.updatedOrder) === \'final_delivered\';');
         expect(ordersSource).toContain('Doctor corrected from ${previousDoctorId} to ${newDoctorId || \'none\'}');
         expect(ordersSource).toContain('voidReason: \'doctor_corrected\'');
         expect(ordersSource).toContain('correctionReason: previousDoctorId ? \'doctor_corrected\' : \'doctor_added_after_delivered\'');
@@ -780,7 +801,7 @@ test.describe('financial obligations service wiring', () => {
     });
 
     test('skips Try-In Ready cost corrections and does not use rejected lab cost for normal payable amount correction', () => {
-        expect(ordersSource).toContain("const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'delivered' && !isTryInOrder(input.updatedOrder);");
+        expect(ordersSource).toContain("const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'final_delivered' && !isTryInOrder(input.updatedOrder);");
         expect(ordersSource).toContain('const isPayableEligible = (isFinalReady(input.updatedOrder) || impliedFinalReady) && !!input.updatedOrder.supplierId;');
         expect(ordersSource).toContain('updates.cost !== undefined');
         expect(ordersSource).not.toContain('rejectedLabCost !== undefined || updates.cost');

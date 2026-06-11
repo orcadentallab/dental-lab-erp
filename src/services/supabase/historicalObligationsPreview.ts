@@ -204,8 +204,8 @@ export function classifyHistoricalOrderForObligationPreview(
 ): HistoricalObligationPreviewRow[] {
     const rows: HistoricalObligationPreviewRow[] = [];
     const productionStatus = getProductionStatus(order);
-    const isDelivered = productionStatus === 'delivered';
-    const isReady = productionStatus === 'ready';
+    const isDelivered = productionStatus === 'final_delivered';
+    const isReady = productionStatus === 'final_ready' || productionStatus === 'try_in_ready';
     const operationalDate = getDateWithBasis(order, { allowActualDeliveryDate: isDelivered });
     const base = baseRow(order, names, operationalDate);
     const isIssueStatus = ['Rejected', 'Cancelled', 'Returned for Adjustments'].includes(order.status || '');

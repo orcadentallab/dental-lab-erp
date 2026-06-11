@@ -175,6 +175,104 @@ export function canEditOrderField(
     }
 
     if (role === 'doctor') return false;
-
+ 
     return false;
+}
+ 
+/**
+ * Returns true if the given role is allowed to transition the production status
+ * from currentStatus to targetStatus under the given issueState.
+ *
+ * This is the TS-side equivalent of the database trigger state-machine guards.
+ */
+export function canChangeProductionStatus(
+    role: WorkflowRole,
+    currentStatus: ProductionStatus,
+    targetStatus: ProductionStatus,
+    issueState: IssueState,
+    context: {
+        workflowType?: 'full' | 'split' | string | null;
+        deliveryType?: 'Final' | 'TryIn' | string | null;
+        designUrl?: string | null;
+        status?: string;
+    } = {}
+): boolean {
+    if (role === 'admin') return true;
+    if (role !== 'lab') return false; // Only admin and lab can change production status
+
+    // If issueState is on_hold or returned, we can resume to in_production
+    if (issueState === 'returned') {
+        return targetStatus === 'in_production';
+    }
+    if (issueState === 'on_hold') {
+        return targetStatus === 'in_production';
+    }
+    if (['rejected', 'cancelled', 'redo'].includes(issueState)) {
+        return false;
+    }
+
+    if (currentStatus === targetStatus) return true;
+
+    switch (currentStatus) {
+        case 'not_started':
+            if (targetStatus === 'designing') {
+                return context.workflowType === 'split';
+            }
+            if (targetStatus === 'in_production') {
+                return true;
+            }
+            return false;
+
+        case 'designing':
+            if (targetStatus === 'in_production') {
+                return !!context.designUrl;
+            }
+            return false;
+
+        case 'in_production': {
+            const dt = (context.deliveryType || '').toLowerCase();
+            const isTryIn = dt === 'tryin' || dt === 'try_in';
+            if (isTryIn && targetStatus === 'try_in_ready') return true;
+            if (!isTryIn && targetStatus === 'final_ready') return true;
+            if (targetStatus === 'designing') return true; // return to design
+            return false;
+        }
+
+        case 'try_in_ready':
+        case 'waiting_doctor':
+            if (targetStatus === 'finalization') return true; // try-in approved
+            if (targetStatus === 'designing') return true; // return to design
+            return false;
+
+        case 'finalization':
+            return targetStatus === 'final_ready';
+
+        case 'final_ready':
+            return targetStatus === 'final_delivered';
+
+        case 'final_delivered':
+            return false;
+
+        default:
+            return false;
+    }
+}
+
+/**
+ * Returns true if the given role is allowed to transition the issue state
+ * from currentIssueState to targetIssueState.
+ */
+export function canChangeIssueState(
+    role: WorkflowRole,
+    currentIssueState: IssueState,
+    targetIssueState: IssueState
+): boolean {
+    if (role === 'admin') return true;
+    if (role !== 'lab') return false;
+
+    // Lab can only transition between none ↔ returned, none ↔ on_hold
+    return (
+        (currentIssueState === 'none' && (targetIssueState === 'returned' || targetIssueState === 'on_hold')) ||
+        ((currentIssueState === 'returned' || currentIssueState === 'on_hold') && targetIssueState === 'none')
+    );
 }

@@ -2,10 +2,11 @@ import type { Order, Transaction } from '../services/db';
 import {
     isProductionStatus,
     isIssueState,
-    type ProductionStatus as WfProductionStatus,
-    type IssueState as WfIssueState,
+    type ProductionStatus,
+    type IssueState,
     type CaseLocation,
 } from './workflow';
+import { canChangeProductionStatus } from '../lib/workflowPermissions';
 
 export const LEGACY_ORDER_STATUSES = {
     completed: 'Completed',
@@ -31,16 +32,6 @@ export const DELIVERY_ROUTES = {
     pickupByRep: 'pickup_by_rep',
     other: 'other',
 } as const;
-
-export type ProductionStatus =
-    | 'not_started'
-    | 'designing'
-    | 'sent_to_lab'
-    | 'in_production'
-    | 'try_in'
-    | 'try_in_approved'
-    | 'ready'
-    | 'delivered';
 
 export type IssueStatus =
     | 'none'
@@ -96,24 +87,28 @@ export interface OrderFinancialState {
 export const normalizeStatus = (status?: string): string => (status || '').trim().toLowerCase();
 
 export function getProductionStatus(order: LifecycleOrder): ProductionStatus {
-    switch (normalizeStatus(order.status)) {
+    const col = (order as any).productionStatus || (order as any).production_status;
+    if (col && isProductionStatus(col)) return col;
+
+    // Fallback: derive from legacy status
+    const status = normalizeStatus(order.status);
+    const deliveryType = (order.deliveryType || order.delivery_type || '').toLowerCase();
+    const isTryIn = deliveryType === 'tryin' || deliveryType === 'try_in';
+
+    switch (status) {
         case 'completed':
         case 'delivered':
-            return 'delivered';
-        case 'ready':
-            return 'ready';
-        case 'try in':
-            return 'try_in';
+            return 'final_delivered';
         case 'try in approved':
-            return 'try_in_approved';
+            return 'finalization';
+        case 'ready':
+            return isTryIn ? 'try_in_ready' : 'final_ready';
+        case 'try in':
+            return 'try_in_ready';
         case 'under production':
         case 'in progress':
-            return 'in_production';
         case 'sent to external lab':
         case 'sent to lab':
-            return 'sent_to_lab';
-        case 'returned for adjustments':
-        case 'rejected':
             return 'in_production';
         case 'under design':
         case 'waiting dr approval':
@@ -121,7 +116,12 @@ export function getProductionStatus(order: LifecycleOrder): ProductionStatus {
         case 'new case':
         case 'pending':
         case 'pending review':
+            return 'not_started';
+        case 'returned for adjustments':
+        case 'rejected':
+            return 'in_production';
         case 'cancelled':
+            return 'not_started';
         default:
             return 'not_started';
     }
@@ -141,19 +141,30 @@ export function getIssueStatus(order: LifecycleOrder): IssueStatus {
 }
 
 export function getMainStatus(order: LifecycleOrder): MainStatus {
-    switch (normalizeStatus(order.status)) {
-        case 'completed':
-        case 'delivered':
-            return 'delivered';
-        case 'cancelled':
-            return 'cancelled';
-        case 'new case':
-        case 'pending':
-        case 'pending review':
-            return 'draft';
-        default:
-            return 'active';
+    const prodStatus = getProductionStatus(order);
+    const issueState = getEffectiveIssueState(order);
+
+    if (prodStatus === 'final_delivered') return 'delivered';
+    if (issueState === 'cancelled') return 'cancelled';
+    if (prodStatus === 'not_started') return 'draft';
+
+    if (order.status) {
+        switch (normalizeStatus(order.status)) {
+            case 'completed':
+            case 'delivered':
+                return 'delivered';
+            case 'cancelled':
+                return 'cancelled';
+            case 'new case':
+            case 'pending':
+            case 'pending review':
+                return 'draft';
+            default:
+                return 'active';
+        }
     }
+
+    return 'active';
 }
 
 export function getDeliveryRoute(order: LifecycleOrder): DeliveryRoute {
@@ -166,15 +177,15 @@ export function getDeliveryRoute(order: LifecycleOrder): DeliveryRoute {
 export function isTryInOrder(order: LifecycleOrder): boolean {
     const status = getProductionStatus(order);
     const deliveryType = (order.deliveryType || order.delivery_type || '').toLowerCase();
-    return status === 'try_in' || status === 'try_in_approved' || deliveryType === 'tryin' || deliveryType === 'try_in';
+    return status === 'try_in_ready' || status === 'waiting_doctor' || status === 'finalization' || deliveryType === 'tryin' || deliveryType === 'try_in';
 }
 
 export function isTryInReady(order: LifecycleOrder): boolean {
-    return getProductionStatus(order) === 'ready' && isTryInOrder(order);
+    return getProductionStatus(order) === 'try_in_ready';
 }
 
 export function isFinalReady(order: LifecycleOrder): boolean {
-    return getProductionStatus(order) === 'ready' && !isTryInReady(order);
+    return getProductionStatus(order) === 'final_ready';
 }
 
 export function isReadyForExternalLabPayable(order: LifecycleOrder): boolean {
@@ -187,7 +198,8 @@ export function isExternalLabPayableEligible(order: LifecycleOrder): boolean {
 
 export function isDeliveredForDoctorReceivable(order: LifecycleOrder): boolean {
     const status = getProductionStatus(order);
-    return status === 'delivered' && getIssueStatus(order) !== 'cancelled' && getIssueStatus(order) !== 'rejected';
+    const issue = getEffectiveIssueState(order);
+    return status === 'final_delivered' && !['cancelled', 'rejected', 'redo'].includes(issue);
 }
 
 export function isBillableToDoctor(order: LifecycleOrder): boolean {
@@ -211,7 +223,7 @@ export function getOfficialStatementDate(order: LifecycleOrder): string {
     const deliveryDate = order.deliveryDate || order.delivery_date;
     const createdAt = order.createdAt || order.created_at;
 
-    if (getProductionStatus(order) === 'delivered') {
+    if (getProductionStatus(order) === 'final_delivered') {
         return dateOnly(actualDeliveryDate || deliveryDate || createdAt);
     }
 
@@ -247,18 +259,12 @@ export function canAutoCloseOrder(orderFinancialState: OrderFinancialState): boo
 
 export function canTransitionTo(order: LifecycleOrder, targetStatus: ProductionStatus): boolean {
     const current = getProductionStatus(order);
-
-    if (getMainStatus(order) === 'closed') return false;
-    if (current === targetStatus) return true;
-    if (targetStatus === 'delivered') return current === 'ready';
-    if (targetStatus === 'ready') return current === 'in_production' || current === 'try_in_approved';
-    if (targetStatus === 'try_in_approved') return current === 'try_in';
-    if (targetStatus === 'try_in') return current === 'in_production';
-    if (targetStatus === 'in_production') return current === 'sent_to_lab' || current === 'try_in_approved';
-    if (targetStatus === 'sent_to_lab') return current === 'not_started' || current === 'designing';
-    if (targetStatus === 'designing') return current === 'not_started';
-
-    return false;
+    const issueState = getEffectiveIssueState(order);
+    return canChangeProductionStatus('lab', current, targetStatus, issueState, {
+        workflowType: order.workflowType,
+        deliveryType: order.deliveryType,
+        designUrl: (order as any).designUrl || (order as any).design_url,
+    });
 }
 
 export function getFinancialSummary(order: LifecycleOrder) {
@@ -274,52 +280,32 @@ export function getFinancialSummary(order: LifecycleOrder) {
 
 // ─── WF-2: Column-first helpers ──────────────────────────────────────────────
 
-function mapLegacyToWfStatus(legacy: ProductionStatus): WfProductionStatus {
-    switch (legacy) {
-        case 'delivered': return 'final_delivered';
-        case 'ready': return 'final_ready';
-        case 'try_in': return 'try_in_ready';
-        case 'try_in_approved': return 'finalization';
-        case 'in_production': return 'in_production';
-        case 'sent_to_lab': return 'in_production';
-        case 'designing': return 'designing';
-        case 'not_started': return 'not_started';
-        default: return 'not_started';
-    }
-}
-
-function mapLegacyToWfIssueState(legacy: IssueStatus): WfIssueState {
-    switch (legacy) {
-        case 'remake_requested': return 'returned';
-        case 'rejected': return 'rejected';
-        case 'cancelled': return 'cancelled';
-        case 'none': return 'none';
-        default: return 'none';
-    }
-}
-
 /**
  * Column-first production status: uses orders.production_status if populated
- * and valid; falls back to the legacy derived getProductionStatus().
- *
- * WF-2 bridge — once WF-5 removes the legacy column, this collapses to
- * a direct read. Until then, BOTH paths must agree for delivered orders
- * (hard invariant).
+ * and valid.
  */
-export function getEffectiveProductionStatus(order: LifecycleOrder): WfProductionStatus {
-    const col = (order as any).productionStatus || (order as any).production_status;
-    if (col && isProductionStatus(col)) return col;
-    // Fallback: map legacy ProductionStatus → WfProductionStatus
-    return mapLegacyToWfStatus(getProductionStatus(order));
+export function getEffectiveProductionStatus(order: LifecycleOrder): ProductionStatus {
+    return getProductionStatus(order);
 }
 
 /**
  * Column-first issue state.
  */
-export function getEffectiveIssueState(order: LifecycleOrder): WfIssueState {
+export function getEffectiveIssueState(order: LifecycleOrder): IssueState {
     const col = (order as any).issueState || (order as any).issue_state;
     if (col && isIssueState(col)) return col;
-    return mapLegacyToWfIssueState(getIssueStatus(order));
+
+    // Fallback: derive from legacy status
+    switch (normalizeStatus(order.status)) {
+        case 'returned for adjustments':
+            return 'returned';
+        case 'rejected':
+            return 'rejected';
+        case 'cancelled':
+            return 'cancelled';
+        default:
+            return 'none';
+    }
 }
 
 /**
@@ -327,8 +313,8 @@ export function getEffectiveIssueState(order: LifecycleOrder): WfIssueState {
  * Pure function — no DB calls.
  */
 export function getCaseLocation(
-    productionStatus: WfProductionStatus,
-    issueState: WfIssueState,
+    productionStatus: ProductionStatus,
+    issueState: IssueState,
     context?: { workflowType?: string | null; supplierId?: string | null }
 ): CaseLocation {
     if (issueState === 'on_hold') return 'on_hold';

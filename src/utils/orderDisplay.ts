@@ -34,7 +34,7 @@ export function getLatestVisibleOrderComment(comments?: Order['comments']): Orde
 }
 
 export function getOrderCardDisplayDate(order: Pick<Order, 'status' | 'deliveryDate' | 'actualDeliveryDate'>) {
-    const isDeliveredLike = getProductionStatus(order) === 'delivered';
+    const isDeliveredLike = getProductionStatus(order) === 'final_delivered';
 
     if (isDeliveredLike) {
         return {

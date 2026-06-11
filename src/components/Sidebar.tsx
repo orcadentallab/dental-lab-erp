@@ -78,23 +78,15 @@ export default function Sidebar() {
         {
             id: 'management',
             label: 'الإدارة',
-            icon: Users,
+            icon: Settings,
             defaultOpen: false,
             items: [
                 { name: t.nav.doctors, href: '/doctors', icon: Users, roles: ['admin', 'representative'] },
                 { name: t.nav.suppliers, href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
                 { name: t.nav.staff, href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
-                { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
-            ]
-        },
-        {
-            id: 'system',
-            label: 'النظام',
-            icon: Settings,
-            defaultOpen: false,
-            items: [
-                { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
                 { name: 'الخدمات وأسعارها', href: '/services', icon: Layers, roles: ['admin'] },
+                { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
+                { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
                 { name: t.nav.settings, href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
             ]
         },

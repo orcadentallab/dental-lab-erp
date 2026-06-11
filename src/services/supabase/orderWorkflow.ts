@@ -24,7 +24,14 @@ import {
     REP_AUDITED_ALLOW_LIST_CAMEL,
     REP_FIELD_TO_DB,
     type RepAuditedFieldCamel,
+    type WorkflowRole,
+    canChangeProductionStatus,
+    canChangeIssueState,
+    canEditOrderField,
 } from '../../lib/workflowPermissions';
+import { ORDER_EVENT_TYPES } from '../../constants/orderEvents';
+import type { ProductionStatus, IssueState } from '../../constants/workflow';
+import { getProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import {
     isOrderEditReasonCode,
     reasonRequiresNote,
@@ -39,11 +46,11 @@ export class NotImplementedError extends Error {
     }
 }
 
-export interface RepEditChanges extends Partial<Pick<Order,
+export type RepEditChanges = Partial<Pick<Order,
     'patientName' | 'stlUrl' | 'imagesUrl' | 'deliveryDate' |
     'isUrgent' | 'priority' | 'supplierId' | 'designerId' |
     'instructions' | 'items' | 'totalPrice' | 'cost' | 'designPrice'
->> {}
+>>;
 
 // ─── repUpdateOrderWithAudit (LIVE) ──────────────────────────────────────────
 
@@ -103,6 +110,9 @@ export async function repUpdateOrderWithAudit(
         throw new ValidationError('No changes provided');
     }
 
+    const { getOrder } = await import('./orders');
+    const previousOrder = await getOrder(orderId);
+
     const { data, error } = await supabase.rpc('rep_update_order_fields_with_audit', {
         p_order_id: orderId,
         p_changes: dbChanges,
@@ -117,39 +127,269 @@ export async function repUpdateOrderWithAudit(
     // The RPC returns the order id; re-fetch the full row to return a normal Order
     // (preserves existing call patterns).
     if (!data) return null;
-    const { getOrder } = await import('./orders');
-    return getOrder(orderId);
+    
+    const updatedOrder = await getOrder(orderId);
+
+    if (previousOrder && updatedOrder) {
+        const { runFinancialCorrectionsAfterOrderUpdate } = await import('./orders');
+        let callerUserId: string | null = null;
+        try {
+            const caller = await getCallerRoleAndId();
+            callerUserId = caller.userId;
+        } catch (e) {
+            console.warn('Failed to resolve caller user ID for financial corrections auditing', e);
+        }
+        await runFinancialCorrectionsAfterOrderUpdate(
+            previousOrder,
+            updatedOrder,
+            callerUserId,
+            reasonCode,
+            reasonNote ?? null
+        );
+    }
+
+    return updatedOrder;
 }
 
 // ─── Future workflow operations (WF-2..WF-4 stubs) ───────────────────────────
 
+// Helper function to resolve the current caller role and ID
+async function getCallerRoleAndId(): Promise<{ role: WorkflowRole; userId: string }> {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+        throw new ValidationError('المستخدم غير مسجل دخول');
+    }
+
+    const { data: profile, error } = await supabase
+        .from('users')
+        .select('role, id')
+        .eq('auth_id', authUser.id)
+        .single();
+
+    if (error || !profile) {
+        throw new ValidationError('فشل العثور على ملف تعريف المستخدم');
+    }
+
+    return {
+        role: profile.role as WorkflowRole,
+        userId: profile.id,
+    };
+}
+
+// Map production status to its corresponding legacy status string
+export function mapProductionStatusToLegacy(status: ProductionStatus): string {
+    switch (status) {
+        case 'not_started': return 'New Case';
+        case 'designing': return 'Under Design';
+        case 'in_production': return 'Under Production';
+        case 'try_in_ready': return 'Try In';
+        case 'waiting_doctor': return 'Waiting Dr Approval';
+        case 'finalization': return 'Try In Approved';
+        case 'final_ready': return 'Ready';
+        case 'final_delivered': return 'Delivered';
+        default: return 'New Case';
+    }
+}
+
+// Map issue state to its corresponding legacy status string
+export function mapIssueStateToLegacy(newIssueState: IssueState, currentLegacyStatus: string): string {
+    switch (newIssueState) {
+        case 'returned': return 'Returned for Adjustments';
+        case 'rejected': return 'Rejected';
+        case 'cancelled': return 'Cancelled';
+        case 'on_hold': return currentLegacyStatus; // Keep current status
+        case 'none': return 'Under Production'; // Resuming
+        default: return currentLegacyStatus;
+    }
+}
+
+function getStatusChangeEventType(newStatus: ProductionStatus): string {
+    switch (newStatus) {
+        case 'try_in_ready':
+            return ORDER_EVENT_TYPES.tryInReady;
+        case 'finalization':
+            return ORDER_EVENT_TYPES.finalizationStarted;
+        case 'final_ready':
+            return ORDER_EVENT_TYPES.finalReady;
+        case 'final_delivered':
+            return ORDER_EVENT_TYPES.finalDelivered;
+        default:
+            return ORDER_EVENT_TYPES.productionStatusChanged;
+    }
+}
+
+function getIssueEventDetails(newIssueState: IssueState): { eventType: string; severity: 'info' | 'warning' | 'critical' } {
+    switch (newIssueState) {
+        case 'returned':
+            return { eventType: ORDER_EVENT_TYPES.caseReturned, severity: 'warning' };
+        case 'rejected':
+            return { eventType: ORDER_EVENT_TYPES.caseRejected, severity: 'critical' };
+        case 'cancelled':
+            return { eventType: ORDER_EVENT_TYPES.caseCancelled, severity: 'critical' };
+        case 'on_hold':
+            return { eventType: ORDER_EVENT_TYPES.caseHeld, severity: 'warning' };
+        case 'none':
+            return { eventType: ORDER_EVENT_TYPES.caseResumed, severity: 'info' };
+        default:
+            return { eventType: ORDER_EVENT_TYPES.issueStateChanged, severity: 'info' };
+    }
+}
+
 /**
  * WF-2/WF-3: Change `production_status` through the same audited pathway.
- * Stubbed in WF-1. Will write `production_status_changed` events and call a
- * sibling RPC `change_production_status`.
  */
 export async function changeProductionStatus(
-    _orderId: string,
-    _newStatus: string,
-    _reasonCode: string,
-    _reasonNote?: string | null,
+    orderId: string,
+    newStatus: string,
+    reasonCode: string,
+    reasonNote?: string | null,
 ): Promise<Order | null> {
-    throw new NotImplementedError('changeProductionStatus');
+    if (!orderId || typeof orderId !== 'string') {
+        throw new ValidationError('orderId is required');
+    }
+    if (!newStatus) {
+        throw new ValidationError('newStatus is required');
+    }
+
+    const { role: userRole, userId } = await getCallerRoleAndId();
+
+    const { getOrder } = await import('./orders');
+    const order = await getOrder(orderId);
+    if (!order) {
+        throw new ValidationError('الطلب غير موجود');
+    }
+
+    const currentStatus = getProductionStatus(order);
+    const currentIssueState = getEffectiveIssueState(order);
+
+    const isValid = canChangeProductionStatus(
+        userRole,
+        currentStatus,
+        newStatus as ProductionStatus,
+        currentIssueState,
+        {
+            workflowType: order.workflowType,
+            deliveryType: order.deliveryType,
+            designUrl: order.designUrl,
+            status: order.status,
+        }
+    );
+
+    if (!isValid) {
+        throw new ValidationError('العملية غير مسموحة بناءً على حالة الطلب وصلاحياتك');
+    }
+
+    const targetLegacyStatus = mapProductionStatusToLegacy(newStatus as ProductionStatus) as Order['status'];
+    const { updateOrder } = await import('./orders');
+    const updatedOrder = await updateOrder(orderId, {
+        productionStatus: newStatus as ProductionStatus,
+        status: targetLegacyStatus,
+    }, {
+        userId,
+        actorRole: userRole,
+    });
+
+    if (updatedOrder) {
+        const eventType = getStatusChangeEventType(newStatus as ProductionStatus);
+        await addOrderEvent({
+            orderId,
+            eventType,
+            oldValue: currentStatus,
+            newValue: newStatus,
+            reason: reasonCode,
+            notes: reasonNote,
+            actorUserId: userId,
+            actorRole: userRole,
+        });
+    }
+
+    return updatedOrder;
 }
 
 /**
  * WF-2/WF-3: Change `issue_state` (returned/rejected/cancelled/on_hold/none).
- * Will void/restore relevant financial obligations via the existing helpers in
- * `orders.ts` after WF-5 alignment.
  */
 export async function changeIssueState(
-    _orderId: string,
-    _newIssueState: string,
-    _reasonCode: string,
-    _reasonNote?: string | null,
-    _responsibilityParty?: string,
+    orderId: string,
+    newIssueState: string,
+    reasonCode: string,
+    reasonNote?: string | null,
+    responsibilityParty?: string,
 ): Promise<Order | null> {
-    throw new NotImplementedError('changeIssueState');
+    if (!orderId || typeof orderId !== 'string') {
+        throw new ValidationError('orderId is required');
+    }
+    if (!newIssueState) {
+        throw new ValidationError('newIssueState is required');
+    }
+
+    const { role: userRole, userId } = await getCallerRoleAndId();
+
+    const { getOrder } = await import('./orders');
+    const order = await getOrder(orderId);
+    if (!order) {
+        throw new ValidationError('الطلب غير موجود');
+    }
+
+    const currentIssueState = getEffectiveIssueState(order);
+
+    const isValid = canChangeIssueState(
+        userRole,
+        currentIssueState,
+        newIssueState as IssueState
+    );
+
+    if (!isValid) {
+        throw new ValidationError('العملية غير مسموحة بناءً على حالة الطلب وصلاحياتك');
+    }
+
+    let targetLegacyStatus = order.status;
+    let targetProductionStatus = getProductionStatus(order);
+
+    if (newIssueState === 'returned') {
+        targetLegacyStatus = 'Returned for Adjustments';
+    } else if (newIssueState === 'rejected') {
+        targetLegacyStatus = 'Rejected';
+    } else if (newIssueState === 'cancelled') {
+        targetLegacyStatus = 'Cancelled';
+    } else if (newIssueState === 'on_hold') {
+        // Keep current status
+    } else if (newIssueState === 'none') {
+        if (currentIssueState !== 'none') {
+            targetLegacyStatus = 'Under Production';
+            targetProductionStatus = 'in_production';
+        }
+    } else if (newIssueState === 'redo') {
+        targetLegacyStatus = 'New Case';
+    }
+
+    const { updateOrder } = await import('./orders');
+    const updatedOrder = await updateOrder(orderId, {
+        issueState: newIssueState as IssueState,
+        status: targetLegacyStatus,
+        productionStatus: targetProductionStatus,
+    }, {
+        userId,
+        actorRole: userRole,
+    });
+
+    if (updatedOrder) {
+        const { eventType, severity } = getIssueEventDetails(newIssueState as IssueState);
+        await addOrderEvent({
+            orderId,
+            eventType,
+            oldValue: currentIssueState,
+            newValue: newIssueState,
+            reason: reasonCode,
+            notes: reasonNote,
+            actorUserId: userId,
+            actorRole: userRole,
+            severity,
+            responsibilityParty: responsibilityParty || null,
+        });
+    }
+
+    return updatedOrder;
 }
 
 /**
@@ -157,24 +397,130 @@ export async function changeIssueState(
  * admin/lab callers, with audit. Reps use repUpdateOrderWithAudit instead.
  */
 export async function updateAssignmentWithReason(
-    _orderId: string,
-    _changes: { supplierId?: string | null; designerId?: string | null },
-    _reasonCode: string,
-    _reasonNote?: string | null,
+    orderId: string,
+    changes: { supplierId?: string | null; designerId?: string | null },
+    reasonCode: string,
+    reasonNote?: string | null,
 ): Promise<Order | null> {
-    throw new NotImplementedError('updateAssignmentWithReason');
+    if (!orderId || typeof orderId !== 'string') {
+        throw new ValidationError('orderId is required');
+    }
+
+    const { role: userRole, userId } = await getCallerRoleAndId();
+
+    const { getOrder } = await import('./orders');
+    const order = await getOrder(orderId);
+    if (!order) {
+        throw new ValidationError('الطلب غير موجود');
+    }
+
+    const currentStatus = getProductionStatus(order);
+    const currentIssueState = getEffectiveIssueState(order);
+
+    const updates: Omit<Partial<Order>, 'supplierId' | 'designerId'> & { supplierId?: string | null; designerId?: string | null } = {};
+    if (changes.supplierId !== undefined) {
+        if (!canEditOrderField(userRole, 'supplier_id', currentStatus, currentIssueState, order.workflowType)) {
+            throw new ValidationError('غير مصرح لك بتحديث المورد لهذه الحالة');
+        }
+        updates.supplierId = changes.supplierId;
+    }
+    if (changes.designerId !== undefined) {
+        if (!canEditOrderField(userRole, 'designer_id', currentStatus, currentIssueState, order.workflowType)) {
+            throw new ValidationError('غير مصرح لك بتحديث المصمم لهذه الحالة');
+        }
+        updates.designerId = changes.designerId;
+    }
+
+    if (Object.keys(updates).length === 0) {
+        throw new ValidationError('No changes provided');
+    }
+
+    const { updateOrder } = await import('./orders');
+    const updatedOrder = await updateOrder(orderId, updates as unknown as Partial<Order>, {
+        userId,
+        actorRole: userRole,
+    });
+
+    if (updatedOrder) {
+        if (changes.supplierId !== undefined) {
+            await addOrderEvent({
+                orderId,
+                eventType: ORDER_EVENT_TYPES.supplierChanged,
+                oldValue: order.supplierId || null,
+                newValue: changes.supplierId || null,
+                reason: reasonCode,
+                notes: reasonNote,
+                actorUserId: userId,
+                actorRole: userRole,
+            });
+        }
+        if (changes.designerId !== undefined) {
+            await addOrderEvent({
+                orderId,
+                eventType: ORDER_EVENT_TYPES.designerChanged,
+                oldValue: order.designerId || null,
+                newValue: changes.designerId || null,
+                reason: reasonCode,
+                notes: reasonNote,
+                actorUserId: userId,
+                actorRole: userRole,
+            });
+        }
+    }
+
+    return updatedOrder;
 }
 
 /**
  * WF-2: Generic urgency-change wrapper for admin/lab callers, with audit.
  */
 export async function updateUrgencyWithReason(
-    _orderId: string,
-    _isUrgent: boolean,
-    _reasonCode: string,
-    _reasonNote?: string | null,
+    orderId: string,
+    isUrgent: boolean,
+    reasonCode: string,
+    reasonNote?: string | null,
 ): Promise<Order | null> {
-    throw new NotImplementedError('updateUrgencyWithReason');
+    if (!orderId || typeof orderId !== 'string') {
+        throw new ValidationError('orderId is required');
+    }
+
+    const { role: userRole, userId } = await getCallerRoleAndId();
+
+    const { getOrder } = await import('./orders');
+    const order = await getOrder(orderId);
+    if (!order) {
+        throw new ValidationError('الطلب غير موجود');
+    }
+
+    const currentStatus = getProductionStatus(order);
+    const currentIssueState = getEffectiveIssueState(order);
+
+    if (!canEditOrderField(userRole, 'is_urgent', currentStatus, currentIssueState, order.workflowType)) {
+        throw new ValidationError('غير مصرح لك بتحديث درجة الاستعجال لهذه الحالة');
+    }
+
+    const { updateOrder } = await import('./orders');
+    const updatedOrder = await updateOrder(orderId, {
+        isUrgent,
+    }, {
+        userId,
+        actorRole: userRole,
+    });
+
+    if (updatedOrder) {
+        await addOrderEvent({
+            orderId,
+            eventType: ORDER_EVENT_TYPES.urgencyChanged,
+            oldValue: order.isUrgent ? 'true' : 'false',
+            newValue: isUrgent ? 'true' : 'false',
+            reason: reasonCode,
+            notes: reasonNote,
+            actorUserId: userId,
+            actorRole: userRole,
+        });
+    }
+
+    return updatedOrder;
 }
 
 // ─── Low-level helper: write an order_events row ─────────────────────────────
@@ -233,6 +579,36 @@ export async function adminReviewOrderEdit(
         throw new ValidationError('Invalid action');
     }
 
+    let previousOrder: Order | null = null;
+    let orderId: string | null = null;
+    let proposedReasonCode: string | null = null;
+    let proposedReasonNote: string | null = null;
+
+    const { getOrder, runFinancialCorrectionsAfterOrderUpdate } = await import('./orders');
+
+    if (action === 'approve') {
+        // Fetch proposal details and current order state before applying changes
+        const { data: eventRow, error: eventError } = await supabase
+            .from('order_events')
+            .select('order_id, reason, notes')
+            .eq('id', eventId)
+            .eq('approval_status', 'pending')
+            .maybeSingle();
+
+        if (eventError) {
+            console.error('Failed to fetch pending proposal event for financial correction sync', eventError);
+        }
+
+        if (eventRow) {
+            orderId = eventRow.order_id;
+            proposedReasonCode = eventRow.reason;
+            proposedReasonNote = eventRow.notes;
+            if (orderId) {
+                previousOrder = await getOrder(orderId);
+            }
+        }
+    }
+
     const { error } = await supabase.rpc('admin_review_order_edit', {
         p_event_id: eventId,
         p_action: action,
@@ -241,5 +617,30 @@ export async function adminReviewOrderEdit(
 
     if (error) {
         throw ErrorHandler.handle(error, 'adminReviewOrderEdit');
+    }
+
+    // If approved and we have the previous order state, run financial corrections
+    if (action === 'approve' && orderId && previousOrder) {
+        const updatedOrder = await getOrder(orderId);
+        if (updatedOrder) {
+            let adminUserId: string | null = null;
+            try {
+                const caller = await getCallerRoleAndId();
+                adminUserId = caller.userId;
+            } catch (e) {
+                console.warn('Failed to resolve admin user ID for financial corrections auditing', e);
+            }
+
+            const combinedNote = proposedReasonNote || '';
+            const finalNote = combinedNote + (adminNotes ? ` (ملاحظة المسؤول: ${adminNotes})` : '');
+
+            await runFinancialCorrectionsAfterOrderUpdate(
+                previousOrder,
+                updatedOrder,
+                adminUserId,
+                proposedReasonCode,
+                finalNote || null
+            );
+        }
     }
 }

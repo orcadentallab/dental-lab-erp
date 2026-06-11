@@ -29,7 +29,7 @@ import {
 } from '../src/lib/workflowPermissions';
 import { ORDER_EVENT_TYPES } from '../src/constants/orderEvents';
 
-const MIGRATION_PATH = resolve('supabase/migrations/086_add_production_status_and_issue_state_to_orders.sql');
+const MIGRATION_PATH = resolve('supabase/temp_migrations/086_add_production_status_and_issue_state_to_orders.sql');
 // Rollback file lives outside `supabase/migrations/` so the Supabase CLI does
 // NOT auto-apply it after the forward migration during `db reset`.
 const ROLLBACK_PATH = resolve('supabase/manual/086_rollback.sql');
@@ -105,14 +105,14 @@ test.describe('WF-1: order edit reason codes', () => {
 });
 
 test.describe('WF-1: representative permission constants', () => {
-    test('REP_AUDITED_ALLOW_LIST has the 8 approved fields and excludes items', () => {
+    test('REP_AUDITED_ALLOW_LIST has the 13 approved fields and excludes status/manual_cost', () => {
         expect([...REP_AUDITED_ALLOW_LIST].sort()).toEqual([
-            'delivery_date', 'designer_id', 'images_url', 'is_urgent',
-            'patient_name', 'priority', 'stl_url', 'supplier_id',
+            'cost', 'delivery_date', 'design_price', 'designer_id', 'images_url',
+            'instructions', 'is_urgent', 'items', 'patient_name', 'priority',
+            'stl_url', 'supplier_id', 'total_price',
         ]);
-        expect(REP_AUDITED_ALLOW_LIST as readonly string[]).not.toContain('items');
-        expect(REP_AUDITED_ALLOW_LIST as readonly string[]).not.toContain('total_price');
-        expect(REP_AUDITED_ALLOW_LIST as readonly string[]).not.toContain('cost');
+        expect(REP_AUDITED_ALLOW_LIST as readonly string[]).not.toContain('status');
+        expect(REP_AUDITED_ALLOW_LIST as readonly string[]).not.toContain('manual_cost');
     });
 
     test('camelCase mirror matches snake_case allow-list one-to-one', () => {
@@ -125,8 +125,8 @@ test.describe('WF-1: representative permission constants', () => {
 
     test('isRepAuditedField rejects fields outside the allow-list', () => {
         expect(isRepAuditedField('patient_name')).toBe(true);
-        expect(isRepAuditedField('total_price')).toBe(false);
-        expect(isRepAuditedField('items')).toBe(false);
+        expect(isRepAuditedField('status')).toBe(false);
+        expect(isRepAuditedField('manual_cost')).toBe(false);
     });
 
     test('lab is blocked from issue_state rejected/cancelled', () => {
@@ -150,9 +150,9 @@ test.describe('WF-1: representative permission constants', () => {
         expect(REP_FIELD_STATE_GUARDS.is_urgent({ productionStatus: 'in_production', issueState: 'returned' })).toBe(true);
     });
 
-    test('state guard: patient_name forbidden after final delivery or while issue is open', () => {
+    test('state guard: patient_name allowed after final delivery (via proposal) or while issueState is none', () => {
         expect(REP_FIELD_STATE_GUARDS.patient_name({ productionStatus: 'in_production', issueState: 'none' })).toBe(true);
-        expect(REP_FIELD_STATE_GUARDS.patient_name({ productionStatus: 'final_delivered', issueState: 'none' })).toBe(false);
+        expect(REP_FIELD_STATE_GUARDS.patient_name({ productionStatus: 'final_delivered', issueState: 'none' })).toBe(true);
         expect(REP_FIELD_STATE_GUARDS.patient_name({ productionStatus: 'in_production', issueState: 'returned' })).toBe(false);
     });
 });

@@ -73,11 +73,11 @@ test.describe('WF-2: canEditOrderField', () => {
     });
 
     test('rep cannot edit denied field', () => {
-        expect(canEditOrderField('representative', 'total_price', 'in_production', 'none')).toBe(false);
+        expect(canEditOrderField('representative', 'manual_cost', 'in_production', 'none')).toBe(false);
     });
 
     test('rep cannot edit allowed field in invalid state', () => {
-        expect(canEditOrderField('representative', 'patient_name', 'final_delivered', 'none')).toBe(false);
+        expect(canEditOrderField('representative', 'patient_name', 'in_production', 'returned')).toBe(false);
     });
 
     test('designer can only edit design fields', () => {

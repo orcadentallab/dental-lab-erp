@@ -104,13 +104,15 @@ async function correctDoctorReceivablePartyAfterOrderUpdate(input: {
     previousOrder: Order;
     updatedOrder: Order;
     changedBy?: string | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
 }): Promise<void> {
     const previousDoctorId = input.previousOrder.doctorId || null;
     const newDoctorId = input.updatedOrder.doctorId || null;
 
     if (previousDoctorId === newDoctorId) return;
 
-    const isReceivableEligible = getProductionStatus(input.updatedOrder) === 'delivered';
+    const isReceivableEligible = getProductionStatus(input.updatedOrder) === 'final_delivered';
     if (!isReceivableEligible) return;
 
     if ((input.updatedOrder.totalPrice || 0) <= 0) {
@@ -129,14 +131,17 @@ async function correctDoctorReceivablePartyAfterOrderUpdate(input: {
         const oldObligation = await findActiveDoctorDeliveredObligationForOrder(input.updatedOrder.id, previousDoctorId);
         if (oldObligation) {
             replacedObligationId = oldObligation.id;
+            const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
             await voidFinancialObligation(
                 oldObligation.id,
-                `Doctor corrected from ${previousDoctorId} to ${newDoctorId || 'none'}`,
+                `Doctor corrected from ${previousDoctorId} to ${newDoctorId || 'none'}${reasonSuffix}`,
                 {
                     voidReason: 'doctor_corrected',
                     previousDoctorId,
                     newDoctorId,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
                 }
             );
@@ -160,6 +165,8 @@ async function correctDoctorReceivablePartyAfterOrderUpdate(input: {
             previousDoctorId,
             newDoctorId,
             replacedObligationId,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
             trackingOnly: true,
         },
@@ -170,8 +177,10 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
     previousOrder: Order;
     updatedOrder: Order;
     changedBy?: string | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
 }): Promise<void> {
-    const isReceivableEligible = getProductionStatus(input.updatedOrder) === 'delivered' && !!input.updatedOrder.doctorId;
+    const isReceivableEligible = getProductionStatus(input.updatedOrder) === 'final_delivered' && !!input.updatedOrder.doctorId;
     if (!isReceivableEligible) return;
 
     const newAmount = getDoctorReceivableAmount(input.updatedOrder);
@@ -180,14 +189,17 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
 
     if (newAmount <= 0) {
         if (activeObligation) {
+            const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
             await voidFinancialObligation(
                 activeObligation.id,
-                `Doctor receivable amount corrected from ${activeObligation.grossAmount} to 0`,
+                `Doctor receivable amount corrected from ${activeObligation.grossAmount} to 0${reasonSuffix}`,
                 {
                     voidReason: 'doctor_amount_zero_or_removed',
                     previousAmount: activeObligation.grossAmount,
                     newAmount: 0,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
                 }
             );
@@ -204,6 +216,8 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
                 previousAmount,
                 newAmount,
                 changedBy: input.changedBy || null,
+                reasonCode: input.reasonCode || null,
+                reasonNote: input.reasonNote || null,
                 shadowMode: true,
                 trackingOnly: true,
             },
@@ -213,14 +227,17 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
 
     if (activeObligation.grossAmount === newAmount) return;
 
+    const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
     await voidFinancialObligation(
         activeObligation.id,
-        `Doctor receivable amount corrected from ${activeObligation.grossAmount} to ${newAmount}`,
+        `Doctor receivable amount corrected from ${activeObligation.grossAmount} to ${newAmount}${reasonSuffix}`,
         {
             voidReason: 'doctor_amount_corrected',
             previousAmount: activeObligation.grossAmount,
             newAmount,
             changedBy: input.changedBy || null,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
         }
     );
@@ -233,6 +250,8 @@ async function correctDoctorReceivableAmountAfterOrderUpdate(input: {
             newAmount,
             replacedObligationId: activeObligation.id,
             changedBy: input.changedBy || null,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
             trackingOnly: true,
         },
@@ -250,13 +269,15 @@ async function correctExternalLabPayablePartyAfterOrderUpdate(input: {
     previousOrder: Order;
     updatedOrder: Order;
     changedBy?: string | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
 }): Promise<void> {
     const previousSupplierId = input.previousOrder.supplierId || null;
     const newSupplierId = input.updatedOrder.supplierId || null;
 
     if (previousSupplierId === newSupplierId) return;
 
-    const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'delivered';
+    const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'final_delivered';
     const isPayableEligible = isFinalReady(input.updatedOrder) || impliedFinalReady;
     if (!isPayableEligible) return;
 
@@ -276,15 +297,21 @@ async function correctExternalLabPayablePartyAfterOrderUpdate(input: {
         const oldObligation = await findActiveExternalLabReadyObligationForOrder(input.updatedOrder.id, previousSupplierId);
         if (oldObligation) {
             replacedObligationId = oldObligation.id;
+            const isPaid = oldObligation.status === 'paid';
+            const notePrefix = isPaid ? 'تسوية سالبة: ' : '';
+            const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
             await voidFinancialObligation(
                 oldObligation.id,
-                `Supplier corrected from ${previousSupplierId} to ${newSupplierId || 'none'}`,
+                `${notePrefix}Supplier corrected from ${previousSupplierId} to ${newSupplierId || 'none'}${reasonSuffix}`,
                 {
                     voidReason: 'supplier_corrected',
                     previousSupplierId,
                     newSupplierId,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
+                    isNegativeAdjustment: isPaid,
                 }
             );
             await reallocatePaymentsAfterObligationVoid(oldObligation.id, null, input.changedBy || null);
@@ -310,6 +337,8 @@ async function correctExternalLabPayablePartyAfterOrderUpdate(input: {
             previousSupplierId,
             newSupplierId,
             replacedObligationId,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
             trackingOnly: true,
         },
@@ -320,8 +349,10 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
     previousOrder: Order;
     updatedOrder: Order;
     changedBy?: string | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
 }): Promise<void> {
-    const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'delivered' && !isTryInOrder(input.updatedOrder);
+    const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'final_delivered' && !isTryInOrder(input.updatedOrder);
     const isPayableEligible = (isFinalReady(input.updatedOrder) || impliedFinalReady) && !!input.updatedOrder.supplierId;
     if (!isPayableEligible) return;
 
@@ -353,15 +384,21 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
 
     if (newAmount <= 0) {
         if (activeObligation) {
+            const isPaid = activeObligation.status === 'paid';
+            const notePrefix = isPaid ? 'تسوية سالبة: ' : '';
+            const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
             await voidFinancialObligation(
                 activeObligation.id,
-                `External lab payable amount corrected from ${activeObligation.grossAmount} to 0`,
+                `${notePrefix}External lab payable amount corrected from ${activeObligation.grossAmount} to 0${reasonSuffix}`,
                 {
                     voidReason: 'lab_cost_zero_or_removed',
                     previousAmount: activeObligation.grossAmount,
                     newAmount: 0,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
+                    isNegativeAdjustment: isPaid,
                 }
             );
             await reallocatePaymentsAfterObligationVoid(activeObligation.id, null, input.changedBy || null);
@@ -386,6 +423,8 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
                 newAmount,
                 ...labCostMetadata,
                 changedBy: input.changedBy || null,
+                reasonCode: input.reasonCode || null,
+                reasonNote: input.reasonNote || null,
                 shadowMode: true,
                 trackingOnly: true,
             },
@@ -395,15 +434,21 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
 
     if (activeObligation.grossAmount === newAmount) return;
 
+    const isPaid = activeObligation.status === 'paid';
+    const notePrefix = isPaid && (newAmount < activeObligation.grossAmount) ? 'تسوية سالبة: ' : '';
+    const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
     await voidFinancialObligation(
         activeObligation.id,
-        `External lab payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}`,
+        `${notePrefix}External lab payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}${reasonSuffix}`,
         {
             voidReason: 'lab_cost_corrected',
             previousAmount: activeObligation.grossAmount,
             newAmount,
             changedBy: input.changedBy || null,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
+            isNegativeAdjustment: isPaid && (newAmount < activeObligation.grossAmount),
         }
     );
 
@@ -416,6 +461,8 @@ async function correctExternalLabPayableAmountAfterOrderUpdate(input: {
             replacedObligationId: activeObligation.id,
             ...labCostMetadata,
             changedBy: input.changedBy || null,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
             trackingOnly: true,
         },
@@ -437,6 +484,8 @@ async function correctDesignerPayablePartyAfterOrderUpdate(input: {
     previousOrder: Order;
     updatedOrder: Order;
     changedBy?: string | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
 }): Promise<void> {
     const previousDesignerId = input.previousOrder.designerId || null;
     const newDesignerId = input.updatedOrder.designerId || null;
@@ -468,15 +517,21 @@ async function correctDesignerPayablePartyAfterOrderUpdate(input: {
         const oldObligation = await findActiveDesignerApprovedObligationForOrder(input.updatedOrder.id, previousDesignerId);
         if (oldObligation) {
             replacedObligationId = oldObligation.id;
+            const isPaid = oldObligation.status === 'paid';
+            const notePrefix = isPaid ? 'تسوية سالبة: ' : '';
+            const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
             await voidFinancialObligation(
                 oldObligation.id,
-                `Designer corrected from ${previousDesignerId} to ${newDesignerId || 'none'}`,
+                `${notePrefix}Designer corrected from ${previousDesignerId} to ${newDesignerId || 'none'}${reasonSuffix}`,
                 {
                     voidReason: 'designer_corrected',
                     previousDesignerId,
                     newDesignerId,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
+                    isNegativeAdjustment: isPaid,
                 }
             );
             await reallocatePaymentsAfterObligationVoid(oldObligation.id, null, input.changedBy || null);
@@ -492,6 +547,8 @@ async function correctDesignerPayablePartyAfterOrderUpdate(input: {
             previousDesignerId,
             newDesignerId,
             replacedObligationId,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
             trackingOnly: true,
         },
@@ -502,6 +559,8 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
     previousOrder: Order;
     updatedOrder: Order;
     changedBy?: string | null;
+    reasonCode?: string | null;
+    reasonNote?: string | null;
 }): Promise<void> {
     const isPayableEligible =
         input.updatedOrder.workflowType === 'split'
@@ -533,15 +592,21 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
         if (activeObligation) {
             if (activeObligation.grossAmount === 0) return;
 
+            const isPaid = activeObligation.status === 'paid';
+            const notePrefix = isPaid ? 'تسوية سالبة: ' : '';
+            const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
             await voidFinancialObligation(
                 activeObligation.id,
-                `Designer payable amount corrected from ${activeObligation.grossAmount} to 0`,
+                `${notePrefix}Designer payable amount corrected from ${activeObligation.grossAmount} to 0${reasonSuffix}`,
                 {
                     voidReason: 'design_price_zero_or_removed',
                     previousAmount: activeObligation.grossAmount,
                     newAmount: 0,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
+                    isNegativeAdjustment: isPaid,
                 }
             );
             const newOblig = await createDesignerPayableObligationForOrder(input.updatedOrder, {
@@ -552,6 +617,8 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
                     newAmount: 0,
                     replacedObligationId: activeObligation.id,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
                     trackingOnly: true,
                 },
@@ -569,6 +636,8 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
                     previousAmount,
                     newAmount: 0,
                     changedBy: input.changedBy || null,
+                    reasonCode: input.reasonCode || null,
+                    reasonNote: input.reasonNote || null,
                     shadowMode: true,
                     trackingOnly: true,
                 },
@@ -585,6 +654,8 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
                 previousAmount,
                 newAmount,
                 changedBy: input.changedBy || null,
+                reasonCode: input.reasonCode || null,
+                reasonNote: input.reasonNote || null,
                 shadowMode: true,
                 trackingOnly: true,
             },
@@ -594,15 +665,21 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
 
     if (activeObligation.grossAmount === newAmount) return;
 
+    const isPaid = activeObligation.status === 'paid';
+    const notePrefix = isPaid && (newAmount < activeObligation.grossAmount) ? 'تسوية سالبة: ' : '';
+    const reasonSuffix = input.reasonNote ? `. السبب: ${input.reasonNote}` : '';
     await voidFinancialObligation(
         activeObligation.id,
-        `Designer payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}`,
+        `${notePrefix}Designer payable amount corrected from ${activeObligation.grossAmount} to ${newAmount}${reasonSuffix}`,
         {
             voidReason: 'design_price_corrected',
             previousAmount: activeObligation.grossAmount,
             newAmount,
             changedBy: input.changedBy || null,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
+            isNegativeAdjustment: isPaid && (newAmount < activeObligation.grossAmount),
         }
     );
 
@@ -614,6 +691,8 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
             newAmount,
             replacedObligationId: activeObligation.id,
             changedBy: input.changedBy || null,
+            reasonCode: input.reasonCode || null,
+            reasonNote: input.reasonNote || null,
             shadowMode: true,
             trackingOnly: true,
         },
@@ -624,6 +703,215 @@ async function correctDesignerPayableAmountAfterOrderUpdate(input: {
         newOblig ? newOblig.id : null,
         input.changedBy || null
     );
+}
+
+export async function runFinancialCorrectionsAfterOrderUpdate(
+    previousOrder: Order,
+    updatedOrder: Order,
+    changedBy?: string | null,
+    reasonCode?: string | null,
+    reasonNote?: string | null
+): Promise<void> {
+    const oldDoctorId = previousOrder.doctorId || null;
+    const newDoctorId = updatedOrder.doctorId || null;
+    const oldSupplierId = previousOrder.supplierId || null;
+    const newSupplierId = updatedOrder.supplierId || null;
+    const oldDoctorAmount = getDoctorReceivableAmount(previousOrder);
+    const newDoctorAmount = getDoctorReceivableAmount(updatedOrder);
+
+    let isCurrentDesignerSalaried = false;
+    if (previousOrder.designerId) {
+        const { data: u } = await supabase.from('users').select('custom_permissions').eq('id', previousOrder.designerId).maybeSingle();
+        isCurrentDesignerSalaried = Boolean(u?.custom_permissions?.['designer_fixed_salary']);
+    }
+    let isNextDesignerSalaried = isCurrentDesignerSalaried;
+    if (updatedOrder.designerId) {
+        const { data: u } = await supabase.from('users').select('custom_permissions').eq('id', updatedOrder.designerId).maybeSingle();
+        isNextDesignerSalaried = Boolean(u?.custom_permissions?.['designer_fixed_salary']);
+    }
+
+    const oldLabCost = getLabCostMetadata(previousOrder, isCurrentDesignerSalaried).cost;
+    const newLabCost = getLabCostMetadata(updatedOrder, isNextDesignerSalaried).cost;
+    const oldDesignerId = previousOrder.designerId || null;
+    const newDesignerId = updatedOrder.designerId || null;
+    const oldDesignPrice = previousOrder.designPrice ?? 0;
+    const newDesignPrice = updatedOrder.designPrice ?? 0;
+
+    const doctorChanged = oldDoctorId !== newDoctorId;
+    const supplierChanged = oldSupplierId !== newSupplierId;
+    const doctorAmountChanged = oldDoctorAmount !== newDoctorAmount;
+    const labCostChanged = oldLabCost !== newLabCost;
+    const designerChanged = oldDesignerId !== newDesignerId;
+    const designPriceChanged = oldDesignPrice !== newDesignPrice;
+
+    const shouldVoidDoctorReceivableForLifecycle = Boolean(
+        FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled
+        && shouldVoidDoctorReceivableForStatusOrIssueChange(previousOrder, updatedOrder)
+    );
+
+    if (shouldVoidDoctorReceivableForLifecycle) {
+        const reasonSuffix = reasonNote ? `. السبب: ${reasonNote}` : '';
+        const notes = `Order left final delivered / became rejected, returned, cancelled, or issue; doctor receivable obligation voided${reasonSuffix}`;
+
+        try {
+            const obligation = await findActiveDoctorDeliveredObligationForOrder(updatedOrder.id);
+
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, notes, {
+                    voidReason: 'delivery_rejected_or_reverted',
+                    previousStatus: previousOrder.status,
+                    newStatus: updatedOrder.status,
+                    previousIssueState: previousOrder.issueState || null,
+                    newIssueState: updatedOrder.issueState || null,
+                    reasonCode: reasonCode || null,
+                    reasonNote: reasonNote || null,
+                    shadowMode: true,
+                    reviewNeeded: true,
+                });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, changedBy || null);
+            } else {
+                console.debug('No active shadow doctor receivable obligation found to void after leaving final delivered workflow', {
+                    orderId: updatedOrder.id,
+                    previousStatus: previousOrder.status,
+                    newStatus: updatedOrder.status,
+                });
+            }
+        } catch (error) {
+            console.error(DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE, {
+                orderId: updatedOrder.id,
+                previousStatus: previousOrder.status,
+                newStatus: updatedOrder.status,
+                error,
+            });
+            throw new Error(DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE);
+        }
+    }
+
+    if (FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
+        if (doctorChanged) {
+            try {
+                await correctDoctorReceivablePartyAfterOrderUpdate({
+                    previousOrder,
+                    updatedOrder,
+                    changedBy,
+                    reasonCode,
+                    reasonNote,
+                });
+            } catch (error) {
+                console.error(DOCTOR_RECEIVABLE_PARTY_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: updatedOrder.id,
+                    previousDoctorId: oldDoctorId,
+                    newDoctorId,
+                    error,
+                });
+                throw new Error(DOCTOR_RECEIVABLE_PARTY_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (supplierChanged) {
+            try {
+                await correctExternalLabPayablePartyAfterOrderUpdate({
+                    previousOrder,
+                    updatedOrder,
+                    changedBy,
+                    reasonCode,
+                    reasonNote,
+                });
+            } catch (error) {
+                console.error(EXTERNAL_LAB_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: updatedOrder.id,
+                    previousSupplierId: oldSupplierId,
+                    newSupplierId,
+                    error,
+                });
+                throw new Error(EXTERNAL_LAB_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (
+            doctorAmountChanged
+            && !doctorChanged
+            && !shouldVoidDoctorReceivableForLifecycle
+        ) {
+            try {
+                await correctDoctorReceivableAmountAfterOrderUpdate({
+                    previousOrder,
+                    updatedOrder,
+                    changedBy,
+                    reasonCode,
+                    reasonNote,
+                });
+            } catch (error) {
+                console.error(DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: updatedOrder.id,
+                    previousAmount: oldDoctorAmount,
+                    newAmount: newDoctorAmount,
+                    error,
+                });
+                throw new Error(DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (labCostChanged && !supplierChanged) {
+            try {
+                await correctExternalLabPayableAmountAfterOrderUpdate({
+                    previousOrder,
+                    updatedOrder,
+                    changedBy,
+                    reasonCode,
+                    reasonNote,
+                });
+            } catch (error) {
+                console.error(EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: updatedOrder.id,
+                    previousAmount: oldLabCost,
+                    newAmount: newLabCost,
+                    error,
+                });
+                throw new Error(EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (designerChanged) {
+            try {
+                await correctDesignerPayablePartyAfterOrderUpdate({
+                    previousOrder,
+                    updatedOrder,
+                    changedBy,
+                    reasonCode,
+                    reasonNote,
+                });
+            } catch (error) {
+                console.error(DESIGNER_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: updatedOrder.id,
+                    previousDesignerId: oldDesignerId,
+                    newDesignerId,
+                    error,
+                });
+                throw new Error(DESIGNER_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+
+        if (designPriceChanged && !designerChanged) {
+            try {
+                await correctDesignerPayableAmountAfterOrderUpdate({
+                    previousOrder,
+                    updatedOrder,
+                    changedBy,
+                    reasonCode,
+                    reasonNote,
+                });
+            } catch (error) {
+                console.error(DESIGNER_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE, {
+                    orderId: updatedOrder.id,
+                    previousAmount: oldDesignPrice,
+                    newAmount: newDesignPrice,
+                    error,
+                });
+                throw new Error(DESIGNER_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
+            }
+        }
+    }
 }
 
 // Transform database record to application format
@@ -1530,7 +1818,7 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             if (updates.status === 'Delivered') {
                 const deliveredDate = timestamp.split('T')[0];
                 dbUpdates.actual_delivery_date = deliveredDate;
-            } else if (updates.status !== undefined && getProductionStatus({ status: updates.status }) !== 'delivered') {
+            } else if (updates.status !== undefined && !['Delivered', 'Completed'].includes(updates.status)) {
                 dbUpdates.actual_delivery_date = null;
             }
         }
@@ -1946,8 +2234,8 @@ export async function updateOrderStatus(
     // Use existing updateOrder for the actual update (handles history tracking)
     const updatedOrder = await updateOrder(orderId, updates);
 
-    const wasDelivered = getProductionStatus(currentOrder) === 'delivered';
-    const isNowDelivered = updatedOrder ? getProductionStatus(updatedOrder) === 'delivered' : false;
+    const wasDelivered = getProductionStatus(currentOrder) === 'final_delivered';
+    const isNowDelivered = updatedOrder ? getProductionStatus(updatedOrder) === 'final_delivered' : false;
     const isDeliveredReversal = updatedOrder ? wasDelivered && !isNowDelivered : false;
 
     if (updatedOrder && currentOrder.status !== newStatus) {
@@ -1970,10 +2258,10 @@ export async function updateOrderStatus(
                 previousLegacyStatus: currentOrder.status,
                 productionStatus: getProductionStatus(updatedOrder),
                 previousProductionStatus: getProductionStatus(currentOrder),
-                wfProductionStatus: (updatedOrder as any).productionStatus || null,
-                wfIssueState: (updatedOrder as any).issueState || null,
-                previousWfProductionStatus: (currentOrder as any).productionStatus || null,
-                previousWfIssueState: (currentOrder as any).issueState || null,
+                wfProductionStatus: (updatedOrder as unknown as Record<string, unknown>).productionStatus || null,
+                wfIssueState: (updatedOrder as unknown as Record<string, unknown>).issueState || null,
+                previousWfProductionStatus: (currentOrder as unknown as Record<string, unknown>).productionStatus || null,
+                previousWfIssueState: (currentOrder as unknown as Record<string, unknown>).issueState || null,
                 designStatus: updatedOrder.designStatus || null,
                 previousDesignStatus: currentOrder.designStatus || null,
                 ...(isNowDelivered && autoMarkedReady ? {

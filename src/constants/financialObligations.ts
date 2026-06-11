@@ -6,6 +6,7 @@ import {
 } from './billingSettings';
 import {
     getProductionStatus,
+    getEffectiveIssueState,
     isDeliveredForDoctorReceivable,
     isFinalReady,
     isTryInReady,
@@ -250,7 +251,7 @@ export function shouldCreateExternalLabPayableObligationForStatusChange(
 ): { shouldCreate: boolean; impliedFinalReady: boolean } {
     const becameFinalReady = !isFinalReady(previousOrder) && isFinalReady(updatedOrder);
     const directDeliveredImpliesFinalReady =
-        getProductionStatus(updatedOrder) === 'delivered'
+        getProductionStatus(updatedOrder) === 'final_delivered'
         && !isFinalReady(previousOrder)
         && !isTryInReady(previousOrder);
 
@@ -296,10 +297,15 @@ export function shouldVoidExternalLabReadyObligationForStatusChange(
     previousOrder: CandidateOrder,
     updatedOrder: CandidateOrder
 ): boolean {
+    const issueState = getEffectiveIssueState(updatedOrder);
+    if (['returned', 'rejected', 'cancelled', 'on_hold', 'redo'].includes(issueState)) {
+        return false;
+    }
+
     const previouslyNormalFinalReadyEligible =
-        isFinalReady(previousOrder) || getProductionStatus(previousOrder) === 'delivered';
+        isFinalReady(previousOrder) || getProductionStatus(previousOrder) === 'final_delivered';
     const stillNormalFinalReadyEligible =
-        isFinalReady(updatedOrder) || getProductionStatus(updatedOrder) === 'delivered';
+        isFinalReady(updatedOrder) || getProductionStatus(updatedOrder) === 'final_delivered';
 
     return previouslyNormalFinalReadyEligible && !stillNormalFinalReadyEligible;
 }
@@ -308,20 +314,24 @@ export function shouldVoidDoctorReceivableForStatusOrIssueChange(
     previousOrder: CandidateOrder,
     updatedOrder: CandidateOrder
 ): boolean {
-    const previousProductionStatus = previousOrder.productionStatus || previousOrder.production_status;
-    const updatedProductionStatus = updatedOrder.productionStatus || updatedOrder.production_status;
-    const previousIssueState = previousOrder.issueState || previousOrder.issue_state || 'none';
-    const updatedIssueState = updatedOrder.issueState || updatedOrder.issue_state || 'none';
+    const updatedIssueState = getEffectiveIssueState(updatedOrder);
+    if (['returned', 'on_hold'].includes(updatedIssueState)) {
+        return false;
+    }
+
+    const previousProductionStatus = getProductionStatus(previousOrder);
+    const updatedProductionStatus = getProductionStatus(updatedOrder);
+    const previousIssueState = getEffectiveIssueState(previousOrder);
     const previouslyFinalDelivered =
-        getProductionStatus(previousOrder) === 'delivered'
+        getProductionStatus(previousOrder) === 'final_delivered'
         || previousProductionStatus === 'final_delivered';
     const stillFinalDelivered =
         isDeliveredForDoctorReceivable(updatedOrder)
         && updatedProductionStatus !== 'not_started'
-        && !['returned', 'rejected', 'cancelled', 'on_hold'].includes(updatedIssueState);
+        && !['rejected', 'cancelled', 'redo'].includes(updatedIssueState);
     const enteredIssueState =
         previousIssueState !== updatedIssueState
-        && ['returned', 'rejected', 'cancelled', 'on_hold'].includes(updatedIssueState);
+        && ['rejected', 'cancelled', 'redo'].includes(updatedIssueState);
 
     return previouslyFinalDelivered && (!stillFinalDelivered || enteredIssueState);
 }
