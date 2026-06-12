@@ -163,7 +163,7 @@ BEGIN
             NEW.production_status := CASE
                 WHEN NEW.status IN ('Delivered','Completed')                                   THEN 'final_delivered'
                 WHEN NEW.status = 'Try In Approved'                                            THEN 'finalization'
-                WHEN NEW.status = 'Ready'  AND NEW.delivery_type = 'TryIn'                     THEN 'try_in_ready'
+                WHEN NEW.status = 'Ready'  AND NEW.delivery_type = 'TryIn' AND COALESCE(OLD.production_status, '') NOT IN ('finalization', 'final_ready', 'final_delivered') THEN 'try_in_ready'
                 WHEN NEW.status = 'Ready'                                                      THEN 'final_ready'
                 WHEN NEW.status = 'Try In' AND NEW.delivery_type = 'TryIn'                     THEN 'try_in_ready'
                 WHEN NEW.status IN ('Under Production','In Progress')                          THEN 'in_production'

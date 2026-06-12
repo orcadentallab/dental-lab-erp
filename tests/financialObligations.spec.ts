@@ -1252,6 +1252,11 @@ test.describe('manualCost clearing contract', () => {
         expect(ordersSource).not.toContain('rejectedLabCost !== undefined || updates.manualCost');
     });
 
+    test('isFinancialAdminOnly does not strip workflow fields when they are actually changing', () => {
+        expect(ordersSource).toContain('const anyWorkflowFieldChanging = workflowFields.some');
+        expect(ordersSource).toContain('!anyWorkflowFieldChanging');
+    });
+
     test('OrderForm always sends recalculated cost when saving (including when manualCost is cleared)', () => {
         // Both `cost` and `manualCost` are submitted together. When the admin clears
         // the manual override (manualCost state === null), `cost` falls back to the

@@ -55,7 +55,10 @@ const getOperationalOrderDate = (order: Partial<Order>) => (order.deliveryDate |
 
 const getOrderDisplayValue = (order: Partial<Order>) => order.totalPrice || 0;
 
-const isVisibleInAccountStatement = (order: Partial<Order>) => !order.isArchived;
+const isVisibleInAccountStatement = (order: Partial<Order>) => {
+    if (!order.isArchived) return true;
+    return ['Delivered', 'Completed', 'Rejected', 'Cancelled'].includes(order.status || '');
+};
 
 const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {
     const term = searchTerm.trim();

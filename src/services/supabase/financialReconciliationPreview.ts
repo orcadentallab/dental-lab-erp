@@ -163,7 +163,8 @@ function getOperationalOrderDate(order: ReturnType<typeof toLifecycleOrder>) {
 }
 
 function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>) {
-    return !order.isArchived;
+    if (!order.isArchived) return true;
+    return ['Delivered', 'Completed', 'Rejected', 'Cancelled'].includes(order.status || '');
 }
 
 function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {

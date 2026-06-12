@@ -1352,7 +1352,7 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
-        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost')
+        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost, production_status, issue_state')
         .order('created_at', { ascending: false })
         .range(0, 9999);
 
@@ -1376,7 +1376,9 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         deliveryDate: d.delivery_date,
         actualDeliveryDate: d.actual_delivery_date || undefined,
         isArchived: d.is_archived || undefined,
-        rejectedLabCost: d.rejected_lab_cost || undefined
+        rejectedLabCost: d.rejected_lab_cost || undefined,
+        productionStatus: d.production_status || undefined,
+        issueState: d.issue_state || undefined
     }));
 }
 
@@ -1585,14 +1587,35 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
         throw new ValidationError('Clearing manual cost requires providing the recalculated effective cost.');
     }
 
+    let currentOrderForUpdate: Order | null | undefined;
+    const getCurrentOrderForUpdate = async () => {
+        if (currentOrderForUpdate === undefined) {
+            currentOrderForUpdate = await getOrder(id);
+        }
+        return currentOrderForUpdate;
+    };
+
+    const currentOrder = await getCurrentOrderForUpdate();
+    if (!currentOrder) {
+        throw new ValidationError('الطلب غير موجود');
+    }
+
     const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
     const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost'];
     const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
     const updateFields = Object.keys(updates) as (keyof Order)[];
     const businessUpdateFields = updateFields.filter(field => !workflowFields.includes(field));
+
+    // Check if any of the workflow fields in the updates are actually changing compared to the DB values
+    const anyWorkflowFieldChanging = workflowFields.some(field => {
+        if (updates[field] === undefined) return false;
+        return JSON.stringify(updates[field] ?? null) !== JSON.stringify(currentOrder[field] ?? null);
+    });
+
     const isFinancialAdminOnly = businessUpdateFields.length > 0
         && businessUpdateFields.some(field => moneyFields.includes(field))
-        && businessUpdateFields.every(field => financialAdminFields.includes(field));
+        && businessUpdateFields.every(field => financialAdminFields.includes(field))
+        && !anyWorkflowFieldChanging;
 
     if (isFinancialAdminOnly) {
         updates = { ...updates };
@@ -1609,14 +1632,6 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             throw new ValidationError(formatValidationError(error));
         }
     }
-
-    let currentOrderForUpdate: Order | null | undefined;
-    const getCurrentOrderForUpdate = async () => {
-        if (currentOrderForUpdate === undefined) {
-            currentOrderForUpdate = await getOrder(id);
-        }
-        return currentOrderForUpdate;
-    };
 
     let deliveryDateChangeEvent: {
         oldDeliveryDate: string;
