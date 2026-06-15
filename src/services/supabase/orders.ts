@@ -2217,6 +2217,33 @@ export async function updateOrderStatus(
         status: newStatus,
     };
 
+    // Explicitly set productionStatus to assist the database trigger sync
+    const currentProdStatus = getProductionStatus(currentOrder);
+    const deliveryType = (currentOrder.deliveryType || '').toLowerCase();
+    const isTryIn = deliveryType === 'tryin' || deliveryType === 'try_in';
+
+    if (newStatus === 'Ready') {
+        if (isTryIn && currentProdStatus === 'finalization') {
+            updates.productionStatus = 'final_ready';
+        } else if (!isTryIn) {
+            updates.productionStatus = 'final_ready';
+        } else {
+            updates.productionStatus = 'try_in_ready';
+        }
+    } else if (newStatus === 'Try In Approved') {
+        updates.productionStatus = 'finalization';
+    } else if (newStatus === 'Try In') {
+        updates.productionStatus = 'try_in_ready';
+    } else if (newStatus === 'Delivered' || newStatus === 'Completed') {
+        updates.productionStatus = 'final_delivered';
+    } else if (['Under Production', 'In Progress', 'Returned for Adjustments', 'Rejected'].includes(newStatus)) {
+        updates.productionStatus = 'in_production';
+    } else if (['Under Design', 'Waiting Dr Approval'].includes(newStatus)) {
+        updates.productionStatus = 'designing';
+    } else if (['New Case', 'Pending', 'Pending Review', 'Cancelled'].includes(newStatus)) {
+        updates.productionStatus = 'not_started';
+    }
+
     // CRITICAL: Sync designStatus for Split Workflows
     if (currentOrder.workflowType === 'split') {
         const syncedDesignStatus = STATUS_TO_DESIGN_STATUS[newStatus];
