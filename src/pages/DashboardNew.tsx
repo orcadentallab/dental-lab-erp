@@ -287,19 +287,19 @@ export default function DashboardNew() {
     });
 
     // Truly rejected (terminal) — gets archive action
-    const rejectedOrders = orders.filter(o => o.status === 'Rejected');
+    const rejectedOrders = orders.filter(o => o.status === 'Doctor Rejected' || o.status === 'Rejected');
 
     // Returned for rework — still active, will go back to Delivered when done
     const returnedOrders = orders.filter(o => o.status === 'Returned for Adjustments');
 
     const overdueOrders = orders.filter(o =>
         o.deliveryDate < today &&
-        !['Delivered', 'Rejected', 'Cancelled'].includes(o.status)
+        !['Delivered', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'].includes(o.status)
     );
 
     const activeDeliveryOrders = orders.filter(o =>
         Boolean(o.deliveryDate) &&
-        !['Delivered', 'Rejected', 'Cancelled'].includes(o.status)
+        !['Delivered', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'].includes(o.status)
     );
 
     const tomorrow = new Date();
@@ -319,13 +319,13 @@ export default function DashboardNew() {
 
     // Orders without assigned lab
     const unassignedLabOrders = orders.filter(o =>
-        !o.supplierId && o.status !== 'Delivered' && o.status !== 'Rejected'
+        !o.supplierId && o.status !== 'Delivered' && o.status !== 'Doctor Rejected' && o.status !== 'Lab Rejected' && o.status !== 'Rejected'
     );
 
     // Designer feedback orders (Rejected or NeedDetails)
     const designerFeedbackOrders = orders.filter(o =>
         (o.technicianStatus === 'Rejected' || o.technicianStatus === 'NeedDetails') &&
-        !['Rejected', 'Delivered', 'Completed', 'Cancelled'].includes(o.status)
+        !['Doctor Rejected', 'Lab Rejected', 'Rejected', 'Delivered', 'Completed', 'Cancelled'].includes(o.status)
     );
 
     // Orders needing attention (PMMA requested by lab/designer)
@@ -338,7 +338,7 @@ export default function DashboardNew() {
     const doctorRequests = orders.filter(o => o.status === 'Pending Review');
 
     // --- Statistics Data ---
-    const activeOrdersCount = orders.filter(o => !['Delivered', 'Cancelled', 'Rejected'].includes(o.status)).length;
+    const activeOrdersCount = orders.filter(o => !['Delivered', 'Cancelled', 'Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(o.status)).length;
     const ordersTodayCount = orders.filter(o => o.createdAt.startsWith(today)).length;
     const readyOrdersCount = orders.filter(o => o.status === 'Ready').length;
 
@@ -499,7 +499,10 @@ export default function DashboardNew() {
     }, [designerPerformanceRows]);
 
     // Quality Stats
-    const labRejections = orders.filter(o => o.technicianStatus === 'Rejected');
+    const labRejections = orders.filter(o => 
+        o.status === 'Lab Rejected' || 
+        (o.technicianStatus === 'Rejected' && !['Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Delivered', 'Completed'].includes(o.status))
+    );
 
     // Helper to resolve (dismiss) a comment
     const resolveComment = (commentId: string) => {
@@ -631,7 +634,7 @@ export default function DashboardNew() {
 
             const relatedOrder = orders.find(order => order.id === historyEntry.order_id);
             if (!relatedOrder) return;
-            if (['Delivered', 'Cancelled', 'Rejected'].includes(relatedOrder.status)) return;
+            if (['Delivered', 'Cancelled', 'Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(relatedOrder.status)) return;
 
             if (!latestChangesByOrder.has(relatedOrder.id)) {
                 latestChangesByOrder.set(relatedOrder.id, {
@@ -647,7 +650,7 @@ export default function DashboardNew() {
 
         orders.forEach(order => {
             if (latestChangesByOrder.has(order.id)) return;
-            if (['Delivered', 'Cancelled', 'Rejected'].includes(order.status)) return;
+            if (['Delivered', 'Cancelled', 'Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(order.status)) return;
 
             const auditComment = [...(order.comments || [])]
                 .reverse()
@@ -937,30 +940,43 @@ export default function DashboardNew() {
     };
 
     const handleRejectDesignerCase = async (order: Order) => {
-        if (!confirm('هل أنت متأكد من رفض الحالة بالكامل بناءً على تقييم المصمم؟ سيتم تغيير الحالة إلى مرفوضة نهائياً.')) {
+        // Extract last designer comment as auto-reason for rejection
+        const designerComments = (order.comments || []).filter(c =>
+            c.userId !== (user?.id) || (c.text.includes('[رفض المصمم]') || c.text.includes('[طلب تفاصيل]'))
+        );
+        const lastDesignerComment = [...designerComments].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0];
+        const rejectionReason = lastDesignerComment?.text
+            ? lastDesignerComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '')
+            : 'رفض من قبل المصمم';
+
+        if (!confirm(`هل أنت متأكد من رفض الحالة نهائياً؟\nسبب الرفض: "${rejectionReason}"\nسيتم تغيير الحالة إلى "رفض معمل" (بدون تأثير مالي).`)) {
             return;
         }
         try {
             const nextComments = [...(order.comments || [])];
             nextComments.push({
                 id: crypto.randomUUID(),
-                text: `[رد الإدارة]: تم رفض الحالة نهائياً من قبل المعمل بناءً على تقييم المصمم`,
+                // Auto-include last designer comment as rejection reason
+                text: `[رفض المعمل النهائي]: ${rejectionReason}`,
                 userId: user?.id || 'system',
                 userName: user?.name || 'System',
                 createdAt: new Date().toISOString()
             });
-            
-            // First update comments, then status
+
+            // Update comments first, then update status to Lab Rejected
             await db.updateOrder(order.id, { comments: nextComments });
-            const updatedOrder = await db.updateOrderStatus(order.id, 'Rejected', {
+            const updatedOrder = await db.updateOrderStatus(order.id, 'Lab Rejected', {
                 userId: user?.id,
+                userName: user?.name || user?.role || 'Admin',
                 actorRole: user?.role
             });
 
             if (updatedOrder) {
                 setOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
                 setDesignerOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
-                toast.success('تم رفض الحالة بنجاح');
+                toast.success('تم رفض الحالة نهائياً (رفض معمل) بنجاح');
                 if (designerFeedbackOrders.length <= 1) {
                     setActiveModal(null);
                 }
@@ -1172,8 +1188,8 @@ export default function DashboardNew() {
                             )}
                             {rejectedOrders.length > 0 && (
                                 <AlertCard
-                                    title="مرفوض (طبيب)"
-                                    count={rejectedOrders.filter(o => o.status === 'Rejected').length}
+                                    title="حالات مرتجعة"
+                                    count={rejectedOrders.length}
                                     icon={AlertTriangle}
                                     colorClass="red"
                                     useModal
@@ -1277,50 +1293,53 @@ export default function DashboardNew() {
                     </div>
                 )}
 
-                {/* 3. COMMENTS ALERT (Blue) */}
-                {canViewCommentAlerts && (unresolvedCommentItems.length > 0 || representativeDeliveryDateChanges.length > 0) && (
+                {/* 3. COMMENTS & EDITS ALERT (Blue/Orange) */}
+                {((canViewCommentAlerts && (unresolvedCommentItems.length > 0 || representativeDeliveryDateChanges.length > 0)) ||
+                  (user?.role === 'admin' && (pendingProposals.length > 0 || appliedEdits.length > 0))) && (
                     <div>
                         <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
                             <MessageSquare size={16} />
-                            تعليقات تحتاج ردود
+                            تعليقات وتعديلات تحتاج مراجعة
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <AlertCard
-                                title="تعليقات على الحالات"
-                                count={unresolvedCommentItems.length}
-                                icon={MessageSquare}
-                                colorClass="blue"
-                                expandable
-                            >
-                                <div className="divide-y divide-blue-100 dark:divide-blue-800 -mx-4 max-h-72 overflow-y-auto">
-                                    {unresolvedCommentItems.map(({ comment, order }) => (
-                                        <div
-                                            key={comment.id}
-                                            className="flex items-start gap-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                                    <span className="font-mono text-[10px] text-blue-500 font-bold">#{order.caseId}</span>
-                                                    <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{order.patientName}</span>
-                                                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">— {comment.userName}</span>
-                                                </div>
-                                                <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{comment.text}</p>
-                                                <span className="text-[10px] text-gray-400 mt-0.5 block">
-                                                    {new Date(comment.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                                                </span>
-                                            </div>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); resolveComment(comment.id); }}
-                                                title="تم الرد ✓"
-                                                className="shrink-0 mt-1 p-1 rounded-md text-blue-300 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors"
+                            {canViewCommentAlerts && unresolvedCommentItems.length > 0 && (
+                                <AlertCard
+                                    title="تعليقات على الحالات"
+                                    count={unresolvedCommentItems.length}
+                                    icon={MessageSquare}
+                                    colorClass="blue"
+                                    expandable
+                                >
+                                    <div className="divide-y divide-blue-100 dark:divide-blue-800 -mx-4 max-h-72 overflow-y-auto">
+                                        {unresolvedCommentItems.map(({ comment, order }) => (
+                                            <div
+                                                key={comment.id}
+                                                className="flex items-start gap-3 px-4 py-3 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                                             >
-                                                <CheckSquare className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </AlertCard>
-                            {user?.role === 'admin' && representativeDeliveryDateChanges.length > 0 && (
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                                        <span className="font-mono text-[10px] text-blue-500 font-bold">#{order.caseId}</span>
+                                                        <span className="text-xs font-bold text-gray-800 dark:text-white truncate">{order.patientName}</span>
+                                                        <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold">— {comment.userName}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{comment.text}</p>
+                                                    <span className="text-[10px] text-gray-400 mt-0.5 block">
+                                                        {new Date(comment.createdAt).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); resolveComment(comment.id); }}
+                                                    title="تم الرد ✓"
+                                                    className="shrink-0 mt-1 p-1 rounded-md text-blue-300 hover:text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors"
+                                                >
+                                                    <CheckSquare className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </AlertCard>
+                            )}
+                            {canViewCommentAlerts && user?.role === 'admin' && representativeDeliveryDateChanges.length > 0 && (
                                 <AlertCard
                                     title="تعديلات تواريخ التسليم"
                                     count={representativeDeliveryDateChanges.length}
@@ -1330,19 +1349,7 @@ export default function DashboardNew() {
                                     onExpand={() => setActiveModal('delivery-change-review')}
                                 />
                             )}
-                        </div>
-                    </div>
-                )}
-
-                {/* 4. REPRESENTATIVE EDITS AND PROPOSALS REVIEW (Admin Only) */}
-                {user?.role === 'admin' && (pendingProposals.length > 0 || appliedEdits.length > 0) && (
-                    <div>
-                        <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center gap-2">
-                            <AlertTriangle size={16} />
-                            مراجعة تعديلات الأوردرات من المندوبين
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {pendingProposals.length > 0 && (
+                            {user?.role === 'admin' && pendingProposals.length > 0 && (
                                 <AlertCard
                                     title="طلبات تعديل معلقة لموافقة الأدمن"
                                     count={pendingProposals.length}
@@ -1352,7 +1359,7 @@ export default function DashboardNew() {
                                     onExpand={() => setActiveModal('pending-proposals')}
                                 />
                             )}
-                            {appliedEdits.length > 0 && (
+                            {user?.role === 'admin' && appliedEdits.length > 0 && (
                                 <AlertCard
                                     title="سجل التعديلات والطلبات المنتهية"
                                     count={appliedEdits.length}
@@ -1493,11 +1500,17 @@ export default function DashboardNew() {
                                                             )}
                                                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${order.status === 'Ready'
                                                                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                                : order.status === 'Rejected'
-                                                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                                                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                                                : (order.status === 'Doctor Rejected' || order.status === 'Rejected')
+                                                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                                                    : order.status === 'Lab Rejected'
+                                                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                                                 }`}>
-                                                                {order.status === 'Rejected' ? 'رفض دكتور' : order.status}
+                                                                {order.status === 'Doctor Rejected' || order.status === 'Rejected'
+                                                                    ? 'مرتجع طبيب'
+                                                                    : order.status === 'Lab Rejected'
+                                                                        ? 'رفض معمل'
+                                                                        : order.status}
                                                             </span>
                                                         </div>
                                                     </button>
@@ -1873,11 +1886,11 @@ export default function DashboardNew() {
             </OrderListModal>
 
             <OrderListModal
-                title="حالات مرفوضة من الطبيب"
+                title="حالات مرتجعة (من الطبيب)"
                 isOpen={activeModal === 'rejected-doctor'}
                 onClose={() => setActiveModal(null)}
             >
-                {rejectedOrders.filter(o => o.status === 'Rejected').map(order => (
+                {rejectedOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}

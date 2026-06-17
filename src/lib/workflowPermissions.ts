@@ -31,7 +31,8 @@ export const REP_AUDITED_ALLOW_LIST = [
 export type RepAuditedField = typeof REP_AUDITED_ALLOW_LIST[number];
 
 export function isRepAuditedField(field: string): field is RepAuditedField {
-    return (REP_AUDITED_ALLOW_LIST as readonly string[]).includes(field);
+    const list: readonly string[] = REP_AUDITED_ALLOW_LIST;
+    return list.includes(field);
 }
 
 // camelCase mirror used by the TS-side wrapper (`Order` interface keys).
@@ -88,8 +89,8 @@ export const REP_HARD_DENY_LIST = [
 ] as const;
 
 // ─── Lab issue_state restrictions (enforced by trigger; mirrored for UI) ─────
-export const LAB_BLOCKED_ISSUE_STATES: readonly IssueState[] = ['rejected', 'cancelled'];
-export const ADMIN_ONLY_ISSUE_STATES: readonly IssueState[] = ['rejected', 'cancelled'];
+export const LAB_BLOCKED_ISSUE_STATES: readonly IssueState[] = ['doctor_rejected', 'lab_rejected', 'cancelled'];
+export const ADMIN_ONLY_ISSUE_STATES: readonly IssueState[] = ['doctor_rejected', 'lab_rejected', 'cancelled'];
 
 // ─── State guards used by the rep RPC ────────────────────────────────────────
 // (Documented here for the future TS predicate layer in WF-2; the DB RPC is the
@@ -202,7 +203,14 @@ export function canChangeProductionStatus(
 
     // If issueState is on_hold or returned, we can resume to in_production
     if (issueState === 'returned') {
-        return targetStatus === 'in_production';
+        if (targetStatus === 'in_production') return true;
+        // Allow same target statuses as in_production
+        const dt = (context.deliveryType || '').toLowerCase();
+        const isTryIn = dt === 'tryin' || dt === 'try_in';
+        if (isTryIn && targetStatus === 'try_in_ready') return true;
+        if (!isTryIn && targetStatus === 'final_ready') return true;
+        if (targetStatus === 'designing') return true; // return to design
+        return false;
     }
     if (issueState === 'on_hold') {
         return targetStatus === 'in_production';

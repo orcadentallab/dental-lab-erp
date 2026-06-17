@@ -23,17 +23,8 @@ export function getForwardActions(
         status?: string;
     }
 ): WorkflowAction[] {
-    if (issueState === 'returned') {
-        return [{
-            id: 'resume_production',
-            label: 'استئناف العمل',
-            targetLegacyStatus: 'Under Production',
-            variant: 'primary',
-            icon: 'Play',
-        }];
-    }
 
-    if (issueState === 'rejected' || issueState === 'cancelled' || issueState === 'redo') {
+    if (issueState === 'doctor_rejected' || issueState === 'lab_rejected' || issueState === 'cancelled' || issueState === 'redo') {
         return [];
     }
 
@@ -154,7 +145,12 @@ export function getIssueActions(
     issueState: IssueState,
     userRole?: string
 ): WorkflowAction[] {
-    if (issueState === 'rejected' || issueState === 'cancelled' || issueState === 'redo') return [];
+    if (
+        issueState === 'doctor_rejected' ||
+        issueState === 'lab_rejected' ||
+        issueState === 'cancelled' ||
+        issueState === 'redo'
+    ) return [];
 
     const actions: WorkflowAction[] = [];
 
@@ -166,19 +162,31 @@ export function getIssueActions(
             variant: 'warning',
             icon: 'RotateCcw',
             requiresConfirmation: true,
-            confirmMessage: 'سيتم إرجاع الأوردر للتعديل وسيبقى نشطاً.',
+            confirmMessage: 'سيتم إرجاع الأوردر للتعديل وسيبقى نشطاً. الرجاء إدخال سبب التعديل:',
+            requiresNote: true,
+            notePlaceholder: 'سبب التعديل…',
         });
     }
 
     if (userRole === 'admin' || userRole === 'representative') {
         actions.push({
             id: 'reject',
-            label: 'رفض',
-            targetLegacyStatus: 'Rejected',
+            label: 'مرتجع طبيب',
+            targetLegacyStatus: 'Doctor Rejected',
             variant: 'danger',
             icon: 'XCircle',
             requiresConfirmation: true,
-            confirmMessage: 'هل أنت متأكد من رفض الأوردر؟',
+            confirmMessage: 'هل أنت متأكد من رفض الأوردر (مرتجع طبيب)؟',
+            adminOnly: true,
+        });
+        actions.push({
+            id: 'lab_reject',
+            label: 'رفض المعمل',
+            targetLegacyStatus: 'Lab Rejected',
+            variant: 'danger',
+            icon: 'XCircle',
+            requiresConfirmation: true,
+            confirmMessage: 'هل أنت متأكد من رفض المعمل للأوردر؟',
             adminOnly: true,
         });
         actions.push({

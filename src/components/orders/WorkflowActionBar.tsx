@@ -28,9 +28,20 @@ const LEGACY_STATUS_LABELS_AR: Record<string, string> = {
     'Ready':                      'جاهز للتسليم',
     'Delivered':                  'تم التسليم',
     'Returned for Adjustments':   'مرتجع للتعديل',
+    'Doctor Rejected':            'مرتجع طبيب',
+    'Lab Rejected':               'رفض معمل',
     'Rejected':                   'مرفوض',
     'Cancelled':                  'ملغي',
 };
+
+function isValidOrderStatus(status: string): status is Order['status'] {
+    const validStatuses: string[] = [
+        'Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design',
+        'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready',
+        'Returned for Adjustments', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Pending Review'
+    ];
+    return validStatuses.includes(status);
+}
 
 interface Props {
     order: Order;
@@ -84,7 +95,9 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             setRejectedLabCost('');
             setNoteText('');
         } else {
-            onStatusChange(order.id, action.targetLegacyStatus as Order['status']);
+            if (isValidOrderStatus(action.targetLegacyStatus)) {
+                onStatusChange(order.id, action.targetLegacyStatus);
+            }
         }
     };
 
@@ -98,7 +111,9 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         if (noteText.trim()) {
             context.comment = noteText.trim();
         }
-        onStatusChange(order.id, confirmAction.targetLegacyStatus as Order['status'], Object.keys(context).length ? context : undefined);
+        if (isValidOrderStatus(confirmAction.targetLegacyStatus)) {
+            onStatusChange(order.id, confirmAction.targetLegacyStatus, Object.keys(context).length ? context : undefined);
+        }
         setConfirmAction(null);
         setRejectedLabCost('');
         setNoteText('');
@@ -224,8 +239,9 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             value=""
                             onChange={(e) => {
-                                if (e.target.value) {
-                                    onStatusChange(order.id, e.target.value as Order['status']);
+                                const val = e.target.value;
+                                if (val && isValidOrderStatus(val)) {
+                                    onStatusChange(order.id, val);
                                 }
                             }}
                         >
@@ -241,6 +257,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                 { label: 'Ready', value: 'Ready' },
                                 { label: 'Delivered', value: 'Delivered' },
                                 { label: 'Returned', value: 'Returned for Adjustments' },
+                                { label: 'Doctor Rejected', value: 'Doctor Rejected' },
+                                { label: 'Lab Rejected', value: 'Lab Rejected' },
                                 { label: 'Rejected', value: 'Rejected' },
                                 { label: 'Cancelled', value: 'Cancelled' },
                             ].map(opt => (

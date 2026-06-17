@@ -363,6 +363,7 @@ export default function Orders() {
                 await db.updateOrderStatus(id, status, {
                     ...context,
                     userId: user?.id,
+                    userName: user?.name || user?.role || 'User',
                     actorRole: user?.role,
                 });
             }
@@ -647,7 +648,7 @@ export default function Orders() {
                                     const supplier = suppliers.find(s => s.id === order.supplierId);
                                     const servicesText = (order.items || []).map(i => `${i.serviceType} (${i.teethNumbers?.length || 0})`).join(' | ');
                                     const servicesPrices = (order.items || []).map(i => `${i.price || 0}`).join(' | ');
-                                    const isReturned = ['Returned for Adjustments', 'Rejected', 'Cancelled'].includes(order.status);
+                                    const isReturned = ['Returned for Adjustments', 'Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(order.status);
                                     return {
                                         'رقم الحالة': order.caseId,
                                         'الطبيب': doctor?.name || '-',
@@ -811,6 +812,8 @@ export default function Orders() {
                                         <option value="Ready">Ready</option>
                                         <option value="Completed">Completed</option>
                                         <option value="Delivered">Delivered</option>
+                                        <option value="Doctor Rejected">Doctor Rejected</option>
+                                        <option value="Lab Rejected">Lab Rejected</option>
                                         <option value="Rejected">Rejected</option>
                                         <option value="Cancelled">Cancelled</option>
                                     </select>

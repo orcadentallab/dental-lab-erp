@@ -194,12 +194,13 @@ export function mapProductionStatusToLegacy(status: ProductionStatus): string {
 // Map issue state to its corresponding legacy status string
 export function mapIssueStateToLegacy(newIssueState: IssueState, currentLegacyStatus: string): string {
     switch (newIssueState) {
-        case 'returned': return 'Returned for Adjustments';
-        case 'rejected': return 'Rejected';
-        case 'cancelled': return 'Cancelled';
-        case 'on_hold': return currentLegacyStatus; // Keep current status
-        case 'none': return 'Under Production'; // Resuming
-        default: return currentLegacyStatus;
+        case 'returned':        return 'Returned for Adjustments';
+        case 'doctor_rejected': return 'Doctor Rejected';  // Doctor returned case; rejectedLabCost applies
+        case 'lab_rejected':    return 'Lab Rejected';      // Lab internal rejection; zero financial impact
+        case 'cancelled':       return 'Cancelled';
+        case 'on_hold':         return currentLegacyStatus; // Keep current status
+        case 'none':            return 'Under Production';  // Resuming
+        default:                return currentLegacyStatus;
     }
 }
 
@@ -222,7 +223,8 @@ function getIssueEventDetails(newIssueState: IssueState): { eventType: string; s
     switch (newIssueState) {
         case 'returned':
             return { eventType: ORDER_EVENT_TYPES.caseReturned, severity: 'warning' };
-        case 'rejected':
+        case 'doctor_rejected':
+        case 'lab_rejected':
             return { eventType: ORDER_EVENT_TYPES.caseRejected, severity: 'critical' };
         case 'cancelled':
             return { eventType: ORDER_EVENT_TYPES.caseCancelled, severity: 'critical' };
@@ -348,8 +350,14 @@ export async function changeIssueState(
 
     if (newIssueState === 'returned') {
         targetLegacyStatus = 'Returned for Adjustments';
-    } else if (newIssueState === 'rejected') {
-        targetLegacyStatus = 'Rejected';
+    } else if (newIssueState === 'doctor_rejected') {
+        // Doctor returned case — same financial behavior as old 'Rejected'
+        targetLegacyStatus = 'Doctor Rejected';
+        targetProductionStatus = 'not_started';
+    } else if (newIssueState === 'lab_rejected') {
+        // Lab internal rejection — zero financial impact, same as Cancelled
+        targetLegacyStatus = 'Lab Rejected';
+        targetProductionStatus = 'not_started';
     } else if (newIssueState === 'cancelled') {
         targetLegacyStatus = 'Cancelled';
     } else if (newIssueState === 'on_hold') {

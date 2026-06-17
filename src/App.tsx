@@ -20,6 +20,8 @@ import NewOrderRequest from './pages/doctor/NewOrderRequest';
 import DoctorOrders from './pages/doctor/DoctorOrders';
 import DoctorFinance from './pages/doctor/DoctorFinance';
 import BalanceSnapshot from './pages/BalanceSnapshot';
+import Statements from './pages/Statements';
+import AgingReport from './pages/AgingReport';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -89,6 +91,8 @@ function App() {
                       <Route path="/suppliers" element={<Suppliers />} />
                       <Route path="/case-registration" element={<CaseRegistration />} />
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
+                      <Route path="/statements" element={<Statements />} />
+                      <Route path="/aging-report" element={<AgingReport />} />
                     </Route>
                   </Route>
 

@@ -54,7 +54,7 @@ interface ObligationAuditRecord {
 function deriveCaseLocation(prod: ProductionStatus | null, issue: IssueState | null): string {
     if (issue === 'cancelled') return 'closed';
     if (issue === 'on_hold') return 'on_hold';
-    if (issue === 'returned' || issue === 'rejected') return 'issue_review';
+    if (issue === 'returned' || issue === 'doctor_rejected' || issue === 'lab_rejected' || issue === 'redo') return 'issue_review';
     switch (prod) {
         case 'not_started':      return 'pending_intake';
         case 'designing':        return 'internal_design';
@@ -164,7 +164,7 @@ export async function buildWorkflowAuditRows(supabase: SupabaseClient): Promise<
         const flags = computeSuspiciousFlags(rec);
         const financialFlag = computeFinancialFlag(rec, hasDoctorReceivable, hasLabPayable);
 
-        const isTerminal = ['Returned for Adjustments', 'Rejected', 'Cancelled'].includes(rec.status || '');
+        const isTerminal = ['Returned for Adjustments', 'Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(rec.status || '');
         const statusHistoryUsed = isTerminal && Array.isArray(rec.status_history) && rec.status_history.length > 0;
 
         const workflowPath: 'final_only' | 'try_in' = rec.delivery_type === 'TryIn' ? 'try_in' : 'final_only';

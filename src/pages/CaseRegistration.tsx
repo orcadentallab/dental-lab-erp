@@ -106,7 +106,7 @@ export default function CaseRegistration() {
             // 'Cancelled' and 'Returned for Adjustments' are intentionally excluded:
             //   - Cancelled: order was voided, no financial entry needed.
             //   - Returned for Adjustments: order is back in progress, not final yet.
-            const registrableStatuses = ['Delivered', 'Completed', 'Rejected'];
+            const registrableStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Rejected'];
 
             const { data } = await db.getOrders(1, 1000, {
                 includeArchived: true
@@ -239,7 +239,7 @@ export default function CaseRegistration() {
                     'الطبيب': getBillingDoctor(order.doctorId).name,
                     'الخدمات': order.items.map(i => `${i.serviceType} (x${i.teethNumbers.length})`).join(', '),
                     'سعر البيع': order.totalPrice,
-                    'التكلفة': order.status === 'Rejected' ? (order.rejectedLabCost || 0) : labCost,
+                    'التكلفة': (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (order.rejectedLabCost || 0) : (order.status === 'Lab Rejected' ? 0 : labCost),
                     'المعمل': (order.supplierId && suppliers[order.supplierId]) || 'داخلي',
                     'الحالة': t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status,
                     'الملاحظات': (order.comments || []).map(c => `${c.userName}: ${c.text}`).join(' | ')
@@ -504,7 +504,7 @@ export default function CaseRegistration() {
                                                 selectedIds.includes(order.id) && "bg-cyan-50/60",
                                                 activeTab === 'pending' && isChangedAfterRegistration && !isDeletedReview && "bg-cyan-50/20 border-r-4 border-r-cyan-500",
                                                 activeTab === 'pending' && isDeletedReview && "bg-rose-50/30 border-r-4 border-r-rose-500",
-                                                order.status === 'Rejected' && "bg-red-50/10",
+                                                ['Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(order.status) && "bg-red-50/10",
                                                 order.status === 'Returned for Adjustments' && "bg-amber-50/10"
                                             )}
                                         >
@@ -523,9 +523,14 @@ export default function CaseRegistration() {
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-bold text-slate-400 text-[10px] group-hover:text-cyan-600 transition-colors tracking-tighter">#{order.caseId}</span>
-                                                        {order.status === 'Rejected' && (
+                                                        {(order.status === 'Doctor Rejected' || order.status === 'Rejected') && (
+                                                            <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[8px] font-black rounded shadow-sm whitespace-nowrap">
+                                                                مرتجع طبيب
+                                                            </span>
+                                                        )}
+                                                        {order.status === 'Lab Rejected' && (
                                                             <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[8px] font-black rounded shadow-sm whitespace-nowrap">
-                                                                مرفوض
+                                                                رفض معمل
                                                             </span>
                                                         )}
                                                         {isDeletedReview && (
@@ -585,7 +590,7 @@ export default function CaseRegistration() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1 bg-slate-50/50 p-2 rounded-xl border border-slate-100 w-fit">
-                                                    {order.status === 'Rejected' ? (
+                                                    {(order.status === 'Doctor Rejected' || order.status === 'Rejected' || order.status === 'Lab Rejected') ? (
                                                         <>
                                                             <div className="flex items-center justify-between gap-3 font-black text-slate-400 text-sm line-through opacity-60">
                                                                 <span className="text-[10px] font-bold">بيع مقدر:</span>
@@ -593,7 +598,9 @@ export default function CaseRegistration() {
                                                             </div>
                                                             <div className="flex items-center justify-between gap-3 font-black text-rose-600 text-sm">
                                                                 <span className="text-[10px] font-bold">تكلفة رفض:</span>
-                                                                <span className="bg-rose-100 px-1.5 rounded">{order.rejectedLabCost?.toLocaleString() || 0}</span>
+                                                                <span className="bg-rose-100 px-1.5 rounded">
+                                                                    {order.status === 'Lab Rejected' ? 0 : (order.rejectedLabCost?.toLocaleString() || 0)}
+                                                                </span>
                                                             </div>
                                                         </>
                                                     ) : (
@@ -626,7 +633,8 @@ export default function CaseRegistration() {
                                                         "px-2.5 py-1 rounded-xl text-[9px] font-black border uppercase tracking-wider whitespace-nowrap inline-flex items-center justify-center",
                                                         isDeletedReview ? "bg-rose-50 text-rose-700 border-rose-200" :
                                                         order.status === 'Delivered' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                                        order.status === 'Rejected' ? "bg-red-50 text-red-700 border-red-200" :
+                                                        (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                                        order.status === 'Lab Rejected' ? "bg-rose-50 text-rose-700 border-rose-200" :
                                                         order.status === 'Returned for Adjustments' ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                         "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-sm shadow-cyan-100"
                                                     )}>

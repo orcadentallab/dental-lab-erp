@@ -153,10 +153,8 @@ export default function OrderCard({
     const latestComment = getLatestVisibleOrderComment(order.comments);
     const displayDate = getOrderCardDisplayDate(order);
 
-    // Terminal statuses (red): Rejected/Cancelled only — these get archive button and red styling
-    const isRedStatus = order.status === 'Rejected' || order.status === 'Cancelled' || order.technicianStatus === 'Rejected';
-    // Active-but-returned: amber styling, NO archive button — case needs rework before delivery
-    const isReturnedStatus = order.status === 'Returned for Adjustments';
+    // Terminal statuses (red/rose/slate): Doctor Rejected, Lab Rejected, Cancelled, and legacy Rejected — these get archive button and styling
+    const isRedStatus = ['Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(order.status) || order.technicianStatus === 'Rejected';
     const isDelivered = order.status === 'Delivered';
     const canArchiveOrders = userRole === 'admin';
     const deleteConfirmMessage = order.isArchived
@@ -197,11 +195,17 @@ export default function OrderCard({
                         ? 'bg-gray-50 dark:bg-gray-800/50 border-l-gray-400 border-gray-200 opacity-75'
                         : isDelivered
                             ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
-                            : isReturnedStatus
+                            : order.status === 'Returned for Adjustments'
                                 ? 'bg-amber-50 dark:bg-amber-900/20 border-l-amber-500 border-amber-200 dark:border-amber-800'
-                                : isRedStatus
+                                : order.status === 'Doctor Rejected' || order.status === 'Rejected'
                                     ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
-                                    : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
+                                    : order.status === 'Lab Rejected'
+                                        ? 'bg-rose-50 dark:bg-rose-900/20 border-l-rose-500 border-rose-200 dark:border-rose-800'
+                                        : order.status === 'Cancelled'
+                                            ? 'bg-gray-100 dark:bg-gray-800/80 border-l-gray-500 border-gray-300 dark:border-gray-800 opacity-75'
+                                            : order.technicianStatus === 'Rejected'
+                                                ? 'bg-red-50/50 dark:bg-red-950/10 border-l-red-400 border-red-100 dark:border-red-950'
+                                                : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
                 )}
             >
                 {/* Urgent Strip */}
@@ -540,7 +544,7 @@ export default function OrderCard({
                                 </div>
 
                                 {/* Rejection Cost Display - Admin Only */}
-                                {order.status === 'Rejected' && (order.supplierId || order.designerId) && (
+                                {(order.status === 'Doctor Rejected' || order.status === 'Rejected') && (order.supplierId || order.designerId) && (
                                     <div 
                                         className="w-full flex flex-col items-center justify-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl p-2 cursor-pointer hover:bg-red-100 transition-colors group"
                                         onClick={() => {

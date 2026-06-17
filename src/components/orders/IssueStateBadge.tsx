@@ -4,7 +4,8 @@ import { ISSUE_STATE_LABELS_AR } from '../../constants/workflow';
 const ISSUE_COLORS: Record<IssueState, string> = {
     none: '',
     returned: 'bg-yellow-100 text-yellow-800 border-yellow-300',
-    rejected: 'bg-red-100 text-red-800 border-red-300',
+    doctor_rejected: 'bg-red-100 text-red-800 border-red-300',
+    lab_rejected: 'bg-rose-100 text-rose-800 border-rose-300',
     cancelled: 'bg-gray-200 text-gray-700 border-gray-300',
     on_hold: 'bg-orange-100 text-orange-800 border-orange-300',
     redo: 'bg-purple-100 text-purple-800 border-purple-300',

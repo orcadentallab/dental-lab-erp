@@ -1293,7 +1293,7 @@ export async function getDesignerDashboardOrders(designerId?: string): Promise<O
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
         .eq('workflow_type', 'split')
-        .not('status', 'in', '("Delivered","Completed","Rejected","Cancelled")')
+        .not('status', 'in', '("Delivered","Completed","Doctor Rejected","Lab Rejected","Cancelled")')
         .or('is_archived.eq.false,is_archived.is.null')
         .order('created_at', { ascending: false })
         .range(0, 999);
@@ -1352,7 +1352,7 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
-        .select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost, production_status, issue_state')
+        .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
         .order('created_at', { ascending: false })
         .range(0, 9999);
 
@@ -1361,6 +1361,8 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     // Map to Partial<Order> - manually to avoid heavy dbToOrder overhead
     return (data || []).map(d => ({
         id: d.id,
+        caseId: d.case_id || undefined,
+        patientName: d.patient_name || undefined,
         doctorId: d.doctor_id,
         supplierId: d.supplier_id || undefined,
         designerId: d.designer_id || undefined,
@@ -1378,7 +1380,12 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         isArchived: d.is_archived || undefined,
         rejectedLabCost: d.rejected_lab_cost || undefined,
         productionStatus: d.production_status || undefined,
-        issueState: d.issue_state || undefined
+        issueState: d.issue_state || undefined,
+        items: d.order_items ? (d.order_items as any[]).map((i: any) => ({
+            serviceType: i.product_type,
+            teethNumbers: i.teeth_numbers || [],
+            price: 0
+        })) : []
     }));
 }
 
@@ -2184,7 +2191,8 @@ const STATUS_TO_DESIGN_STATUS: Record<string, Order['designStatus'] | undefined>
     'Ready': 'completed',
     'Delivered': 'completed',
     'Returned for Adjustments': 'returned',
-    'Rejected': undefined, // Designer not involved
+    'Doctor Rejected': undefined, // Designer not involved
+    'Lab Rejected': undefined,    // Lab rejected internally
 };
 
 /**
@@ -2236,11 +2244,11 @@ export async function updateOrderStatus(
         updates.productionStatus = 'try_in_ready';
     } else if (newStatus === 'Delivered' || newStatus === 'Completed') {
         updates.productionStatus = 'final_delivered';
-    } else if (['Under Production', 'In Progress', 'Returned for Adjustments', 'Rejected'].includes(newStatus)) {
+    } else if (['Under Production', 'In Progress', 'Returned for Adjustments'].includes(newStatus)) {
         updates.productionStatus = 'in_production';
     } else if (['Under Design', 'Waiting Dr Approval'].includes(newStatus)) {
         updates.productionStatus = 'designing';
-    } else if (['New Case', 'Pending', 'Pending Review', 'Cancelled'].includes(newStatus)) {
+    } else if (['New Case', 'Pending', 'Pending Review', 'Cancelled', 'Lab Rejected', 'Doctor Rejected'].includes(newStatus)) {
         updates.productionStatus = 'not_started';
     }
 
@@ -2498,7 +2506,8 @@ export async function getDoctorTotalCost(doctorId: string): Promise<number> {
         .from('orders')
         .select('cost')
         .eq('doctor_id', doctorId)
-        .neq('status', 'Rejected')
+        .neq('status', 'Doctor Rejected')
+        .neq('status', 'Lab Rejected')
         .neq('status', 'Cancelled');
 
     if (error) {

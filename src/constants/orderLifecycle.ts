@@ -67,6 +67,12 @@ type LifecycleOrder = Partial<Order> & {
     hasPendingFinancialRequest?: boolean;
     hasRequiredCostsRecorded?: boolean;
     paymentStatus?: string;
+    productionStatus?: string | null;
+    production_status?: string | null;
+    designUrl?: string | null;
+    design_url?: string | null;
+    issueState?: string | null;
+    issue_state?: string | null;
 };
 
 type CashRevenueCandidate = Partial<Transaction> & {
@@ -87,7 +93,7 @@ export interface OrderFinancialState {
 export const normalizeStatus = (status?: string): string => (status || '').trim().toLowerCase();
 
 export function getProductionStatus(order: LifecycleOrder): ProductionStatus {
-    const col = (order as any).productionStatus || (order as any).production_status;
+    const col = order.productionStatus || order.production_status;
     if (col && isProductionStatus(col)) return col;
 
     // Fallback: derive from legacy status
@@ -118,6 +124,8 @@ export function getProductionStatus(order: LifecycleOrder): ProductionStatus {
         case 'pending review':
             return 'not_started';
         case 'returned for adjustments':
+        case 'doctor rejected':
+        case 'lab rejected':
         case 'rejected':
             return 'in_production';
         case 'cancelled':
@@ -131,6 +139,8 @@ export function getIssueStatus(order: LifecycleOrder): IssueStatus {
     switch (normalizeStatus(order.status)) {
         case 'returned for adjustments':
             return 'remake_requested';
+        case 'doctor rejected':
+        case 'lab rejected':
         case 'rejected':
             return 'rejected';
         case 'cancelled':
@@ -263,7 +273,7 @@ export function canTransitionTo(order: LifecycleOrder, targetStatus: ProductionS
     return canChangeProductionStatus('lab', current, targetStatus, issueState, {
         workflowType: order.workflowType,
         deliveryType: order.deliveryType,
-        designUrl: (order as any).designUrl || (order as any).design_url,
+        designUrl: order.designUrl || order.design_url,
     });
 }
 
@@ -292,15 +302,18 @@ export function getEffectiveProductionStatus(order: LifecycleOrder): ProductionS
  * Column-first issue state.
  */
 export function getEffectiveIssueState(order: LifecycleOrder): IssueState {
-    const col = (order as any).issueState || (order as any).issue_state;
+    const col = order.issueState || order.issue_state;
     if (col && isIssueState(col)) return col;
 
     // Fallback: derive from legacy status
     switch (normalizeStatus(order.status)) {
         case 'returned for adjustments':
             return 'returned';
+        case 'doctor rejected':
         case 'rejected':
-            return 'rejected';
+            return 'doctor_rejected';
+        case 'lab rejected':
+            return 'lab_rejected';
         case 'cancelled':
             return 'cancelled';
         default:
@@ -319,7 +332,7 @@ export function getCaseLocation(
 ): CaseLocation {
     if (issueState === 'on_hold') return 'on_hold';
     if (issueState === 'cancelled') return 'closed';
-    if (issueState === 'returned' || issueState === 'rejected' || issueState === 'redo') return 'issue_review';
+    if (issueState === 'returned' || issueState === 'doctor_rejected' || issueState === 'lab_rejected' || issueState === 'redo') return 'issue_review';
 
     switch (productionStatus) {
         case 'not_started': return 'pending_intake';

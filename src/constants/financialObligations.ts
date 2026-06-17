@@ -298,7 +298,7 @@ export function shouldVoidExternalLabReadyObligationForStatusChange(
     updatedOrder: CandidateOrder
 ): boolean {
     const issueState = getEffectiveIssueState(updatedOrder);
-    if (['returned', 'rejected', 'cancelled', 'on_hold', 'redo'].includes(issueState)) {
+    if (['returned', 'doctor_rejected', 'lab_rejected', 'cancelled', 'on_hold', 'redo'].includes(issueState)) {
         return false;
     }
 
@@ -328,10 +328,10 @@ export function shouldVoidDoctorReceivableForStatusOrIssueChange(
     const stillFinalDelivered =
         isDeliveredForDoctorReceivable(updatedOrder)
         && updatedProductionStatus !== 'not_started'
-        && !['rejected', 'cancelled', 'redo'].includes(updatedIssueState);
+        && !['doctor_rejected', 'lab_rejected', 'cancelled', 'redo'].includes(updatedIssueState);
     const enteredIssueState =
         previousIssueState !== updatedIssueState
-        && ['rejected', 'cancelled', 'redo'].includes(updatedIssueState);
+        && ['doctor_rejected', 'lab_rejected', 'cancelled', 'redo'].includes(updatedIssueState);
 
     return previouslyFinalDelivered && (!stillFinalDelivered || enteredIssueState);
 }

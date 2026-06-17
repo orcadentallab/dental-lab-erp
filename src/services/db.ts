@@ -99,7 +99,7 @@ export interface Order {
     discount: number;
     totalPrice: number;
     shade: string;
-    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Cancelled' | 'Pending Review';
+    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Doctor Rejected' | 'Lab Rejected' | 'Cancelled' | 'Pending Review';
     deliveryDate: string;
     cost: number;
     manualCost?: number | null;
@@ -162,7 +162,7 @@ export interface Order {
     // WF-1: shadow workflow columns. Optional for backwards-compat with all
     // existing call sites; finance helpers do not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
-    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo';
+    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
 }
 
 export interface OrderHistoryEntry {
@@ -204,7 +204,7 @@ export interface OrderEvent {
 export interface OrderIssue {
     id: string;
     orderId: string;
-    issueType: 'returned' | 'rejected' | 'cancelled' | 'redo';
+    issueType: 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
     causeCategory: 'lab' | 'doctor' | 'scan' | 'design' | 'communication' | 'other';
     notes?: string;
     reporterId?: string;
@@ -458,6 +458,62 @@ export interface FinancialReconciliationPreviewResult {
     };
     page: number;
     pageSize: number;
+}
+
+export interface AgingBuckets {
+    current: number;
+    days1to30: number;
+    days31to60: number;
+    over60Days: number;
+    total: number;
+}
+
+export interface AgingObligationDetail {
+    obligationId: string;
+    orderId: string;
+    caseId?: string | null;
+    patientName?: string | null;
+    triggerDate: string;
+    dueDate: string;
+    remainingAmount: number;
+    daysPastDue: number;
+    bucket: 'current' | '1_30' | '31_60' | 'over_60';
+}
+
+export interface EntityAgingReport {
+    entityType: 'doctor' | 'external_lab' | 'designer';
+    entityId: string;
+    entityName?: string | null;
+    aging: AgingBuckets;
+    obligations: AgingObligationDetail[];
+    asOfDate: string;
+    generatedAt: string;
+}
+
+export interface AgingReportResult {
+    rows: EntityAgingReport[];
+    summary: {
+        totalEntities: number;
+        totalCurrent: number;
+        total1to30: number;
+        total31to60: number;
+        totalOver60: number;
+        grandTotal: number;
+    };
+    asOfDate: string;
+    generatedAt: string;
+    page: number;
+    pageSize: number;
+}
+
+export interface AgingReportParams {
+    entityType?: 'doctor' | 'external_lab' | 'designer';
+    entityId?: string;
+    direction?: 'receivable' | 'payable';
+    asOfDate?: string;
+    minRemainingAmount?: number;
+    page?: number;
+    pageSize?: number;
 }
 
 class MockDB {
@@ -875,6 +931,21 @@ class MockDB {
         if (error) throw error;
         type RowType = Parameters<typeof dbToOrderEvent>[0];
         return (data || []).map((row: RowType) => dbToOrderEvent(row));
+    }
+
+    async computeAgingReport(params?: AgingReportParams): Promise<AgingReportResult> {
+        const { computeAgingReport } = await import('./supabase/collections');
+        return computeAgingReport(params);
+    }
+
+    async getEntityAgingSummary(
+        entityType: 'doctor' | 'external_lab' | 'designer',
+        entityId: string,
+        direction?: 'receivable' | 'payable',
+        asOfDate?: string
+    ): Promise<AgingBuckets> {
+        const { getEntityAgingSummary } = await import('./supabase/collections');
+        return getEntityAgingSummary(entityType, entityId, direction, asOfDate);
     }
 
     exportData() { return '{}'; }

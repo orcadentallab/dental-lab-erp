@@ -18,10 +18,13 @@ import { DateFilter, filterEntries, calculateTotal } from '../components/finance
 import type { FilterType } from '../components/finance/FinanceFilters';
 import { useToast } from '../context/ToastContext';
 import { isDesignerUser } from '../lib/userRoles';
+import { useSearchParams } from 'react-router-dom';
 
 export default function Finance() {
     const { user } = useAuth();
     const { success: toastSuccess, error: toastError } = useToast();
+    const [searchParams] = useSearchParams();
+    const isDev = searchParams.get('dev') === 'true';
     const [isSubmitting, setIsSubmitting] = useState(false);
     const todayDate = new Date().toISOString().split('T')[0];
 
@@ -367,7 +370,7 @@ export default function Finance() {
 
                         const tabs = allTabs.filter(t =>
                             (!t.adminOnly || user?.username === 'admin')
-                            && (!t.internalOnly || ['admin', 'accountant'].includes(user?.role || ''))
+                            && (!t.internalOnly || (['admin', 'accountant'].includes(user?.role || '') && isDev))
                         );
 
                         return tabs.map((tab) => (
@@ -915,24 +918,24 @@ export default function Finance() {
                 <FinancialSetup />
             )}
 
-            {/* ADJUSTMENTS TAB (ADMIN ONLY) */}
-            {activeTab === 'adjustments' && user?.role === 'admin' && (
+            {/* ADJUSTMENTS TAB (ADMIN & ACCOUNTANT) */}
+            {activeTab === 'adjustments' && ['admin', 'accountant'].includes(user?.role || '') && (
                 <AdjustmentsPanel />
             )}
 
-            {activeTab === 'obligations' && ['admin', 'accountant'].includes(user?.role || '') && (
+            {activeTab === 'obligations' && ['admin', 'accountant'].includes(user?.role || '') && isDev && (
                 <FinancialObligationsReview />
             )}
 
-            {activeTab === 'allocationPreview' && ['admin', 'accountant'].includes(user?.role || '') && (
+            {activeTab === 'allocationPreview' && ['admin', 'accountant'].includes(user?.role || '') && isDev && (
                 <AllocationPreviewPanel doctors={doctors} suppliers={suppliers} />
             )}
 
-            {activeTab === 'historicalObligationsPreview' && ['admin', 'accountant'].includes(user?.role || '') && (
+            {activeTab === 'historicalObligationsPreview' && ['admin', 'accountant'].includes(user?.role || '') && isDev && (
                 <HistoricalObligationsPreview />
             )}
 
-            {activeTab === 'historicalBackfillDryRun' && ['admin', 'accountant'].includes(user?.role || '') && (
+            {activeTab === 'historicalBackfillDryRun' && ['admin', 'accountant'].includes(user?.role || '') && isDev && (
                 <HistoricalObligationsBackfillDryRun />
             )}
         </div>

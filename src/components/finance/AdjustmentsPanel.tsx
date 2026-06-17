@@ -4,9 +4,10 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { financeService, type Adjustment } from '../../services/financeService';
-import { db, type Doctor, type Supplier } from '../../services/db';
+import { db, type Doctor, type Supplier, type User } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { Calculator, ArrowRightLeft, Save, Search, Pencil, Trash2, X } from 'lucide-react';
+import { isDesignerUser } from '../../lib/userRoles';
 
 export default function AdjustmentsPanel() {
     const { user } = useAuth();
@@ -15,16 +16,23 @@ export default function AdjustmentsPanel() {
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [designers, setDesigners] = useState<User[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [doctorSearchQuery, setDoctorSearchQuery] = useState('');
+    const [designerSearchQuery, setDesignerSearchQuery] = useState('');
     const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+    const [showDesignerDropdown, setShowDesignerDropdown] = useState(false);
     const doctorDropdownRef = useRef<HTMLDivElement>(null);
+    const designerDropdownRef = useRef<HTMLDivElement>(null);
 
-    // Close doctor dropdown when clicking outside
+    // Close dropdowns when clicking outside
     useEffect(() => {
         function handleClickOutside(e: MouseEvent) {
             if (doctorDropdownRef.current && !doctorDropdownRef.current.contains(e.target as Node)) {
                 setShowDoctorDropdown(false);
+            }
+            if (designerDropdownRef.current && !designerDropdownRef.current.contains(e.target as Node)) {
+                setShowDesignerDropdown(false);
             }
         }
         document.addEventListener('mousedown', handleClickOutside);
@@ -35,7 +43,7 @@ export default function AdjustmentsPanel() {
     const [editingId, setEditingId] = useState<string | null>(null);
 
     const [newAdj, setNewAdj] = useState({
-        entityType: 'doctor', // 'doctor' | 'supplier'
+        entityType: 'doctor', // 'doctor' | 'supplier' | 'designer'
         entityId: '',
         amount: '',
         type: 'charge', // 'charge' (+ to Debt) | 'credit' (- from Debt)
@@ -45,14 +53,16 @@ export default function AdjustmentsPanel() {
 
     async function loadData() {
         try {
-            const [adjs, docs, sups] = await Promise.all([
+            const [adjs, docs, sups, usrs] = await Promise.all([
                 financeService.getAdjustments(),
                 db.getDoctors(),
-                db.getSuppliers()
+                db.getSuppliers(),
+                db.getUsers()
             ]);
             setAdjustments(adjs);
             setDoctors(docs);
             setSuppliers(sups);
+            setDesigners((usrs || []).filter(isDesignerUser));
         } catch (e) {
             console.error(e);
         }
@@ -71,13 +81,13 @@ export default function AdjustmentsPanel() {
     async function handleAdd(e: React.FormEvent) {
         e.preventDefault();
         if (!newAdj.entityId) {
-            alert('يرجى اختيار الطبيب أو المورد');
+            alert('يرجى اختيار الطبيب أو المورد أو المصمم');
             return;
         }
         try {
             if (editingId) {
                 await financeService.updateAdjustment(editingId, {
-                    entity_type: newAdj.entityType as 'doctor' | 'supplier',
+                    entity_type: newAdj.entityType as 'doctor' | 'supplier' | 'designer',
                     entity_id: newAdj.entityId,
                     amount: parseFloat(newAdj.amount),
                     type: newAdj.type as 'charge' | 'credit',
@@ -88,7 +98,7 @@ export default function AdjustmentsPanel() {
                 alert('تم تعديل القيد بنجاح');
             } else {
                 await financeService.addAdjustment({
-                    entity_type: newAdj.entityType as 'doctor' | 'supplier',
+                    entity_type: newAdj.entityType as 'doctor' | 'supplier' | 'designer',
                     entity_id: newAdj.entityId,
                     amount: parseFloat(newAdj.amount),
                     type: newAdj.type as 'charge' | 'credit',
@@ -99,6 +109,7 @@ export default function AdjustmentsPanel() {
             }
             setNewAdj({ ...newAdj, amount: '', reason: '', entityId: '' });
             setDoctorSearchQuery('');
+            setDesignerSearchQuery('');
             loadData();
         } catch (error) {
             console.error(error);
@@ -116,20 +127,32 @@ export default function AdjustmentsPanel() {
             date: adj.date,
             reason: adj.reason || ''
         });
-        // Set the doctor search query to the doctor name for display
         if (adj.entity_type === 'doctor') {
             const doc = doctors.find(d => d.id === adj.entity_id);
             setDoctorSearchQuery(doc ? `${doc.name}${doc.doctorCode ? ` (${doc.doctorCode})` : ''}` : '');
+            setDesignerSearchQuery('');
+        } else if (adj.entity_type === 'designer') {
+            const des = designers.find(d => d.id === adj.entity_id);
+            setDesignerSearchQuery(des ? des.name : '');
+            setDoctorSearchQuery('');
+        } else {
+            setDoctorSearchQuery('');
+            setDesignerSearchQuery('');
         }
     }
 
     function handleCancelEdit() {
         setEditingId(null);
         setDoctorSearchQuery('');
+        setDesignerSearchQuery('');
         setNewAdj({ entityType: 'doctor', entityId: '', amount: '', type: 'charge', date: new Date().toISOString().split('T')[0], reason: '' });
     }
 
     async function handleDelete(id: string) {
+        if (user?.role !== 'admin') {
+            alert('عفواً، صلاحية حذف القيود والتسويات المالية مقتصرة على المسؤول (Admin) فقط.');
+            return;
+        }
         if (!confirm('هل تريد حذف هذا القيد؟ سيتم تحديث رصيد الحساب تلقائياً.')) return;
         try {
             await financeService.deleteAdjustment(id);
@@ -144,6 +167,7 @@ export default function AdjustmentsPanel() {
     const getEntityName = (type: string, id: string) => {
         if (type === 'doctor') return doctors.find(d => d.id === id)?.name || 'طبيب غير معروف';
         if (type === 'supplier') return suppliers.find(s => s.id === id)?.name || 'مورد غير معروف';
+        if (type === 'designer') return designers.find(d => d.id === id)?.name || 'مصمم غير معروف';
         return 'غير معروف';
     };
 
@@ -157,6 +181,13 @@ export default function AdjustmentsPanel() {
         if (!doctorSearchQuery) return true;
         const q = doctorSearchQuery.toLowerCase();
         return d.name.toLowerCase().includes(q) || (d.doctorCode || '').toLowerCase().includes(q);
+    });
+
+    // Filter designers for searchable combobox
+    const filteredDesigners = designers.filter(d => {
+        if (!designerSearchQuery) return true;
+        const q = designerSearchQuery.toLowerCase();
+        return d.name.toLowerCase().includes(q) || (d.username || '').toLowerCase().includes(q);
     });
 
     // Filter adjustments based on search query (by entity name or doctor code)
@@ -197,6 +228,7 @@ export default function AdjustmentsPanel() {
                         >
                             <option value="doctor">طبيب</option>
                             <option value="supplier">مورد</option>
+                            <option value="designer">مصمم</option>
                         </select>
                     </div>
 
@@ -248,6 +280,49 @@ export default function AdjustmentsPanel() {
                                 {/* Hidden required input for form validation */}
                                 <input type="hidden" value={newAdj.entityId} required />
                             </div>
+                        ) : newAdj.entityType === 'designer' ? (
+                            <div className="relative" ref={designerDropdownRef}>
+                                <div className="relative">
+                                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="ابحث باسم المصمم..."
+                                        value={designerSearchQuery}
+                                        onChange={e => {
+                                            setDesignerSearchQuery(e.target.value);
+                                            setShowDesignerDropdown(true);
+                                            if (newAdj.entityId) {
+                                                setNewAdj({ ...newAdj, entityId: '' });
+                                            }
+                                        }}
+                                        onFocus={() => setShowDesignerDropdown(true)}
+                                        className="w-full pl-3 pr-10 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-blue-300 text-sm"
+                                    />
+                                </div>
+                                {showDesignerDropdown && (
+                                    <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                        {filteredDesigners.length === 0 ? (
+                                            <div className="p-3 text-sm text-gray-400 text-center">لا توجد نتائج</div>
+                                        ) : (
+                                            filteredDesigners.map(d => (
+                                                <button
+                                                    key={d.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setNewAdj({ ...newAdj, entityId: d.id });
+                                                        setDesignerSearchQuery(d.name);
+                                                        setShowDesignerDropdown(false);
+                                                    }}
+                                                    className={`w-full text-right px-3 py-2 text-sm hover:bg-blue-50 transition-colors flex items-center justify-between ${newAdj.entityId === d.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                                                >
+                                                    <span className="font-medium">{d.name}</span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                                <input type="hidden" value={newAdj.entityId} required />
+                            </div>
                         ) : (
                             <select
                                 className="w-full p-2 border border-gray-200 rounded-lg"
@@ -264,7 +339,7 @@ export default function AdjustmentsPanel() {
 
                     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <label className="block text-sm font-medium text-gray-700 mb-2">نوع الحركة</label>
-                        <div className="flex gap-4">
+                        <div className="flex flex-col gap-2.5">
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="radio"
@@ -272,7 +347,13 @@ export default function AdjustmentsPanel() {
                                     checked={newAdj.type === 'charge'}
                                     onChange={() => setNewAdj({ ...newAdj, type: 'charge' })}
                                 />
-                                <span className="text-red-700 font-bold text-sm">إضافة على الحساب (مدين)</span>
+                                <span className="text-red-700 font-bold text-sm">
+                                    {newAdj.entityType === 'doctor'
+                                        ? 'إضافة مديونية على الطبيب (مدين +)'
+                                        : newAdj.entityType === 'supplier'
+                                        ? 'خصم من مستحقات المورد (مدين -)'
+                                        : 'خصم من مستحقات المصمم (مدين -)'}
+                                </span>
                             </label>
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
@@ -281,13 +362,29 @@ export default function AdjustmentsPanel() {
                                     checked={newAdj.type === 'credit'}
                                     onChange={() => setNewAdj({ ...newAdj, type: 'credit' })}
                                 />
-                                <span className="text-green-700 font-bold text-sm">خصم من الحساب (دائن)</span>
+                                <span className="text-green-700 font-bold text-sm">
+                                    {newAdj.entityType === 'doctor'
+                                        ? 'خصم من حساب الطبيب (دائن -)'
+                                        : newAdj.entityType === 'supplier'
+                                        ? 'إضافة لمستحقات المورد (دائن +)'
+                                        : 'إضافة لمستحقات المصمم (دائن +)'}
+                                </span>
                             </label>
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                            {newAdj.type === 'charge'
-                                ? 'مثال: غرامة، خدمة إضافية غير مسجلة'
-                                : 'مثال: خصم خاص، تعويض، تسوية دائنة'}
+                        <p className="text-xs text-gray-500 mt-3 border-t border-gray-200 pt-2 font-medium leading-relaxed">
+                            {newAdj.entityType === 'doctor' ? (
+                                newAdj.type === 'charge'
+                                    ? 'تزيد المبلغ المستحق عليه للمعمل (مثال: غرامة، شحن إضافي، خدمات إضافية غير مسجلة)'
+                                    : 'تقلل المبلغ المستحق عليه للمعمل (مثال: خصم خاص، تعويض حالة تالفة، رصيد دائن)'
+                            ) : newAdj.entityType === 'supplier' ? (
+                                newAdj.type === 'charge'
+                                    ? 'تقلل مستحقات المورد المطلوب دفعها له (مثال: جزاء تأخير، خصم متفق عليه، خصم مرتجعات)'
+                                    : 'تزيد مستحقات المورد المطلوب دفعها له (مثال: تكلفة إضافية لخدمة، رصيد افتتاحى دائن)'
+                            ) : (
+                                newAdj.type === 'charge'
+                                    ? 'تقلل مستحقات المصمم المطلوب دفعها له (مثال: جزاء تأخير، خصم إعادة عمل حالة)'
+                                    : 'تزيد مستحقات المصمم المطلوب دفعها له (مثال: حافز إضافي، عمولة استثنائية، رصيد افتتاحى دائن)'
+                            )}
                         </p>
                     </div>
 
@@ -372,7 +469,7 @@ export default function AdjustmentsPanel() {
                                     <td className="p-4 font-bold text-gray-800">
                                         {getEntityName(adj.entity_type, adj.entity_id)}
                                         <span className="block text-xs text-gray-400 font-normal">
-                                            {adj.entity_type === 'doctor' ? 'طبيب' : 'مورد'}
+                                            {adj.entity_type === 'doctor' ? 'طبيب' : adj.entity_type === 'supplier' ? 'مورد' : 'مصمم'}
                                             {getEntityCode(adj.entity_type, adj.entity_id) && (
                                                 <span className="mr-1 font-mono">({getEntityCode(adj.entity_type, adj.entity_id)})</span>
                                             )}
@@ -380,9 +477,17 @@ export default function AdjustmentsPanel() {
                                     </td>
                                     <td className="p-4">
                                         {adj.type === 'charge' ? (
-                                            <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">مدين (+)</span>
+                                            adj.entity_type === 'doctor' ? (
+                                                <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">مدين (+)</span>
+                                            ) : (
+                                                <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">مدين (-)</span>
+                                            )
                                         ) : (
-                                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">دائن (-)</span>
+                                            adj.entity_type === 'doctor' ? (
+                                                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">دائن (-)</span>
+                                            ) : (
+                                                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">دائن (+)</span>
+                                            )
                                         )}
                                     </td>
                                     <td className="p-4 text-sm text-gray-600">{adj.reason}</td>
@@ -398,13 +503,15 @@ export default function AdjustmentsPanel() {
                                             >
                                                 <Pencil size={16} />
                                             </button>
-                                            <button
-                                                onClick={() => handleDelete(adj.id)}
-                                                className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                                                title="حذف"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            {user?.role === 'admin' && (
+                                                <button
+                                                    onClick={() => handleDelete(adj.id)}
+                                                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                                                    title="حذف"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

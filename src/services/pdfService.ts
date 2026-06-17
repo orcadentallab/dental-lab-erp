@@ -792,6 +792,8 @@ export interface CasesInvoiceItem {
     services?: string;
     count?: number;
     amount: number;
+    instructions?: string;
+    userComments?: string; // Pipe-separated user-added comments
 }
 
 export async function generateCasesInvoicePDF(
@@ -819,17 +821,24 @@ function buildCasesInvoiceHTML(
     const grandTotal = items.reduce((sum, i) => sum + i.amount, 0);
 
     const rows = items.length > 0
-        ? items.map((item, idx) => `
+        ? items.map((item, idx) => {
+            const notesLines: string[] = [];
+            if (item.instructions) notesLines.push(`<div style="margin-bottom:3px"><strong style="color:${COLORS.primary}">تعليمات:</strong> ${item.instructions}</div>`);
+            if (item.userComments) notesLines.push(`<div style="color:${COLORS.darkMuted};font-size:9px;white-space:pre-wrap">${item.userComments}</div>`);
+            const notesCell = notesLines.length > 0 ? notesLines.join('') : '<span style="color:#ccc">-</span>';
+            return `
             <tr>
                 <td style="text-align:center;color:${COLORS.muted};font-size:10px;font-family:'Courier New',monospace">${idx + 1}</td>
                 <td style="text-align:right">${item.description || '-'}</td>
                 <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                 <td>${item.count ? `(${item.count})` : '-'}</td>
                 <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
+                <td style="font-size:9px;text-align:right;max-width:160px;word-break:break-word">${notesCell}</td>
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:700">${formatCurrency(item.amount)}</td>
             </tr>
-        `).join('')
-        : `<tr><td colspan="6" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
+        `;
+        }).join('')
+        : `<tr><td colspan="7" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
 
     return `<div class="doc"><style>${styles}</style>
         <div class="header-split">
@@ -878,11 +887,12 @@ function buildCasesInvoiceHTML(
                     <th>الخدمات</th>
                     <th>العدد</th>
                     <th>التاريخ</th>
+                    <th style="text-align:right">التعليمات والملاحظات</th>
                     <th>المبلغ</th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
                 <tfoot><tr>
-                    <td colspan="5" style="text-align:right;font-weight:800">الإجمالي المستحق</td>
+                    <td colspan="6" style="text-align:right;font-weight:800">الإجمالي المستحق</td>
                     <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:13px;font-weight:800">${formatCurrency(grandTotal)}</td>
                 </tr></tfoot>
             </table>
@@ -905,6 +915,239 @@ function buildCasesInvoiceHTML(
                     </div>
                 </div>
                 <div class="footer-slogan">A dentist's touch behind every detail.</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+// ===================== CASES INVOICE EXCEL =====================
+
+import * as XLSX from 'xlsx';
+
+export function generateCasesInvoiceExcel(
+    items: CasesInvoiceItem[],
+    doctorInfo: { name: string; code?: string },
+    dateRange: { start: string; end: string }
+): void {
+    if (items.length === 0) {
+        alert('لا توجد حالات للتصدير');
+        return;
+    }
+
+    const rows = items.map((item, idx) => ({
+        '#': idx + 1,
+        'البيان': item.description || '',
+        'الخدمات': item.services || '',
+        'العدد': item.count ? `(${item.count})` : '',
+        'التاريخ': item.date ? new Date(item.date).toLocaleDateString('en-GB') : '',
+        'التعليمات': item.instructions || '',
+        'الملاحظات / التعليقات': item.userComments || '',
+        'المبلغ': item.amount,
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Column widths
+    ws['!cols'] = [
+        { wch: 5 },   // #
+        { wch: 35 },  // البيان
+        { wch: 20 },  // الخدمات
+        { wch: 8 },   // العدد
+        { wch: 14 },  // التاريخ
+        { wch: 35 },  // التعليمات
+        { wch: 45 },  // الملاحظات
+        { wch: 14 },  // المبلغ
+    ];
+
+    // Enable wrap text on التعليمات and الملاحظات columns for all data rows
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
+        // Column F (index 5) = التعليمات, Column G (index 6) = الملاحظات
+        for (const C of [5, 6]) {
+            const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+            if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: '' };
+            if (!ws[cellAddr].s) ws[cellAddr].s = {};
+            ws[cellAddr].s = { alignment: { wrapText: true, vertical: 'top', readingOrder: 2 } };
+        }
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, 'فاتورة مطالبة');
+
+    const safeName = (doctorInfo.name || 'doctor').replace(/[\/\\?%*:|"<>]/g, '_');
+    const dateLabel = dateRange.start || new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `invoice_${safeName}_${dateLabel}.xlsx`);
+}
+
+// ===================== MONTHLY INVOICE PDF =====================
+
+export async function generateMonthlyInvoicePDF(
+    entityName: string,
+    entityType: 'doctor' | 'supplier' | 'designer',
+    invoiceMonth: string,
+    invoiceData: {
+        openingBalance: number;
+        monthOrders: any[];
+        monthTotal: number;
+        totalDue: number;
+        monthStart: string;
+        monthEnd: string;
+    },
+    labInfo: LabInfo,
+    options: { print?: boolean } = {}
+): Promise<void> {
+    const html = buildMonthlyInvoiceHTML(entityName, entityType, invoiceMonth, invoiceData, labInfo);
+    const doc = createPdf();
+    await htmlToPdfPage(doc, html);
+
+    if (options.print) {
+        doc.autoPrint();
+        window.open(doc.output('bloburl'), '_blank');
+    } else {
+        const safeName = entityName.replace(/[/\\?%*:|"<>]/g, '_');
+        doc.save(`invoice_${invoiceMonth}_${safeName}.pdf`);
+    }
+}
+
+function getMonthLabel(monthStr: string): string {
+    const [y, m] = monthStr.split('-').map(Number);
+    const arabicMonths = [
+        'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+        'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+    ];
+    if (m >= 1 && m <= 12) {
+        return `${arabicMonths[m - 1]} ${y}`;
+    }
+    return monthStr;
+}
+
+function buildMonthlyInvoiceHTML(
+    entityName: string,
+    entityType: 'doctor' | 'supplier' | 'designer',
+    invoiceMonth: string,
+    invoiceData: {
+        openingBalance: number;
+        monthOrders: any[];
+        monthTotal: number;
+        totalDue: number;
+        monthStart: string;
+        monthEnd: string;
+    },
+    _labInfo?: LabInfo
+): string {
+    const monthLabelStr = getMonthLabel(invoiceMonth);
+    const entityTypeLabel = {
+        doctor: 'العميل (الأستاذ الدكتور / المركز)',
+        supplier: 'المورد',
+        designer: 'المصمم',
+    }[entityType];
+
+    const rows = invoiceData.monthOrders.length > 0
+        ? invoiceData.monthOrders.map((item, idx) => `
+            <tr style="${idx % 2 !== 0 ? `background: ${COLORS.bgSoft}` : ''}">
+                <td style="text-align:right; padding:10px 12px;">
+                    <div style="font-weight:600; color:${COLORS.dark}">${item.description || '-'}</div>
+                    ${item.subName ? `<div style="font-size:9px;color:${COLORS.accent};margin-top:2px;font-weight:700">📍 ${item.subName}</div>` : ''}
+                    ${item.services ? `<div style="font-size:9px;color:${COLORS.muted};margin-top:1px">${item.services}</div>` : ''}
+                </td>
+                <td style="direction:ltr; text-align:center; padding:10px 12px; font-size:10px; color:${COLORS.darkMuted}">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
+                <td style="font-family:'Courier New',monospace; direction:ltr; font-weight:700; text-align:center; padding:10px 12px; color:${COLORS.dark}">${formatCurrency(item.amount)}</td>
+            </tr>
+        `).join('')
+        : `<tr><td colspan="3" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذا الشهر</td></tr>`;
+
+    const openingBalanceDisplay = invoiceData.openingBalance !== 0 ? `
+        <div class="balance-banner" style="background: ${invoiceData.openingBalance > 0 ? COLORS.danger : COLORS.success}; margin-bottom: 24px;">
+            <div class="bb-label">
+                ${invoiceData.openingBalance > 0 
+                    ? (entityType === 'doctor' ? 'رصيد مدين مستحق سابق' : 'رصيد مستحق سابق لنا') 
+                    : (entityType === 'doctor' ? 'رصيد دائن سابق (مسدد بزيادة)' : 'رصيد دائن سابق لكم')}
+            </div>
+            <div class="bb-value">${formatCurrency(invoiceData.openingBalance)}</div>
+        </div>
+    ` : '';
+
+    return `<div class="doc"><style>${styles}</style>
+        <div class="header-split">
+            <div class="header-half header-white">
+                <img src="${window.location.origin}/orca-logo.png" class="header-logo" alt="ORCA" />
+            </div>
+            <div class="header-half header-blue">
+                <div class="header-info-line">ORCA DENTAL LAB</div>
+                <div class="header-info-line">01034141917</div>
+                <div class="header-info-line">CAIRO</div>
+                <div class="header-slogan">.A dentist's touch behind every detail</div>
+            </div>
+            <div class="doc-badge-centered">مطالبة مالية شهرية</div>
+        </div>
+
+        <div class="body">
+            <div class="meta-strip" style="align-items: center;">
+                <div class="meta-group">
+                    <div class="meta-label">${entityTypeLabel}</div>
+                    <div class="meta-value large">${entityName}</div>
+                </div>
+                <div class="meta-group">
+                    <div class="meta-label">شهر المطالبة</div>
+                    <div class="meta-value code" style="font-size:14px; font-weight:700; color:${COLORS.primary}">${monthLabelStr}</div>
+                </div>
+                <div class="meta-group" style="text-align:left">
+                    <div class="meta-label">الفترة</div>
+                    <div class="meta-value font-mono">${invoiceData.monthStart} ⟵ ${invoiceData.monthEnd}</div>
+                </div>
+                <div class="meta-group" style="text-align:left; background:${COLORS.primaryBg}; padding:8px 16px; border-radius:8px; border:1px solid ${COLORS.accent}">
+                    <div class="meta-label" style="color:${COLORS.primary}; font-weight:800; font-size:10px;">صافي المبلغ المطلوب</div>
+                    <div class="meta-value" style="font-size:16px; font-weight:800; color:${COLORS.primary}; font-family:'Courier New',monospace; direction:ltr">${formatCurrency(invoiceData.totalDue)}</div>
+                </div>
+            </div>
+
+            ${openingBalanceDisplay}
+
+            <table style="margin-top: 10px;">
+                <thead>
+                    <tr>
+                        <th style="text-align:right">البيان (الحالة / المريض)</th>
+                        <th style="width:140px; text-align:center">التاريخ</th>
+                        <th style="width:140px; text-align:center">القيمة</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+                <tfoot>
+                    <tr style="background:${COLORS.bgSoft}">
+                        <td style="text-align:right; font-weight:700; padding:10px 12px; color:${COLORS.darkMuted}">إجمالي عمل الشهر</td>
+                        <td></td>
+                        <td style="font-family:'Courier New',monospace; direction:ltr; font-weight:700; text-align:center; padding:10px 12px; color:${COLORS.dark}">${formatCurrency(invoiceData.monthTotal)}</td>
+                    </tr>
+                    ${invoiceData.openingBalance !== 0 ? `
+                    <tr style="background:${COLORS.bgSoft}">
+                        <td style="text-align:right; font-weight:700; padding:10px 12px; color:${COLORS.darkMuted}">رصيد سابق مرحل</td>
+                        <td></td>
+                        <td style="font-family:'Courier New',monospace; direction:ltr; font-weight:700; text-align:center; padding:10px 12px; color:${invoiceData.openingBalance > 0 ? COLORS.danger : COLORS.success}">
+                            ${invoiceData.openingBalance > 0 ? '+' : ''}${formatCurrency(invoiceData.openingBalance)}
+                        </td>
+                    </tr>
+                    ` : ''}
+                    <tr style="background:${COLORS.primary}; color:white">
+                        <td style="text-align:right; font-size:13px; font-weight:800; padding:12px; color:white">صافي المستحق للمطالبة</td>
+                        <td></td>
+                        <td style="font-family:'Courier New',monospace; direction:ltr; font-size:15px; font-weight:800; text-align:center; padding:12px; color:white">${formatCurrency(invoiceData.totalDue)}</td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <div class="doc-notice" style="margin-top: 50px;">
+                نشكركم لتعاونكم الدائم معنا ونرجو مراجعة المطالبة وتأكيد السداد.
+            </div>
+            
+            <div class="doc-footer" style="margin-top: 30px;">
+                <div class="footer-social">
+                    <div class="social-item">
+                        <span style="direction:ltr">orca.labeg</span>
+                    </div>
+                </div>
+                <div class="footer-slogan">تم استخراج هذا المستند آلياً من نظام ORCA</div>
             </div>
         </div>
     </div>`;

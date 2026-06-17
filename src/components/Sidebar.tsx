@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers, Receipt, Clock } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -38,7 +38,7 @@ export default function Sidebar() {
                 try {
                     const response = await db.getOrders();
                     const allOrders = Array.isArray(response) ? response : [];
-                    const statuses = ['Delivered', 'Completed', 'Returned for Adjustments', 'Rejected'];
+                    const statuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Rejected'];
                     const unreg = allOrders.filter((o) => !o.isRegistered && statuses.includes(o.status));
                     setUnregisteredCount(unreg.length);
                 } catch (error) {
@@ -61,14 +61,24 @@ export default function Sidebar() {
             ]
         },
         {
-            id: 'finance',
-            label: 'المالية والتقارير',
+            id: 'accounts',
+            label: 'الحسابات',
             icon: DollarSign,
             defaultOpen: true,
             items: [
-                { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer', 'representative'] },
                 { name: t.nav.finance, href: '/finance', icon: DollarSign, roles: ['admin', 'accountant'] },
+                { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer', 'representative'] },
+                { name: 'الفواتير', href: '/statements', icon: Receipt, roles: ['admin', 'accountant'] },
+                { name: 'أعمار الديون', href: '/aging-report', icon: Clock, roles: ['admin', 'accountant'] },
                 { name: t.nav.caseRegistration, href: '/case-registration', icon: FileText, roles: ['admin', 'accountant'] },
+            ]
+        },
+        {
+            id: 'reports',
+            label: 'التقارير',
+            icon: BarChart3,
+            defaultOpen: false,
+            items: [
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
                 { name: 'تقرير المشكلات', href: '/issues-report', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },

@@ -124,7 +124,7 @@ export default function AIAnalytics() {
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
             const delayedOrdersCount = orders.filter(o => 
                 new Date(o.createdAt) < sevenDaysAgo && 
-                !['delivered', 'rejected', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())
+                !['delivered', 'rejected', 'doctor rejected', 'lab rejected', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())
             ).length;
 
             // Delivery Performance for current period

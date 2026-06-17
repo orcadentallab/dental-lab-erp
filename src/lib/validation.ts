@@ -64,7 +64,7 @@ export const OrderSchema = z.object({
     discount: z.number().min(0),
     totalPrice: z.number().min(0),
     shade: z.string().max(50).optional().nullable(),
-    status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments', 'Rejected', 'Cancelled', 'Pending Review']),
+    status: z.enum(['Pending', 'In Progress', 'Completed', 'Delivered', 'New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production', 'Try In', 'Try In Approved', 'Ready', 'Returned for Adjustments', 'Rejected', 'Cancelled', 'Pending Review', 'Doctor Rejected', 'Lab Rejected']),
     isUrgent: z.boolean().optional(),
     deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ غير صحيح'),
     cost: z.number().min(0),

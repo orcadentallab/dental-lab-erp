@@ -22,7 +22,8 @@ export type ProductionStatus = typeof PRODUCTION_STATUSES[number];
 export const ISSUE_STATES = [
     'none',
     'returned',
-    'rejected',
+    'doctor_rejected', // Doctor returned case — rejectedLabCost applies
+    'lab_rejected',    // Lab internal rejection — zero financial impact
     'cancelled',
     'on_hold',
     'redo',
@@ -46,7 +47,8 @@ export const PRODUCTION_STATUS_LABELS_AR: Record<ProductionStatus, string> = {
 export const ISSUE_STATE_LABELS_AR: Record<IssueState, string> = {
     none: '—',
     returned: 'مرتجع للتعديل',
-    rejected: 'مرفوض',
+    doctor_rejected: 'مرتجع طبيب',  // Doctor returned — rejectedLabCost applies
+    lab_rejected: 'رفض معمل',       // Lab rejected internally — zero cost
     cancelled: 'ملغي',
     on_hold: 'موقوف مؤقتاً',
     redo: 'إعادة إنتاج',

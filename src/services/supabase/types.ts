@@ -49,7 +49,7 @@ export interface DbOrder {
     discount: number;
     total_price: number;
     shade: string;
-    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Cancelled' | 'Pending Review';
+    status: 'Pending' | 'In Progress' | 'Completed' | 'Delivered' | 'New Case' | 'Under Design' | 'Waiting Dr Approval' | 'Under Production' | 'Try In' | 'Try In Approved' | 'Ready' | 'Returned for Adjustments' | 'Rejected' | 'Doctor Rejected' | 'Lab Rejected' | 'Cancelled' | 'Pending Review';
     delivery_date: string;
     cost: number;
     manual_cost?: number | null;
@@ -87,7 +87,7 @@ export interface DbOrder {
     rejected_lab_cost?: number | null;
     // WF-1: shadow workflow columns (added by migration 086).
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
-    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo';
+    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
 }
 
 export interface DbTransaction {
