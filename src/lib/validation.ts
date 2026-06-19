@@ -39,7 +39,14 @@ export const DoctorSchema = z.object({
     representativeId: z.union([z.string().uuid(), z.literal('')]).optional().nullable(),
     customPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     isCenter: z.boolean().optional().nullable(),
-    parentId: z.union([z.string().uuid(), z.literal('')]).optional().nullable()
+    parentId: z.union([z.string().uuid(), z.literal('')]).optional().nullable(),
+    hasBranches: z.boolean().optional().nullable(),
+    branches: z.array(z.object({
+        id: z.string(),
+        name: z.string().min(1, 'اسم الفرع مطلوب'),
+        address: z.string().optional().or(z.literal('')),
+        phone: z.string().optional().or(z.literal(''))
+    })).optional().nullable()
 });
 
 export const DoctorCreateSchema = DoctorSchema;
@@ -59,6 +66,7 @@ export const OrderSchema = z.object({
     id: z.string().uuid().optional(),
     caseId: z.string().min(1).max(50),
     doctorId: z.string().uuid(),
+    branchName: z.string().max(200).optional().nullable(),
     patientName: z.string().min(2).max(200),
     items: z.array(OrderItemSchema).min(1, 'يجب إضافة عنصر واحد على الأقل'),
     discount: z.number().min(0),

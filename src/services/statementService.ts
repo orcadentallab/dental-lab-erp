@@ -13,6 +13,7 @@ export interface StatementItem {
     runningBalance?: number;
     services?: string;
     count?: number;
+    branchName?: string;
 }
 
 export interface StatementResult {
@@ -122,7 +123,8 @@ export const statementService = {
                 amount: getDoctorReceivableAmount(o),
                 status: o.status,
                 services,
-                count
+                count,
+                branchName: o.branchName || undefined
             };
         }));
 

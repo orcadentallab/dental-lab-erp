@@ -18,6 +18,8 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
         customPrices: dbDoctor.custom_prices || undefined,
         isCenter: dbDoctor.is_center || false,
         parentId: dbDoctor.parent_id || undefined,
+        hasBranches: dbDoctor.has_branches || false,
+        branches: dbDoctor.branches ? (dbDoctor.branches as any) : undefined,
     };
 }
 
@@ -34,6 +36,8 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
         custom_prices: doctor.customPrices || null,
         is_center: doctor.isCenter || false,
         parent_id: doctor.parentId || null,
+        has_branches: doctor.hasBranches || false,
+        branches: doctor.branches ? (doctor.branches as any) : null,
     };
 }
 
@@ -123,6 +127,47 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
         }
     }
 
+    // Check branch edits/deletions if updates.branches is provided
+    let branchRenames: { oldName: string; newName: string }[] = [];
+    if (updates.branches !== undefined) {
+        // Fetch current doctor to compare branches
+        const currentDoctor = await getDoctor(id);
+        if (currentDoctor) {
+            const oldBranches = currentDoctor.branches || [];
+            const newBranches = updates.branches || [];
+
+            // 1. Check for deleted branches
+            for (const oldB of oldBranches) {
+                const stillExists = newBranches.some(b => b.id === oldB.id);
+                if (!stillExists) {
+                    // Check if this branch is used in any orders
+                    const { count, error: countErr } = await supabase
+                        .from('orders')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('doctor_id', id)
+                        .eq('branch_name', oldB.name);
+
+                    if (countErr) {
+                        throw ErrorHandler.handle(countErr, 'checkBranchUsage');
+                    }
+
+                    if (count && count > 0) {
+                        throw new ValidationError(`لا يمكن حذف الفرع "${oldB.name}" لارتباطه بطلبات مسجلة بالفعل`);
+                    }
+                }
+            }
+
+            // 2. Check for renamed branches
+            for (const newB of newBranches) {
+                const oldB = oldBranches.find(b => b.id === newB.id);
+                if (oldB && oldB.name !== newB.name) {
+                    // We need to rename the branch in old orders
+                    branchRenames.push({ oldName: oldB.name, newName: newB.name });
+                }
+            }
+        }
+    }
+
     const dbUpdates: DbDoctorUpdate = {};
 
     if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -135,6 +180,8 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     if (updates.customPrices !== undefined) dbUpdates.custom_prices = updates.customPrices || null;
     if (updates.isCenter !== undefined) dbUpdates.is_center = updates.isCenter;
     if (updates.parentId !== undefined) dbUpdates.parent_id = updates.parentId || null;
+    if (updates.hasBranches !== undefined) dbUpdates.has_branches = updates.hasBranches;
+    if (updates.branches !== undefined) dbUpdates.branches = updates.branches ? (updates.branches as any) : null;
 
     const { data, error } = await supabase
         .from('doctors')
@@ -146,6 +193,19 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     if (error) {
         if (error.code === 'PGRST116') return null; // Not found
         throw ErrorHandler.handle(error, 'updateDoctor');
+    }
+
+    // Apply branch name changes to old orders
+    for (const rename of branchRenames) {
+        const { error: renameErr } = await supabase
+            .from('orders')
+            .update({ branch_name: rename.newName })
+            .eq('doctor_id', id)
+            .eq('branch_name', rename.oldName);
+
+        if (renameErr) {
+            console.error(`Failed to update branch name from "${rename.oldName}" to "${rename.newName}":`, renameErr);
+        }
     }
 
     return data ? dbToDoctor(data) : null;

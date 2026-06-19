@@ -1,3 +1,10 @@
+export interface DoctorBranch {
+    id: string;
+    name: string;
+    address: string;
+    phone: string;
+}
+
 export interface Doctor {
     id: string;
     name: string;
@@ -10,6 +17,8 @@ export interface Doctor {
     customPrices?: Record<string, number>; // serviceName -> special sellingPrice
     isCenter?: boolean; // True if Medical Center
     parentId?: string; // Link to parent Medical Center
+    hasBranches?: boolean; // True if doctor/center has branches
+    branches?: DoctorBranch[];
 }
 
 export interface Service {
@@ -94,6 +103,7 @@ export interface Order {
     id: string; // Internal ID
     caseId: string; // Generated ID
     doctorId: string;
+    branchName?: string; // Selected branch for this order
     patientName: string;
     items: OrderItem[];
     discount: number;

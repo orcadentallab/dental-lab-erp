@@ -106,6 +106,16 @@ const calculateAutomaticDesignPrice = (
     }, 0);
 };
 
+const normalizeArabic = (text: string): string => {
+    return text
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+};
+
 export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }: OrderFormProps) {
     const { user } = useAuth();
     const { error: toastError } = useToast();
@@ -121,6 +131,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     // const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false); // REPLACED BY DOCTOR SELECT
     const [selectedMainDoctorId, setSelectedMainDoctorId] = useState('');
     const [selectedChildDoctorId, setSelectedChildDoctorId] = useState('');
+    const [branchName, setBranchName] = useState(initialData?.branchName || '');
     const [patientName, setPatientName] = useState(initialData?.patientName || '');
     const [shade, setShade] = useState(initialData?.shade || '');
     const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
@@ -133,6 +144,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [showDoctorModal, setShowDoctorModal] = useState(false);
     const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined as string | undefined });
     const [doctorError, setDoctorError] = useState<string | null>(null);
+
+    // Quick Add Branch State
+    const [showAddBranchModal, setShowAddBranchModal] = useState(false);
+    const [newBranch, setNewBranch] = useState({ name: '', address: '', phone: '' });
+    const [branchError, setBranchError] = useState<string | null>(null);
 
     const normalizeText = (text: string) => text ? text.toString().trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي') : '';
 
@@ -180,6 +196,56 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         } catch (err) {
             console.error('Add Doctor Error:', err);
             setDoctorError('حدث خطأ غير متوقع أثناء الحفظ.');
+        }
+    };
+
+    const handleQuickAddBranch = async () => {
+        setBranchError(null);
+        if (!newBranch.name.trim()) {
+            setBranchError('اسم الفرع مطلوب');
+            return;
+        }
+        if (!selectedMainDoctorId) {
+            setBranchError('يجب اختيار الطبيب أولاً');
+            return;
+        }
+
+        try {
+            const doc = doctors.find(d => d.id === selectedMainDoctorId);
+            if (!doc) throw new Error('الطبيب غير موجود');
+
+            const existingBranches = doc.branches || [];
+            if (existingBranches.some(b => b.name.trim().toLowerCase() === newBranch.name.trim().toLowerCase())) {
+                setBranchError('هذا الفرع موجود بالفعل');
+                return;
+            }
+
+            const updatedBranches = [
+                ...existingBranches,
+                {
+                    id: crypto.randomUUID(),
+                    name: newBranch.name.trim(),
+                    address: newBranch.address.trim(),
+                    phone: newBranch.phone.trim()
+                }
+            ];
+
+            const updatedDoc = await db.updateDoctor(selectedMainDoctorId, {
+                branches: updatedBranches
+            });
+
+            if (updatedDoc) {
+                // Update local doctors list
+                setDoctors(prev => prev.map(d => d.id === selectedMainDoctorId ? updatedDoc : d));
+                // Select the newly created branch
+                setBranchName(newBranch.name.trim());
+                // Reset quick add form and close modal
+                setNewBranch({ name: '', address: '', phone: '' });
+                setShowAddBranchModal(false);
+            }
+        } catch (err: any) {
+            console.error('Error quick adding branch:', err);
+            setBranchError(err.message || 'حدث خطأ أثناء إضافة الفرع');
         }
     };
 
@@ -429,6 +495,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
             return;
         }
 
+        if (currentDoctor?.hasBranches && !branchName) {
+            toastError('يرجى اختيار الفرع');
+            return;
+        }
+
         const activeDoctorId = currentDoctor?.isCenter ? selectedChildDoctorId : selectedMainDoctorId;
 
 
@@ -464,6 +535,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
             await onSubmit({
                 caseId,
                 doctorId: activeDoctorId,
+                branchName: currentDoctor?.hasBranches ? (branchName || undefined) : undefined,
                 patientName,
                 items: items.map(i => {
                     const svc = services.find(s => s.name === i.serviceType);
@@ -558,7 +630,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     <Card className="p-4 bg-white dark:bg-surface-800 border border-surface-100 shadow-sm">
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
                             {/* 1. Doctor / Center */}
-                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-5" : "md:col-span-6", "min-w-0")}>
+                            <div className="md:col-span-6 min-w-0">
                                 <div className="mb-1.5 flex h-5 items-center justify-between gap-2">
                                     <label className="block text-xs font-bold text-surface-600 truncate">الطبيب / المركز المعالج</label>
                                     <span className="shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600">مطلوب</span>
@@ -571,6 +643,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                             onChange={(id) => {
                                                 setSelectedMainDoctorId(id);
                                                 setSelectedChildDoctorId('');
+                                                setBranchName('');
+
+                                                // Auto-detect branch for the new doctor from existing instructions
+                                                const doc = doctors.find(d => d.id === id);
+                                                if (doc?.hasBranches && doc.branches && doc.branches.length > 0 && instructions) {
+                                                    const normalizedInstructions = normalizeArabic(instructions);
+                                                    for (const branch of doc.branches) {
+                                                        const normalizedBranchName = normalizeArabic(branch.name);
+                                                        if (normalizedBranchName && normalizedInstructions.includes(normalizedBranchName)) {
+                                                            setBranchName(branch.name);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
                                             }}
                                             error={!selectedMainDoctorId && hasTriedSubmit ? 'اختر الطبيب أو المركز قبل تأكيد الأوردر' : undefined}
                                         />
@@ -593,7 +679,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
                             {/* 2. Executing Doctor (If Center) */}
                             {currentDoctor?.isCenter && (
-                                <div className="md:col-span-4 min-w-0">
+                                <div className="md:col-span-6 min-w-0">
                                     <label className="mb-1.5 flex h-5 items-center gap-1.5 text-xs font-bold text-surface-600 truncate">
                                         <div className="w-1 h-3 bg-primary-300 rounded-full shrink-0"></div>
                                         طبيب المركز المنفذ
@@ -626,8 +712,46 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 </div>
                             )}
 
+                            {/* Branch Select */}
+                            {currentDoctor?.hasBranches && currentDoctor.branches && currentDoctor.branches.length > 0 && (
+                                <div className="md:col-span-6 min-w-0">
+                                    <label className="mb-1.5 flex h-5 items-center gap-1.5 text-xs font-bold text-surface-600 truncate">
+                                        <div className="w-1 h-3 bg-blue-300 rounded-full shrink-0"></div>
+                                        الفرع
+                                        <span className="shrink-0 rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-600 ml-auto">مطلوب</span>
+                                    </label>
+                                    <div className="flex gap-1.5 items-center">
+                                        <select
+                                            className="h-10 min-w-0 flex-1 rounded-lg border border-surface-200 bg-white px-3 text-sm font-bold text-surface-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                                            value={branchName}
+                                            onChange={(e) => setBranchName(e.target.value)}
+                                        >
+                                            <option value="">-- اختر الفرع --</option>
+                                            {currentDoctor.branches.map(b => (
+                                                <option key={b.id} value={b.name}>{b.name}</option>
+                                            ))}
+                                        </select>
+                                        {!readOnly && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setBranchError(null);
+                                                    setNewBranch({ name: '', address: '', phone: '' });
+                                                    setShowAddBranchModal(true);
+                                                }}
+                                                className="flex h-10 w-9 items-center justify-center text-primary-600 hover:bg-primary-50 rounded-lg border border-primary-100 transition-colors shrink-0"
+                                                aria-label="إضافة فرع جديد"
+                                                title="إضافة فرع جديد"
+                                            >
+                                                <Plus size={17} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* 3. Patient Name */}
-                            <div className={clsx(currentDoctor?.isCenter ? "md:col-span-3" : "md:col-span-6", "min-w-0")}>
+                            <div className="md:col-span-6 min-w-0">
                                 <label className="mb-1.5 flex h-5 items-center text-xs font-bold text-surface-600 truncate">اسم المريض</label>
                                 <Input
                                     className="h-10 py-0 text-sm font-bold bg-white border-surface-200"
@@ -756,7 +880,22 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 className="w-full h-full p-4 bg-white text-sm outline-none resize-none min-h-[5rem] focus:ring-2 focus:ring-primary-500/20"
                                 placeholder="ملاحظات فنية إضافية للمعمل..."
                                 value={instructions}
-                                onChange={(e) => setInstructions(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setInstructions(val);
+
+                                    // Auto-detect branch from instructions if branch is not yet selected
+                                    if (currentDoctor?.hasBranches && currentDoctor.branches && currentDoctor.branches.length > 0 && !branchName) {
+                                        const normalizedInstructions = normalizeArabic(val);
+                                        for (const branch of currentDoctor.branches) {
+                                            const normalizedBranchName = normalizeArabic(branch.name);
+                                            if (normalizedBranchName && normalizedInstructions.includes(normalizedBranchName)) {
+                                                setBranchName(branch.name);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }}
                                 disabled={isFieldDisabled('instructions')}
                             />
                         </Card>
@@ -1048,6 +1187,32 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
                             <Button onClick={handleAddDoctorFull} className="w-full mt-2">
                                 <span>حفظ</span>
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
+
+            {showAddBranchModal && (
+                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Card className="w-full max-w-md animate-in zoom-in-95 text-right">
+                        <div className="p-4 border-b border-surface-100 bg-surface-50/50 flex justify-between items-center">
+                            <h2 className="font-bold text-base text-surface-900">إضافة فرع جديد</h2>
+                            <button onClick={() => setShowAddBranchModal(false)} aria-label="Close"><X size={18} className="text-surface-400 hover:text-surface-600" /></button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            {branchError && (
+                                <div className="bg-red-50 text-red-600 text-xs font-bold p-2 rounded flex items-center gap-2">
+                                    <AlertTriangle size={14} /> {branchError}
+                                </div>
+                            )}
+                            
+                            <Input label="اسم الفرع" required placeholder="مثال: فرع المعادي" value={newBranch.name} onChange={e => setNewBranch({ ...newBranch, name: e.target.value })} />
+                            <Input label="العنوان (اختياري)" placeholder="مثال: 12 شارع النصر" value={newBranch.address} onChange={e => setNewBranch({ ...newBranch, address: e.target.value })} />
+                            <Input label="رقم الهاتف (اختياري)" placeholder="مثال: 01xxxxxxxxx" value={newBranch.phone} onChange={e => setNewBranch({ ...newBranch, phone: e.target.value })} />
+
+                            <Button onClick={handleQuickAddBranch} className="w-full mt-2">
+                                <span>حفظ الفرع</span>
                             </Button>
                         </div>
                     </Card>

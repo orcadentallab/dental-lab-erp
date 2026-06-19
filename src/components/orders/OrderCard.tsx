@@ -413,7 +413,14 @@ export default function OrderCard({
                                     </div>
                                     <div className="min-w-0 flex items-center gap-3 max-w-full">
                                         <div>
-                                            <p className="font-semibold text-sm md:text-base text-surface-700 dark:text-surface-300 leading-tight truncate">d. {doctorDisplayName}</p>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <p className="font-semibold text-sm md:text-base text-surface-700 dark:text-surface-300 leading-tight truncate">d. {doctorDisplayName}</p>
+                                                {order.branchName && (
+                                                    <span className="text-[9px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900 px-1.5 py-0.5 rounded font-bold shrink-0">
+                                                        {order.branchName}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <p className="text-[10px] sm:text-xs text-surface-400">الطبيب المعالج</p>
                                         </div>
                                         {parentDoctor && (

@@ -13,6 +13,8 @@ export interface DbDoctor {
     custom_prices?: Record<string, number> | null; // JSONB
     is_center?: boolean;
     parent_id?: string | null;
+    has_branches?: boolean;
+    branches?: { id: string; name: string; address: string; phone: string }[] | null;
     created_at: string;
     updated_at: string;
 }
@@ -44,6 +46,7 @@ export interface DbOrder {
     id: string;
     case_id: string;
     doctor_id: string;
+    branch_name?: string | null;
     patient_name: string;
     items: DbOrderItem[];
     discount: number;

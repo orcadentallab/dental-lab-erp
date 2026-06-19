@@ -947,6 +947,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         id: dbOrder.id,
         caseId: dbOrder.case_id,
         doctorId: dbOrder.doctor_id,
+        branchName: dbOrder.branch_name || undefined,
         patientName: dbOrder.patient_name,
         items: items,
         discount: dbOrder.discount,
@@ -994,6 +995,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
     return {
         case_id: order.caseId,
         doctor_id: order.doctorId,
+        branch_name: order.branchName || null,
         patient_name: order.patientName,
         items: order.items,
         discount: order.discount,
@@ -1719,6 +1721,7 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     // Map all possible updates
     if (updates.caseId !== undefined) dbUpdates.case_id = updates.caseId;
     if (updates.doctorId !== undefined) dbUpdates.doctor_id = updates.doctorId;
+    if (updates.branchName !== undefined) dbUpdates.branch_name = updates.branchName || null;
     if (updates.patientName !== undefined) dbUpdates.patient_name = updates.patientName;
     if (updates.items !== undefined) dbUpdates.items = updates.items;
     if (updates.discount !== undefined) dbUpdates.discount = updates.discount;

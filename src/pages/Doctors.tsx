@@ -8,6 +8,7 @@ import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 import { matchArabic } from '../lib/searchUtils';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
+import { supabase } from '../lib/supabase';
 
 export default function Doctors() {
     const { user } = useAuth();
@@ -30,10 +31,121 @@ export default function Doctors() {
         representativeId: '',
         customPrices: {} as Record<string, number>,
         isCenter: false,
-        parentId: '' as string | undefined
+        parentId: '' as string | undefined,
+        hasBranches: false
     });
     const [childDoctors, setChildDoctors] = useState<{ id?: string, name: string, phone: string, doctorCode?: string }[]>([]);
+    const [branches, setBranches] = useState<import('../services/db').DoctorBranch[]>([]);
     const [error, setError] = useState<string | null>(null);
+
+    // Migration State
+    const [showMigrationModal, setShowMigrationModal] = useState(false);
+    const [migrationMatches, setMigrationMatches] = useState<any[]>([]);
+    const [loadingMigration, setLoadingMigration] = useState(false);
+    const [updatingMigration, setUpdatingMigration] = useState(false);
+
+    const loadMigrationMatches = async () => {
+        setLoadingMigration(true);
+        try {
+            const docsWithBranches = doctors.filter(d => d.hasBranches && d.branches && d.branches.length > 0);
+            if (docsWithBranches.length === 0) {
+                alert('لا يوجد أطباء لديهم فروع مفعّلة في النظام حالياً.');
+                setLoadingMigration(false);
+                return;
+            }
+
+            const doctorIds = docsWithBranches.map(d => d.id);
+            
+            const { data: ordersData, error: ordersError } = await supabase
+                .from('orders')
+                .select('id, case_id, patient_name, doctor_id, instructions')
+                .in('doctor_id', doctorIds)
+                .or('branch_name.is.null,branch_name.eq.""');
+
+            if (ordersError) {
+                throw ordersError;
+            }
+
+            const matchesArr: any[] = [];
+
+            if (ordersData) {
+                for (const order of ordersData) {
+                    const doc = docsWithBranches.find(d => d.id === order.doctor_id);
+                    if (!doc || !doc.branches) continue;
+
+                    const instructions = order.instructions || '';
+                    if (!instructions.trim()) continue;
+
+                    const normalizedInstructions = normalizeText(instructions);
+                    let detectedBranch: string | null = null;
+
+                    for (const branch of doc.branches) {
+                        const normalizedBranchName = normalizeText(branch.name);
+                        if (!normalizedBranchName) continue;
+
+                        if (normalizedInstructions.includes(normalizedBranchName)) {
+                            detectedBranch = branch.name;
+                            break;
+                        }
+                    }
+
+                    if (detectedBranch) {
+                        matchesArr.push({
+                            id: order.id,
+                            orderCode: order.case_id || '-',
+                            patientName: order.patient_name || '-',
+                            doctorName: doc.name,
+                            instructions: instructions,
+                            detectedBranch: detectedBranch,
+                            selected: true
+                        });
+                    }
+                }
+            }
+
+            setMigrationMatches(matchesArr);
+            setShowMigrationModal(true);
+        } catch (err: any) {
+            console.error('Error loading migration matches:', err);
+            alert(err.message || 'حدث خطأ أثناء تحميل الطلبات للمراجعة.');
+        } finally {
+            setLoadingMigration(false);
+        }
+    };
+
+    const handleExecuteMigration = async () => {
+        const selectedMatches = migrationMatches.filter(m => m.selected);
+        if (selectedMatches.length === 0) {
+            alert('يرجى تحديد طلب واحد على الأقل للترحيل.');
+            return;
+        }
+
+        setUpdatingMigration(true);
+        try {
+            let successCount = 0;
+            for (const match of selectedMatches) {
+                const { error: updateError } = await supabase
+                    .from('orders')
+                    .update({ branch_name: match.detectedBranch })
+                    .eq('id', match.id);
+
+                if (updateError) {
+                    console.error(`Failed to update Order ${match.orderCode}:`, updateError);
+                } else {
+                    successCount++;
+                }
+            }
+
+            alert(`تم ترحيل وتحديث ${successCount} طلب بنجاح.`);
+            setShowMigrationModal(false);
+            setMigrationMatches([]);
+        } catch (err: any) {
+            console.error('Error executing migration:', err);
+            alert(err.message || 'حدث خطأ أثناء تحديث الطلبات.');
+        } finally {
+            setUpdatingMigration(false);
+        }
+    };
 
     const normalizeText = (text: string) => {
         if (!text) return '';
@@ -65,8 +177,9 @@ export default function Doctors() {
 
     const openAddModal = () => {
         setEditingId(null);
-        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined });
+        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined, hasBranches: false });
         setChildDoctors([{ name: '', phone: '' }]);
+        setBranches([]);
         setError(null);
         setShowModal(true);
     };
@@ -83,8 +196,10 @@ export default function Doctors() {
             representativeId: doc.representativeId || '',
             customPrices: doc.customPrices || {},
             isCenter: doc.isCenter || false,
-            parentId: doc.parentId || undefined
+            parentId: doc.parentId || undefined,
+            hasBranches: doc.hasBranches || false
         });
+        setBranches(doc.branches || []);
         
         if (doc.isCenter) {
             const children = doctors.filter(d => d.parentId === doc.id);
@@ -137,7 +252,8 @@ export default function Doctors() {
                 ...newDoctor,
                 name: newDoctor.name.trim(),
                 doctorCode: normalizedCode,
-                customPrices: newDoctor.parentId ? {} : newDoctor.customPrices
+                customPrices: newDoctor.parentId ? {} : newDoctor.customPrices,
+                branches: newDoctor.hasBranches ? branches : []
             };
 
             if (editingId) {
@@ -196,12 +312,13 @@ export default function Doctors() {
 
             setShowModal(false);
             setEditingId(null);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined, hasBranches: false });
             setChildDoctors([]);
+            setBranches([]);
 
-        } catch (err: unknown) {
+        } catch (err: any) {
             console.error('Save Doctor Error:', err);
-            setError('حدث خطأ غير متوقع أثناء الحفظ.');
+            setError(err.message || 'حدث خطأ غير متوقع أثناء الحفظ.');
         }
     };
 
@@ -285,6 +402,15 @@ export default function Doctors() {
                                 <Printer size={18} />
                                 <span className="hidden sm:inline">طباعة</span>
                             </button>
+                            <button
+                                onClick={loadMigrationMatches}
+                                disabled={loadingMigration}
+                                className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white px-3 py-2 rounded-lg transition-colors font-semibold shadow-md"
+                                title="مراجعة وتحديث فروع الطلبات القديمة"
+                            >
+                                <AlertTriangle size={18} />
+                                <span className="hidden sm:inline">{loadingMigration ? 'جاري الفحص...' : 'ربط الفروع القديمة'}</span>
+                            </button>
                         </>
                     )}
                     <button
@@ -355,6 +481,11 @@ export default function Doctors() {
                                     <div className="flex items-center gap-2">
                                         <h3 className="font-bold text-gray-900 dark:text-gray-100">{doc.name}</h3>
                                         {doc.isCenter && <span className="text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full border border-purple-200 dark:border-purple-700">مركز طبي</span>}
+                                        {doc.hasBranches && (
+                                            <span className="text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-700">
+                                                {doc.branches?.length || 0} فروع
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className="text-xs bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 px-2 py-1 rounded inline-block border border-gray-200 dark:border-gray-600">
@@ -380,12 +511,18 @@ export default function Doctors() {
                                 <MapPin size={16} className="text-gray-400 dark:text-gray-500" />
                                 <span>{doc.address}</span>
                             </div>
-                            {/* {doc.representativeName && (
-                                <div className="flex items-center gap-2">
-                                    <UserIcon size={16} className="text-gray-400 dark:text-gray-500" />
-                                    <span>المندوب: <span className="font-semibold text-blue-600 dark:text-blue-400">{doc.representativeName}</span></span>
+                            {doc.hasBranches && doc.branches && doc.branches.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-dashed border-gray-100 dark:border-gray-700">
+                                    <div className="text-xs font-bold text-gray-400 mb-1">الفروع:</div>
+                                    <div className="flex flex-wrap gap-1">
+                                        {doc.branches.map(b => (
+                                            <span key={b.id} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600" title={`${b.address || ''} ${b.phone || ''}`.trim()}>
+                                                {b.name}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
-                            )} */}
+                            )}
                         </div>
 
                         {doc.customPrices && Object.keys(doc.customPrices).length > 0 && (
@@ -562,6 +699,96 @@ export default function Doctors() {
                                     </div>
                                 )}
 
+                                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={newDoctor.hasBranches}
+                                            onChange={e => {
+                                                const hasBranches = e.target.checked;
+                                                setNewDoctor({ ...newDoctor, hasBranches });
+                                                if (hasBranches && branches.length === 0) setBranches([{ id: crypto.randomUUID(), name: '', address: '', phone: '' }]);
+                                            }}
+                                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                        />
+                                        <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                                            هذا الكيان لديه فروع متعددة
+                                        </span>
+                                    </label>
+                                    
+                                    {newDoctor.hasBranches && (
+                                        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/50">
+                                            <h3 className="text-sm font-bold text-blue-800 dark:text-blue-300 mb-3">فروع الطبيب / المركز</h3>
+                                            <div className="space-y-3">
+                                                {branches.map((branch, index) => (
+                                                    <div key={branch.id} className="p-3 bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 space-y-2 relative">
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-xs font-bold text-gray-400">الفرع #{index + 1}</span>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => {
+                                                                    const arr = [...branches];
+                                                                    arr.splice(index, 1);
+                                                                    setBranches(arr);
+                                                                }}
+                                                                className="text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 p-1.5 rounded transition-colors absolute top-2 left-2"
+                                                                title="حذف الفرع"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </div>
+                                                        <div className="grid grid-cols-1 gap-2">
+                                                            <input
+                                                                required
+                                                                type="text"
+                                                                placeholder="اسم الفرع (مثال: فرع المعادي)"
+                                                                className="w-full p-2 text-sm border border-gray-200 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                                                value={branch.name}
+                                                                onChange={e => {
+                                                                    const arr = [...branches];
+                                                                    arr[index].name = e.target.value;
+                                                                    setBranches(arr);
+                                                                }}
+                                                            />
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="العنوان (اختياري)"
+                                                                    className="w-full p-2 text-xs border border-gray-200 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                                                    value={branch.address}
+                                                                    onChange={e => {
+                                                                        const arr = [...branches];
+                                                                        arr[index].address = e.target.value;
+                                                                        setBranches(arr);
+                                                                    }}
+                                                                />
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="الهاتف (اختياري)"
+                                                                    className="w-full p-2 text-xs border border-gray-200 dark:border-gray-600 rounded focus:ring-1 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                                                                    value={branch.phone}
+                                                                    onChange={e => {
+                                                                        const arr = [...branches];
+                                                                        arr[index].phone = e.target.value;
+                                                                        setBranches(arr);
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBranches([...branches, { id: crypto.randomUUID(), name: '', address: '', phone: '' }])}
+                                                    className="text-sm text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 mt-2"
+                                                >
+                                                    <Plus size={16} /> اضافة فرع آخر
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
                                 {!newDoctor.isCenter && (
                                     <div className="mt-3">
                                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">يتبع لمركز طبي (اختياري)</label>
@@ -642,6 +869,97 @@ export default function Doctors() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Migration Review Modal */}
+            {showMigrationModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
+                        <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
+                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                                🏢 مراجعة وربط الفروع للطلبات القديمة
+                            </h2>
+                            <button onClick={() => setShowMigrationModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" aria-label="إغلاق">✕</button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                تم فحص الطلبات السابقة ومطابقة أسماء الفروع المكتوبة في خانة التعليمات مع الفروع المسجلة للأطباء. يرجى مراجعة وتأكيد المطابقة أدناه لضمان عدم ربط أي أوردر بفرع خاطئ.
+                            </p>
+
+                            {migrationMatches.length === 0 ? (
+                                <div className="text-center py-8 text-gray-400">
+                                    لا توجد طلبات قديمة تحتاج لربط فروع حالياً.
+                                </div>
+                            ) : (
+                                <div className="overflow-x-auto border border-gray-100 dark:border-gray-700 rounded-lg">
+                                    <table className="w-full text-sm text-right text-gray-600 dark:text-gray-300">
+                                        <thead className="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold">
+                                            <tr>
+                                                <th className="p-3 text-center w-12">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={migrationMatches.every(m => m.selected)}
+                                                        onChange={(e) => {
+                                                            const checked = e.target.checked;
+                                                            setMigrationMatches(prev => prev.map(m => ({ ...m, selected: checked })));
+                                                        }}
+                                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                </th>
+                                                <th className="p-3">كود الأوردر</th>
+                                                <th className="p-3">اسم المريض</th>
+                                                <th className="p-3">الطبيب / المركز</th>
+                                                <th className="p-3 text-blue-600 dark:text-blue-400">الفرع المكتشف</th>
+                                                <th className="p-3">نص التعليمات</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                            {migrationMatches.map((match) => (
+                                                <tr key={match.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                                    <td className="p-3 text-center">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={match.selected}
+                                                            onChange={(e) => {
+                                                                const checked = e.target.checked;
+                                                                setMigrationMatches(prev => prev.map(m => m.id === match.id ? { ...m, selected: checked } : m));
+                                                            }}
+                                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                    </td>
+                                                    <td className="p-3 font-mono font-bold">{match.orderCode}</td>
+                                                    <td className="p-3 font-semibold">{match.patientName}</td>
+                                                    <td className="p-3">{match.doctorName}</td>
+                                                    <td className="p-3"><span className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-md font-bold">{match.detectedBranch}</span></td>
+                                                    <td className="p-3 text-xs max-w-xs truncate" title={match.instructions}>{match.instructions}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setShowMigrationModal(false)}
+                                className="px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                            >
+                                إلغاء
+                            </button>
+                            <button
+                                type="button"
+                                disabled={updatingMigration || migrationMatches.filter(m => m.selected).length === 0}
+                                onClick={handleExecuteMigration}
+                                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
+                            >
+                                {updatingMigration ? 'جاري التحديث...' : `تأكيد ترحيل الطلبات المحددة (${migrationMatches.filter(m => m.selected).length})`}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

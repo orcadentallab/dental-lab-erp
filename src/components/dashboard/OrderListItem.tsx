@@ -80,6 +80,11 @@ const OrderListItem = React.memo(function OrderListItem({
                                         / {doctorName || '-'}
                                     </span>
                                 )}
+                                {order.branchName && (
+                                    <span className="text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900 px-1.5 py-0.5 rounded font-medium truncate max-w-[120px]" title={order.branchName}>
+                                        {order.branchName}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>

@@ -514,6 +514,7 @@ export default function Accounts() {
     const [, setLoadingDetails] = useState(false);
     const [hiddenTransactionIds, setHiddenTransactionIds] = useState<Set<string>>(new Set());
     const [childDoctorFilter, setChildDoctorFilter] = useState('');
+    const [branchFilter, setBranchFilter] = useState('');
     const [invoiceDropdownOpen, setInvoiceDropdownOpen] = useState(false);
     const toggleTransactionVisibility = (id: string) => {
         setHiddenTransactionIds(prev => {
@@ -581,6 +582,7 @@ export default function Accounts() {
                     doctors.find(d => d.id === o.doctorId)?.parentId === selectedEntityId;
                 if (!isDirectOrder && !isChildOrder) return false;
                 if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
+                if (branchFilter && o.branchName !== branchFilter) return false;
                 const orderDate = getOfficialStatementDate(o);
                 return orderDate < dateRange.start && isDoctorStatementIncluded(o);
             });
@@ -684,7 +686,7 @@ export default function Accounts() {
         }
 
         return 0;
-    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments, childDoctorFilter, doctors, designers, isDesigner]);
+    }, [dateRange.start, selectedEntityId, activeTab, detailOrders, detailTransactions, orders, transactions, adjustments, childDoctorFilter, branchFilter, doctors, designers, isDesigner]);
 
     // Helper: Logic for Individual Statement
     const individualStatement = useMemo(() => {
@@ -707,6 +709,7 @@ export default function Accounts() {
                 if (!isDirectOrder && !isChildOrder) return false;
                 // Apply child doctor filter if set
                 if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
+                if (branchFilter && o.branchName !== branchFilter) return false;
                 if (showAllOrders) return true;
                 return isDoctorStatementIncluded(o);
             });
@@ -733,7 +736,8 @@ export default function Accounts() {
                     services,
                     count,
                     isOrderValue: true,
-                    isInformationalOnly: displayOrderValue !== officialReceivableAmount
+                    isInformationalOnly: displayOrderValue !== officialReceivableAmount,
+                    branchName: o.branchName || undefined
                 };
             });
 
@@ -919,7 +923,7 @@ export default function Accounts() {
                 allOrdersDisplayTotal
             }
         };
-    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter]);
+    }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter, branchFilter]);
 
 
     const handlePrint = async () => {
@@ -959,8 +963,11 @@ export default function Accounts() {
     // Helper: build debit items for cases invoice (PDF or Excel)
     const buildCasesInvoiceItems = (): CasesInvoiceItem[] => {
         if (!individualStatement) return [];
-        const relevantOrders: Order[] = detailOrders.length > 0 ? detailOrders : [];
-        const orderMap = new Map(relevantOrders.map(o => [o.id, o]));
+        const relevantOrders = detailOrders.length > 0 ? detailOrders : orders;
+        const orderMap = new Map<string, Partial<Order>>();
+        relevantOrders.forEach(o => {
+            if (o.id) orderMap.set(o.id, o);
+        });
 
         return individualStatement.items
             .filter(i => !i.isHidden && i.type === 'debit')
@@ -981,6 +988,7 @@ export default function Accounts() {
                     amount: i.amount,
                     instructions: order?.instructions || undefined,
                     userComments: userComments || undefined,
+                    branchName: order?.branchName || undefined,
                 };
             });
     };
@@ -1845,6 +1853,23 @@ export default function Accounts() {
                                 <option value="">كل أطباء المركز</option>
                                 {doctors.filter(d => d.parentId === selectedEntityId).map(doc => (
                                     <option key={doc.id} value={doc.id}>{doc.name}</option>
+                                ))}
+                            </select>
+                        </>
+                    )}
+                    {activeTab === 'doctors' && doctors.find(d => d.id === selectedEntityId)?.hasBranches && (
+                        <>
+                            <div className="hidden sm:block h-6 w-px bg-gray-200 mx-1" />
+                            <span className="text-sm text-blue-600 font-medium">الفرع:</span>
+                            <select
+                                className="bg-blue-50 border border-blue-200 rounded-lg text-sm px-3 py-2 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none min-w-[150px]"
+                                value={branchFilter}
+                                onChange={e => setBranchFilter(e.target.value)}
+                                aria-label="تصفية بالفرع"
+                            >
+                                <option value="">كل الفروع</option>
+                                {doctors.find(d => d.id === selectedEntityId)?.branches?.map(b => (
+                                    <option key={b.id} value={b.name}>{b.name}</option>
                                 ))}
                             </select>
                         </>

@@ -119,7 +119,7 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                                         <div className="flex items-center gap-1 truncate min-w-0">
                                             <User size={12} className="text-surface-400 shrink-0" />
                                             <span className="text-xs text-surface-600 dark:text-surface-400 truncate">
-                                                {doctorsMap[order.doctorId] || 'غير معروف'}
+                                                {doctorsMap[order.doctorId] || 'غير معروف'}{order.branchName ? ` (${order.branchName})` : ''}
                                             </span>
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0 bg-surface-50 dark:bg-surface-800 text-surface-500 border border-surface-200 dark:border-surface-700 text-[9px] px-1.5 py-0.5 rounded-md" title="المعمل المنفذ">

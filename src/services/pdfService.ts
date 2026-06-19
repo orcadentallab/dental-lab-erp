@@ -613,18 +613,110 @@ function buildStatementHTML(
     const startLabel = dateRange.start || '-';
     const endLabel = dateRange.end || '-';
 
-    const rows = statement.items.length > 0
-        ? statement.items.map(item => `
+    const hasBranches = statement.items.some(item => item.branchName);
+    let rows = '';
+
+    if (statement.items.length === 0) {
+        rows = `<tr><td colspan="6" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حركات في هذه الفترة</td></tr>`;
+    } else if (hasBranches) {
+        // Group items: debits by branchName, credits/adjustments together
+        const debitGroups: Record<string, typeof statement.items> = {};
+        const creditItems: typeof statement.items = [];
+
+        statement.items.forEach(item => {
+            if (item.type === 'debit') {
+                const bName = item.branchName || 'بدون فرع';
+                if (!debitGroups[bName]) debitGroups[bName] = [];
+                debitGroups[bName].push(item);
+            } else {
+                creditItems.push(item);
+            }
+        });
+
+        // 1. Render Debit Groups
+        Object.entries(debitGroups).forEach(([branch, branchItems]) => {
+            const branchTotal = branchItems.reduce((sum, i) => sum + i.amount, 0);
+
+            // Add branch header row
+            rows += `
+                <tr style="background-color: ${COLORS.bgSoft}; font-weight: bold;">
+                    <td colspan="6" style="text-align: right; padding: 6px 10px; color: ${COLORS.primary}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.primary};">
+                        🏢 <span style="font-family:'Cairo', sans-serif; font-weight: 800; margin-left: 5px; margin-right: 5px;">${branch}</span> (${branchItems.length} حالات)
+                    </td>
+                </tr>
+            `;
+
+            // Add items
+            branchItems.forEach(item => {
+                rows += `
+                    <tr>
+                        <td style="text-align:right">${item.description || '-'}</td>
+                        <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
+                        <td>${item.count ? `(${item.count})` : '-'}</td>
+                        <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:600">${formatCurrency(item.amount)}</td>
+                        <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.success};font-weight:600">-</td>
+                    </tr>
+                `;
+            });
+
+            // Add branch subtotal row
+            rows += `
+                <tr style="border-bottom: 2px solid ${COLORS.border}; font-weight: bold; background-color: #fafafa;">
+                    <td colspan="4" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي ${branch}</td>
+                    <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:11px;font-weight:700">${formatCurrency(branchTotal)}</td>
+                    <td>-</td>
+                </tr>
+            `;
+        });
+
+        // 2. Render Credit Group
+        if (creditItems.length > 0) {
+            const creditTotal = creditItems.reduce((sum, i) => sum + i.amount, 0);
+
+            // Add credit header row
+            rows += `
+                <tr style="background-color: ${COLORS.successBg}; font-weight: bold;">
+                    <td colspan="6" style="text-align: right; padding: 6px 10px; color: ${COLORS.success}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.success};">
+                        💳 المدفوعات والتسويات الدائنة (${creditItems.length} حركات)
+                    </td>
+                </tr>
+            `;
+
+            // Add items
+            creditItems.forEach(item => {
+                rows += `
+                    <tr>
+                        <td style="text-align:right">${item.description || '-'}</td>
+                        <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
+                        <td>${item.count ? `(${item.count})` : '-'}</td>
+                        <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:600">-</td>
+                        <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.success};font-weight:600">${formatCurrency(item.amount)}</td>
+                    </tr>
+                `;
+            });
+
+            // Add credit subtotal row
+            rows += `
+                <tr style="border-bottom: 2px solid ${COLORS.border}; font-weight: bold; background-color: #fafafa;">
+                    <td colspan="5" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي المدفوعات</td>
+                    <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.success};font-size:11px;font-weight:700">${formatCurrency(creditTotal)}</td>
+                </tr>
+            `;
+        }
+    } else {
+        rows = statement.items.map(item => `
             <tr>
-                <td>${item.description || '-'}</td>
+                <td style="text-align:right">${item.description || '-'}</td>
                 <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                 <td>${item.count ? `(${item.count})` : '-'}</td>
                 <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:600">${item.type === 'debit' ? formatCurrency(item.amount) : '-'}</td>
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.success};font-weight:600">${item.type === 'credit' ? formatCurrency(item.amount) : '-'}</td>
             </tr>
-        `).join('')
-        : `<tr><td colspan="6" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حركات في هذه الفترة</td></tr>`;
+        `).join('');
+    }
 
     return `<div class="doc"><style>${styles}</style>
         <div class="header-split">
@@ -794,6 +886,7 @@ export interface CasesInvoiceItem {
     amount: number;
     instructions?: string;
     userComments?: string; // Pipe-separated user-added comments
+    branchName?: string;
 }
 
 export async function generateCasesInvoicePDF(
@@ -820,8 +913,63 @@ function buildCasesInvoiceHTML(
     const endLabel = dateRange.end || new Date().toLocaleDateString('en-GB');
     const grandTotal = items.reduce((sum, i) => sum + i.amount, 0);
 
-    const rows = items.length > 0
-        ? items.map((item, idx) => {
+    const hasBranches = items.some(item => item.branchName);
+    let rows = '';
+
+    if (items.length === 0) {
+        rows = `<tr><td colspan="7" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
+    } else if (hasBranches) {
+        const branchGroups: Record<string, CasesInvoiceItem[]> = {};
+        items.forEach(item => {
+            const bName = item.branchName || 'بدون فرع';
+            if (!branchGroups[bName]) branchGroups[bName] = [];
+            branchGroups[bName].push(item);
+        });
+
+        let globalIdx = 0;
+        Object.entries(branchGroups).forEach(([branch, branchItems]) => {
+            const branchTotal = branchItems.reduce((sum, i) => sum + i.amount, 0);
+
+            // Add branch header row
+            rows += `
+                <tr style="background-color: ${COLORS.bgSoft}; font-weight: bold;">
+                    <td colspan="7" style="text-align: right; padding: 6px 10px; color: ${COLORS.primary}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.primary};">
+                        🏢 <span style="font-family:'Cairo', sans-serif; font-weight: 800; margin-left: 5px; margin-right: 5px;">${branch}</span> (${branchItems.length} حالات)
+                    </td>
+                </tr>
+            `;
+
+            // Add items
+            branchItems.forEach(item => {
+                globalIdx++;
+                const notesLines: string[] = [];
+                if (item.instructions) notesLines.push(`<div style="margin-bottom:3px"><strong style="color:${COLORS.primary}">تعليمات:</strong> ${item.instructions}</div>`);
+                if (item.userComments) notesLines.push(`<div style="color:${COLORS.darkMuted};font-size:9px;white-space:pre-wrap">${item.userComments}</div>`);
+                const notesCell = notesLines.length > 0 ? notesLines.join('') : '<span style="color:#ccc">-</span>';
+
+                rows += `
+                    <tr>
+                        <td style="text-align:center;color:${COLORS.muted};font-size:10px;font-family:'Courier New',monospace">${globalIdx}</td>
+                        <td style="text-align:right">${item.description || '-'}</td>
+                        <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
+                        <td>${item.count ? `(${item.count})` : '-'}</td>
+                        <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
+                        <td style="font-size:9px;text-align:right;max-width:160px;word-break:break-word">${notesCell}</td>
+                        <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:700">${formatCurrency(item.amount)}</td>
+                    </tr>
+                `;
+            });
+
+            // Add branch subtotal row
+            rows += `
+                <tr style="border-bottom: 2px solid ${COLORS.border}; font-weight: bold; background-color: #fafafa;">
+                    <td colspan="6" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي ${branch}</td>
+                    <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:11px;font-weight:700">${formatCurrency(branchTotal)}</td>
+                </tr>
+            `;
+        });
+    } else {
+        rows = items.map((item, idx) => {
             const notesLines: string[] = [];
             if (item.instructions) notesLines.push(`<div style="margin-bottom:3px"><strong style="color:${COLORS.primary}">تعليمات:</strong> ${item.instructions}</div>`);
             if (item.userComments) notesLines.push(`<div style="color:${COLORS.darkMuted};font-size:9px;white-space:pre-wrap">${item.userComments}</div>`);
@@ -837,8 +985,8 @@ function buildCasesInvoiceHTML(
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:700">${formatCurrency(item.amount)}</td>
             </tr>
         `;
-        }).join('')
-        : `<tr><td colspan="7" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
+        }).join('');
+    }
 
     return `<div class="doc"><style>${styles}</style>
         <div class="header-split">
@@ -939,6 +1087,7 @@ export function generateCasesInvoiceExcel(
         'البيان': item.description || '',
         'الخدمات': item.services || '',
         'العدد': item.count ? `(${item.count})` : '',
+        'الفرع': item.branchName || '',
         'التاريخ': item.date ? new Date(item.date).toLocaleDateString('en-GB') : '',
         'التعليمات': item.instructions || '',
         'الملاحظات / التعليقات': item.userComments || '',
@@ -954,6 +1103,7 @@ export function generateCasesInvoiceExcel(
         { wch: 35 },  // البيان
         { wch: 20 },  // الخدمات
         { wch: 8 },   // العدد
+        { wch: 15 },  // الفرع
         { wch: 14 },  // التاريخ
         { wch: 35 },  // التعليمات
         { wch: 45 },  // الملاحظات
@@ -963,8 +1113,8 @@ export function generateCasesInvoiceExcel(
     // Enable wrap text on التعليمات and الملاحظات columns for all data rows
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        // Column F (index 5) = التعليمات, Column G (index 6) = الملاحظات
-        for (const C of [5, 6]) {
+        // Column G (index 6) = التعليمات, Column H (index 7) = الملاحظات
+        for (const C of [6, 7]) {
             const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
             if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: '' };
             if (!ws[cellAddr].s) ws[cellAddr].s = {};
