@@ -20,6 +20,7 @@
 import { supabase } from '../../lib/supabase';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 import type { Order } from '../db';
+import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import {
     REP_AUDITED_ALLOW_LIST_CAMEL,
     REP_FIELD_TO_DB,
@@ -73,10 +74,24 @@ export async function repUpdateOrderWithAudit(
     reasonNote?: string | null
 ): Promise<Order | null> {
     if (!orderId || typeof orderId !== 'string') {
-        throw new ValidationError('orderId is required');
-    }
+         throw new ValidationError('orderId is required');
+     }
 
-    // Reason validation (mirrored in DB; client-side is just for fast feedback).
+     // Clean URL fields before processing changes
+     if (changes.stlUrl !== undefined && changes.stlUrl !== null) {
+         const trimmed = changes.stlUrl.trim();
+         changes.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+     }
+     if (changes.imagesUrl !== undefined && changes.imagesUrl !== null) {
+         const trimmed = changes.imagesUrl.trim();
+         changes.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+     }
+     if (changes.designUrl !== undefined && changes.designUrl !== null) {
+         const trimmed = changes.designUrl.trim();
+         changes.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+     }
+
+     // Reason validation (mirrored in DB; client-side is just for fast feedback).
     if (!reasonCode || !isOrderEditReasonCode(reasonCode)) {
         throw new ValidationError(`Invalid or missing reason_code: ${reasonCode}`);
     }

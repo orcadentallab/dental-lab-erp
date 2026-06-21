@@ -6,6 +6,7 @@ import type { User, Transaction } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import { Plus, DollarSign, AlertCircle, Wallet, Truck, Package, Banknote, Users as UsersIcon, Coffee, Trash2, CheckCircle, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import clsx from 'clsx';
+import { useToast } from '../context/ToastContext';
 
 // Helper: Calculate Commission Rate
 const getCommissionRate = (totalSales: number) => {
@@ -49,6 +50,7 @@ interface RepresentativeStats {
 
 export default function Staff() {
     const { user: currentUser } = useAuth();
+    const { success: toastSuccess, error: toastError } = useToast();
     const [stats, setStats] = useState<RepresentativeStats[]>([]);
     const [expenses, setExpenses] = useState<Transaction[]>([]);
     const [expandedReps, setExpandedReps] = useState<Record<string, boolean>>({});
@@ -239,9 +241,10 @@ export default function Staff() {
             setIsAdjustmentModalOpen(false);
             setSelectedRepForAdjustment(null);
             await loadData();
+            toastSuccess('تم إضافة التسوية بنجاح');
         } catch (error) {
             console.error("Error adding adjustment", error);
-            alert('حدث خطأ');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء إضافة التسوية');
         }
     };
 
@@ -266,8 +269,10 @@ export default function Staff() {
             setNewExpense({ amount: '', description: '', category: '' });
             setIsExpenseModalOpen(false);
             await loadData();
+            toastSuccess('تم تسجيل المصروف بنجاح وهو قيد المراجعة');
         } catch (error) {
             console.error("Error adding expense", error);
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسجيل المصروف');
         }
     };
 
@@ -311,10 +316,10 @@ export default function Staff() {
             }
 
             await loadData();
-            alert('تم صرف الراتب بنجاح ✅');
+            toastSuccess('تم صرف الراتب بنجاح ✅');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء صرف الراتب');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء صرف الراتب');
         }
     };
 
@@ -328,7 +333,7 @@ export default function Staff() {
             !['bonus', 'deduction'].includes(e.category)
         );
         if (approvedExpenses.length === 0) {
-            alert('لا توجد مصاريف معتمدة للتسوية');
+            toastError('لا توجد مصاريف معتمدة للتسوية');
             return;
         }
         const totalAmount = approvedExpenses.reduce((sum, e) => sum + e.amount, 0);
@@ -342,7 +347,7 @@ export default function Staff() {
 
         const settledAmount = parseFloat(settledAmountStr);
         if (isNaN(settledAmount) || settledAmount < 0) {
-            alert('مبلغ غير صحيح');
+            toastError('مبلغ غير صحيح');
             return;
         }
 
@@ -381,10 +386,10 @@ export default function Staff() {
             });
 
             await loadData();
-            alert('تم تسوية المصاريف بنجاح ✅');
+            toastSuccess('تم تسوية المصاريف بنجاح ✅');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء تسوية المصاريف');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسوية المصاريف');
         }
     };
 
@@ -393,9 +398,10 @@ export default function Staff() {
         try {
             await db.updateTransaction(expense.id, { status: 'approved', isApproved: true });
             await loadData();
+            toastSuccess('تم اعتماد المصروف بنجاح');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء اعتماد المصروف');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء اعتماد المصروف');
         }
     };
 
@@ -405,9 +411,10 @@ export default function Staff() {
         try {
             await db.updateTransaction(expense.id, { status: 'rejected', isApproved: false });
             await loadData();
+            toastSuccess('تم رفض المصروف');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء رفض المصروف');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء رفض المصروف');
         }
     };
 
@@ -418,9 +425,10 @@ export default function Staff() {
             const pending = repExpenses.filter(e => e.status === 'pending' || (!e.status && !e.isApproved));
             await Promise.all(pending.map(e => db.updateTransaction(e.id, { status: 'approved', isApproved: true })));
             await loadData();
+            toastSuccess('تم اعتماد جميع المصاريف بنجاح');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء اعتماد المصاريف');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء اعتماد المصاريف');
         }
     };
 
@@ -431,9 +439,10 @@ export default function Staff() {
             const pending = repExpenses.filter(e => e.status === 'pending' || (!e.status && !e.isApproved));
             await Promise.all(pending.map(e => db.updateTransaction(e.id, { status: 'rejected', isApproved: false })));
             await loadData();
+            toastSuccess('تم رفض جميع المصاريف المعلقة');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء رفض المصاريف');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء رفض المصاريف');
         }
     };
 
@@ -443,9 +452,10 @@ export default function Staff() {
         try {
             await db.deleteTransaction(tx.id);
             await loadData();
+            toastSuccess('تم حذف العملية بنجاح');
         } catch (error) {
             console.error(error);
-            alert('حدث خطأ أثناء حذف العملية');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء حذف العملية');
         }
     };
 

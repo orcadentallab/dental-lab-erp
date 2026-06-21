@@ -3,10 +3,12 @@ import { db, type Supplier, type Service } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, X } from 'lucide-react';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
+import { useToast } from '../context/ToastContext';
 
 
 export default function Suppliers() {
     const { user } = useAuth();
+    const { success: toastSuccess, error: toastError } = useToast();
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [services, setServices] = useState<Service[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -103,13 +105,16 @@ export default function Suppliers() {
         try {
             if (editingSupplier) {
                 await db.updateSupplier(editingSupplier.id, formData);
+                toastSuccess('تم تعديل بيانات المورد بنجاح');
             } else {
                 await db.addSupplier(formData);
+                toastSuccess('تم إضافة المورد بنجاح');
             }
             await loadData();
             setIsModalOpen(false);
         } catch (error) {
             console.error('Error saving supplier:', error);
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء حفظ المورد');
         }
     };
 

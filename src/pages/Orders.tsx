@@ -307,6 +307,7 @@ export default function Orders() {
             await refreshOrders();
         } catch (error) {
             console.error('Error creating order:', error);
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء إنشاء الطلب');
         }
     };
 
@@ -344,6 +345,7 @@ export default function Orders() {
             await refreshOrders();
         } catch (error) {
             console.error('Error updating order:', error);
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تعديل الطلب');
         }
     };
 

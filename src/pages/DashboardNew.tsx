@@ -2085,12 +2085,17 @@ export default function DashboardNew() {
                                 <OrderForm
                                     onCancel={() => setShowOrderForm(false)}
                                     onSubmit={async (order) => {
-                                        await db.addOrder(order, {
-                                            userId: user?.id,
-                                            actorRole: user?.role,
-                                        });
-                                        setShowOrderForm(false);
-                                        window.location.reload();
+                                        try {
+                                            await db.addOrder(order, {
+                                                userId: user?.id,
+                                                actorRole: user?.role,
+                                            });
+                                            setShowOrderForm(false);
+                                            window.location.reload();
+                                        } catch (error) {
+                                            console.error('Failed to create order:', error);
+                                            toast.error(error instanceof Error ? error.message : 'حدث خطأ أثناء إنشاء الطلب');
+                                        }
                                     }}
                                 />
                             </div>

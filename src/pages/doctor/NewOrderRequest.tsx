@@ -144,7 +144,7 @@ export default function NewOrderRequest() {
             navigate('/doctor/my-orders');
         } catch (error) {
             console.error(error);
-            toastError('حدث خطأ أثناء إرسال الطلب');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء إرسال الطلب');
         } finally {
             setLoading(false);
         }

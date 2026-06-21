@@ -4,9 +4,11 @@ import { FileSpreadsheet, Printer, Trash2, Edit2, Layers, GripVertical } from 'l
 import { exportToExcel } from '../lib/exportUtils';
 import { generateGenericTablePDF } from '../services/pdfService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
+import { useToast } from '../context/ToastContext';
 
 export default function ServicesPage() {
     const [services, setServices] = useState<Service[]>([]);
+    const { success: toastSuccess, error: toastError } = useToast();
     const [editingService, setEditingService] = useState<Service | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const serviceFormRef = useRef<HTMLFormElement>(null);
@@ -105,15 +107,18 @@ export default function ServicesPage() {
                             try {
                                 if (editingService) {
                                     await db.updateService(editingService.id, { name, sellingPrice, costPrice, millingPrice, designerPrice });
+                                    toastSuccess('تم تعديل الخدمة بنجاح');
                                     setEditingService(null);
                                 } else {
                                     await db.addService({ name, sellingPrice, costPrice, millingPrice, designerPrice });
+                                    toastSuccess('تم إضافة الخدمة بنجاح');
                                 }
                                 const updatedServices = await db.getServices();
                                 setServices(updatedServices);
                                 form.reset();
                             } catch (error) {
                                 console.error('Error saving service:', error);
+                                toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء حفظ الخدمة');
                             }
                         }} className="space-y-4">
                             <div>

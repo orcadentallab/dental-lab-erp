@@ -7,8 +7,10 @@ import { ErrorHandler } from '../lib/errorHandler';
 import { useAuth } from '../context/AuthContext';
 import { DUAL_ROLE_DESIGNER_PERMISSION, FIXED_SALARY_DESIGNER_PERMISSION, getUserRoleDisplay } from '../lib/userRoles';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
+import { useToast } from '../context/ToastContext';
 
 export default function Users() {
+    const { success: toastSuccess, error: toastError } = useToast();
     const [users, setUsers] = useState<User[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -138,7 +140,7 @@ export default function Users() {
         try {
             // Validation
             if (!editingUser && (!password || password.length < 8)) {
-                alert('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+                toastError('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
                 return;
             }
 
@@ -181,10 +183,10 @@ export default function Users() {
                 if (password && password.length >= 8) {
                     try {
                         await db.resetUserPassword(editingUser.id, password);
-                        alert('تم تحديث كلمة المرور بنجاح');
+                        toastSuccess('تم تحديث كلمة المرور بنجاح');
                     } catch (pwError: unknown) {
                         console.error('Password reset failed:', pwError);
-                        alert('تم تحديث البيانات ولكن فشل تغيير كلمة المرور: ' + ErrorHandler.getUserMessage(pwError));
+                        toastError('تم تحديث البيانات ولكن فشل تغيير كلمة المرور: ' + ErrorHandler.getUserMessage(pwError));
                     }
                 }
             } else {
@@ -192,8 +194,9 @@ export default function Users() {
             }
             setShowModal(false);
             await loadData();
+            toastSuccess(editingUser ? 'تم تعديل المستخدم بنجاح' : 'تم إضافة المستخدم بنجاح');
         } catch (error: unknown) {
-            alert(ErrorHandler.getUserMessage(error));
+            toastError(ErrorHandler.getUserMessage(error));
         }
     };
 
@@ -212,8 +215,9 @@ export default function Users() {
             await db.deleteUser(deleteConfirm.userId);
             setDeleteConfirm({ isOpen: false, userId: null, userName: '' });
             await loadData();
+            toastSuccess('تم حذف المستخدم بنجاح');
         } catch (error: unknown) {
-            alert(ErrorHandler.getUserMessage(error));
+            toastError(ErrorHandler.getUserMessage(error));
         }
     };
 
@@ -256,8 +260,9 @@ export default function Users() {
             await db.updateUser(userData);
             setShowPermissionsModal(false);
             await loadData();
+            toastSuccess('تم حفظ الصلاحيات المخصصة بنجاح');
         } catch (error: unknown) {
-            alert(ErrorHandler.getUserMessage(error));
+            toastError(ErrorHandler.getUserMessage(error));
         }
     };
 

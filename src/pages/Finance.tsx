@@ -194,7 +194,7 @@ export default function Finance() {
             handleResetForm();
         } catch (error) {
             console.error('Error adding expense:', error);
-            toastError('حدث خطأ أثناء تسجيل المصروف');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسجيل المصروف');
         } finally {
             setIsSubmitting(false);
         }
@@ -226,7 +226,7 @@ export default function Finance() {
             handleResetForm();
         } catch (error) {
             console.error('Error adding revenue:', error);
-            toastError('حدث خطأ أثناء تسجيل الإيراد');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسجيل الإيراد');
         } finally {
             setIsSubmitting(false);
         }
@@ -261,7 +261,7 @@ export default function Finance() {
             handleResetForm();
         } catch (error) {
             console.error('Error adding payment:', error);
-            toastError('حدث خطأ أثناء تسجيل التحصيل');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسجيل التحصيل');
         } finally {
             setIsSubmitting(false);
         }
@@ -296,7 +296,7 @@ export default function Finance() {
             handleResetForm();
         } catch (error) {
             console.error('Error adding supplier payment:', error);
-            toastError('حدث خطأ أثناء تسجيل السداد');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسجيل السداد');
         } finally {
             setIsSubmitting(false);
         }
@@ -331,7 +331,7 @@ export default function Finance() {
             handleResetForm();
         } catch (error) {
             console.error('Error adding designer payment:', error);
-            toastError('حدث خطأ أثناء تسجيل السداد');
+            toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء تسجيل السداد');
         } finally {
             setIsSubmitting(false);
         }
