@@ -48,10 +48,10 @@ export default function DesignerStats() {
             setIsLoading(true);
             try {
                 const [ordersData, designerOrdersData, usersData, doctorsData] = await Promise.all([
-                    db.getDashboardActiveOrders().catch(() => [] as Order[]),
-                    db.getDesignerDashboardOrders().catch(() => [] as Order[]),
-                    db.getUsers().catch(() => [] as User[]),
-                    db.getDoctors().catch(() => [] as Doctor[]),
+                    db.getDashboardActiveOrders().catch((): Order[] => []),
+                    db.getDesignerDashboardOrders().catch((): Order[] => []),
+                    db.getUsers().catch((): User[] => []),
+                    db.getDoctors().catch((): Doctor[] => []),
                 ]);
 
                 setOrders(ordersData);
@@ -67,7 +67,7 @@ export default function DesignerStats() {
         };
 
         loadData();
-    }, [user, refreshKey]);
+    }, [user, refreshKey, toast]);
 
     const today = new Date().toISOString().split('T')[0];
     const nowMs = Date.now();
