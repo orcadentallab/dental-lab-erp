@@ -365,6 +365,7 @@ export async function changeIssueState(
 
     if (newIssueState === 'returned') {
         targetLegacyStatus = 'Returned for Adjustments';
+        targetProductionStatus = 'in_production';
     } else if (newIssueState === 'doctor_rejected') {
         // Doctor returned case — same financial behavior as old 'Rejected'
         targetLegacyStatus = 'Doctor Rejected';

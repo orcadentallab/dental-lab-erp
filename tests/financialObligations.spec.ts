@@ -75,7 +75,7 @@ test.describe('financial obligation candidates', () => {
         )).toBe(true);
         expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
             { ...baseOrder, status: 'Delivered', issueState: 'none' },
-            { ...baseOrder, status: 'Delivered', issueState: 'rejected' }
+            { ...baseOrder, status: 'Delivered', issueState: 'doctor_rejected' }
         )).toBe(true);
         expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
             { ...baseOrder, status: 'Delivered', issueState: 'none' },
@@ -1157,7 +1157,8 @@ test.describe('financial obligations service wiring', () => {
         expect(reconciliationSource).toContain("transaction.type === 'expense'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'doctor'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'supplier'");
-        expect(reconciliationSource).toContain("order.status === 'Rejected' && typeof order.rejectedLabCost === 'number'");
+        expect(reconciliationSource).toContain("const isDoctorRejected = order.status === 'Doctor Rejected';");
+        expect(reconciliationSource).toContain("const hasRejectionCost = isDoctorRejected && typeof order.rejectedLabCost === 'number';");
         expect(reconciliationSource).toContain("getLabCostMetadata(order, isSalaried)");
     });
 

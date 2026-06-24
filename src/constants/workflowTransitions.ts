@@ -72,7 +72,7 @@ export function getForwardActions(
 
         case 'in_production': {
             const dt = (orderContext.deliveryType || '').toLowerCase();
-            const isTryIn = dt === 'tryin' || dt === 'try_in';
+            const isTryIn = (dt === 'tryin' || dt === 'try_in') && issueState !== 'returned';
             const mainAction: WorkflowAction = isTryIn
                 ? { id: 'try_in_ready', label: 'Try-In جاهز', targetLegacyStatus: 'Try In', variant: 'primary', icon: 'Package' }
                 : { id: 'ready', label: 'جاهز للتسليم', targetLegacyStatus: 'Ready', variant: 'success', icon: 'PackageCheck' };

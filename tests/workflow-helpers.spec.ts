@@ -134,13 +134,14 @@ test.describe('WF-4: getForwardActions', () => {
         expect(getForwardActions('final_delivered', 'none', {}).length).toBe(0);
     });
 
-    test('returned issue state shows resume regardless of productionStatus', () => {
+    test('returned issue state shows ready regardless of productionStatus', () => {
         const actions = getForwardActions('in_production', 'returned', {});
-        expect(actions[0].id).toBe('resume_production');
+        expect(actions[0].id).toBe('ready');
     });
 
-    test('rejected issue state shows no actions', () => {
-        expect(getForwardActions('in_production', 'rejected', {}).length).toBe(0);
+    test('doctor_rejected/lab_rejected issue state shows no actions', () => {
+        expect(getForwardActions('in_production', 'doctor_rejected', {}).length).toBe(0);
+        expect(getForwardActions('in_production', 'lab_rejected', {}).length).toBe(0);
     });
 });
 
@@ -158,8 +159,9 @@ test.describe('WF-4: getIssueActions', () => {
         expect(actions.some(a => a.id === 'cancel')).toBe(true);
     });
 
-    test('rejected state shows no actions even for admin', () => {
-        expect(getIssueActions('rejected', 'admin').length).toBe(0);
+    test('doctor_rejected/lab_rejected state shows no actions even for admin', () => {
+        expect(getIssueActions('doctor_rejected', 'admin').length).toBe(0);
+        expect(getIssueActions('lab_rejected', 'admin').length).toBe(0);
     });
 
     test('returned state does not show return again', () => {

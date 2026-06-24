@@ -60,15 +60,15 @@ test.describe('column-first lifecycle mapping', () => {
         expect(getProductionStatus(order({ productionStatus: 'not_started' }))).toBe('not_started');
     });
 
-    test('maps returned, rejected, and cancelled issue states', () => {
+    test('maps returned, doctor_rejected, and cancelled issue states', () => {
         const returned = order({ productionStatus: 'in_production', issueState: 'returned' });
-        const rejected = order({ productionStatus: 'in_production', issueState: 'rejected' });
+        const doctorRejected = order({ productionStatus: 'in_production', issueState: 'doctor_rejected' });
         const cancelled = order({ productionStatus: 'in_production', issueState: 'cancelled' });
 
         expect(getProductionStatus(returned)).toBe('in_production');
         expect(getEffectiveIssueState(returned)).toBe('returned');
-        expect(getEffectiveIssueState(rejected)).toBe('rejected');
-        expect(isBillableToDoctor(rejected)).toBe(false);
+        expect(getEffectiveIssueState(doctorRejected)).toBe('doctor_rejected');
+        expect(isBillableToDoctor(doctorRejected)).toBe(false);
         expect(getEffectiveIssueState(cancelled)).toBe('cancelled');
         expect(isBillableToDoctor(cancelled)).toBe(false);
     });
@@ -114,8 +114,8 @@ test.describe('try-in ready and final ready', () => {
     test('leaving final ready workflow requires normal external lab payable review/voiding', () => {
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
             order({ productionStatus: 'final_ready' }),
-            order({ productionStatus: 'in_production', issueState: 'rejected' })
-        )).toBe(false); // Entering rejected issue state: manually managed
+            order({ productionStatus: 'in_production', issueState: 'doctor_rejected' })
+        )).toBe(false); // Entering doctor_rejected issue state: manually managed
         expect(shouldVoidExternalLabReadyObligationForStatusChange(
             order({ productionStatus: 'final_delivered' }),
             order({ productionStatus: 'in_production', issueState: 'returned' })

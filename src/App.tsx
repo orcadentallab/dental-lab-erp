@@ -6,6 +6,7 @@ import Orders from './pages/Orders';
 import Doctors from './pages/Doctors';
 import Finance from './pages/Finance';
 import Analytics from './pages/Analytics';
+import DesignerStats from './pages/DesignerStats';
 import Suppliers from './pages/Suppliers';
 import Accounts from './pages/Accounts';
 import UsersPage from './pages/Users';
@@ -105,6 +106,7 @@ function App() {
                       <Route path="/services" element={<ServicesPage />} />
                       <Route path="/issues-report" element={<IssuesReport />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
+                      <Route path="/designer-stats" element={<DesignerStats />} />
 
 
                     </Route>

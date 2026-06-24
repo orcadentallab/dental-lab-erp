@@ -81,6 +81,7 @@ export default function Sidebar() {
             items: [
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
                 { name: 'تقرير المشكلات', href: '/issues-report', icon: BarChart3, roles: ['admin'] },
+                { name: 'إحصائيات المصممين', href: '/designer-stats', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
                 { name: 'تحليلات التسويق', href: '/marketing-analytics', icon: Megaphone, roles: ['admin'] },
             ]

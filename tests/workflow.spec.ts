@@ -43,8 +43,8 @@ test.describe('WF-1: workflow constants', () => {
         ]);
     });
 
-    test('ISSUE_STATES is exactly the 6 approved values', () => {
-        expect([...ISSUE_STATES]).toEqual(['none', 'returned', 'rejected', 'cancelled', 'on_hold', 'redo']);
+    test('ISSUE_STATES is exactly the 7 approved values', () => {
+        expect([...ISSUE_STATES]).toEqual(['none', 'returned', 'doctor_rejected', 'lab_rejected', 'cancelled', 'on_hold', 'redo']);
     });
 
     test('every production_status has a non-empty Arabic label', () => {
@@ -130,7 +130,7 @@ test.describe('WF-1: representative permission constants', () => {
     });
 
     test('lab is blocked from issue_state rejected/cancelled', () => {
-        expect([...LAB_BLOCKED_ISSUE_STATES].sort()).toEqual(['cancelled', 'rejected']);
+        expect([...LAB_BLOCKED_ISSUE_STATES].sort()).toEqual(['cancelled', 'doctor_rejected', 'lab_rejected']);
     });
 
     test('state guard: supplier_id forbidden after final_ready', () => {
@@ -311,7 +311,7 @@ test.describe('WF-1: canonical permissions doc', () => {
         }
     });
 
-    test('documents the 5-value issue_state', () => {
+    test('documents the 7-value issue_state', () => {
         for (const s of ISSUE_STATES) {
             expect(md).toContain(s);
         }
