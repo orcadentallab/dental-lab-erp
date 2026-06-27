@@ -613,9 +613,8 @@ export default function DashboardNew() {
         if (!acceptingOrder) return;
 
         try {
-            // 1. Update non-status fields
             await db.updateOrder(acceptingOrder.id, {
-                receivedDate: data.receivedDate,
+                createdAt: new Date(data.receivedDate).toISOString(),
                 deliveryDate: data.deliveryDate,
                 designStatus: acceptingOrder.workflowType === 'split' ? 'pending' : undefined,
                 technicianStatus: 'Pending',

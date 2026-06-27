@@ -529,7 +529,7 @@ export default function Orders() {
                 workflowType: data.workflowType,
                 supplierId: data.supplierId,
                 designerId: data.workflowType === 'split' ? (data.designerId || undefined) : undefined,
-                receivedDate: data.receivedDate,
+                createdAt: new Date(data.receivedDate).toISOString(),
                 deliveryDate: data.deliveryDate,
                 // Status mapping:
                 // Full Lab -> New Case (Waiting for Lab)

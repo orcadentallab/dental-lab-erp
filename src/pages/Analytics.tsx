@@ -1144,7 +1144,6 @@ export default function Analytics() {
                                                 : 0;
                                             if (width === 0) return null;
                                             return (
-                                                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                                                 <div
                                                     key={idx}
                                                     className={clsx(segment.color, 'cursor-pointer hover:opacity-80 transition-opacity')}

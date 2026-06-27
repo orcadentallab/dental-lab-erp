@@ -53,28 +53,53 @@ try {
     }
     Write-Info "Deploying from branch: $branch"
 
-    # 1. Run Build
-    Write-Info "Running build..."
+    # 1. Run Typecheck
+    Write-Info "[1/5] Running typecheck..."
+    npm run typecheck
+    if ($LASTEXITCODE -ne 0) {
+        throw "Typecheck failed. Aborting deployment."
+    }
+    Write-Success "Typecheck passed."
+
+    # 2. Run Lint
+    Write-Info "[2/5] Running lint..."
+    npx eslint src/
+    if ($LASTEXITCODE -ne 0) {
+        throw "Lint failed. Aborting deployment."
+    }
+    Write-Success "Lint passed."
+
+    # 3. Run Build
+    Write-Info "[3/5] Running build..."
     npm run build
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed. Aborting deployment."
     }
     Write-Success "Build passed."
 
-    # 2. Check for changes
+    # 4. Run Database Migrations
+    Write-Info "[4/5] Running database migrations..."
+    supabase db push
+    if ($LASTEXITCODE -ne 0) {
+        throw "Database migrations failed. Aborting deployment."
+    }
+    Write-Success "Database migrations passed."
+
+    # 5. Check for changes & Git Push
+    Write-Info "[5/5] Committing and pushing changes to Git..."
     $status = git status --porcelain
     if ([string]::IsNullOrWhiteSpace($status)) {
         Write-Info "No changes to commit. Proceeding to push..."
     }
     else {
-        # 3. Request Commit Message
+        # Request Commit Message
         $commitMessage = Read-Host "Enter commit message (Leave empty for 'Auto-update')"
         if ([string]::IsNullOrWhiteSpace($commitMessage)) {
             $commitMessage = "Auto-update: " + (Get-Date -Format "yyyy-MM-dd HH:mm")
             Write-Info "No message entered. Using default: $commitMessage"
         }
 
-        # 4. Git Add & Commit
+        # Git Add & Commit
         Write-Info "Staging changes..."
         git add .
         if ($LASTEXITCODE -ne 0) {
@@ -88,7 +113,7 @@ try {
         }
     }
 
-    # 5. Git Push
+    # Git Push
     Write-Info "Pushing to remote..."
     git push origin HEAD
     if ($LASTEXITCODE -ne 0) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../translations';
 import { db } from '../services/db';
 import { 
@@ -69,37 +69,7 @@ export default function CaseRegistration() {
     });
     const [isExporting, setIsExporting] = useState(false);
 
-    useEffect(() => {
-        const loadData = async () => {
-            setLoading(true);
-            try {
-                const [docs, sups, users] = await Promise.all([
-                    db.getDoctors(),
-                    db.getSuppliers(),
-                    db.getUsers()
-                ]);
-                
-                const docMap: Record<string, { name: string; code: string; parentId?: string }> = {};
-                docs.forEach((d: Doctor) => docMap[d.id] = { name: d.name, code: d.doctorCode, parentId: d.parentId });
-                setDoctors(docMap);
-
-                const supMap: Record<string, string> = {};
-                sups.forEach((s: Supplier) => supMap[s.id] = s.name);
-                setSuppliers(supMap);
-
-                setDesigners(users.filter((u: DbUser) => u.role === 'designer' || (u.customPermissions && u.customPermissions['secondary_designer'])));
-
-                await fetchOrders();
-            } catch (error) {
-                console.error('Failed to load data:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadData();
-    }, [activeTab]);
-
-    const fetchOrders = async () => {
+    const fetchOrders = useCallback(async () => {
         setLoading(true);
         try {
             // Statuses eligible for accounting registration.
@@ -140,7 +110,37 @@ export default function CaseRegistration() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [activeTab, t.common.error, toastError]);
+
+    useEffect(() => {
+        const loadData = async () => {
+            setLoading(true);
+            try {
+                const [docs, sups, users] = await Promise.all([
+                    db.getDoctors(),
+                    db.getSuppliers(),
+                    db.getUsers()
+                ]);
+                
+                const docMap: Record<string, { name: string; code: string; parentId?: string }> = {};
+                docs.forEach((d: Doctor) => docMap[d.id] = { name: d.name, code: d.doctorCode, parentId: d.parentId });
+                setDoctors(docMap);
+
+                const supMap: Record<string, string> = {};
+                sups.forEach((s: Supplier) => supMap[s.id] = s.name);
+                setSuppliers(supMap);
+
+                setDesigners(users.filter((u: DbUser) => u.role === 'designer' || (u.customPermissions && u.customPermissions['secondary_designer'])));
+
+                await fetchOrders();
+            } catch (error) {
+                console.error('Failed to load data:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadData();
+    }, [activeTab, fetchOrders]);
 
     const handleRegister = async (orderId: string) => {
         const order = orders.find(o => o.id === orderId);
@@ -241,7 +241,11 @@ export default function CaseRegistration() {
                     'سعر البيع': order.totalPrice,
                     'التكلفة': (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (order.rejectedLabCost || 0) : (order.status === 'Lab Rejected' ? 0 : labCost),
                     'المعمل': (order.supplierId && suppliers[order.supplierId]) || 'داخلي',
-                    'الحالة': t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status,
+                    'الحالة': (() => {
+                        const statusMap: Record<string, string> = t.orders.status;
+                        const key = order.status.toLowerCase().replace(/ /g, '');
+                        return statusMap[key] || order.status;
+                    })(),
                     'الملاحظات': (order.comments || []).map(c => `${c.userName}: ${c.text}`).join(' | ')
                 };
             });
@@ -638,7 +642,11 @@ export default function CaseRegistration() {
                                                         order.status === 'Returned for Adjustments' ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                         "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-sm shadow-cyan-100"
                                                     )}>
-                                                        {isDeletedReview ? 'محذوفة بعد التسجيل' : (t.orders.status[order.status.toLowerCase().replace(/ /g, '') as keyof typeof t.orders.status] || order.status)}
+                                                        {isDeletedReview ? 'محذوفة بعد التسجيل' : (() => {
+                                                            const statusMap: Record<string, string> = t.orders.status;
+                                                            const key = order.status.toLowerCase().replace(/ /g, '');
+                                                            return statusMap[key] || order.status;
+                                                        })()}
                                                     </span>
                                                 </div>
                                             </td>

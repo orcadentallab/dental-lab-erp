@@ -80,15 +80,15 @@ export async function repUpdateOrderWithAudit(
      // Clean URL fields before processing changes
      if (changes.stlUrl !== undefined && changes.stlUrl !== null) {
          const trimmed = changes.stlUrl.trim();
-         changes.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+         changes.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
      }
      if (changes.imagesUrl !== undefined && changes.imagesUrl !== null) {
          const trimmed = changes.imagesUrl.trim();
-         changes.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+         changes.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
      }
      if (changes.designUrl !== undefined && changes.designUrl !== null) {
          const trimmed = changes.designUrl.trim();
-         changes.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+         changes.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
      }
 
      // Reason validation (mirrored in DB; client-side is just for fast feedback).

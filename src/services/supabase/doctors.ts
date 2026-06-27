@@ -19,7 +19,7 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
         isCenter: dbDoctor.is_center || false,
         parentId: dbDoctor.parent_id || undefined,
         hasBranches: dbDoctor.has_branches || false,
-        branches: dbDoctor.branches ? (dbDoctor.branches as any) : undefined,
+        branches: dbDoctor.branches ? (dbDoctor.branches as import('../db').DoctorBranch[]) : undefined,
     };
 }
 
@@ -37,7 +37,7 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
         is_center: doctor.isCenter || false,
         parent_id: doctor.parentId || null,
         has_branches: doctor.hasBranches || false,
-        branches: doctor.branches ? (doctor.branches as any) : null,
+        branches: doctor.branches ? (doctor.branches as unknown as DbDoctorInsert['branches']) : null,
     };
 }
 
@@ -128,7 +128,7 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     }
 
     // Check branch edits/deletions if updates.branches is provided
-    let branchRenames: { oldName: string; newName: string }[] = [];
+    const branchRenames: { oldName: string; newName: string }[] = [];
     if (updates.branches !== undefined) {
         // Fetch current doctor to compare branches
         const currentDoctor = await getDoctor(id);
@@ -181,7 +181,7 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     if (updates.isCenter !== undefined) dbUpdates.is_center = updates.isCenter;
     if (updates.parentId !== undefined) dbUpdates.parent_id = updates.parentId || null;
     if (updates.hasBranches !== undefined) dbUpdates.has_branches = updates.hasBranches;
-    if (updates.branches !== undefined) dbUpdates.branches = updates.branches ? (updates.branches as any) : null;
+    if (updates.branches !== undefined) dbUpdates.branches = updates.branches ? (updates.branches as unknown as DbDoctorUpdate['branches']) : null;
 
     const { data, error } = await supabase
         .from('doctors')

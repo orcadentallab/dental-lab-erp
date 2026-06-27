@@ -1124,7 +1124,7 @@ export function generateCasesInvoiceExcel(
 
     XLSX.utils.book_append_sheet(wb, ws, 'فاتورة مطالبة');
 
-    const safeName = (doctorInfo.name || 'doctor').replace(/[\/\\?%*:|"<>]/g, '_');
+    const safeName = (doctorInfo.name || 'doctor').replace(/[/\\?%*:|"<>]/g, '_');
     const dateLabel = dateRange.start || new Date().toISOString().split('T')[0];
     XLSX.writeFile(wb, `invoice_${safeName}_${dateLabel}.xlsx`);
 }
@@ -1143,10 +1143,10 @@ export async function generateMonthlyInvoicePDF(
         monthStart: string;
         monthEnd: string;
     },
-    labInfo: LabInfo,
+    _labInfo: LabInfo,
     options: { print?: boolean } = {}
 ): Promise<void> {
-    const html = buildMonthlyInvoiceHTML(entityName, entityType, invoiceMonth, invoiceData, labInfo);
+    const html = buildMonthlyInvoiceHTML(entityName, entityType, invoiceMonth, invoiceData);
     const doc = createPdf();
     await htmlToPdfPage(doc, html);
 
@@ -1182,8 +1182,7 @@ function buildMonthlyInvoiceHTML(
         totalDue: number;
         monthStart: string;
         monthEnd: string;
-    },
-    _labInfo?: LabInfo
+    }
 ): string {
     const monthLabelStr = getMonthLabel(invoiceMonth);
     const entityTypeLabel = {

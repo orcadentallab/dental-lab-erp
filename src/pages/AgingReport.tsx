@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type EntityBillingSettings, type AgingBuckets } from '../services/db';
+import { db, type Order, type EntityBillingSettings, type AgingBuckets, type Doctor, type Supplier, type User, type Transaction } from '../services/db';
 import { matchArabic } from '../lib/searchUtils';
 import { calculateDueDate, BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import { getLabCostMetadata } from '../constants/financialObligations';
-import { financeService } from '../services/financeService';
+import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,6 +18,31 @@ import clsx from 'clsx';
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type TabType = 'doctors' | 'suppliers' | 'designers';
+
+interface DebitItem {
+    type: 'order' | 'adjustment';
+    id?: string;
+    caseId?: string | null;
+    patientName?: string | null;
+    triggerDate: string;
+    amount: number;
+    order?: Partial<Order> | Order;
+    reason?: string | null;
+}
+
+interface CreditItem {
+    type: 'payment' | 'adjustment';
+    amount: number;
+    date: string;
+}
+
+// ─── Module Constants ─────────────────────────────────────────────────────────
+
+const entityTypeMap = {
+    doctors: BILLING_ENTITY_TYPES.doctor,
+    suppliers: BILLING_ENTITY_TYPES.externalLab,
+    designers: BILLING_ENTITY_TYPES.designer
+} as const;
 
 interface SummaryStats {
     totalEntities: number;
@@ -84,19 +109,13 @@ export default function AgingReport() {
     
     // Data state
     const [orders, setOrders] = useState<Partial<Order>[]>([]);
-    const [transactions, setTransactions] = useState<any[]>([]);
-    const [adjustments, setAdjustments] = useState<any[]>([]);
-    const [doctors, setDoctors] = useState<any[]>([]);
-    const [suppliers, setSuppliers] = useState<any[]>([]);
-    const [designers, setDesigners] = useState<any[]>([]);
+    const [transactions, setTransactions] = useState<Partial<Transaction>[]>([]);
+    const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [designers, setDesigners] = useState<User[]>([]);
     const [billingSettingsMap, setBillingSettingsMap] = useState<Map<string, EntityBillingSettings>>(new Map());
     const [loading, setLoading] = useState(true);
-
-    const entityTypeMap = {
-        doctors: BILLING_ENTITY_TYPES.doctor,
-        suppliers: BILLING_ENTITY_TYPES.externalLab,
-        designers: BILLING_ENTITY_TYPES.designer
-    } as const;
 
     useEffect(() => {
         const load = async () => {
@@ -119,10 +138,10 @@ export default function AgingReport() {
                 setDesigners(designersList);
 
                 // Fetch billing settings for all entities to calculate due dates in FIFO
-                const settingsPromises: Promise<any>[] = [];
-                const docIds = (doc || []).filter((d: any) => !d.parentId).map((d: any) => d.id);
-                const supIds = (sup || []).map((s: any) => s.id);
-                const desIds = designersList.map((d: any) => d.id);
+                const settingsPromises: Promise<{ key: string; s: EntityBillingSettings | null }>[] = [];
+                const docIds = (doc || []).filter((d) => !d.parentId).map((d) => d.id);
+                const supIds = (sup || []).map((s) => s.id);
+                const desIds = designersList.map((d) => d.id);
 
                 docIds.forEach((id: string) => settingsPromises.push(db.getEntityBillingSettings(BILLING_ENTITY_TYPES.doctor, id).then(s => ({ key: `doctor:${id}`, s }))));
                 supIds.forEach((id: string) => settingsPromises.push(db.getEntityBillingSettings(BILLING_ENTITY_TYPES.externalLab, id).then(s => ({ key: `external_lab:${id}`, s }))));
@@ -148,19 +167,21 @@ export default function AgingReport() {
     // FIFO Aging Calculation Engine
     const agingData = useMemo(() => {
         if (loading) {
+            const emptyRows: FIFOEntityReport[] = [];
+            const initialSummary: SummaryStats = { totalEntities: 0, totalCurrent: 0, total1to30: 0, total31to60: 0, totalOver60: 0, grandTotal: 0 };
             return {
-                rows: [] as FIFOEntityReport[],
-                summary: { totalEntities: 0, totalCurrent: 0, total1to30: 0, total31to60: 0, totalOver60: 0, grandTotal: 0 } as SummaryStats
+                rows: emptyRows,
+                summary: initialSummary
             };
         }
 
         const visibleOrders = orders.filter(o => !o.isArchived || ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'].includes(o.status || ''));
 
         // Determine entities to process
-        let targetEntities: any[] = [];
+        let targetEntities: (Doctor | Supplier | User)[] = [];
         let entityType: 'doctor' | 'external_lab' | 'designer' = 'doctor';
         if (activeTab === 'doctors') {
-            targetEntities = doctors.filter((d: any) => !d.parentId);
+            targetEntities = doctors.filter((d) => !d.parentId);
             entityType = 'doctor';
         } else if (activeTab === 'suppliers') {
             targetEntities = suppliers;
@@ -183,7 +204,7 @@ export default function AgingReport() {
         for (const entity of targetEntities) {
             const settingsKey = entityType === 'external_lab' ? `external_lab:${entity.id}` : `${entityType}:${entity.id}`;
             const settings = billingSettingsMap.get(settingsKey) || {
-                entityType: entityTypeMap[activeTab] as any,
+                entityType: entityTypeMap[activeTab],
                 entityId: entity.id,
                 billingMode: 'per_order',
                 billingDay: null,
@@ -192,13 +213,13 @@ export default function AgingReport() {
             };
 
             // 1. Gather all debits and credits
-            const debits: any[] = [];
-            const credits: any[] = [];
+            const debits: DebitItem[] = [];
+            const credits: CreditItem[] = [];
 
             if (entityType === 'doctor') {
                 const entityIds = new Set([
                     entity.id,
-                    ...doctors.filter((d: any) => d.parentId === entity.id).map((d: any) => d.id)
+                    ...doctors.filter((d) => d.parentId === entity.id).map((d) => d.id)
                 ]);
 
                 // Orders
@@ -224,7 +245,7 @@ export default function AgingReport() {
                 transactions.forEach(t => {
                     if ((t.entityType === 'doctor' || !t.entityType) && t.entityId && entityIds.has(t.entityId)) {
                         if (t.type === 'income') {
-                            credits.push({ type: 'payment', amount: t.amount || 0, date: t.date });
+                            credits.push({ type: 'payment', amount: t.amount || 0, date: t.date || '' });
                         }
                     }
                 });
@@ -282,7 +303,7 @@ export default function AgingReport() {
                 transactions.forEach(t => {
                     if ((t.entityType === 'supplier' || !t.entityType) && t.entityId === entity.id) {
                         if (t.type === 'expense') {
-                            credits.push({ type: 'payment', amount: t.amount || 0, date: t.date });
+                            credits.push({ type: 'payment', amount: t.amount || 0, date: t.date || '' });
                         }
                     }
                 });
@@ -304,7 +325,7 @@ export default function AgingReport() {
                 });
             } else {
                 // Designer
-                const isSalaried = hasCustomPermission(entity, FIXED_SALARY_DESIGNER_PERMISSION);
+                const isSalaried = ('role' in entity) ? hasCustomPermission(entity, FIXED_SALARY_DESIGNER_PERMISSION) : false;
 
                 if (!isSalaried) {
                     visibleOrders.forEach(o => {
@@ -335,7 +356,7 @@ export default function AgingReport() {
                 transactions.forEach(t => {
                     if ((t.entityType === 'designer' || !t.entityType) && t.entityId === entity.id) {
                         if (t.type === 'expense') {
-                            credits.push({ type: 'payment', amount: t.amount || 0, date: t.date });
+                            credits.push({ type: 'payment', amount: t.amount || 0, date: t.date || '' });
                         }
                     }
                 });
@@ -397,14 +418,14 @@ export default function AgingReport() {
                         else bucket = 'over_60';
                     }
 
-                    const itemsText = deb.order?.items?.map((i: any) => {
+                    const itemsText = deb.order?.items?.map((i) => {
                         const count = i.teethNumbers?.length || 1;
                         return `${i.serviceType || '-'}(${count})`;
                     }).join(' + ');
 
                     obligations.push({
-                        obligationId: deb.id,
-                        orderId: deb.type === 'order' ? deb.id : '',
+                        obligationId: deb.id || '',
+                        orderId: deb.type === 'order' ? (deb.id || '') : '',
                         caseId: deb.caseId || null,
                         patientName: deb.patientName || null,
                         triggerDate: deb.triggerDate,
@@ -437,7 +458,7 @@ export default function AgingReport() {
                 rows.push({
                     entityId: entity.id,
                     entityName: entity.name,
-                    entityCode: entity.doctorCode || null,
+                    entityCode: 'doctorCode' in entity ? entity.doctorCode || null : null,
                     aging,
                     obligations,
                     settings

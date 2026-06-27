@@ -1353,6 +1353,11 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
  * Fetches only ID, Status, Prices, Dates to calculate totals.
  * Range: 0-9999 (Should be enough for summary, or we can paginate later)
  */
+interface RawOrderItem {
+    product_type: string;
+    teeth_numbers?: string[] | null;
+}
+
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
@@ -1385,7 +1390,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         rejectedLabCost: d.rejected_lab_cost || undefined,
         productionStatus: d.production_status || undefined,
         issueState: d.issue_state || undefined,
-        items: d.order_items ? (d.order_items as any[]).map((i: any) => ({
+        items: d.order_items ? (d.order_items as unknown as RawOrderItem[]).map((i) => ({
             serviceType: i.product_type,
             teethNumbers: i.teeth_numbers || [],
             price: 0
@@ -1510,15 +1515,15 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: 
     // Clean URL fields before validation
     if (order.stlUrl !== undefined && order.stlUrl !== null) {
         const trimmed = order.stlUrl.trim();
-        order.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+        order.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
     }
     if (order.imagesUrl !== undefined && order.imagesUrl !== null) {
         const trimmed = order.imagesUrl.trim();
-        order.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+        order.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
     }
     if (order.designUrl !== undefined && order.designUrl !== null) {
         const trimmed = order.designUrl.trim();
-        order.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+        order.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
     }
 
     // Validate input
@@ -1656,15 +1661,15 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     // Clean URL fields in updates before validation
     if (updates.stlUrl !== undefined && updates.stlUrl !== null) {
         const trimmed = updates.stlUrl.trim();
-        updates.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+        updates.stlUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
     }
     if (updates.imagesUrl !== undefined && updates.imagesUrl !== null) {
         const trimmed = updates.imagesUrl.trim();
-        updates.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+        updates.imagesUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
     }
     if (updates.designUrl !== undefined && updates.designUrl !== null) {
         const trimmed = updates.designUrl.trim();
-        updates.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as any;
+        updates.designUrl = trimmed ? ensureAbsoluteUrl(trimmed) : null as unknown as string;
     }
 
     // Validate updates if provided

@@ -61,11 +61,6 @@ export default function BalanceSnapshotPage() {
     } | null>(null);
     const [selectedCompareKey, setSelectedCompareKey] = useState<string>('');
 
-    // Only admin/accountant
-    if (!user || !['admin', 'accountant'].includes(user.role || '')) {
-        return <div className="p-8 text-center text-red-600 font-bold">غير مسموح</div>;
-    }
-
     // Load saved snapshots from localStorage
     useEffect(() => {
         const keys = Object.keys(localStorage).filter(k => k.startsWith('balance_snapshot_'));
@@ -76,8 +71,14 @@ export default function BalanceSnapshotPage() {
             } catch { return null; }
         }).filter(Boolean) as { key: string; label: string; generatedAt: string }[];
         list.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSavedSnapshots(list);
     }, [snapshot]);
+
+    // Only admin/accountant
+    if (!user || !['admin', 'accountant'].includes(user.role || '')) {
+        return <div className="p-8 text-center text-red-600 font-bold">غير مسموح</div>;
+    }
 
     async function captureSnapshot(label: string) {
         setStatus('loading');

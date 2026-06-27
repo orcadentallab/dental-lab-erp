@@ -10,6 +10,30 @@ import { matchArabic } from '../lib/searchUtils';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 import { supabase } from '../lib/supabase';
 
+interface DoctorForm {
+    name: string;
+    phone: string;
+    phone2: string;
+    address: string;
+    doctorCode: string;
+    representativeName: string;
+    representativeId: string;
+    customPrices: Record<string, number>;
+    isCenter: boolean;
+    parentId: string | undefined;
+    hasBranches: boolean;
+}
+
+interface MigrationMatch {
+    id: string;
+    orderCode: string;
+    patientName: string;
+    doctorName: string;
+    instructions: string;
+    detectedBranch: string;
+    selected: boolean;
+}
+
 export default function Doctors() {
     const { user } = useAuth();
     const { t } = useTranslation();
@@ -21,7 +45,7 @@ export default function Doctors() {
 
     // Form State
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [newDoctor, setNewDoctor] = useState({
+    const [newDoctor, setNewDoctor] = useState<DoctorForm>({
         name: '',
         phone: '',
         phone2: '',
@@ -29,9 +53,9 @@ export default function Doctors() {
         doctorCode: '',
         representativeName: '',
         representativeId: '',
-        customPrices: {} as Record<string, number>,
+        customPrices: {},
         isCenter: false,
-        parentId: '' as string | undefined,
+        parentId: '',
         hasBranches: false
     });
     const [childDoctors, setChildDoctors] = useState<{ id?: string, name: string, phone: string, doctorCode?: string }[]>([]);
@@ -40,7 +64,7 @@ export default function Doctors() {
 
     // Migration State
     const [showMigrationModal, setShowMigrationModal] = useState(false);
-    const [migrationMatches, setMigrationMatches] = useState<any[]>([]);
+    const [migrationMatches, setMigrationMatches] = useState<MigrationMatch[]>([]);
     const [loadingMigration, setLoadingMigration] = useState(false);
     const [updatingMigration, setUpdatingMigration] = useState(false);
 
@@ -66,7 +90,7 @@ export default function Doctors() {
                 throw ordersError;
             }
 
-            const matchesArr: any[] = [];
+            const matchesArr: MigrationMatch[] = [];
 
             if (ordersData) {
                 for (const order of ordersData) {
@@ -105,9 +129,10 @@ export default function Doctors() {
 
             setMigrationMatches(matchesArr);
             setShowMigrationModal(true);
-        } catch (err: any) {
+        } catch (err) {
             console.error('Error loading migration matches:', err);
-            alert(err.message || 'حدث خطأ أثناء تحميل الطلبات للمراجعة.');
+            const errMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تحميل الطلبات للمراجعة.';
+            alert(errMsg);
         } finally {
             setLoadingMigration(false);
         }
@@ -140,9 +165,10 @@ export default function Doctors() {
             alert(`تم ترحيل وتحديث ${successCount} طلب بنجاح.`);
             setShowMigrationModal(false);
             setMigrationMatches([]);
-        } catch (err: any) {
+        } catch (err) {
             console.error('Error executing migration:', err);
-            alert(err.message || 'حدث خطأ أثناء تحديث الطلبات.');
+            const errMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تحديث الطلبات.';
+            alert(errMsg);
         } finally {
             setUpdatingMigration(false);
         }
@@ -317,9 +343,10 @@ export default function Doctors() {
             setChildDoctors([]);
             setBranches([]);
 
-        } catch (err: any) {
+        } catch (err) {
             console.error('Save Doctor Error:', err);
-            setError(err.message || 'حدث خطأ غير متوقع أثناء الحفظ.');
+            const errMsg = err instanceof Error ? err.message : 'حدث خطأ غير متوقع أثناء الحفظ.';
+            setError(errMsg);
         }
     };
 
