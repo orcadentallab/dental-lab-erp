@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 // Setup Mock Database State inside the hoisted mock factory
