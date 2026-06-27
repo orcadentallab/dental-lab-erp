@@ -47,3 +47,4 @@ root-cause-*.md
 status-change-path-audit*.md
 playwright-report/
 supabase/.temp/
+truncate.sql
