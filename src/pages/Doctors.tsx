@@ -124,15 +124,16 @@ export default function Doctors() {
         try {
             let successCount = 0;
             for (const match of selectedMatches) {
-                const { error: updateError } = await supabase
-                    .from('orders')
-                    .update({ branch_name: match.detectedBranch })
-                    .eq('id', match.id);
-
-                if (updateError) {
-                    console.error(`Failed to update Order ${match.orderCode}:`, updateError);
-                } else {
+                try {
+                    await db.repUpdateOrderWithAudit(
+                        match.id,
+                        { branchName: match.detectedBranch },
+                        'other',
+                        'ترحيل تلقائي للفرع بناءً على تعليمات الطلب'
+                    );
                     successCount++;
+                } catch (updateError) {
+                    console.error(`Failed to update Order ${match.orderCode}:`, updateError);
                 }
             }
 
