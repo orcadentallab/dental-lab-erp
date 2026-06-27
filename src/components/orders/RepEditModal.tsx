@@ -491,7 +491,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
             await repUpdateOrderWithAudit(order.id, changes, reasonCode, reasonNote.trim() || null);
 
             // Check if it went to pending approval (order is delivered)
-            const isDelivered = ['Delivered', 'Completed'].includes(order.status) || order.productionStatus === 'final_delivered';
+            const isDelivered = ['Delivered', 'Completed'].includes(order.status) || productionStatus === 'final_delivered';
             if (isDelivered) {
                 success('تم إرسال طلب التعديل لمراجعة الأدمن بنجاح');
             } else {

@@ -124,10 +124,11 @@ export function getProductionStatus(order: LifecycleOrder): ProductionStatus {
         case 'pending review':
             return 'not_started';
         case 'returned for adjustments':
+            return 'in_production';
         case 'doctor rejected':
         case 'lab rejected':
         case 'rejected':
-            return 'in_production';
+            return 'not_started';
         case 'cancelled':
             return 'not_started';
         default:

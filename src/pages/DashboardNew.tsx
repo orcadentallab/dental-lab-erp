@@ -613,14 +613,20 @@ export default function DashboardNew() {
         if (!acceptingOrder) return;
 
         try {
+            // 1. Update non-status fields
             await db.updateOrder(acceptingOrder.id, {
-                status: 'New Case', // Or 'Under Design' if split? Usually 'New Case' starts the flow.
-                ...data,
-                // If Full Lab -> TechnicianStatus might need set? Default 'Pending' is fine.
-                // If Split -> DesignStatus='pending' is handled by Modal 'data' spread? No, Modal returns type/ids.
-                designStatus: data.workflowType === 'split' ? 'pending' : undefined,
+                receivedDate: data.receivedDate,
+                deliveryDate: data.deliveryDate,
+                designStatus: acceptingOrder.workflowType === 'split' ? 'pending' : undefined,
                 technicianStatus: 'Pending',
-                isRegistered: true, // Auto register? Maybe.
+                isRegistered: true,
+            });
+
+            // 2. Update status via the centralized updateOrderStatus
+            await db.updateOrderStatus(acceptingOrder.id, 'New Case', {
+                userId: user?.id,
+                userName: user?.name || user?.role || 'User',
+                actorRole: user?.role,
             });
 
             // Optimistic update or reload

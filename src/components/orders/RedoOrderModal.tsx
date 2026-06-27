@@ -3,6 +3,7 @@ import { RefreshCw, X } from 'lucide-react';
 import { db, type Order } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Input } from '../ui/Input';
+import { useAuth } from '../../context/AuthContext';
 
 interface Props {
     order: Order;
@@ -20,6 +21,7 @@ const REDO_REASONS = [
 ];
 
 export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Props) {
+    const { user } = useAuth();
     const [reason, setReason] = useState('lab_error');
     const [notes, setNotes] = useState('');
     const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
@@ -34,10 +36,14 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
             // 1. Mark old order as redo
             const updateFields: Partial<Order> = {
                 issueState: 'redo',
-                status: 'Rejected',
                 ...(rejectedLabCost !== '' ? { rejectedLabCost: Number(rejectedLabCost) } : {}),
             };
             await db.updateOrder(order.id, updateFields);
+            await db.updateOrderStatus(order.id, 'Rejected', {
+                userId: user?.id,
+                userName: user?.name || user?.role || 'User',
+                actorRole: user?.role,
+            });
 
             // 2. Create new linked order (copy all data)
             const doctors = await db.getDoctors();

@@ -238,13 +238,10 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         setDecisionLoading(true);
         try {
             const updates: Partial<Order> = { designStatus: decision };
-            if (decision === 'accepted') updates.status = 'Under Design';
             if (decision === 'waiting_approval') {
-                updates.status = 'Waiting Dr Approval';
                 updates.technicianStatus = 'NeedDetails';
             }
             if (decision === 'returned') {
-                updates.status = 'Under Design';
                 updates.technicianStatus = 'Rejected';
             }
             if (notes) {
@@ -259,7 +256,26 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     },
                 ];
             }
-            const updatedOrder = await db.updateOrder(order.id, updates);
+            
+            // 1. Update non-status fields
+            await db.updateOrder(order.id, updates);
+
+            // 2. Update status via the unified updateOrderStatus
+            let targetStatus: Order['status'] | null = null;
+            if (decision === 'accepted') targetStatus = 'Under Design';
+            if (decision === 'waiting_approval') targetStatus = 'Waiting Dr Approval';
+            if (decision === 'returned') targetStatus = 'Under Design';
+
+            let updatedOrder = null;
+            if (targetStatus) {
+                updatedOrder = await db.updateOrderStatus(order.id, targetStatus, {
+                    userId: user?.id,
+                    userName: user?.name || 'المصمم',
+                    actorRole: user?.role,
+                });
+            } else {
+                updatedOrder = await db.getOrder(order.id);
+            }
             updateOrderInState(updatedOrder);
             setDecisionOrder(null);
             setDecisionNotes('');

@@ -77,7 +77,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
             if (action === 'Approved') {
                 const order = orders.find(o => o.id === orderId);
                 if (order && order.status === 'New Case') {
-                    await db.updateOrder(orderId, { status: 'Under Design' });
+                    await db.updateOrderStatus(orderId, 'Under Design', {
+                        userId: currentUser?.id,
+                        userName: currentUser?.name || currentUser?.role || 'User',
+                        actorRole: userRole,
+                    });
                 }
             }
 
@@ -87,7 +91,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         } catch (error) {
             console.error('Error updating technician status:', error);
         }
-    }, [orders, onStatusChange]);
+    }, [orders, onStatusChange, currentUser, userRole]);
 
     const handleSubmitFeedback = async () => {
         if (!feedbackOrder) return;

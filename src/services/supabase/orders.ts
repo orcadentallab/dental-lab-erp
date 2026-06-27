@@ -58,6 +58,7 @@ export interface UpdateOrderContext extends OrderEventActorContext {
     deliveryDateResponsibilityParty?: DeliveryDateResponsibilityParty;
     deliveryDateChangeSource?: string | null;
     skipDeliveryDateEvent?: boolean;
+    allowStatusChange?: boolean;
 }
 
 const DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE =
@@ -1624,6 +1625,10 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
         throw new ValidationError('الطلب غير موجود');
     }
 
+    if (updates.status !== undefined && updates.status !== currentOrder.status && !context.allowStatusChange) {
+        throw new ValidationError('تحديث حالة الطلب يجب أن يتم عبر الممر الموحد updateOrderStatus فقط لحماية الحسابات المالية.');
+    }
+
     const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
     const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost'];
     const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
@@ -2315,7 +2320,10 @@ export async function updateOrderStatus(
     }
 
     // Use existing updateOrder for the actual update (handles history tracking)
-    const updatedOrder = await updateOrder(orderId, updates);
+    const updatedOrder = await updateOrder(orderId, updates, {
+        ...context,
+        allowStatusChange: true,
+    });
 
     const wasDelivered = getProductionStatus(currentOrder) === 'final_delivered';
     const isNowDelivered = updatedOrder ? getProductionStatus(updatedOrder) === 'final_delivered' : false;

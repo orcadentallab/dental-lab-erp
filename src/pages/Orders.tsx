@@ -334,12 +334,25 @@ export default function Orders() {
                 }, {})
                 : orderData;
 
-            await db.updateOrder(fullEditingOrder.id, safeUpdates, {
+            const { status, ...restOfUpdates } = safeUpdates;
+
+            // 1. Update non-status fields
+            await db.updateOrder(fullEditingOrder.id, restOfUpdates, {
                 userId: user?.id,
                 actorRole: user?.role,
                 deliveryDateChangeSource: 'orders_page',
                 deliveryDateResponsibilityParty: 'unknown',
             });
+
+            // 2. If status changed, update it via the unified updateOrderStatus
+            if (status !== undefined && status !== fullEditingOrder.status) {
+                await db.updateOrderStatus(fullEditingOrder.id, status, {
+                    userId: user?.id,
+                    userName: user?.name || user?.role || 'User',
+                    actorRole: user?.role,
+                });
+            }
+
             setFullEditingOrder(null);
             clearOpenOrderParams();
             await refreshOrders();
@@ -530,11 +543,22 @@ export default function Orders() {
                 technicianStatus: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First',
             };
 
-            await db.updateOrder(acceptingOrder.id, orderUpdate, {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { status, ...restOfUpdate } = orderUpdate;
+
+            // 1. Update non-status fields
+            await db.updateOrder(acceptingOrder.id, restOfUpdate, {
                 userId: user?.id,
                 actorRole: user?.role,
                 deliveryDateChangeSource: 'orders_page',
                 deliveryDateResponsibilityParty: 'unknown',
+            });
+
+            // 2. Update status via the unified updateOrderStatus
+            await db.updateOrderStatus(acceptingOrder.id, 'New Case', {
+                userId: user?.id,
+                userName: user?.name || user?.role || 'User',
+                actorRole: user?.role,
             });
 
             // 2. Add System Comment

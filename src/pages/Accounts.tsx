@@ -259,12 +259,25 @@ export default function Accounts() {
     const handleOrderSubmit = async (orderData: Omit<Order, 'id'>) => {
         if (!editingOrder) return;
         try {
-            await db.updateOrder(editingOrder.id, orderData, {
+            const { status, ...restOfData } = orderData;
+
+            // 1. Update non-status fields
+            await db.updateOrder(editingOrder.id, restOfData, {
                 userId: user?.id,
                 actorRole: user?.role,
                 deliveryDateChangeSource: 'accounts_statement_edit',
                 deliveryDateResponsibilityParty: 'unknown',
             });
+
+            // 2. If status changed, update it via the unified updateOrderStatus
+            if (status !== editingOrder.status) {
+                await db.updateOrderStatus(editingOrder.id, status, {
+                    userId: user?.id,
+                    userName: user?.name || user?.role || 'User',
+                    actorRole: user?.role,
+                });
+            }
+
             setEditingOrder(null);
             fetchData();
         } catch (error) {
