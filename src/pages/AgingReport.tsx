@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     Clock, Search, Calendar, AlertTriangle, 
     CheckCircle2, DollarSign, ArrowLeftRight,
-    Users, Factory, Palette
+    Users, Factory, Palette, Phone, ScissorsLineDashed
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -72,6 +72,7 @@ interface FIFOEntityReport {
     entityId: string;
     entityName: string;
     entityCode: string | null;
+    entityPhone: string | null;
     aging: AgingBuckets;
     obligations: FIFOObligation[];
     settings: EntityBillingSettings;
@@ -97,7 +98,7 @@ function round2(n: number): number {
 }
 
 export default function AgingReport() {
-    useAuth();
+    const { user } = useAuth();
 
     // ─ State
     const [activeTab, setActiveTab] = useState<TabType>('doctors');
@@ -106,6 +107,21 @@ export default function AgingReport() {
     const [asOfDate, setAsOfDate] = useState(todayDateString());
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedBucketFilter, setSelectedBucketFilter] = useState<'all' | 'current' | '1_30' | '31_60' | 'over_60'>('all');
+
+    // ── Adjustment modal state
+    const [adjModal, setAdjModal] = useState<{
+        open: boolean;
+        entityId: string;
+        entityName: string;
+        entityType: 'doctor' | 'supplier' | 'designer';
+        amount: string;
+        reason: string;
+        date: string;
+        saving: boolean;
+    }>({
+        open: false, entityId: '', entityName: '', entityType: 'doctor',
+        amount: '', reason: '', date: todayDateString(), saving: false
+    });
     
     // Data state
     const [orders, setOrders] = useState<Partial<Order>[]>([]);
@@ -161,6 +177,46 @@ export default function AgingReport() {
         };
         load();
     }, [activeTab]);
+
+    // ── Reload data after an adjustment is saved
+    const reloadData = async () => {
+        try {
+            const [o, t, adj] = await Promise.all([
+                db.getOrdersForFinanceSummary(),
+                db.getTransactionsForFinanceSummary(),
+                financeService.getAdjustments()
+            ]);
+            setOrders(o || []);
+            setTransactions(t || []);
+            setAdjustments(adj || []);
+        } catch (e) {
+            console.error('reload failed', e);
+        }
+    };
+
+    // ── Save quick adjustment
+    const handleSaveAdjustment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const amt = parseFloat(adjModal.amount);
+        if (!amt || amt <= 0 || !adjModal.reason.trim()) return;
+        setAdjModal(m => ({ ...m, saving: true }));
+        try {
+            await financeService.addAdjustment({
+                entity_type: adjModal.entityType,
+                entity_id:   adjModal.entityId,
+                amount:      amt,
+                type:        'credit',   // خصم = دائن (يُقلل ما يستحق على الطبيب)
+                date:        adjModal.date,
+                reason:      adjModal.reason.trim()
+            });
+            setAdjModal(m => ({ ...m, open: false, amount: '', reason: '', saving: false }));
+            await reloadData();
+        } catch (err) {
+            console.error(err);
+            setAdjModal(m => ({ ...m, saving: false }));
+            alert('حدث خطأ أثناء حفظ التسوية');
+        }
+    };
 
     // ─ Derived data
 
@@ -459,6 +515,7 @@ export default function AgingReport() {
                     entityId: entity.id,
                     entityName: entity.name,
                     entityCode: 'doctorCode' in entity ? entity.doctorCode || null : null,
+                    entityPhone: 'phone' in entity ? entity.phone || null : null,
                     aging,
                     obligations,
                     settings
@@ -559,6 +616,7 @@ export default function AgingReport() {
     }, [activeTab]);
 
     return (
+        <>
         <div className="p-6 max-w-7xl mx-auto space-y-6 text-slate-800 dir-rtl" style={{ direction: 'rtl' }}>
             
             {/* Header section with page title */}
@@ -927,6 +985,64 @@ export default function AgingReport() {
                                     </div>
                                 </div>
 
+                                {/* Suggested Actions Box */}
+                                {(selectedEntityReport.entityPhone || selectedEntityReport.aging.over60Days > 0) && (
+                                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+                                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">إجراءات مقترحة</div>
+                                        <div className="flex flex-wrap gap-3">
+                                            {selectedEntityReport.entityPhone && activeTab === 'doctors' && (() => {
+                                                const rawPhone = selectedEntityReport.entityPhone;
+                                                const waPhone = rawPhone.startsWith('0') ? `2${rawPhone}` : rawPhone.replace(/^\+/, '');
+                                                return (
+                                                    <>
+                                                        <a
+                                                            href={`tel:${rawPhone}`}
+                                                            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 active:scale-95 transition-all shadow-sm"
+                                                        >
+                                                            <Phone size={13} />
+                                                            اتصل بـ {selectedEntityReport.entityName}
+                                                            <span className="opacity-75 font-mono font-normal">— {rawPhone}</span>
+                                                        </a>
+                                                        <a
+                                                            href={`https://wa.me/${waPhone}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-2 px-4 py-2 bg-[#25D366] text-white text-xs font-bold rounded-xl hover:bg-[#1ebe5d] active:scale-95 transition-all shadow-sm"
+                                                        >
+                                                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                                                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                                                                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.117 1.528 5.847L0 24l6.335-1.508A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.001-1.368l-.36-.214-3.733.888.936-3.629-.235-.374A9.818 9.818 0 1112 21.818z"/>
+                                                            </svg>
+                                                            واتساب
+                                                        </a>
+                                                    </>
+                                                );
+                                            })()}
+
+                                            {/* ── Quick Adjustment button — admin/accountant only */}
+                                            {['admin', 'accountant'].includes(user?.role || '') && selectedEntityReport && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAdjModal(m => ({
+                                                        ...m,
+                                                        open: true,
+                                                        entityId:   selectedEntityReport.entityId,
+                                                        entityName: selectedEntityReport.entityName,
+                                                        entityType: activeTab === 'doctors' ? 'doctor' : activeTab === 'suppliers' ? 'supplier' : 'designer',
+                                                        date: todayDateString(),
+                                                        amount: '',
+                                                        reason: ''
+                                                    }))}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 active:scale-95 transition-all shadow-sm"
+                                                >
+                                                    <ScissorsLineDashed size={13} />
+                                                    تسوية / خصم
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Visual Aging Bar representation */}
                                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
                                     <div className="flex justify-between text-xs font-bold text-slate-700">
@@ -1008,5 +1124,116 @@ export default function AgingReport() {
             </div>
 
         </div>
+
+        {/* ────────────── Quick Adjustment Modal ────────────── */}
+        <AnimatePresence>
+            {adjModal.open && (
+                <motion.div
+                    key="adj-modal"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4"
+                    onClick={e => { if (e.target === e.currentTarget) setAdjModal(m => ({ ...m, open: false })); }}
+                >
+                    <motion.div
+                        initial={{ scale: 0.95, y: 12 }}
+                        animate={{ scale: 1, y: 0 }}
+                        exit={{ scale: 0.95, y: 12 }}
+                        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5"
+                        style={{ direction: 'rtl' }}
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-violet-100 rounded-xl flex items-center justify-center">
+                                    <ScissorsLineDashed size={15} className="text-violet-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-extrabold text-slate-800">تسوية / خصم من الحساب</h3>
+                                    <p className="text-[10px] text-slate-400">{adjModal.entityName}</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setAdjModal(m => ({ ...m, open: false }))}
+                                className="text-slate-400 hover:text-slate-600 transition-colors text-lg leading-none"
+                            >×</button>
+                        </div>
+
+                        {/* Info notice */}
+                        <div className="bg-violet-50 border border-violet-100 rounded-xl px-4 py-2.5 text-[11px] text-violet-700 leading-relaxed">
+                            سيُسجّل هذا الخصم في سجل <strong>القيود والتسويات</strong> ويؤثّر تلقائياً على رصيد الحساب وتقرير الأعمار.
+                        </div>
+
+                        <form onSubmit={handleSaveAdjustment} className="space-y-4">
+                            {/* Amount */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">مبلغ الخصم <span className="text-red-500">*</span></label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        min="0.01"
+                                        step="0.01"
+                                        required
+                                        autoFocus
+                                        value={adjModal.amount}
+                                        onChange={e => setAdjModal(m => ({ ...m, amount: e.target.value }))}
+                                        placeholder="0.00"
+                                        className="w-full text-sm px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-400 font-mono text-left"
+                                        style={{ direction: 'ltr' }}
+                                    />
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">ج.م</span>
+                                </div>
+                            </div>
+
+                            {/* Date */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">تاريخ التسوية <span className="text-red-500">*</span></label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={adjModal.date}
+                                    onChange={e => setAdjModal(m => ({ ...m, date: e.target.value }))}
+                                    className="w-full text-sm px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-400 font-mono"
+                                />
+                            </div>
+
+                            {/* Reason */}
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">سبب التسوية / البيان <span className="text-red-500">*</span></label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={adjModal.reason}
+                                    onChange={e => setAdjModal(m => ({ ...m, reason: e.target.value }))}
+                                    placeholder="مثال: خصم خاص، تعويض حالة..."
+                                    className="w-full text-sm px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                                />
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-3 pt-1">
+                                <button
+                                    type="submit"
+                                    disabled={adjModal.saving}
+                                    className="flex-1 py-2.5 bg-violet-600 text-white text-xs font-bold rounded-xl hover:bg-violet-700 disabled:opacity-60 transition-all active:scale-95"
+                                >
+                                    {adjModal.saving ? 'جاري الحفظ...' : 'حفظ التسوية'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setAdjModal(m => ({ ...m, open: false }))}
+                                    className="px-5 py-2.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-200 transition-all"
+                                >
+                                    إلغاء
+                                </button>
+                            </div>
+                        </form>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+        </>
     );
 }
