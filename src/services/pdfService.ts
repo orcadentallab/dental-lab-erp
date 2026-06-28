@@ -14,6 +14,13 @@ async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = tr
     container.innerHTML = html;
     document.body.appendChild(container);
 
+    // Wait for fonts to load (especially Cairo) to prevent html2canvas Arabic rendering bugs
+    try {
+        await document.fonts.ready;
+    } catch (err) {
+        console.warn('Font loading failed or timed out, proceeding with fallback:', err);
+    }
+
     // Capture footer separately if it exists
     const footerEl = container.querySelector('.doc-footer');
     let footerImg: string | null = null;
