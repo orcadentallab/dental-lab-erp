@@ -967,9 +967,31 @@ export default function Accounts() {
         const doctor = doctors.find(d => d.id === selectedEntityId);
         const filteredDoctor = childDoctorFilter ? doctors.find(d => d.id === childDoctorFilter) : undefined;
 
+        const visibleItems = individualStatement.items.filter(i => !i.isHidden);
+
+        // When showAllOrders: use displayAmount so in-progress cases show full price in PDF
+        const pdfItems = activeTab === 'doctors' && showAllOrders
+            ? visibleItems.map(i => ({
+                ...i,
+                amount: i.type === 'debit' && i.isOrderValue
+                    ? (i.displayAmount ?? i.amount)
+                    : i.amount
+            }))
+            : visibleItems;
+
+        const effectiveDebit = activeTab === 'doctors' && showAllOrders
+            ? (individualStatement.totals.allOrdersDisplayTotal ?? individualStatement.totals.totalDebit)
+            : individualStatement.totals.totalDebit;
+        const effectiveBalance = effectiveDebit - individualStatement.totals.totalCredit + individualStatement.totals.openingBalance;
+
         const statementForPdf: StatementResult = {
             ...individualStatement,
-            items: individualStatement.items.filter(i => !i.isHidden),
+            items: pdfItems,
+            totals: {
+                ...individualStatement.totals,
+                totalDebit: effectiveDebit,
+                balance: effectiveBalance,
+            },
             doctorName: entityName,
             doctorCode: doctor?.doctorCode,
             filteredDoctorName: filteredDoctor?.name
@@ -977,6 +999,7 @@ export default function Accounts() {
 
         await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO);
     };
+
 
     // Helper: build debit items for cases invoice (PDF or Excel)
     const buildCasesInvoiceItems = (): CasesInvoiceItem[] => {
