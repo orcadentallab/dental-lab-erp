@@ -35,6 +35,7 @@ import {
     findActiveDoctorDeliveredObligationForOrder,
     findActiveExternalLabReadyObligationForOrder,
     findActiveDesignerApprovedObligationForOrder,
+    findActiveExternalLabRejectionObligationsForOrder,
     voidFinancialObligation,
     reallocatePaymentsAfterObligationVoid,
 } from './financialObligations';
@@ -2105,6 +2106,72 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
                 });
                 throw new Error(DESIGNER_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE);
             }
+        }
+    }
+
+    if (updatedOrder?.isArchived && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
+        // 1. Void Doctor Receivable Obligation
+        try {
+            const obligation = await findActiveDoctorDeliveredObligationForOrder(id);
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, 'Order was archived; doctor receivable obligation voided.', {
+                    voidReason: 'order_archived',
+                    shadowMode: true,
+                    reviewNeeded: true,
+                });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
+            }
+        } catch (error) {
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void doctor receivable obligation on archive', { orderId: id, error });
+        }
+
+        // 2. Void External Lab Payable Obligation
+        try {
+            const obligation = await findActiveExternalLabReadyObligationForOrder(id);
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, 'Order was archived; external lab payable voided.', {
+                    voidReason: 'order_archived',
+                    shadowMode: true,
+                    reviewNeeded: true,
+                });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
+            }
+        } catch (error) {
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab payable obligation on archive', { orderId: id, error });
+        }
+
+        // 3. Void External Lab Rejection Cost Obligations (if any)
+        try {
+            const rejections = await findActiveExternalLabRejectionObligationsForOrder(id);
+            for (const rejectionObligation of rejections) {
+                try {
+                    await voidFinancialObligation(rejectionObligation.id, 'Order was archived; external lab rejection cost voided.', {
+                        voidReason: 'order_archived',
+                        shadowMode: true,
+                        reviewNeeded: true,
+                    });
+                    await reallocatePaymentsAfterObligationVoid(rejectionObligation.id, null, context.userId || null);
+                } catch (error) {
+                    console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab rejection obligation on archive', { orderId: id, obligationId: rejectionObligation.id, error });
+                }
+            }
+        } catch (error) {
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to fetch external lab rejection obligations on archive', { orderId: id, error });
+        }
+
+        // 4. Void Designer Payable Obligation
+        try {
+            const obligation = await findActiveDesignerApprovedObligationForOrder(id);
+            if (obligation) {
+                await voidFinancialObligation(obligation.id, 'Order was archived; designer payable voided.', {
+                    voidReason: 'order_archived',
+                    shadowMode: true,
+                    reviewNeeded: true,
+                });
+                await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
+            }
+        } catch (error) {
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void designer payable obligation on archive', { orderId: id, error });
         }
     }
 

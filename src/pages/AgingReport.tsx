@@ -231,7 +231,7 @@ export default function AgingReport() {
             };
         }
 
-        const visibleOrders = orders.filter(o => !o.isArchived || ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'].includes(o.status || ''));
+        const visibleOrders = orders.filter(o => !o.isArchived);
 
         // Determine entities to process
         let targetEntities: (Doctor | Supplier | User)[] = [];

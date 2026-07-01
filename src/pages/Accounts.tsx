@@ -54,11 +54,14 @@ const formatDateInput = (date: Date) => {
 
 const getOperationalOrderDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
 
-const getOrderDisplayValue = (order: Partial<Order>) => order.totalPrice || 0;
+const ZERO_VALUE_STATUSES_SET = new Set(['rejected', 'doctor rejected', 'lab rejected', 'cancelled']);
+const getOrderDisplayValue = (order: Partial<Order>) => {
+    if (ZERO_VALUE_STATUSES_SET.has((order.status || '').trim().toLowerCase())) return 0;
+    return order.totalPrice || 0;
+};
 
 const isVisibleInAccountStatement = (order: Partial<Order>) => {
-    if (!order.isArchived) return true;
-    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'].includes(order.status || '');
+    return !order.isArchived;
 };
 
 const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {
@@ -922,8 +925,8 @@ export default function Accounts() {
         const finalBalance = adjustedOpeningBalance + periodBalance;
         const allOrdersDisplayTotal = activeTab === 'doctors' && showAllOrders
             ? visibleItems
-                .filter(i => i.isOrderValue)
-                .reduce((sum, i) => sum + (i.displayAmount ?? i.amount), 0)
+                .filter(i => i.type === 'debit')
+                .reduce((sum, i) => sum + (i.isOrderValue ? (i.displayAmount ?? i.amount) : i.amount), 0)
             : 0;
 
         return {
@@ -1929,35 +1932,51 @@ export default function Accounts() {
                         </div>
                     )}
                     <div className="text-center p-3">
-                        <p className="text-xs text-gray-500 mb-1">إجمالي المدين</p>
-                        <p className="text-lg font-bold text-rose-600">{individualStatement.totals.totalDebit.toLocaleString()}</p>
+                        <div className="flex items-center justify-center gap-1.5 mb-1">
+                            <p className="text-xs text-gray-500">إجمالي المدين</p>
+                            {activeTab === 'doctors' && showAllOrders && (
+                                <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">الكل</span>
+                            )}
+                        </div>
+                        <p className="text-lg font-bold text-rose-600">
+                            {(activeTab === 'doctors' && showAllOrders
+                                ? (individualStatement.totals.allOrdersDisplayTotal ?? individualStatement.totals.totalDebit)
+                                : individualStatement.totals.totalDebit
+                            ).toLocaleString()}
+                        </p>
                     </div>
                     <div className="text-center p-3">
                         <p className="text-xs text-gray-500 mb-1">إجمالي الدائن</p>
                         <p className="text-lg font-bold text-emerald-600">{individualStatement.totals.totalCredit.toLocaleString()}</p>
                     </div>
                     <div className="text-center p-3 bg-white rounded-lg shadow-sm">
-                        <p className="text-xs text-gray-500 mb-1">الرصيد الحالي</p>
-                        <p className={clsx("text-xl font-black", individualStatement.totals.balance > 0 ? "text-rose-600" : "text-emerald-600")}>
-                            {Math.abs(individualStatement.totals.balance).toLocaleString()}
-                            <span className="text-xs font-normal text-gray-400 mr-1">ج.م</span>
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                            {individualStatement.totals.balance > 0
-                                ? (activeTab === 'doctors' ? 'مطلوب سداده' : 'مستحق له')
-                                : (activeTab === 'doctors' ? 'رصيد دائن' : 'مدفوع زيادة')}
-                        </p>
-                    </div>
-                    {activeTab === 'doctors' && showAllOrders && (
-                        <div className="col-span-2 md:col-span-4 text-center p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                            <p className="text-xs text-blue-700 mb-1 font-bold">إجمالي كل الحالات شامل تحت التشغيل</p>
-                            <p className="text-xl font-black text-blue-700">
-                                {(individualStatement.totals.allOrdersDisplayTotal ?? 0).toLocaleString()}
-                                <span className="text-xs font-normal text-blue-400 mr-1">ج.م</span>
-                            </p>
-                            <p className="text-xs text-blue-500 mt-1">للعرض فقط ولا يدخل في الفواتير أو التقارير</p>
+                        <div className="flex items-center justify-center gap-1.5 mb-1">
+                            <p className="text-xs text-gray-500">الرصيد الحالي</p>
+                            {activeTab === 'doctors' && showAllOrders && (
+                                <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">الكل</span>
+                            )}
                         </div>
-                    )}
+                        {(() => {
+                            const effectiveDebit = activeTab === 'doctors' && showAllOrders
+                                ? (individualStatement.totals.allOrdersDisplayTotal ?? individualStatement.totals.totalDebit)
+                                : individualStatement.totals.totalDebit;
+                            const effectiveBalance = effectiveDebit - individualStatement.totals.totalCredit + individualStatement.totals.openingBalance;
+                            return (
+                                <>
+                                    <p className={clsx("text-xl font-black", effectiveBalance > 0 ? "text-rose-600" : "text-emerald-600")}>
+                                        {Math.abs(effectiveBalance).toLocaleString()}
+                                        <span className="text-xs font-normal text-gray-400 mr-1">ج.م</span>
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        {effectiveBalance > 0
+                                            ? (activeTab === 'doctors' ? 'مطلوب سداده' : 'مستحق له')
+                                            : (activeTab === 'doctors' ? 'رصيد دائن' : 'مدفوع زيادة')}
+                                    </p>
+                                </>
+                            );
+                        })()}
+                    </div>
+
                 </div>
 
                 {/* Statement Search */}
@@ -2036,7 +2055,7 @@ export default function Accounts() {
                                                 onClick={() => handleStatementRowClick(item)}
                                                 className={clsx(
                                                     "border-b border-gray-50 transition-colors",
-                                                    (item.status === 'Rejected' || item.status === 'Cancelled') && "bg-red-50/70 text-red-800",
+                                                    ZERO_VALUE_STATUSES_SET.has((item.status || '').trim().toLowerCase()) && "bg-red-50/70 text-red-800",
                                                     item.isHidden && "opacity-50 grayscale",
                                                     (item.description?.includes('حالة #') || (item.status && item.description?.includes('#'))) ? "cursor-pointer hover:bg-blue-50/50" : "hover:bg-gray-50"
                                                 )}
@@ -2052,10 +2071,33 @@ export default function Accounts() {
                                                     />
                                                 </td>
                                                 <td className="p-3">
-                                                    <div className={clsx("font-medium", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-700 line-through decoration-red-300" : "text-gray-800")}>{item.description}</div>
-                                                    {item.details && <div className={clsx("text-xs mt-0.5 truncate max-w-xs", (item.status === 'Rejected' || item.status === 'Cancelled') ? "text-red-400" : "text-gray-500")}>{item.details}</div>}
-                                                    {item.status === 'Rejected' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">❌ مرفوض</span>}
-                                                    {item.status === 'Cancelled' && <span className="inline-block bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded mt-1">🚫 ملغي</span>}
+                                                    <div className={clsx("font-medium", ZERO_VALUE_STATUSES_SET.has((item.status || '').trim().toLowerCase()) ? "text-red-700 line-through decoration-red-300" : "text-gray-800")}>{item.description}</div>
+                                                    {item.details && <div className={clsx("text-xs mt-0.5 truncate max-w-xs", ZERO_VALUE_STATUSES_SET.has((item.status || '').trim().toLowerCase()) ? "text-red-400" : "text-gray-500")}>{item.details}</div>}
+                                                    {/* Status badges for all statuses */}
+                                                    {item.status && (() => {
+                                                        const s = (item.status || '').trim().toLowerCase();
+                                                        const BADGES: Record<string, { label: string; cls: string }> = {
+                                                            'doctor rejected': { label: '✖️ مرتجع طبيب', cls: 'bg-amber-100 text-amber-800' },
+                                                            'rejected':        { label: '✖️ مرفوض',       cls: 'bg-red-100 text-red-700' },
+                                                            'lab rejected':    { label: '✖️ رفض معمل',    cls: 'bg-red-100 text-red-700' },
+                                                            'cancelled':       { label: '🚫 ملغي',         cls: 'bg-red-100 text-red-700' },
+                                                            'under production':{ label: '🔄 تحت الإنتاج', cls: 'bg-blue-100 text-blue-700' },
+                                                            'in progress':     { label: '🔄 قيد التنفيذ',  cls: 'bg-blue-100 text-blue-700' },
+                                                            'sent to lab':     { label: '📦 أُرسل للمعمل', cls: 'bg-indigo-100 text-indigo-700' },
+                                                            'sent to external lab': { label: '🏭 معمل خارجي', cls: 'bg-indigo-100 text-indigo-700' },
+                                                            'ready':           { label: '✨ جاهز',         cls: 'bg-teal-100 text-teal-700' },
+                                                            'try in':          { label: '🦷 تجربة',         cls: 'bg-purple-100 text-purple-700' },
+                                                            'try in approved': { label: '✅ تجربة مقبولة', cls: 'bg-purple-100 text-purple-700' },
+                                                            'new case':        { label: '🆕 حالة جديدة',   cls: 'bg-slate-100 text-slate-600' },
+                                                            'pending':         { label: '⏳ معلق',          cls: 'bg-slate-100 text-slate-600' },
+                                                            'under design':    { label: '🎨 تحت التصميم',  cls: 'bg-violet-100 text-violet-700' },
+                                                            'returned for adjustments': { label: '🔄 إعادة تعديل', cls: 'bg-orange-100 text-orange-700' },
+                                                        };
+                                                        const badge = BADGES[s];
+                                                        return badge
+                                                            ? <span className={`inline-block text-xs font-bold px-2 py-0.5 rounded mt-1 ${badge.cls}`}>{badge.label}</span>
+                                                            : null;
+                                                    })()}
                                                     {item.isInformationalOnly && (
                                                         <span className="inline-block bg-blue-50 text-blue-600 text-xs font-bold px-2 py-0.5 rounded mt-1 mr-1">عرض فقط</span>
                                                     )}

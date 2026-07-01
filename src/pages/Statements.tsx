@@ -88,9 +88,36 @@ const isInRange = (dateStr: string, start: string, end: string) => {
 };
 
 const isVisible = (order: Partial<Order>) => {
-    if (!order.isArchived) return true;
-    // Doctor Rejected = same visibility as old Rejected; Lab Rejected = zero cost (like Cancelled)
-    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
+    return !order.isArchived;
+};
+
+// For "all" time filter: get receivable amount for any order status
+// Rejected / Cancelled → 0, everything else → totalPrice
+const ZERO_VALUE_NORMALIZED = new Set(['doctor rejected', 'lab rejected', 'cancelled', 'rejected']);
+const getAllDoctorAmount = (order: Partial<Order>): number => {
+    if (ZERO_VALUE_NORMALIZED.has((order.status || '').trim().toLowerCase())) return 0;
+    return order.totalPrice || 0;
+};
+
+// Status badge config for "all" mode
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+    'doctor rejected': { label: 'مرتجع طبيب', cls: 'bg-amber-100 text-amber-700' },
+    'rejected':        { label: 'مرفوض',       cls: 'bg-amber-100 text-amber-700' },
+    'lab rejected':    { label: 'رفض معمل',    cls: 'bg-red-100 text-red-600' },
+    'cancelled':       { label: 'ملغي',         cls: 'bg-slate-100 text-slate-500' },
+    'delivered':       { label: 'تم التسليم',   cls: 'bg-emerald-100 text-emerald-700' },
+    'completed':       { label: 'مكتمل',        cls: 'bg-emerald-100 text-emerald-700' },
+    'under production':{ label: 'تحت الإنتاج', cls: 'bg-blue-100 text-blue-700' },
+    'in progress':     { label: 'قيد التنفيذ',  cls: 'bg-blue-100 text-blue-700' },
+    'sent to lab':     { label: 'أُرسل للمعمل', cls: 'bg-indigo-100 text-indigo-700' },
+    'sent to external lab': { label: 'معمل خارجي', cls: 'bg-indigo-100 text-indigo-700' },
+    'ready':           { label: 'جاهز',         cls: 'bg-teal-100 text-teal-700' },
+    'try in':          { label: 'تجربة',         cls: 'bg-purple-100 text-purple-700' },
+    'try in approved': { label: 'تجربة مقبولة', cls: 'bg-purple-100 text-purple-700' },
+    'new case':        { label: 'حالة جديدة',   cls: 'bg-slate-100 text-slate-600' },
+    'pending':         { label: 'معلق',          cls: 'bg-slate-100 text-slate-600' },
+    'under design':    { label: 'تحت التصميم',  cls: 'bg-violet-100 text-violet-700' },
+    'returned for adjustments': { label: 'إعادة تعديل', cls: 'bg-orange-100 text-orange-700' },
 };
 
 // Month navigation helpers
@@ -228,9 +255,12 @@ export default function StatementsPage() {
                 if (!isVisible(o) || !o.doctorId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (!inRange(statDate)) continue;
-                if (!isDoctorStatementIncluded(o)) continue;
+                // "all" filter: show every order regardless of status (rejected/cancelled = 0)
+                // Other filters: only statement-included statuses (delivered/completed)
+                if (timeFilter !== 'all' && !isDoctorStatementIncluded(o)) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
-                workMap.set(pid, (workMap.get(pid) ?? 0) + getDoctorReceivableAmount(o));
+                const amount = timeFilter === 'all' ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                workMap.set(pid, (workMap.get(pid) ?? 0) + amount);
                 countMap.set(pid, (countMap.get(pid) ?? 0) + 1);
             }
             for (const t of transactions) {
@@ -327,7 +357,7 @@ export default function StatementsPage() {
         }
 
         return [];
-    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById]);
+    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, timeFilter]);
 
     const totalBalance = useMemo(() => summaries.reduce((s, e) => s + e.balance, 0), [summaries]);
     const filtered = useMemo(() => {
@@ -350,8 +380,10 @@ export default function StatementsPage() {
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (!inRange(statDate)) continue;
-                if (!isDoctorStatementIncluded(o)) continue;
-                const amount = getDoctorReceivableAmount(o);
+                // "all" filter: include every order (rejected/cancelled shown with 0)
+                // Other filters: only statement-included statuses
+                if (timeFilter !== 'all' && !isDoctorStatementIncluded(o)) continue;
+                const amount = timeFilter === 'all' ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
                 // Sub-doctor name (if order is from a child clinic)
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
                 lines.push({
@@ -460,7 +492,7 @@ export default function StatementsPage() {
             running += l.type === 'debit' ? l.amount : -l.amount;
             return { ...l, runningBalance: running };
         });
-    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange]);
+    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, timeFilter]);
 
     // ─ Invoice lines (فاتورة شهرية) ─────────────────────────────────────────
 
@@ -1009,9 +1041,14 @@ export default function StatementsPage() {
                                                                     <div className="font-medium text-slate-800 text-xs">{line.description}</div>
                                                                     {line.subName && <div className="text-[10px] text-indigo-500 font-semibold mt-0.5">📍 {line.subName}</div>}
                                                                     {line.services && <div className="text-[10px] text-slate-400 mt-0.5">{line.services}</div>}
-                                                                    {line.status === 'Cancelled' && <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">ملغي</span>}
-                                                                    {(line.status === 'Doctor Rejected' || line.status === 'Rejected') && <span className="text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">مرتجع طبيب</span>}
-                                                                    {line.status === 'Lab Rejected' && <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">رفض معمل</span>}
+                                                                    {/* Status badge — shown for all orders that have a status */}
+                                                                    {line.status && (() => {
+                                                                        const key = (line.status || '').trim().toLowerCase();
+                                                                        const badge = STATUS_BADGE[key];
+                                                                        return badge
+                                                                            ? <span className={`mt-1 inline-block text-[9px] px-1.5 py-0.5 rounded-full font-bold ${badge.cls}`}>{badge.label}</span>
+                                                                            : <span className="mt-1 inline-block text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-slate-100 text-slate-500">{line.status}</span>;
+                                                                    })()}
                                                                 </td>
                                                                 <td className="px-3 py-2.5 text-center text-[11px] text-slate-500 font-mono">{line.date}</td>
                                                                 <td className="px-3 py-2.5 text-center font-mono text-xs">

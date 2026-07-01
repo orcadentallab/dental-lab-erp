@@ -598,6 +598,34 @@ export async function findActiveDesignerApprovedObligationForOrder(
     return data ? dbToFinancialObligation(data as FinancialObligationRow) : null;
 }
 
+export async function findActiveExternalLabRejectionObligationsForOrder(
+    orderId: string,
+    entityId?: string | null
+): Promise<FinancialObligation[]> {
+    const supabase = await getSupabaseClient();
+    let query = supabase
+        .from('financial_obligations')
+        .select('*')
+        .eq('order_id', orderId)
+        .eq('entity_type', 'external_lab')
+        .eq('direction', OBLIGATION_DIRECTIONS.payable)
+        .eq('trigger_type', OBLIGATION_TRIGGER_TYPES.externalLabIssueSettlement)
+        .eq('source', OBLIGATION_SOURCES.order)
+        .neq('status', OBLIGATION_STATUSES.void);
+
+    if (entityId) {
+        query = query.eq('entity_id', entityId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'findActiveExternalLabRejectionObligationsForOrder');
+    }
+
+    return (data || []).map(row => dbToFinancialObligation(row as FinancialObligationRow));
+}
+
 export async function voidFinancialObligation(
     id: string,
     notes?: string,

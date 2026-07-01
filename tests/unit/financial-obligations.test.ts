@@ -12,16 +12,17 @@ vi.mock('../../src/lib/supabase', () => {
     };
 
     let currentTable = '';
+    let insertData: any = null;
+    let updateData: any = null;
     const eqFilters: Record<string, any> = {};
     const neqFilters: Record<string, any> = {};
     const isNullFilters: Record<string, boolean> = {};
     const lastInserted: Record<string, any[]> = {};
 
-    const chain = {
-        select: () => chain,
-        insert: (data: any) => {
-            const table = currentTable;
-            const items = Array.isArray(data) ? data : [data];
+    const executePendingMutation = () => {
+        const table = currentTable;
+        if (insertData) {
+            const items = Array.isArray(insertData) ? insertData : [insertData];
             const inserted = items.map(item => ({
                 id: item.id || 'f1f1f1f1-bbbb-4ccc-8ddd-eeeeeeeeeeee',
                 created_at: new Date().toISOString(),
@@ -35,12 +36,15 @@ vi.mock('../../src/lib/supabase', () => {
                 lastInserted[table] = [];
             }
             lastInserted[table].push(...inserted);
-            return chain;
-        },
-        update: (data: any) => {
-            const table = currentTable;
+            insertData = null;
+        }
+        if (updateData) {
             if (!mockDatabase[table]) {
                 mockDatabase[table] = [];
+            }
+            if (table === 'financial_obligations' && eqFilters.id === 'fail-void-id') {
+                updateData = null;
+                throw new Error('Simulated database error');
             }
             mockDatabase[table] = mockDatabase[table].map(item => {
                 let matches = true;
@@ -51,7 +55,7 @@ vi.mock('../../src/lib/supabase', () => {
                     if (item[key] === val) matches = false;
                 }
                 if (matches) {
-                    return { ...item, ...data };
+                    return { ...item, ...updateData };
                 }
                 return item;
             });
@@ -69,6 +73,18 @@ vi.mock('../../src/lib/supabase', () => {
                 lastInserted[table] = [];
             }
             lastInserted[table].push(...updated);
+            updateData = null;
+        }
+    };
+
+    const chain = {
+        select: () => chain,
+        insert: (data: any) => {
+            insertData = data;
+            return chain;
+        },
+        update: (data: any) => {
+            updateData = data;
             return chain;
         },
         eq: (field: string, value: any) => {
@@ -88,6 +104,7 @@ vi.mock('../../src/lib/supabase', () => {
         in: () => chain,
         limit: () => chain,
         single: async () => {
+            executePendingMutation();
             const table = currentTable;
             if (lastInserted[table] && lastInserted[table].length > 0) {
                 const res = lastInserted[table].shift();
@@ -108,6 +125,7 @@ vi.mock('../../src/lib/supabase', () => {
             return { data: match || null, error: match ? null : new Error('Not found') };
         },
         maybeSingle: async () => {
+            executePendingMutation();
             const table = currentTable;
             if (lastInserted[table] && lastInserted[table].length > 0) {
                 const res = lastInserted[table].shift();
@@ -127,11 +145,30 @@ vi.mock('../../src/lib/supabase', () => {
             });
             return { data: match || null, error: null };
         },
+        then: (onfulfilled: any) => {
+            executePendingMutation();
+            const table = currentTable;
+            const matches = mockDatabase[table]?.filter(item => {
+                for (const [key, val] of Object.entries(eqFilters)) {
+                    if (item[key] !== val) return false;
+                }
+                for (const [key, val] of Object.entries(neqFilters)) {
+                    if (item[key] === val) return false;
+                }
+                for (const [key] of Object.entries(isNullFilters)) {
+                    if (item[key] !== null && item[key] !== undefined) return false;
+                }
+                return true;
+            }) || [];
+            return Promise.resolve({ data: matches, error: null }).then(onfulfilled);
+        },
     };
 
     const mockSupabase = {
         from: (table: string) => {
             currentTable = table;
+            insertData = null;
+            updateData = null;
             if (!mockDatabase[table]) {
                 mockDatabase[table] = [];
             }
@@ -164,7 +201,7 @@ vi.mock('../../src/lib/supabase', () => {
 
 // Import supabase from the mock to get access to _mockDatabase
 import { _mockDatabase } from '../../src/lib/supabase';
-import { updateOrderStatus, runFinancialCorrectionsAfterOrderUpdate } from '../../src/services/supabase/orders';
+import { updateOrderStatus, runFinancialCorrectionsAfterOrderUpdate, updateOrder } from '../../src/services/supabase/orders';
 import { OBLIGATION_DIRECTIONS } from '../../src/constants/financialObligations';
 import { BILLING_ENTITY_TYPES } from '../../src/constants/billingSettings';
 
@@ -289,5 +326,216 @@ describe('Financial Obligations Integration Tests', () => {
 
         // The state should be exactly the same after the second run
         expect(obligationsAfterSecondRun).toEqual(obligationsAfterFirstRun);
+    });
+
+    it('Scenario: should void all obligations (including multiple lab rejections) on archive, even if one fails', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = '11111111-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const supplierId1 = 's1s1s1s1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const supplierId2 = 's2s2s2s2-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const designerId = 'e1e1e1e1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        // 1. Seed order and active obligations
+        const order = {
+            id: orderId,
+            doctorId,
+            doctor_id: doctorId,
+            supplierId: supplierId1,
+            supplier_id: supplierId1,
+            designerId,
+            designer_id: designerId,
+            status: 'Delivered',
+            totalPrice: 1500,
+            total_price: 1500,
+            isArchived: false,
+            is_archived: false,
+        };
+
+        const docObligation = {
+            id: 'fa111111-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'doctor',
+            entity_id: doctorId,
+            direction: 'receivable',
+            trigger_type: 'doctor_delivered',
+            source: 'order',
+            gross_amount: 1500,
+            status: 'unpaid',
+        };
+
+        const supplierObligation = {
+            id: 'fa222222-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'external_lab',
+            entity_id: supplierId1,
+            direction: 'payable',
+            trigger_type: 'external_lab_ready',
+            source: 'order',
+            gross_amount: 800,
+            status: 'unpaid',
+        };
+
+        // First rejection cost obligation (this one will be voided successfully)
+        const rejectionObligation1 = {
+            id: 'fa333333-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'external_lab',
+            entity_id: supplierId1,
+            direction: 'payable',
+            trigger_type: 'external_lab_issue_settlement',
+            source: 'order',
+            gross_amount: 200,
+            status: 'unpaid',
+        };
+
+        // Second rejection cost obligation (this one will fail to void)
+        const rejectionObligation2 = {
+            id: 'fail-void-id',
+            order_id: orderId,
+            entity_type: 'external_lab',
+            entity_id: supplierId2,
+            direction: 'payable',
+            trigger_type: 'external_lab_issue_settlement',
+            source: 'order',
+            gross_amount: 200,
+            status: 'unpaid',
+        };
+
+        const designerObligation = {
+            id: 'fa444444-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'designer',
+            entity_id: designerId,
+            direction: 'payable',
+            trigger_type: 'designer_approved',
+            source: 'order',
+            gross_amount: 100,
+            status: 'unpaid',
+        };
+
+        db.orders.push(order);
+        db.financial_obligations.push(
+            docObligation,
+            supplierObligation,
+            rejectionObligation1,
+            rejectionObligation2,
+            designerObligation
+        );
+
+        // 2. Archive/Delete the order
+        const updated = await updateOrder(orderId, { isArchived: true });
+        expect(updated?.isArchived).toBe(true);
+
+        // 3. Verify obligations status
+        const fetchObligation = (id: string) => db.financial_obligations.find(o => o.id === id);
+
+        // Doctor, Supplier Ready, Designer, Rejection 1 should be voided
+        expect(fetchObligation(docObligation.id)?.status).toBe('void');
+        expect(fetchObligation(supplierObligation.id)?.status).toBe('void');
+        expect(fetchObligation(rejectionObligation1.id)?.status).toBe('void');
+        expect(fetchObligation(designerObligation.id)?.status).toBe('void');
+
+        // Rejection 2 failed to void and should still be unpaid
+        expect(fetchObligation(rejectionObligation2.id)?.status).toBe('unpaid');
+    });
+
+    it('Scenario: rejection obligation should remain active when status changes but order is NOT deleted', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = '22222222-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const supplierId = 's1s1s1s1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        const order = {
+            id: orderId,
+            doctorId,
+            doctor_id: doctorId,
+            supplierId,
+            supplier_id: supplierId,
+            status: 'Delivered',
+            totalPrice: 1500,
+            total_price: 1500,
+            isArchived: false,
+            is_archived: false,
+        };
+
+        const rejectionObligation = {
+            id: 'fa555555-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'external_lab',
+            entity_id: supplierId,
+            direction: 'payable',
+            trigger_type: 'external_lab_issue_settlement',
+            source: 'order',
+            gross_amount: 200,
+            status: 'unpaid',
+        };
+
+        db.orders.push(order);
+        db.financial_obligations.push(rejectionObligation);
+
+        // Update some fields (but NOT archiving/deleting it)
+        const updated = await updateOrder(orderId, { totalPrice: 1600 });
+        expect(updated?.totalPrice).toBe(1600);
+        expect(updated?.isArchived).toBe(false);
+
+        // Rejection obligation should still be active (unpaid)
+        const activeOb = db.financial_obligations.find(o => o.id === rejectionObligation.id);
+        expect(activeOb?.status).toBe('unpaid');
+    });
+
+    it('Scenario: partially paid obligation reallocation on archive does not drop payment', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = '33333333-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        const order = {
+            id: orderId,
+            doctorId,
+            doctor_id: doctorId,
+            status: 'Delivered',
+            totalPrice: 1500,
+            total_price: 1500,
+            isArchived: false,
+            is_archived: false,
+        };
+
+        const docObligation = {
+            id: 'fa666666-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'doctor',
+            entity_id: doctorId,
+            direction: 'receivable',
+            trigger_type: 'doctor_delivered',
+            source: 'order',
+            gross_amount: 1500,
+            allocated_amount: 500,
+            remaining_amount: 1000,
+            status: 'partially_paid',
+        };
+
+        // Payment allocations mock
+        db.payment_allocations = [
+            {
+                id: 'alloc-1',
+                obligation_id: docObligation.id,
+                amount: 500,
+                status: 'active',
+            }
+        ];
+
+        db.orders.push(order);
+        db.financial_obligations.push(docObligation);
+
+        // Archive/Delete
+        await updateOrder(orderId, { isArchived: true });
+
+        // Verify obligation is voided
+        const ob = db.financial_obligations.find(o => o.id === docObligation.id);
+        expect(ob?.status).toBe('void');
+
+        // Verify payment allocations are reversed
+        const alloc = db.payment_allocations.find(a => a.id === 'alloc-1');
+        expect(alloc?.status).toBe('reversed');
     });
 });

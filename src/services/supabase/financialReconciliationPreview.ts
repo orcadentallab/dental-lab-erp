@@ -163,10 +163,7 @@ function getOperationalOrderDate(order: ReturnType<typeof toLifecycleOrder>) {
 }
 
 function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>) {
-    if (!order.isArchived) return true;
-    // Doctor Rejected has the same financial visibility as old 'Rejected' (rejectedLabCost)
-    // Lab Rejected is zero-cost, same as Cancelled
-    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
+    return !order.isArchived;
 }
 
 function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {
