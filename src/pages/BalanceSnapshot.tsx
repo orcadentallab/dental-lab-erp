@@ -95,7 +95,7 @@ export default function BalanceSnapshotPage() {
 
             // نفس منطق isVisibleInAccountStatement في Accounts.tsx
             const allOrders = allOrdersRaw.filter(o => 
-                !o.isArchived
+                !o.isDeleted && (!o.isArchived || ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(o.status || ''))
             );
 
             const designers = users.filter(isDesignerUser);

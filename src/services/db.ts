@@ -159,6 +159,7 @@ export interface Order {
     isUrgent?: boolean;
     isRedo?: boolean;
     isArchived?: boolean;
+    isDeleted?: boolean;
     originalOrderId?: string; // If this is a redo of another order
 
     // Status History for Time Tracking

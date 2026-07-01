@@ -61,7 +61,9 @@ const getOrderDisplayValue = (order: Partial<Order>) => {
 };
 
 const isVisibleInAccountStatement = (order: Partial<Order>) => {
-    return !order.isArchived;
+    if (order.isDeleted) return false;
+    if (!order.isArchived) return true;
+    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
 };
 
 const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {

@@ -86,6 +86,7 @@ type OrderRow = {
     actual_delivery_date: string | null;
     created_at: string;
     is_archived: boolean | null;
+    is_deleted: boolean | null;
     rejected_lab_cost: number | null;
 };
 
@@ -154,6 +155,7 @@ function toLifecycleOrder(row: OrderRow) {
         actualDeliveryDate: row.actual_delivery_date || undefined,
         createdAt: row.created_at,
         isArchived: row.is_archived || false,
+        isDeleted: row.is_deleted || false,
         rejectedLabCost: row.rejected_lab_cost ?? undefined,
     };
 }
@@ -163,7 +165,11 @@ function getOperationalOrderDate(order: ReturnType<typeof toLifecycleOrder>) {
 }
 
 function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>) {
-    return !order.isArchived;
+    if (order.isDeleted) return false;
+    if (!order.isArchived) return true;
+    // Doctor Rejected has the same financial visibility as old 'Rejected' (rejectedLabCost)
+    // Lab Rejected is zero-cost, same as Cancelled
+    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
 }
 
 function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {

@@ -52,6 +52,9 @@ CREATE TABLE orders (
   feedback JSONB,
   is_redo BOOLEAN DEFAULT FALSE,
   original_order_id UUID REFERENCES orders(id),
+  is_archived BOOLEAN NOT NULL DEFAULT FALSE,
+  production_status TEXT NOT NULL DEFAULT 'not_started',
+  issue_state TEXT NOT NULL DEFAULT 'none',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -136,3 +139,27 @@ CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON orders
 
 CREATE TRIGGER update_transactions_updated_at BEFORE UPDATE ON transactions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Add active flags for users and suppliers (from temp migration 089)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ DEFAULT NULL;
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Create order_issues table (from temp migration 087)
+CREATE TABLE IF NOT EXISTS order_issues (
+    id               UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    order_id         UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    issue_type       TEXT NOT NULL CHECK (issue_type IN ('returned','rejected','cancelled','redo')),
+    cause_category   TEXT NOT NULL DEFAULT 'other'
+                          CHECK (cause_category IN ('lab','doctor','scan','design','communication','other')),
+    notes            TEXT,
+    reporter_id      UUID REFERENCES users(id),
+    reporter_name    TEXT,
+    resolved_at      TIMESTAMPTZ,
+    resolution_notes TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_issues_order_id   ON order_issues(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_issues_issue_type ON order_issues(issue_type);
+CREATE INDEX IF NOT EXISTS idx_order_issues_created_at ON order_issues(created_at DESC);

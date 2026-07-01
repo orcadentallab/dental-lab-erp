@@ -60,6 +60,7 @@ export interface UpdateOrderContext extends OrderEventActorContext {
     deliveryDateChangeSource?: string | null;
     skipDeliveryDateEvent?: boolean;
     allowStatusChange?: boolean;
+    isDeletion?: boolean;
 }
 
 const DOCTOR_RECEIVABLE_OBLIGATION_VOID_FAILURE_MESSAGE =
@@ -985,6 +986,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         originalOrderId: dbOrder.original_order_id || undefined,
         statusHistory: dbOrder.status_history || undefined,
         isArchived: dbOrder.is_archived || false,
+        isDeleted: dbOrder.is_deleted || false,
         rejectedLabCost: dbOrder.rejected_lab_cost || undefined,
         // WF-1 shadow workflow columns (default to 'not_started'/'none' if absent).
         productionStatus: dbOrder.production_status || undefined,
@@ -992,7 +994,6 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
     };
 }
 
-// Transform application format to database format
 // Transform application format to database format
 function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
     return {
@@ -1032,6 +1033,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         original_order_id: order.originalOrderId || null,
         status_history: order.statusHistory || [],
         is_archived: order.isArchived || false,
+        is_deleted: order.isDeleted || false,
         rejected_lab_cost: order.rejectedLabCost || null,
         // WF-1 shadow columns: pass through if the caller specified them; the DB
         // defaults handle inserts that omit them. Finance logic does not depend
@@ -1106,7 +1108,8 @@ export async function getOrders(
     // Start building query with count
     let query = supabase
         .from('orders')
-        .select('*, order_items(*), order_comments(*)', { count: 'exact' });
+        .select('*, order_items(*), order_comments(*)', { count: 'exact' })
+        .or('is_deleted.eq.false,is_deleted.is.null');
 
     // Apply filters
     if (filters.status) {
@@ -1242,6 +1245,7 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
     const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')  // Include relations
+        .or('is_deleted.eq.false,is_deleted.is.null')
         // Fix: Use single OR to get (Active) OR (Recent)
         // Previous chained .not().or() resulted in (Active) AND (Recent), hiding old active orders
         .or(`status.not.in.("Delivered","Cancelled"),created_at.gte.${dateLimit}`)
@@ -1268,6 +1272,7 @@ export async function getOrdersWithComments(): Promise<Order[]> {
     const { data, error } = await supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
+        .or('is_deleted.eq.false,is_deleted.is.null')
         .or('is_archived.eq.false,is_archived.is.null')
         .order('created_at', { ascending: false })
         .range(0, 999);
@@ -1297,6 +1302,7 @@ export async function getDesignerDashboardOrders(designerId?: string): Promise<O
     let query = supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
+        .or('is_deleted.eq.false,is_deleted.is.null')
         .eq('workflow_type', 'split')
         .not('status', 'in', '("Delivered","Completed","Doctor Rejected","Lab Rejected","Cancelled")')
         .or('is_archived.eq.false,is_archived.is.null')
@@ -1362,7 +1368,7 @@ interface RawOrderItem {
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     const { data, error } = await supabase
         .from('orders')
-        .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, rejected_lab_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
+        .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
         .order('created_at', { ascending: false })
         .range(0, 9999);
 
@@ -1388,6 +1394,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         deliveryDate: d.delivery_date,
         actualDeliveryDate: d.actual_delivery_date || undefined,
         isArchived: d.is_archived || undefined,
+        isDeleted: d.is_deleted || undefined,
         rejectedLabCost: d.rejected_lab_cost || undefined,
         productionStatus: d.production_status || undefined,
         issueState: d.issue_state || undefined,
@@ -1427,6 +1434,7 @@ export async function fetchFullEntityStatement(
     let orderQuery = supabase
         .from('orders')
         .select('*, order_items(*), order_comments(*)')
+        .or('is_deleted.eq.false,is_deleted.is.null')
         .order('created_at', { ascending: false });
 
     if (entityType === 'doctor') {
@@ -1803,12 +1811,13 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
 
     if (updates.originalOrderId !== undefined) dbUpdates.original_order_id = updates.originalOrderId;
     if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
+    if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
     if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost || null;
 
     // --- SENSITIVE CHANGE DETECTION ---
     // If a sensitive financial or identity field changes, we reset registration status
     // so the accountant can review and re-register if necessary.
-    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'status', 'isArchived'];
+    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'status', 'isArchived', 'isDeleted'];
     const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
 
     if (hasSensitiveUpdate && updates.isRegistered === undefined) {
@@ -2109,35 +2118,35 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
         }
     }
 
-    if (updatedOrder?.isArchived && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
+    if (updatedOrder?.isDeleted && FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled) {
         // 1. Void Doctor Receivable Obligation
         try {
             const obligation = await findActiveDoctorDeliveredObligationForOrder(id);
             if (obligation) {
-                await voidFinancialObligation(obligation.id, 'Order was archived; doctor receivable obligation voided.', {
-                    voidReason: 'order_archived',
+                await voidFinancialObligation(obligation.id, 'Order was deleted; doctor receivable obligation voided.', {
+                    voidReason: 'order_deleted',
                     shadowMode: true,
                     reviewNeeded: true,
                 });
                 await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
             }
         } catch (error) {
-            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void doctor receivable obligation on archive', { orderId: id, error });
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void doctor receivable obligation on deletion', { orderId: id, error });
         }
 
         // 2. Void External Lab Payable Obligation
         try {
             const obligation = await findActiveExternalLabReadyObligationForOrder(id);
             if (obligation) {
-                await voidFinancialObligation(obligation.id, 'Order was archived; external lab payable voided.', {
-                    voidReason: 'order_archived',
+                await voidFinancialObligation(obligation.id, 'Order was deleted; external lab payable voided.', {
+                    voidReason: 'order_deleted',
                     shadowMode: true,
                     reviewNeeded: true,
                 });
                 await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
             }
         } catch (error) {
-            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab payable obligation on archive', { orderId: id, error });
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab payable obligation on deletion', { orderId: id, error });
         }
 
         // 3. Void External Lab Rejection Cost Obligations (if any)
@@ -2145,33 +2154,33 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             const rejections = await findActiveExternalLabRejectionObligationsForOrder(id);
             for (const rejectionObligation of rejections) {
                 try {
-                    await voidFinancialObligation(rejectionObligation.id, 'Order was archived; external lab rejection cost voided.', {
-                        voidReason: 'order_archived',
+                    await voidFinancialObligation(rejectionObligation.id, 'Order was deleted; external lab rejection cost voided.', {
+                        voidReason: 'order_deleted',
                         shadowMode: true,
                         reviewNeeded: true,
                     });
                     await reallocatePaymentsAfterObligationVoid(rejectionObligation.id, null, context.userId || null);
                 } catch (error) {
-                    console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab rejection obligation on archive', { orderId: id, obligationId: rejectionObligation.id, error });
+                    console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab rejection obligation on deletion', { orderId: id, obligationId: rejectionObligation.id, error });
                 }
             }
         } catch (error) {
-            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to fetch external lab rejection obligations on archive', { orderId: id, error });
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to fetch external lab rejection obligations on deletion', { orderId: id, error });
         }
 
         // 4. Void Designer Payable Obligation
         try {
             const obligation = await findActiveDesignerApprovedObligationForOrder(id);
             if (obligation) {
-                await voidFinancialObligation(obligation.id, 'Order was archived; designer payable voided.', {
-                    voidReason: 'order_archived',
+                await voidFinancialObligation(obligation.id, 'Order was deleted; designer payable voided.', {
+                    voidReason: 'order_deleted',
                     shadowMode: true,
                     reviewNeeded: true,
                 });
                 await reallocatePaymentsAfterObligationVoid(obligation.id, null, context.userId || null);
             }
         } catch (error) {
-            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void designer payable obligation on archive', { orderId: id, error });
+            console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void designer payable obligation on deletion', { orderId: id, error });
         }
     }
 
@@ -2184,36 +2193,8 @@ export async function deleteOrder(id: string): Promise<void> {
         throw new ValidationError('معرف الطلب غير صحيح');
     }
 
-    // First delete archives the order. Deleting an already archived order is a
-    // deliberate hard delete for fake/test orders.
     try {
-        const order = await getOrder(id);
-        if (!order) return;
-
-        if (order.isArchived) {
-            const { error: unlinkRedoError } = await supabase
-                .from('orders')
-                .update({ original_order_id: null })
-                .eq('original_order_id', id);
-
-            if (unlinkRedoError) {
-                throw ErrorHandler.handle(unlinkRedoError, 'deleteOrder_unlinkRedoOrders');
-            }
-
-            const { error } = await supabase
-                .from('orders')
-                .delete()
-                .eq('id', id)
-                .eq('is_archived', true);
-
-            if (error) {
-                throw ErrorHandler.handle(error, 'deleteOrder_hardDelete');
-            }
-
-            return;
-        }
-
-        await updateOrder(id, { isArchived: true });
+        await updateOrder(id, { isDeleted: true });
     } catch (e) {
         throw ErrorHandler.handle(e, 'deleteOrder');
     }

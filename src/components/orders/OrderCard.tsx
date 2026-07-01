@@ -157,10 +157,8 @@ export default function OrderCard({
     const isRedStatus = ['Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(order.status) || order.technicianStatus === 'Rejected';
     const isDelivered = order.status === 'Delivered';
     const canArchiveOrders = userRole === 'admin';
-    const deleteConfirmMessage = order.isArchived
-        ? 'حذف نهائي؟ سيتم حذف الأوردر تماما من السيستم ولا يمكن استرجاعه.'
-        : 'حذف؟ سيتم نقل الأوردر إلى الأرشيف ويمكن استرجاعه لاحقا.';
-    const deleteTitle = order.isArchived ? 'حذف نهائي' : 'حذف';
+    const deleteConfirmMessage = 'حذف الطلب؟ سيتم حذف الطلب وتصفير المعاملات المالية المرتبطة به.';
+    const deleteTitle = 'حذف';
 
     const resolvedDoctor = fullDoctors?.find((d: any) => d.id === order.doctorId);
     const parentDoctor = resolvedDoctor?.parentId ? fullDoctors?.find((d: any) => d.id === resolvedDoctor.parentId) : null;
@@ -173,6 +171,23 @@ export default function OrderCard({
             await db.updateOrder(order.id, { isArchived: archive });
             if (onStatusChange) onStatusChange(order.id, 'same');
             success(archive ? 'تمت الأرشفة بنجاح' : 'تم إلغاء الأرشفة');
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const handleRestore = async () => {
+        if (!canArchiveOrders) return;
+        if (!confirm('استعادة الطلب؟')) return;
+        try {
+            if (order.isDeleted) {
+                await db.updateOrder(order.id, { isDeleted: false });
+                success('تم استعادة الطلب المحذوف بنجاح');
+            } else if (order.isArchived) {
+                await db.updateOrder(order.id, { isArchived: false });
+                success('تم استعادة الطلب من الأرشيف بنجاح');
+            }
+            if (onStatusChange) onStatusChange(order.id, 'same');
         } catch (error) {
             console.error(error);
         }
@@ -615,7 +630,7 @@ export default function OrderCard({
                             />
 
                             {/* Archive Action for Cancelled/Rejected only — NOT for Returned orders */}
-                            {canArchiveOrders && isRedStatus && !order.isArchived && (
+                            {canArchiveOrders && isRedStatus && !order.isArchived && !order.isDeleted && (
                                 <button
                                     onClick={() => handleArchive(true)}
                                     className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-red-200"
@@ -626,12 +641,12 @@ export default function OrderCard({
                                 </button>
                             )}
 
-                            {/* Unarchive Action */}
-                            {canArchiveOrders && order.isArchived && (
+                            {/* Restore Action (both archived and deleted) */}
+                            {canArchiveOrders && (order.isArchived || order.isDeleted) && (
                                 <button
-                                    onClick={() => handleArchive(false)}
+                                    onClick={handleRestore}
                                     className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300"
-                                    title="إلغاء الأرشفة"
+                                    title="استعادة الطلب"
                                 >
                                     <RotateCcw size={14} />
                                     <span>استعادة</span>

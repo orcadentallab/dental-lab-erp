@@ -201,7 +201,7 @@ vi.mock('../../src/lib/supabase', () => {
 
 // Import supabase from the mock to get access to _mockDatabase
 import { _mockDatabase } from '../../src/lib/supabase';
-import { updateOrderStatus, runFinancialCorrectionsAfterOrderUpdate, updateOrder } from '../../src/services/supabase/orders';
+import { updateOrderStatus, runFinancialCorrectionsAfterOrderUpdate, updateOrder, deleteOrder } from '../../src/services/supabase/orders';
 import { OBLIGATION_DIRECTIONS } from '../../src/constants/financialObligations';
 import { BILLING_ENTITY_TYPES } from '../../src/constants/billingSettings';
 
@@ -328,7 +328,7 @@ describe('Financial Obligations Integration Tests', () => {
         expect(obligationsAfterSecondRun).toEqual(obligationsAfterFirstRun);
     });
 
-    it('Scenario: should void all obligations (including multiple lab rejections) on archive, even if one fails', async () => {
+    it('Scenario: should void all obligations (including multiple lab rejections) on order deletion, even if one fails', async () => {
         const db = _mockDatabase as Record<string, any[]>;
         const orderId = '11111111-bbbb-4ccc-8ddd-eeeeeeeeeeee';
         const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -348,6 +348,8 @@ describe('Financial Obligations Integration Tests', () => {
             status: 'Delivered',
             totalPrice: 1500,
             total_price: 1500,
+            isDeleted: false,
+            is_deleted: false,
             isArchived: false,
             is_archived: false,
         };
@@ -423,9 +425,10 @@ describe('Financial Obligations Integration Tests', () => {
             designerObligation
         );
 
-        // 2. Archive/Delete the order
-        const updated = await updateOrder(orderId, { isArchived: true });
-        expect(updated?.isArchived).toBe(true);
+        // 2. Delete the order
+        await deleteOrder(orderId);
+        const updated = db.orders.find(o => o.id === orderId);
+        expect(updated?.is_deleted).toBe(true);
 
         // 3. Verify obligations status
         const fetchObligation = (id: string) => db.financial_obligations.find(o => o.id === id);
@@ -455,8 +458,8 @@ describe('Financial Obligations Integration Tests', () => {
             status: 'Delivered',
             totalPrice: 1500,
             total_price: 1500,
-            isArchived: false,
-            is_archived: false,
+            isDeleted: false,
+            is_deleted: false,
         };
 
         const rejectionObligation = {
@@ -474,17 +477,17 @@ describe('Financial Obligations Integration Tests', () => {
         db.orders.push(order);
         db.financial_obligations.push(rejectionObligation);
 
-        // Update some fields (but NOT archiving/deleting it)
+        // Update some fields (but NOT deleting it)
         const updated = await updateOrder(orderId, { totalPrice: 1600 });
         expect(updated?.totalPrice).toBe(1600);
-        expect(updated?.isArchived).toBe(false);
+        expect(updated?.isDeleted).toBe(false);
 
         // Rejection obligation should still be active (unpaid)
         const activeOb = db.financial_obligations.find(o => o.id === rejectionObligation.id);
         expect(activeOb?.status).toBe('unpaid');
     });
 
-    it('Scenario: partially paid obligation reallocation on archive does not drop payment', async () => {
+    it('Scenario: partially paid obligation reallocation on deletion does not drop payment', async () => {
         const db = _mockDatabase as Record<string, any[]>;
         const orderId = '33333333-bbbb-4ccc-8ddd-eeeeeeeeeeee';
         const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -496,8 +499,8 @@ describe('Financial Obligations Integration Tests', () => {
             status: 'Delivered',
             totalPrice: 1500,
             total_price: 1500,
-            isArchived: false,
-            is_archived: false,
+            isDeleted: false,
+            is_deleted: false,
         };
 
         const docObligation = {
@@ -527,8 +530,8 @@ describe('Financial Obligations Integration Tests', () => {
         db.orders.push(order);
         db.financial_obligations.push(docObligation);
 
-        // Archive/Delete
-        await updateOrder(orderId, { isArchived: true });
+        // Delete order
+        await deleteOrder(orderId);
 
         // Verify obligation is voided
         const ob = db.financial_obligations.find(o => o.id === docObligation.id);
@@ -537,5 +540,126 @@ describe('Financial Obligations Integration Tests', () => {
         // Verify payment allocations are reversed
         const alloc = db.payment_allocations.find(a => a.id === 'alloc-1');
         expect(alloc?.status).toBe('reversed');
+    });
+
+    it('Scenario: should NOT void obligations if order is archived', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = '44444444-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        const order = {
+            id: orderId,
+            doctorId,
+            doctor_id: doctorId,
+            status: 'Delivered',
+            totalPrice: 1500,
+            total_price: 1500,
+            isArchived: false,
+            is_archived: false,
+            isDeleted: false,
+            is_deleted: false,
+        };
+
+        const docObligation = {
+            id: 'fa777777-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'doctor',
+            entity_id: doctorId,
+            direction: 'receivable',
+            trigger_type: 'doctor_delivered',
+            source: 'order',
+            gross_amount: 1500,
+            status: 'unpaid',
+        };
+
+        db.orders.push(order);
+        db.financial_obligations.push(docObligation);
+
+        // Archive the order
+        await updateOrder(orderId, { isArchived: true });
+
+        // Verify obligation is still unpaid/active
+        const ob = db.financial_obligations.find(o => o.id === docObligation.id);
+        expect(ob?.status).toBe('unpaid');
+    });
+
+    it('Scenario: restore-from-archive should NOT touch/affect obligations', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = '55555555-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        const order = {
+            id: orderId,
+            doctorId,
+            doctor_id: doctorId,
+            status: 'Delivered',
+            totalPrice: 1500,
+            total_price: 1500,
+            isArchived: true,
+            is_archived: true,
+            isDeleted: false,
+            is_deleted: false,
+        };
+
+        const docObligation = {
+            id: 'fa888888-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'doctor',
+            entity_id: doctorId,
+            direction: 'receivable',
+            trigger_type: 'doctor_delivered',
+            source: 'order',
+            gross_amount: 1500,
+            status: 'unpaid',
+        };
+
+        db.orders.push(order);
+        db.financial_obligations.push(docObligation);
+
+        // Restore from archive
+        await updateOrder(orderId, { isArchived: false });
+
+        // Verify obligation remains unpaid/active
+        const ob = db.financial_obligations.find(o => o.id === docObligation.id);
+        expect(ob?.status).toBe('unpaid');
+    });
+
+    it('Scenario: restore-from-delete should NOT attempt obligation recreation (stays voided, gap documented)', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = '66666666-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+        const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        const order = {
+            id: orderId,
+            doctorId,
+            doctor_id: doctorId,
+            status: 'Delivered',
+            totalPrice: 1500,
+            total_price: 1500,
+            isDeleted: true,
+            is_deleted: true,
+        };
+
+        const docObligation = {
+            id: 'fa999999-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            order_id: orderId,
+            entity_type: 'doctor',
+            entity_id: doctorId,
+            direction: 'receivable',
+            trigger_type: 'doctor_delivered',
+            source: 'order',
+            gross_amount: 1500,
+            status: 'void',
+        };
+
+        db.orders.push(order);
+        db.financial_obligations.push(docObligation);
+
+        // Restore from delete (isDeleted -> false)
+        await updateOrder(orderId, { isDeleted: false });
+
+        // Verify obligation remains voided (as un-voiding/recreation is out of scope for TD-002)
+        const ob = db.financial_obligations.find(o => o.id === docObligation.id);
+        expect(ob?.status).toBe('void');
     });
 });

@@ -231,7 +231,7 @@ export default function AgingReport() {
             };
         }
 
-        const visibleOrders = orders.filter(o => !o.isArchived);
+        const visibleOrders = orders.filter(o => !o.isDeleted && (!o.isArchived || ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(o.status || '')));
 
         // Determine entities to process
         let targetEntities: (Doctor | Supplier | User)[] = [];
@@ -855,15 +855,17 @@ export default function AgingReport() {
                                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
                                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                         <div>
-                                            <h2 className="text-base font-extrabold text-slate-900">{selectedEntityReport.entityName}</h2>
-                                            <div className="text-[10px] text-slate-500 font-semibold mt-1 flex items-center gap-1.5 flex-wrap">
-                                                <span className={clsx('px-2 py-0.5 rounded-md font-bold', theme?.lightBg, theme?.accentText)}>
-                                                    {selectedEntityReport.settings.billingMode === 'monthly_cycle' ? 'نظام سداد شهري' : 'نظام سداد بالطلب'}
+                                            <div className="flex items-center gap-2.5">
+                                                <h2 className="text-base font-extrabold text-slate-900">{selectedEntityReport.entityName}</h2>
+                                                <span className={clsx('px-2 py-0.5 rounded-md text-[10px] font-bold', theme?.lightBg, theme?.accentText)}>
+                                                    {selectedEntityReport.settings.billingMode === 'monthly_cycle' ? 'فوترة شهرية' : 'فوترة لكل حالة'}
                                                 </span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 font-semibold mt-1 flex items-center gap-1.5 flex-wrap">
                                                 {selectedEntityReport.settings.billingMode === 'monthly_cycle' ? (
-                                                    <span>· يوم الاستحقاق: {selectedEntityReport.settings.billingDay} من كل شهر التالي</span>
+                                                    <span>يوم الاستحقاق: {selectedEntityReport.settings.billingDay} من كل شهر التالي</span>
                                                 ) : (
-                                                    <span>· فترة السماح قبل التأخير: {selectedEntityReport.settings.perOrderDueDays} أيام</span>
+                                                    <span>فترة السماح قبل التأخير: {selectedEntityReport.settings.perOrderDueDays} أيام</span>
                                                 )}
                                             </div>
                                         </div>
@@ -893,10 +895,9 @@ export default function AgingReport() {
                                             <table className="w-full text-xs">
                                                 <thead className="sticky top-0 bg-slate-800 text-white z-10">
                                                     <tr>
-                                                        <th className="text-right px-4 py-3 font-bold">الحالة والمريض</th>
+                                                        <th className="text-right px-4 py-3 font-bold">المريض والحالة</th>
                                                         <th className="px-3 py-3 text-center font-bold">تاريخ التسليم</th>
                                                         <th className="px-3 py-3 text-center font-bold">تاريخ الاستحقاق</th>
-                                                        <th className="px-3 py-3 text-center font-bold">المرجع المالي</th>
                                                         <th className="px-3 py-3 text-center font-bold">أيام التأخير</th>
                                                         <th className="px-4 py-3 text-left font-bold">المبلغ المستحق</th>
                                                     </tr>
@@ -907,27 +908,14 @@ export default function AgingReport() {
                                                         .map((ob) => {
                                                             const isOverdue = ob.daysPastDue > 0;
                                                             
-                                                            // Format Billing Cycle Name
-                                                            let cycleText = 'فوترة لكل حالة';
-                                                            if (selectedEntityReport.settings.billingMode === 'monthly_cycle') {
-                                                                const parts = ob.triggerDate.split('-');
-                                                                if (parts.length >= 2) {
-                                                                    const year = parseInt(parts[0], 10);
-                                                                    const month = parseInt(parts[1], 10);
-                                                                    const d = new Date(year, month - 1, 1);
-                                                                    const monthName = d.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
-                                                                    cycleText = `فاتورة شهر ${monthName}`;
-                                                                }
-                                                            }
-
                                                             return (
                                                                 <tr key={ob.obligationId} className="hover:bg-slate-50 transition-colors">
                                                                     <td className="px-4 py-3 text-right">
                                                                         {ob.type === 'order' ? (
                                                                             <>
-                                                                                <div className="font-bold text-slate-800">حالة #{ob.caseId || '—'}</div>
-                                                                                <div className="text-[10px] text-slate-400 mt-0.5">مريض: {ob.patientName || '—'}</div>
-                                                                                {ob.itemsText && <div className="text-[10px] font-semibold text-slate-500 mt-1">{ob.itemsText}</div>}
+                                                                                <div className="font-bold text-slate-800">مريض: {ob.patientName || '—'}</div>
+                                                                                <div className="text-[10px] text-slate-400 mt-0.5">حالة #{ob.caseId || '—'}</div>
+                                                                                {ob.itemsText && <div className="text-[11.5px] font-semibold text-slate-600 mt-1">{ob.itemsText}</div>}
                                                                             </>
                                                                         ) : (
                                                                             <>
@@ -943,17 +931,6 @@ export default function AgingReport() {
                                                                     
                                                                     <td className="px-3 py-3 text-center font-mono text-[11px] text-slate-500">
                                                                         {ob.dueDate}
-                                                                    </td>
-
-                                                                    <td className="px-3 py-3 text-center">
-                                                                        <span className={clsx(
-                                                                            'inline-block px-2 py-0.5 rounded text-[10px] font-semibold',
-                                                                            selectedEntityReport.settings.billingMode === 'monthly_cycle' 
-                                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                                                                : 'bg-blue-50 text-blue-700 border border-blue-100'
-                                                                        )}>
-                                                                            {cycleText}
-                                                                        </span>
                                                                     </td>
                                                                     
                                                                     <td className="px-3 py-3 text-center">

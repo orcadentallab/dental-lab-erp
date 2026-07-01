@@ -88,7 +88,9 @@ const isInRange = (dateStr: string, start: string, end: string) => {
 };
 
 const isVisible = (order: Partial<Order>) => {
-    return !order.isArchived;
+    if (order.isDeleted) return false;
+    if (!order.isArchived) return true;
+    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
 };
 
 // For "all" time filter: get receivable amount for any order status
