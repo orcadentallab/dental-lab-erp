@@ -99,6 +99,7 @@ export default function DashboardNew() {
     const [adminNotes, setAdminNotes] = useState('');
     const [isSubmittingReview, setIsSubmittingReview] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0);
+    const [isFetchingMissing, setIsFetchingMissing] = useState(false);
 
     // Modal states
     const [showOrderForm, setShowOrderForm] = useState(false);
@@ -221,6 +222,58 @@ export default function DashboardNew() {
                 setRecentOrderHistory((recentOrderHistoryData as OrderHistoryEntry[] | undefined) || []);
                 setPendingProposals((pendingProposalsData as OrderEvent[] | undefined) || []);
                 setAppliedEdits((appliedEditsData as OrderEvent[] | undefined) || []);
+
+                if (user?.role === 'admin') {
+                    const pendingProposalsList = (pendingProposalsData as OrderEvent[] | undefined) || [];
+                    const appliedEditsList = (appliedEditsData as OrderEvent[] | undefined) || [];
+                    
+                    const missingIds = new Set<string>();
+                    for (const p of pendingProposalsList) {
+                        if (p.orderId && !filteredOrders.some(o => o.id === p.orderId)) {
+                            missingIds.add(p.orderId);
+                        }
+                    }
+                    for (const e of appliedEditsList) {
+                        if (e.orderId && !filteredOrders.some(o => o.id === e.orderId)) {
+                            missingIds.add(e.orderId);
+                        }
+                    }
+
+                    if (missingIds.size > 0) {
+                        setIsFetchingMissing(true);
+                        db.getOrdersByIds(Array.from(missingIds))
+                            .then(missingOrders => {
+                                if (missingOrders.length > 0) {
+                                    setOrders(prev => {
+                                        const updated = [...prev];
+                                        for (const mo of missingOrders) {
+                                            if (!updated.some(o => o.id === mo.id)) {
+                                                updated.push(mo);
+                                            }
+                                        }
+                                        // Also update sessionStorage cache with the merged list
+                                        try {
+                                            const cached = sessionStorage.getItem(DASHBOARD_CACHE_KEY);
+                                            if (cached) {
+                                                const parsed = JSON.parse(cached) as DashboardCache;
+                                                parsed.orders = updated;
+                                                sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify(parsed));
+                                            }
+                                        } catch (cacheErr) {
+                                            console.warn('Could not update cache with missing orders:', cacheErr);
+                                        }
+                                        return updated;
+                                    });
+                                }
+                            })
+                            .catch(err => {
+                                console.error('Failed to fetch missing orders:', err);
+                            })
+                            .finally(() => {
+                                setIsFetchingMissing(false);
+                            });
+                    }
+                }
 
                 try {
                     const cachePayload: DashboardCache = {
@@ -1811,8 +1864,13 @@ export default function DashboardNew() {
                             <div key={proposal.id} className="p-4 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-right" dir="rtl">
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-mono text-xs text-blue-500 font-bold">#{relOrder?.caseId || '—'}</span>
-                                        <span className="font-bold text-sm text-gray-800 dark:text-white">{relOrder?.patientName || '—'}</span>
+                                        <span className="font-mono text-xs text-blue-500 font-bold">
+                                            {isFetchingMissing && !relOrder ? 'جاري التحميل...' : `#${relOrder?.caseId || '—'}`}
+                                        </span>
+                                        <span className="font-bold text-sm text-gray-800 dark:text-white">
+                                            {!isFetchingMissing && !relOrder ? 'الطلب غير موجود أو محذوف' : (relOrder?.patientName || '')}
+                                            {relOrder?.isDeleted && <span className="text-xs text-red-500 font-normal"> (محذوف)</span>}
+                                        </span>
                                     </div>
                                     <div className="text-xs text-gray-500 space-y-1">
                                         <p>المندوب: {repUser?.name || 'غير معروف'} | السبب: {ORDER_EDIT_REASON_LABELS_AR[proposal.reason as OrderEditReasonCode] || proposal.reason}</p>
@@ -1879,8 +1937,13 @@ export default function DashboardNew() {
                                 <div className="flex justify-between items-start mb-2">
                                     <div>
                                         <div className="flex items-center gap-2">
-                                            <span className="font-mono text-xs text-blue-500 font-bold">#{relOrder?.caseId || '—'}</span>
-                                            <span className="font-bold text-sm text-gray-800 dark:text-white">{relOrder?.patientName || '—'}</span>
+                                            <span className="font-mono text-xs text-blue-500 font-bold">
+                                                {isFetchingMissing && !relOrder ? 'جاري التحميل...' : `#${relOrder?.caseId || '—'}`}
+                                            </span>
+                                            <span className="font-bold text-sm text-gray-800 dark:text-white">
+                                                {!isFetchingMissing && !relOrder ? 'الطلب غير موجود أو محذوف' : (relOrder?.patientName || '')}
+                                                {relOrder?.isDeleted && <span className="text-xs text-red-500 font-normal"> (محذوف)</span>}
+                                            </span>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-1">المندوب: {repUser?.name || 'غير معروف'}</p>
                                     </div>
@@ -1901,6 +1964,7 @@ export default function DashboardNew() {
             {reviewingProposal && (() => {
                 const relOrder = orders.find(o => o.id === reviewingProposal.orderId);
                 const repUser = users.find(u => u.id === reviewingProposal.changedBy);
+                const doctor = relOrder ? doctors.find(d => d.id === relOrder.doctorId) : null;
                 const metadata = reviewingProposal.metadata;
                 let changes: Record<string, unknown> = {};
                 let oldValues: Record<string, unknown> = {};
@@ -1921,7 +1985,13 @@ export default function DashboardNew() {
                                 <div>
                                     <h2 className="text-lg font-bold text-gray-800 dark:text-white">مراجعة طلب التعديل المعلق</h2>
                                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                        الحالة: #{relOrder?.caseId || '—'} - {relOrder?.patientName || '—'}
+                                        {isFetchingMissing && !relOrder ? (
+                                            'جاري التحميل...'
+                                        ) : relOrder ? (
+                                            `الحالة: #${relOrder.caseId} - ${relOrder.patientName}${relOrder.isDeleted ? ' (محذوف)' : ''}`
+                                        ) : (
+                                            'الطلب غير موجود'
+                                        )}
                                     </p>
                                 </div>
                                 <button
@@ -1936,6 +2006,60 @@ export default function DashboardNew() {
                             </div>
 
                             <div className="p-6 overflow-y-auto space-y-6 flex-1 text-right" dir="rtl">
+                                {/* Reference Order Info Card */}
+                                {(() => {
+                                    if (isFetchingMissing && !relOrder) {
+                                        return (
+                                            <div className="bg-blue-50/20 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-xl p-4 flex flex-col items-center justify-center py-6">
+                                                <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2" />
+                                                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">جاري تحميل تفاصيل الطلب...</span>
+                                            </div>
+                                        );
+                                    }
+                                    if (!relOrder) {
+                                        return (
+                                            <div className="bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/30 rounded-xl p-4 text-center">
+                                                <span className="text-sm font-bold text-amber-700 dark:text-amber-400">الطلب الأصلي غير موجود أو تم حذفه نهائياً</span>
+                                            </div>
+                                        );
+                                    }
+                                    const orderDateFormatted = new Date(relOrder.createdAt).toLocaleDateString('ar-EG', {
+                                        day: 'numeric',
+                                        month: 'long',
+                                        year: 'numeric'
+                                    });
+                                    return (
+                                        <div className="bg-blue-50/30 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/30 rounded-xl p-4 grid grid-cols-2 gap-4">
+                                            <div className="col-span-2 flex justify-between items-center border-b border-blue-100/50 dark:border-blue-900/20 pb-2 mb-1">
+                                                <span className="text-xs font-bold text-blue-800 dark:text-blue-400">بيانات الطلب المرجعية (غير قابلة للتعديل)</span>
+                                                {relOrder.isDeleted && (
+                                                    <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-[10px] font-bold rounded-full">
+                                                        محذوف مؤقتاً
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <span className="text-xs text-gray-400 block mb-1">اسم المريض</span>
+                                                <span className="font-bold text-sm text-gray-800 dark:text-white">
+                                                    {relOrder.patientName} {relOrder.isDeleted && <span className="text-xs text-red-500 font-normal">(محذوف)</span>}
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <span className="text-xs text-gray-400 block mb-1">اسم الطبيب</span>
+                                                <span className="font-bold text-sm text-gray-800 dark:text-white">{doctor?.name || 'غير معروف'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-xs text-gray-400 block mb-1">رقم الحالة / كود الحالة</span>
+                                                <span className="font-bold text-sm font-mono text-gray-800 dark:text-white">#{relOrder.caseId || '—'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-xs text-gray-400 block mb-1">تاريخ تسجيل الطلب</span>
+                                                <span className="font-bold text-sm text-gray-800 dark:text-white">{orderDateFormatted}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
                                 <div className="grid grid-cols-2 gap-4 bg-gray-50 dark:bg-gray-900/30 p-4 rounded-lg border border-gray-100 dark:border-gray-800">
                                     <div>
                                         <span className="text-xs text-gray-400 block mb-1">المندوب طالب التعديل</span>

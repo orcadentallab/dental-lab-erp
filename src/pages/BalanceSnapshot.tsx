@@ -17,6 +17,7 @@ import {
 import { getLabCostMetadata } from '../constants/financialObligations';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { useAuth } from '../context/AuthContext';
+import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ export default function BalanceSnapshotPage() {
 
             // نفس منطق isVisibleInAccountStatement في Accounts.tsx
             const allOrders = allOrdersRaw.filter(o => 
-                !o.isDeleted && (!o.isArchived || ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(o.status || ''))
+                isVisibleInAccountStatement(o)
             );
 
             const designers = users.filter(isDesignerUser);
@@ -158,11 +159,12 @@ export default function BalanceSnapshotPage() {
 
                 let totalWork = 0;
                 entityOrders.forEach(o => {
-                    const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+                    const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                     // نفس شرط Accounts.tsx تماماً
-                    const isRelevant = (o.status !== 'Rejected' || hasRejectionCost) &&
+                    const isRelevant = (!isDoctorRejectedStatus(o.status) || hasRejectionCost) &&
                         ((o.status || '').toLowerCase() === 'delivered' ||
                          (o.status || '').toLowerCase() === 'cancelled' ||
+                         isLabRejectedStatus(o.status) ||
                          hasRejectionCost);
                     if (!isRelevant) return;
 
@@ -171,8 +173,8 @@ export default function BalanceSnapshotPage() {
                     const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                     let cost = getLabCostMetadata(o, isSalaried).cost;
 
-                    if (o.status === 'Cancelled') cost = 0;
-                    else if (o.status === 'Rejected') {
+                    if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
+                    else if (isDoctorRejectedStatus(o.status)) {
                         cost = hasRejectionCost ? o.rejectedLabCost! : 0;
                     }
                     totalWork += cost;
@@ -218,13 +220,13 @@ export default function BalanceSnapshotPage() {
                 let totalWork = 0;
                 if (!isSalaried) {
                     entityOrders.forEach(o => {
-                        const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+                        const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                         const isRelevant = o.workflowType === 'split' &&
-                            (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
+                            (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
                         if (!isRelevant) return;
                         // نفس منطق Accounts.tsx سطر 393:
                         // price = (Cancelled||Rejected) ? 0 : getEffectiveDesignPrice
-                        let price = (o.status === 'Cancelled' || o.status === 'Rejected') ? 0 : (o.designPrice || 0);
+                        let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
                         if (hasRejectionCost) price = o.rejectedLabCost!;
                         totalWork += price;
                     });

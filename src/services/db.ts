@@ -746,6 +746,11 @@ class MockDB {
         return getOrder(id);
     }
 
+    async getOrdersByIds(ids: string[]): Promise<Order[]> {
+        const { getOrdersByIds } = await import('./supabase/orders');
+        return getOrdersByIds(ids);
+    }
+
     async addOrder(order: Omit<Order, 'id' | 'createdAt'>, context?: { userId?: string; actorRole?: string }): Promise<Order> {
         const { addOrder } = await import('./supabase/orders');
         return addOrder(order, context);

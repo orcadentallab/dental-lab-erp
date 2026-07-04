@@ -1520,6 +1520,27 @@ export async function getOrder(id: string): Promise<Order | null> {
     return data ? dbToOrder(data as unknown as DbOrderWithRelations) : null;
 }
 
+export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
+    if (!ids || ids.length === 0) return [];
+
+    const uniqueIds = Array.from(new Set(ids));
+    const validIds = uniqueIds.filter(id => id && typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    
+    if (validIds.length === 0) return [];
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*), order_comments(*)')
+        .in('id', validIds);
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'getOrdersByIds');
+    }
+
+    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+}
+
+
 export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: OrderEventActorContext = {}): Promise<Order> {
     // Clean URL fields before validation
     if (order.stlUrl !== undefined && order.stlUrl !== null) {

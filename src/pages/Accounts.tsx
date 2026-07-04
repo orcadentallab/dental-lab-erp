@@ -14,6 +14,7 @@ import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
+import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 import { getLabCostMetadata } from '../constants/financialObligations';
 import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -60,11 +61,7 @@ const getOrderDisplayValue = (order: Partial<Order>) => {
     return order.totalPrice || 0;
 };
 
-const isVisibleInAccountStatement = (order: Partial<Order>) => {
-    if (order.isDeleted) return false;
-    if (!order.isArchived) return true;
-    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
-};
+// isVisibleInAccountStatement is now imported from src/lib/orderStatusHelpers
 
 const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {
     const term = searchTerm.trim();
@@ -386,9 +383,9 @@ export default function Accounts() {
                 }
             } else if (activeTab === 'suppliers' && o.supplierId) {
                 if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
-                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
-                const isRelevant = (o.status !== 'Rejected' || hasRejectionCost) &&
-                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled' || hasRejectionCost);
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+                const isRelevant = (!isDoctorRejectedStatus(o.status) || hasRejectionCost) &&
+                    (showAllOrders || (o.status || '').toLowerCase() === 'delivered' || (o.status || '').toLowerCase() === 'cancelled' || (o.status || '').toLowerCase() === 'lab rejected' || hasRejectionCost);
 
                 if (isRelevant) {
                     const stats = getStats(o.supplierId);
@@ -396,8 +393,8 @@ export default function Accounts() {
                     const designer = designers.find(d => d.id === o.designerId);
                     const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                     let cost = getLabCostMetadata(o, isSalaried).cost;
-                    if (o.status === 'Cancelled') cost = 0;
-                    else if (o.status === 'Rejected') {
+                    if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
+                    else if (isDoctorRejectedStatus(o.status)) {
                         cost = hasRejectionCost ? o.rejectedLabCost! : 0;
                     }
                     stats.totalCredit += cost;
@@ -405,14 +402,14 @@ export default function Accounts() {
                 }
             } else if (activeTab === 'designers' && o.designerId) {
                 if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
-                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const isRelevant = o.workflowType === 'split' &&
-                    (showAllOrders || o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
+                    (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
 
                 if (isRelevant) {
                     const stats = getStats(o.designerId);
                     stats.count++;
-                    let price = (o.status === 'Cancelled' || o.status === 'Rejected' ? 0 : getEffectiveDesignPrice(o));
+                    let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status) ? 0 : getEffectiveDesignPrice(o));
                     if (hasRejectionCost) price = o.rejectedLabCost!;
                     stats.totalCredit += price;
                     stats.totalSales += price;
@@ -639,12 +636,20 @@ export default function Accounts() {
                 if (!isVisibleInAccountStatement(o)) return false;
                 if (o.supplierId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
-                return orderDate < dateRange.start && o.status !== 'Rejected' && o.status === 'Delivered';
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+                const isRelevant = (!isDoctorRejectedStatus(o.status) || hasRejectionCost) &&
+                    (showAllOrders || o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejectionCost);
+                return orderDate < dateRange.start && isRelevant;
             });
             openingCredit = beforeOrders.reduce((sum, o) => {
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                const cost = getLabCostMetadata(o, isSalaried).cost;
+                let cost = getLabCostMetadata(o, isSalaried).cost;
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
+                else if (isDoctorRejectedStatus(o.status)) {
+                    cost = hasRejectionCost ? o.rejectedLabCost! : 0;
+                }
                 return sum + cost;
             }, 0);
 
@@ -673,13 +678,22 @@ export default function Accounts() {
                 if (!isVisibleInAccountStatement(o)) return false;
                 if (o.designerId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
-                return orderDate < dateRange.start && o.workflowType === 'split' && (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled');
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+                const isRelevant = o.workflowType === 'split' &&
+                    (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
+                return orderDate < dateRange.start && isRelevant;
             });
             const designerUser = designers.find(d => d.id === selectedEntityId);
             const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
             const hideVirtualCosts = isSalariedDesigner;
 
-            openingCredit = beforeOrders.reduce((sum, o) => sum + (hideVirtualCosts ? 0 : getEffectiveDesignPrice(o)), 0);
+            openingCredit = beforeOrders.reduce((sum, o) => {
+                if (hideVirtualCosts) return sum;
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+                let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status) ? 0 : getEffectiveDesignPrice(o));
+                if (hasRejectionCost) price = o.rejectedLabCost!;
+                return sum + price;
+            }, 0);
 
             const beforeTx = relevantTransactions.filter(t =>
                 (t.entityType === 'designer' || !t.entityType) &&
@@ -781,16 +795,16 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'suppliers') {
-            const supOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || o.status === 'Doctor Rejected' || o.status === 'Lab Rejected' || o.status === 'Cancelled' || o.status === 'Rejected'));
+            const supOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
             items = supOrders.map(o => {
-                const hasRejectionCost = (o.status === 'Doctor Rejected' || o.status === 'Rejected') && typeof o.rejectedLabCost === 'number';
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 let cost = getLabCostMetadata(o, isSalaried).cost;
 
                 // If Rejected or Cancelled, set cost to 0 (unless it has a rejection cost)
-                if (o.status === 'Cancelled' || o.status === 'Lab Rejected') cost = 0;
-                else if (o.status === 'Doctor Rejected' || o.status === 'Rejected') {
+                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
+                else if (isDoctorRejectedStatus(o.status)) {
                     cost = hasRejectionCost ? o.rejectedLabCost! : 0;
                 }
 
@@ -823,21 +837,21 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled'));
+            const desOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
             
             const designerUser = designers.find(d => d.id === selectedEntityId);
             const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
             const hideVirtualCosts = isSalariedDesigner;
 
             items = desOrders.map(o => {
-                const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
                 
                 let price = hideVirtualCosts ? 0 : getEffectiveDesignPrice(o);
-                if (o.status === 'Cancelled') price = 0;
-                else if (o.status === 'Rejected') {
+                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) price = 0;
+                else if (isDoctorRejectedStatus(o.status)) {
                     price = hasRejectionCost ? o.rejectedLabCost! : 0;
                 }
 

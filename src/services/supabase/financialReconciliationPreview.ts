@@ -3,6 +3,7 @@ import { ErrorHandler } from '../../lib/errorHandler';
 import type { Adjustment } from '../financeService';
 import type { Order } from '../db';
 import { getLabCostMetadata } from '../../constants/financialObligations';
+import { isVisibleInAccountStatement as isVisibleInAccountStatementHelper, isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
 
 export type FinancialReconciliationEntityType = 'all' | 'doctor' | 'external_lab';
 
@@ -165,21 +166,17 @@ function getOperationalOrderDate(order: ReturnType<typeof toLifecycleOrder>) {
 }
 
 function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>) {
-    if (order.isDeleted) return false;
-    if (!order.isArchived) return true;
-    // Doctor Rejected has the same financial visibility as old 'Rejected' (rejectedLabCost)
-    // Lab Rejected is zero-cost, same as Cancelled
-    return ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status || '');
+    return isVisibleInAccountStatementHelper(order);
 }
 
 function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {
     // Doctor Rejected: same behavior as old 'Rejected' — rejectedLabCost applies if present
-    const isDoctorRejected = order.status === 'Doctor Rejected';
+    const isDoctorRejected = isDoctorRejectedStatus(order.status);
     const hasRejectionCost = isDoctorRejected && typeof order.rejectedLabCost === 'number';
-    const isRelevant = (order.status !== 'Doctor Rejected' || hasRejectionCost)
+    const isRelevant = (!isDoctorRejected || hasRejectionCost)
         && ((order.status || '').toLowerCase() === 'delivered'
             || (order.status || '').toLowerCase() === 'cancelled'
-            || (order.status || '').toLowerCase() === 'lab rejected'  // zero cost
+            || isLabRejectedStatus(order.status)
             || hasRejectionCost);
 
     if (!isRelevant) return null;
@@ -187,7 +184,7 @@ function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrde
     const isSalaried = order.designerId ? salariedDesignerIds.has(order.designerId) : false;
     let cost = getLabCostMetadata(order, isSalaried).cost;
     // Zero cost statuses
-    if (order.status === 'Cancelled' || order.status === 'Lab Rejected') cost = 0;
+    if (order.status === 'Cancelled' || isLabRejectedStatus(order.status)) cost = 0;
     else if (isDoctorRejected) {
         cost = hasRejectionCost ? order.rejectedLabCost || 0 : 0;
     }

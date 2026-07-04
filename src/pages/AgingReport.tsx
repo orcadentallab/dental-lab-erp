@@ -5,6 +5,7 @@ import { matchArabic } from '../lib/searchUtils';
 import { calculateDueDate, BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import { getLabCostMetadata } from '../constants/financialObligations';
+import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -231,7 +232,7 @@ export default function AgingReport() {
             };
         }
 
-        const visibleOrders = orders.filter(o => !o.isDeleted && (!o.isArchived || ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'].includes(o.status || '')));
+        const visibleOrders = orders.filter(o => isVisibleInAccountStatement(o));
 
         // Determine entities to process
         let targetEntities: (Doctor | Supplier | User)[] = [];
@@ -326,10 +327,11 @@ export default function AgingReport() {
                 // Supplier
                 visibleOrders.forEach(o => {
                     if (o.supplierId === entity.id) {
-                        const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
-                        const isRelevant = (o.status !== 'Rejected' || hasRejectionCost) &&
+                        const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+                        const isRelevant = (!isDoctorRejectedStatus(o.status) || hasRejectionCost) &&
                             ((o.status || '').toLowerCase() === 'delivered' ||
                              (o.status || '').toLowerCase() === 'cancelled' ||
+                             isLabRejectedStatus(o.status) ||
                              hasRejectionCost);
                         if (!isRelevant) return;
 
@@ -337,8 +339,8 @@ export default function AgingReport() {
                         const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                         let cost = getLabCostMetadata(o, isSalaried).cost;
 
-                        if (o.status === 'Cancelled') cost = 0;
-                        else if (o.status === 'Rejected') {
+                        if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
+                        else if (isDoctorRejectedStatus(o.status)) {
                             cost = hasRejectionCost ? o.rejectedLabCost! : 0;
                         }
 
@@ -386,12 +388,12 @@ export default function AgingReport() {
                 if (!isSalaried) {
                     visibleOrders.forEach(o => {
                         if (o.designerId === entity.id) {
-                            const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+                            const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                             const isRelevant = o.workflowType === 'split' &&
-                                (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
+                                (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
                             if (!isRelevant) return;
 
-                            let price = (o.status === 'Cancelled' || o.status === 'Rejected') ? 0 : (o.designPrice || 0);
+                            let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
                             if (hasRejectionCost) price = o.rejectedLabCost!;
 
                             if (price > 0) {
