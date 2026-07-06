@@ -20,7 +20,8 @@ function dbToUser(dbUser: DbUser): User {
         designerServicePrices: dbUser.designer_service_prices || undefined,
         customPermissions: dbUser.custom_permissions || undefined,
         isActive: dbUser.is_active ?? true,
-        deactivatedAt: dbUser.deactivated_at || undefined
+        deactivatedAt: dbUser.deactivated_at || undefined,
+        employeeType: dbUser.employee_type || undefined
     };
 }
 
@@ -38,7 +39,8 @@ function userToDb(user: Omit<User, 'id'>): DbUserInsert {
         designer_service_prices: user.designerServicePrices || null,
         custom_permissions: user.customPermissions || null,
         is_active: user.isActive ?? true,
-        deactivated_at: user.deactivatedAt || null
+        deactivated_at: user.deactivatedAt || null,
+        employee_type: user.employeeType || null
     };
 }
 
@@ -133,8 +135,10 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
         email: user.email || null,
         custom_permissions: user.customPermissions || null,
         is_active: user.isActive ?? true,
-        deactivated_at: user.deactivatedAt || null
+        deactivated_at: user.deactivatedAt || null,
+        employee_type: user.employeeType || null
     };
+
 
     const { error } = await supabase
         .from('users')

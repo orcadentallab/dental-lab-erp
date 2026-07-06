@@ -1841,7 +1841,8 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'status', 'isArchived', 'isDeleted'];
     const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
 
-    if (hasSensitiveUpdate && updates.isRegistered === undefined) {
+    const canChangeRegistered = !context.actorRole || ['admin', 'accountant'].includes(context.actorRole);
+    if (hasSensitiveUpdate && updates.isRegistered === undefined && canChangeRegistered) {
         // Only reset if it was previously registered
         const currentOrder = await getCurrentOrderForUpdate();
         if (currentOrder?.isRegistered) {

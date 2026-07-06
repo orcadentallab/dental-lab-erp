@@ -23,5 +23,14 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
         return <div className="p-8 text-center text-red-600">غير مصرح لك بدخول هذه الصفحة</div>;
     }
 
+    // Restrict employee-only ('other') users to their own profile page and settings only
+    if (user?.employeeType === 'other' && !['lab', 'designer', 'doctor'].includes(user.role)) {
+        const path = window.location.pathname;
+        const isSelfProfile = path === `/employees/${user.id}` || path.startsWith(`/employees/${user.id}/`);
+        if (!isSelfProfile && path !== '/settings') {
+            return <Navigate to={`/employees/${user.id}`} replace />;
+        }
+    }
+
     return <Outlet />;
 }

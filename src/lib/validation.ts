@@ -16,7 +16,8 @@ export const UserSchema = z.object({
     designerServicePrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     auth_id: z.string().uuid().optional(),
     isActive: z.boolean().optional(),
-    deactivatedAt: z.string().optional().nullable()
+    deactivatedAt: z.string().optional().nullable(),
+    employeeType: z.enum(['sales_rep', 'accountant', 'admin', 'other']).optional().nullable()
 });
 
 export const UserCreateSchema = UserSchema.extend({

@@ -32,12 +32,13 @@ export default function Users() {
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState(''); // Only for creating new users
-    const [role, setRole] = useState<'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor'>('lab');
+    const [role, setRole] = useState<'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor' | 'other'>('lab');
     const [entityId, setEntityId] = useState(''); // For linking to Supplier
     const [baseSalary, setBaseSalary] = useState(''); // New State for Payroll
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
     const [worksAsDesigner, setWorksAsDesigner] = useState(false);
     const [isActive, setIsActive] = useState(true);
+    const [showAsEmployee, setShowAsEmployee] = useState(false);
     const [designerServicePrices, setDesignerServicePrices] = useState<Record<string, number>>({});
     const visibleSuppliers = useMemo(
         () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === entityId),
@@ -111,12 +112,27 @@ export default function Users() {
             setEmail(user.email || '');
             setUsername(user.username);
             setPassword(''); // Don't show password when editing
-            setRole(user.role);
+            // If they are employeeType === 'other' and not lab, designer or doctor, UI role state is 'other'
+            if (user.employeeType === 'other' && !['lab', 'designer', 'doctor'].includes(user.role)) {
+                setRole('other');
+            } else {
+                setRole(user.role);
+            }
             setEntityId(user.entityId || '');
             setBaseSalary(user.baseSalary?.toString() || '');
             setUnitRate(user.unitRate?.toString() || '');
             setWorksAsDesigner(Boolean(user.customPermissions?.[DUAL_ROLE_DESIGNER_PERMISSION]));
             setIsActive(user.isActive !== false);
+            // showAsEmployee: explicit true/false override, else infer from role/employeeType
+            const explicitFlag = user.customPermissions?.showAsEmployee;
+            if (typeof explicitFlag === 'boolean') {
+                setShowAsEmployee(explicitFlag);
+            } else {
+                setShowAsEmployee(
+                    ['representative', 'accountant'].includes(user.role) ||
+                    ['sales_rep', 'accountant', 'admin', 'other'].includes(user.employeeType || '')
+                );
+            }
             setDesignerServicePrices(user.designerServicePrices || {});
         } else {
             setEditingUser(null);
@@ -130,6 +146,7 @@ export default function Users() {
             setUnitRate('');
             setWorksAsDesigner(false);
             setIsActive(true);
+            setShowAsEmployee(false);
             setDesignerServicePrices({});
         }
         setShowModal(true);
@@ -150,6 +167,11 @@ export default function Users() {
                 ? undefined
                 : (wasActive ? new Date().toISOString() : editingUser?.deactivatedAt);
 
+            // Persist the showAsEmployee flag explicitly so it overrides the legacy role-based inference
+            if (username !== 'admin') {
+                nextCustomPermissions.showAsEmployee = role === 'other' ? true : showAsEmployee;
+            }
+
             if ((role === 'representative' || role === 'admin') && worksAsDesigner) {
                 nextCustomPermissions[DUAL_ROLE_DESIGNER_PERMISSION] = true;
                 nextCustomPermissions[FIXED_SALARY_DESIGNER_PERMISSION] = true;
@@ -158,21 +180,25 @@ export default function Users() {
                 delete nextCustomPermissions[FIXED_SALARY_DESIGNER_PERMISSION];
             }
 
+            const dbRole = role === 'other' ? 'representative' : role;
+            const empType = role === 'other' ? 'other' : role === 'representative' ? 'sales_rep' : role === 'admin' ? 'admin' : role === 'accountant' ? 'accountant' : undefined;
+
             const userData: User & { password?: string } = {
                 id: editingUser ? editingUser.id : crypto.randomUUID(),
                 name,
                 email,
                 username,
                 ...(editingUser ? {} : { password }), // Only include password for new users
-                role,
-                entityId: (role === 'lab' || role === 'doctor') ? entityId : undefined,
-                baseSalary: (role === 'representative' || role === 'admin') ? parseFloat(baseSalary) || 0 : undefined,
-                unitRate: role === 'designer' ? parseFloat(unitRate) || 0 : undefined,
-                designerServicePrices: role === 'designer' ? designerServicePrices : undefined,
+                role: dbRole,
+                entityId: (dbRole === 'lab' || dbRole === 'doctor') ? entityId : undefined,
+                baseSalary: (dbRole !== 'lab' && dbRole !== 'doctor') ? parseFloat(baseSalary) || 0 : undefined,
+                unitRate: dbRole === 'designer' ? parseFloat(unitRate) || 0 : undefined,
+                designerServicePrices: dbRole === 'designer' ? designerServicePrices : undefined,
                 auth_id: editingUser?.auth_id,
                 customPermissions: Object.keys(nextCustomPermissions).length > 0 ? nextCustomPermissions : undefined,
                 isActive,
-                deactivatedAt
+                deactivatedAt,
+                employeeType: empType
             };
 
 
@@ -273,7 +299,8 @@ export default function Users() {
             representative: 'bg-green-100 text-green-700',
             accountant: 'bg-teal-100 text-teal-700',
             designer: 'bg-amber-100 text-amber-700',
-            doctor: 'bg-cyan-100 text-cyan-700'
+            doctor: 'bg-cyan-100 text-cyan-700',
+            other: 'bg-purple-100 text-purple-700'
         };
         const labels: Record<string, string> = {
             admin: 'مدير نظام (Admin)',
@@ -281,11 +308,15 @@ export default function Users() {
             representative: 'مندوب (Rep)',
             accountant: 'محاسب (Accountant)',
             designer: 'مصمم (Designer)',
-            doctor: 'طبيب (Doctor)'
+            doctor: 'طبيب (Doctor)',
+            other: 'موظف فقط (بدون صلاحيات)'
         };
+        const isOther = user?.employeeType === 'other' && !['lab', 'designer', 'doctor'].includes(user.role);
+        const styleClass = isOther ? styles.other : (styles[role] || 'bg-gray-100');
+        const displayLabel = isOther ? labels.other : (user ? getUserRoleDisplay(user) : (labels[role] || role));
         return (
-            <span className={`px-2 py-1 rounded text-xs font-bold ${styles[role] || 'bg-gray-100'}`}>
-                {user ? getUserRoleDisplay(user) : (labels[role] || role)}
+            <span className={`px-2 py-1 rounded text-xs font-bold ${styleClass}`}>
+                {displayLabel}
             </span>
         );
     };
@@ -337,7 +368,9 @@ export default function Users() {
                                     </div>
                                 </td>
                                 <td className="p-4 font-mono text-gray-600">{user.username}</td>
-                                <td className="p-4">{getRoleBadge(user.role, user)}</td>
+                                <td className="p-4">
+                                    {getRoleBadge(user.role, user)}
+                                </td>
                                 <td className="p-4 text-sm text-gray-500">
                                     {user.role === 'lab' && user.entityId ? (
                                         <span className="flex items-center gap-1 text-blue-600">
@@ -430,13 +463,32 @@ export default function Users() {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">الدور (Role)</label>
-                                <select className="w-full p-2 border rounded-lg" aria-label="الدور الوظيفي" value={role} onChange={e => setRole(e.target.value as User['role'])}>
+                                 <select
+                                    className="w-full p-2 border rounded-lg"
+                                    aria-label="الدور الوظيفي"
+                                    value={role}
+                                    onChange={e => {
+                                        const val = e.target.value;
+                                        if (
+                                            val === 'admin' ||
+                                            val === 'lab' ||
+                                            val === 'representative' ||
+                                            val === 'accountant' ||
+                                            val === 'designer' ||
+                                            val === 'doctor' ||
+                                            val === 'other'
+                                        ) {
+                                            setRole(val);
+                                        }
+                                    }}
+                                 >
                                     <option value="admin">مدير نظام (Admin)</option>
                                     <option value="lab">معمل خارجي (Lab)</option>
                                     <option value="representative">مندوب (Representative)</option>
                                     <option value="accountant">محاسب (Accountant)</option>
                                     <option value="designer">مصمم (Designer)</option>
                                     <option value="doctor">طبيب (Doctor)</option>
+                                    <option value="other">موظف فقط - بدون صلاحيات دخول (Other)</option>
                                 </select>
                             </div>
 
@@ -479,13 +531,20 @@ export default function Users() {
                                 </div>
                             )}
 
-                            {(role === 'representative' || role === 'admin') && (
+                             {(role !== 'lab' && role !== 'doctor') && (
                                 <div className="bg-green-50 p-3 rounded-lg border border-green-100 space-y-2">
-                                    <p className="text-xs text-green-700">
-                                        {role === 'admin'
-                                            ? 'هذا الأدمن سيظهر كمندوب في الأوردرات ويمكن تحديد مرتب ومصاريف له.'
-                                            : 'هذا المستخدم سيتمكن من إضافة حالات، وسيرى فقط الحالات التي أضافها أو التي تم تعيينه لها كمندوب.'}
-                                    </p>
+                                    {role === 'other' && (
+                                        <p className="text-xs text-purple-700 font-semibold">
+                                            هذا الحساب مخصص لمتابعة الرواتب والعهد والسلف فقط ولن يتمكن من الوصول لأي صفحات تشغيلية أو أوردرات في النظام.
+                                        </p>
+                                    )}
+                                    {(role === 'representative' || role === 'admin') && (
+                                        <p className="text-xs text-green-700">
+                                            {role === 'admin'
+                                                ? 'هذا الأدمن سيظهر كمندوب في الأوردرات ويمكن تحديد مرتب ومصاريف له.'
+                                                : 'هذا المستخدم سيتمكن من إضافة حالات، وسيرى فقط الحالات التي أضافها أو التي تم تعيينه لها كمندوب.'}
+                                        </p>
+                                    )}
                                     <div>
                                         <label className="block text-sm font-bold text-green-800 mb-1">الراتب الأساسي (Base Salary)</label>
                                         <input
@@ -498,24 +557,27 @@ export default function Users() {
                                         />
                                         <p className="text-xs text-green-600 mt-1">يُستخدم لحساب الرواتب والعمولات في صفحة شئون الموظفين.</p>
                                     </div>
-                                    <label className="flex items-start gap-3 p-3 bg-white rounded-lg border border-green-200 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            className="mt-1"
-                                            checked={worksAsDesigner}
-                                            onChange={e => setWorksAsDesigner(e.target.checked)}
-                                        />
-                                        <div>
-                                            <span className="block text-sm font-bold text-green-800">يعمل أيضاً كمصمم</span>
-                                            <span className="block text-xs text-green-700 mt-1">
-                                                سيظهر ضمن المصممين في الأوردرات، لكن حسابه يفضل بمرتب ثابت من نفس طريقة المندوب.
-                                            </span>
-                                        </div>
-                                    </label>
+                                    {(role === 'representative' || role === 'admin') && (
+                                        <label className="flex items-start gap-3 p-3 bg-white rounded-lg border border-green-200 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="mt-1"
+                                                checked={worksAsDesigner}
+                                                onChange={e => setWorksAsDesigner(e.target.checked)}
+                                            />
+                                            <div>
+                                                <span className="block text-sm font-bold text-green-800">يعمل أيضاً كمصمم</span>
+                                                <span className="block text-xs text-green-700 mt-1">
+                                                    سيظهر ضمن المصممين في الأوردرات، لكن حسابه يفضل بمرتب ثابت من نفس طريقة المندوب.
+                                                </span>
+                                            </div>
+                                        </label>
+                                    )}
                                 </div>
                             )}
 
-                            {(role === 'representative' || role === 'admin' || role === 'lab') && username !== 'admin' && (
+                            {role === 'representative' || role === 'admin' || role === 'lab' || role === 'designer' || role === 'accountant' ? (
+                                username !== 'admin' && (
                                 <label className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -529,6 +591,26 @@ export default function Users() {
                                             {role === 'lab'
                                                 ? 'عند إيقاف مستخدم المعمل لن يتغير تاريخ الأوردرات القديمة، لكن المعمل نفسه يجب إيقافه من صفحة الموردين لمنع اختياره في أوردرات جديدة.'
                                                 : 'عند إيقاف المندوب لن يظهر في إنشاء الأوردرات، ولن يظهر في رواتب الشهر الحالي وما بعده. الشهور السابقة تظل كما هي.'}
+                                        </span>
+                                    </div>
+                                </label>
+                                )
+                            ) : null}
+
+                            {/* إظهار كموظف */}
+                            {username !== 'admin' && (
+                                <label className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-1 accent-emerald-600"
+                                        checked={showAsEmployee}
+                                        onChange={e => setShowAsEmployee(e.target.checked)}
+                                    />
+                                    <div>
+                                        <span className="block text-sm font-bold text-emerald-800">إظهار كموظف في صفحة الرواتب</span>
+                                        <span className="block text-xs text-emerald-700 mt-1">
+                                            عند التفعيل يظهر هذا المستخدم في صفحة شئون الموظفين ويمكن إدارة راتبه وسلفه وعهدته.
+                                            عند الإيقاف يُخفى من القائمة دون حذف أي بيانات.
                                         </span>
                                     </div>
                                 </label>

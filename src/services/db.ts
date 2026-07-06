@@ -78,7 +78,45 @@ export interface User {
     customPermissions?: Record<string, boolean>;
     isActive?: boolean;
     deactivatedAt?: string;
+    employeeType?: 'sales_rep' | 'accountant' | 'admin' | 'other';
 }
+
+export interface EmployeeAdvance {
+    id: string;
+    employeeId: string;
+    amount: number;
+    reason: string;
+    date: string;
+    status: 'pending' | 'settled';
+    createdBy?: string | null;
+    createdAt?: string;
+}
+
+export interface EmployeeCustody {
+    id: string;
+    employeeId: string;
+    description: string;
+    amount?: number | null;
+    item?: string | null;
+    dateGiven: string;
+    dateReturned?: string | null;
+    status: 'open' | 'closed';
+    notes?: string | null;
+    createdBy?: string | null;
+    createdAt?: string;
+}
+
+export interface EmployeeCommission {
+    id: string;
+    employeeId: string;
+    amount: number;
+    date: string;
+    period: string; // YYYY-MM
+    note?: string | null;
+    createdBy?: string | null;
+    createdAt?: string;
+}
+
 
 export interface Expense {
     id: string;
@@ -537,7 +575,7 @@ class MockDB {
         const { getUsers } = await import('./supabase/users');
         return getUsers();
     }
-    async addUser(user: User): Promise<void> {
+    async addUser(user: User & { password?: string }): Promise<void> {
         const { addUser } = await import('./supabase/users');
         return addUser(user);
     }
@@ -962,6 +1000,46 @@ class MockDB {
     ): Promise<AgingBuckets> {
         const { getEntityAgingSummary } = await import('./supabase/collections');
         return getEntityAgingSummary(entityType, entityId, direction, asOfDate);
+    }
+
+    // --- EMPLOYEE AFFAIRS ---
+    async getEmployeeAdvances(employeeId?: string): Promise<EmployeeAdvance[]> {
+        const { getEmployeeAdvances } = await import('./supabase/employees');
+        return getEmployeeAdvances(employeeId);
+    }
+    async addEmployeeAdvance(advance: Omit<EmployeeAdvance, 'id' | 'createdAt'>): Promise<void> {
+        const { addEmployeeAdvance } = await import('./supabase/employees');
+        return addEmployeeAdvance(advance);
+    }
+    async updateEmployeeAdvance(id: string, updates: Partial<EmployeeAdvance>): Promise<void> {
+        const { updateEmployeeAdvance } = await import('./supabase/employees');
+        return updateEmployeeAdvance(id, updates);
+    }
+
+    async getEmployeeCustodies(employeeId?: string): Promise<EmployeeCustody[]> {
+        const { getEmployeeCustodies } = await import('./supabase/employees');
+        return getEmployeeCustodies(employeeId);
+    }
+    async addEmployeeCustody(custody: Omit<EmployeeCustody, 'id' | 'createdAt'>): Promise<void> {
+        const { addEmployeeCustody } = await import('./supabase/employees');
+        return addEmployeeCustody(custody);
+    }
+    async updateEmployeeCustody(id: string, updates: Partial<EmployeeCustody>): Promise<void> {
+        const { updateEmployeeCustody } = await import('./supabase/employees');
+        return updateEmployeeCustody(id, updates);
+    }
+
+    async getEmployeeCommissions(employeeId?: string, period?: string): Promise<EmployeeCommission[]> {
+        const { getEmployeeCommissions } = await import('./supabase/employees');
+        return getEmployeeCommissions(employeeId, period);
+    }
+    async addEmployeeCommission(commission: Omit<EmployeeCommission, 'id' | 'createdAt'>): Promise<void> {
+        const { addEmployeeCommission } = await import('./supabase/employees');
+        return addEmployeeCommission(commission);
+    }
+    async deleteEmployeeCommission(id: string): Promise<void> {
+        const { deleteEmployeeCommission } = await import('./supabase/employees');
+        return deleteEmployeeCommission(id);
     }
 
     exportData() { return '{}'; }

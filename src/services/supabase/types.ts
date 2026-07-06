@@ -163,6 +163,7 @@ export interface DbUser {
     deactivated_at?: string | null;
     created_at: string;
     updated_at: string;
+    employee_type?: 'sales_rep' | 'accountant' | 'admin' | 'other' | null;
 }
 
 export type DbServiceInsert = Omit<DbService, 'id' | 'created_at' | 'updated_at'>;
@@ -197,3 +198,48 @@ export type DbOrderCommentRowInsert = Omit<DbOrderCommentRow, 'id' | 'created_at
 
 export type DbUserInsert = Omit<DbUser, 'id' | 'created_at' | 'updated_at'>;
 export type DbUserUpdate = Partial<Omit<DbUser, 'id' | 'created_at' | 'updated_at'>>;
+
+export interface DbEmployeeAdvance {
+    id: string;
+    employee_id: string;
+    amount: number;
+    reason: string;
+    date: string;
+    status: 'pending' | 'settled';
+    created_by?: string | null;
+    created_at: string;
+}
+
+export type DbEmployeeAdvanceInsert = Omit<DbEmployeeAdvance, 'id' | 'created_at'>;
+export type DbEmployeeAdvanceUpdate = Partial<Omit<DbEmployeeAdvance, 'id' | 'created_at'>>;
+
+export interface DbEmployeeCustody {
+    id: string;
+    employee_id: string;
+    description: string;
+    amount?: number | null;
+    item?: string | null;
+    date_given: string;
+    date_returned?: string | null;
+    status: 'open' | 'closed';
+    notes?: string | null;
+    created_by?: string | null;
+    created_at: string;
+}
+
+export type DbEmployeeCustodyInsert = Omit<DbEmployeeCustody, 'id' | 'created_at'>;
+export type DbEmployeeCustodyUpdate = Partial<Omit<DbEmployeeCustody, 'id' | 'created_at'>>;
+
+export interface DbEmployeeCommission {
+    id: string;
+    employee_id: string;
+    amount: number;
+    date: string;
+    period: string; // YYYY-MM
+    note?: string | null;
+    created_by?: string | null;
+    created_at: string;
+}
+
+export type DbEmployeeCommissionInsert = Omit<DbEmployeeCommission, 'id' | 'created_at'>;
+export type DbEmployeeCommissionUpdate = Partial<Omit<DbEmployeeCommission, 'id' | 'created_at'>>;

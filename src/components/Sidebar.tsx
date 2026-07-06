@@ -71,6 +71,7 @@ export default function Sidebar() {
                 { name: 'الفواتير', href: '/statements', icon: Receipt, roles: ['admin', 'accountant'] },
                 { name: 'أعمار الديون', href: '/aging-report', icon: Clock, roles: ['admin', 'accountant'] },
                 { name: t.nav.caseRegistration, href: '/case-registration', icon: FileText, roles: ['admin', 'accountant'] },
+                { name: 'متابعة وتنشيط الأطباء', href: '/doctors/retention', icon: Users, roles: ['admin'] },
             ]
         },
         {
@@ -81,6 +82,7 @@ export default function Sidebar() {
             items: [
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
                 { name: 'تقرير المشكلات', href: '/issues-report', icon: BarChart3, roles: ['admin'] },
+                { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
                 { name: 'إحصائيات المصممين', href: '/designer-stats', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
                 { name: 'تحليلات التسويق', href: '/marketing-analytics', icon: Megaphone, roles: ['admin'] },
@@ -94,9 +96,8 @@ export default function Sidebar() {
             items: [
                 { name: t.nav.doctors, href: '/doctors', icon: Users, roles: ['admin', 'representative'] },
                 { name: t.nav.suppliers, href: '/suppliers', icon: Factory, roles: ['admin', 'accountant'] },
-                { name: t.nav.staff, href: '/staff', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
                 { name: 'الخدمات وأسعارها', href: '/services', icon: Layers, roles: ['admin'] },
-                { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
+                { name: t.nav.staff, href: '/employees', icon: Briefcase, roles: ['admin', 'accountant', 'representative'] },
                 { name: t.nav.users, href: '/users', icon: Shield, roles: ['admin'] },
                 { name: t.nav.settings, href: '/settings', icon: Settings, roles: ['admin', 'lab', 'representative', 'accountant'] },
             ]
@@ -114,12 +115,26 @@ export default function Sidebar() {
         }
     ];
 
-    const filteredGroups = navGroups
-        .map(group => ({
-            ...group,
-            items: group.items.filter(item => user && (item.roles.includes(user.role) || (item.roles.includes('designer') && isDesignerUser(user))))
-        }))
-        .filter(group => group.items.length > 0);
+    const isOtherEmployeeOnly = user?.employeeType === 'other' && !['lab', 'designer', 'doctor'].includes(user.role);
+
+    const filteredGroups = isOtherEmployeeOnly
+        ? [
+            {
+                id: 'other_portal',
+                label: 'ملفي المالي',
+                icon: Briefcase,
+                defaultOpen: true,
+                items: [
+                    { name: 'ملفي المالي', href: `/employees/${user?.id}`, icon: Briefcase, roles: [user?.role || ''] }
+                ]
+            }
+          ]
+        : navGroups
+            .map(group => ({
+                ...group,
+                items: group.items.filter(item => user && (item.roles.includes(user.role) || (item.roles.includes('designer') && isDesignerUser(user))))
+            }))
+            .filter(group => group.items.length > 0);
 
     // Initialize open groups: default-open groups + group containing active route
     const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {

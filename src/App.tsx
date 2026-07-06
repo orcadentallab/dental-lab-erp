@@ -15,7 +15,8 @@ import ServicesPage from './pages/Services';
 import QualityDashboard from './pages/Quality';
 import AIAnalytics from './pages/AIAnalytics';
 import CaseRegistration from './pages/CaseRegistration';
-import Staff from './pages/Staff';
+import Employees from './pages/Employees';
+import EmployeeDetail from './pages/EmployeeDetail';
 import IssuesReport from './pages/IssuesReport';
 import NewOrderRequest from './pages/doctor/NewOrderRequest';
 import DoctorOrders from './pages/doctor/DoctorOrders';
@@ -23,6 +24,8 @@ import DoctorFinance from './pages/doctor/DoctorFinance';
 import BalanceSnapshot from './pages/BalanceSnapshot';
 import Statements from './pages/Statements';
 import AgingReport from './pages/AgingReport';
+
+import DoctorRetention from './pages/DoctorRetention';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -56,6 +59,7 @@ function App() {
                         <Route path="/orders" element={<Orders />} />
                         <Route element={<ProtectedRoute allowedRoles={['admin', 'representative']} />}>
                           <Route path="/doctors" element={<Doctors />} />
+                          <Route path="/doctors/retention" element={<DoctorRetention />} />
                         </Route>
                         <Route element={<ProtectedRoute allowedRoles={['admin', 'representative', 'lab']} />}>
                           <Route path="/quality" element={<QualityDashboard />} />
@@ -81,7 +85,9 @@ function App() {
                   {/* Staff Affairs: Admin, Accountant, Representative */}
                   <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'representative']} />}>
                     <Route element={<DashboardLayout />}>
-                      <Route path="/staff" element={<Staff />} />
+                      <Route path="/employees" element={<Employees />} />
+                      <Route path="/employees/:id" element={<EmployeeDetail />} />
+                      <Route path="/staff" element={<Navigate to="/employees" replace />} />
                     </Route>
                   </Route>
 
