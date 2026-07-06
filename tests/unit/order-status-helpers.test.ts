@@ -4,7 +4,7 @@ import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatu
 describe('Order Status Helpers - Financial Relevance & Statement Visibility', () => {
     describe('isVisibleInAccountStatement', () => {
         it('should show terminal orders when not deleted', () => {
-            const terminalStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'];
+            const terminalStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'];
             for (const status of terminalStatuses) {
                 expect(isVisibleInAccountStatement({ status, isDeleted: false })).toBe(true);
                 expect(isVisibleInAccountStatement({ status, isDeleted: null })).toBe(true);
@@ -14,7 +14,7 @@ describe('Order Status Helpers - Financial Relevance & Statement Visibility', ()
         });
 
         it('should NOT show terminal orders when isDeleted is true', () => {
-            const terminalStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'];
+            const terminalStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'];
             for (const status of terminalStatuses) {
                 expect(isVisibleInAccountStatement({ status, isDeleted: true })).toBe(false);
                 expect(isVisibleInAccountStatement({ status, isDeleted: true, isArchived: true })).toBe(false);
@@ -40,8 +40,9 @@ describe('Order Status Helpers - Financial Relevance & Statement Visibility', ()
     });
 
     describe('isDoctorRejectedStatus', () => {
-        it('should return true only for Doctor Rejected', () => {
+        it('should return true for Doctor Rejected and legacy Rejected', () => {
             expect(isDoctorRejectedStatus('Doctor Rejected')).toBe(true);
+            expect(isDoctorRejectedStatus('Rejected')).toBe(true);
             expect(isDoctorRejectedStatus('Lab Rejected')).toBe(false);
             expect(isDoctorRejectedStatus(null)).toBe(false);
         });

@@ -53,6 +53,8 @@ export const DOCTOR_STATEMENT_INCLUDED_STATUSES = [
     'completed',
     'cancelled',
     'rejected',
+    'doctor rejected',
+    'lab rejected',
 ] as const;
 
 type LifecycleOrder = Partial<Order> & {

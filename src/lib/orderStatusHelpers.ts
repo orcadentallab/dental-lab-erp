@@ -1,4 +1,4 @@
-export const TERMINAL_STATUSES = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled'];
+export const TERMINAL_STATUSES = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'];
 
 export interface OrderLike {
     status?: string | null;
@@ -12,7 +12,7 @@ export const isVisibleInAccountStatement = (order: OrderLike): boolean => {
 };
 
 export const isDoctorRejectedStatus = (status: string | undefined | null): boolean => {
-    return status === 'Doctor Rejected';
+    return status === 'Doctor Rejected' || status === 'Rejected';
 };
 
 export const isLabRejectedStatus = (status: string | undefined | null): boolean => {
