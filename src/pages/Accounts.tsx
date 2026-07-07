@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type Service } from '../services/db';
-import { Printer, ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown, Receipt } from 'lucide-react';
+import { ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown, Receipt } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 import { statementService, type StatementResult } from '../services/statementService';
@@ -55,7 +55,7 @@ const formatDateInput = (date: Date) => {
 
 const getOperationalOrderDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
 
-const ZERO_VALUE_STATUSES_SET = new Set(['rejected', 'doctor rejected', 'lab rejected', 'cancelled']);
+const ZERO_VALUE_STATUSES_SET = new Set(['rejected', 'doctor rejected', 'lab rejected', 'cancelled', 'returned for adjustments']);
 const getOrderDisplayValue = (order: Partial<Order>) => {
     if (ZERO_VALUE_STATUSES_SET.has((order.status || '').trim().toLowerCase())) return 0;
     return order.totalPrice || 0;
@@ -353,7 +353,10 @@ export default function Accounts() {
         const getDoctorSummaryId = (doctorId: string) => doctorParentById.get(doctorId) || doctorId;
         const isInSelectedRange = (date?: string) => {
             const day = (date || '').split('T')[0];
-            if (!day) return false;
+            if (!day) {
+                // No date on the order — include it only when no date range is active (all-dates mode)
+                return !dateRange.start && !dateRange.end;
+            }
             if (dateRange.start && day < dateRange.start) return false;
             if (dateRange.end && day > dateRange.end) return false;
             return true;
@@ -367,10 +370,13 @@ export default function Accounts() {
         };
 
         for (const o of allOrders) {
-            if (!isVisibleInAccountStatement(o)) continue;
+            // Skip deleted orders always
+            if (o.isDeleted) continue;
 
             if (activeTab === 'doctors' && o.doctorId) {
                 if (!isInSelectedRange(getOfficialStatementDate(o))) continue;
+                // Use isDoctorStatementIncluded (case-insensitive via normalizeStatus) as the
+                // primary gate for doctors — avoids case-sensitivity issues with isVisibleInAccountStatement
                 const isRelevant = showAllOrders || isDoctorStatementIncluded(o);
 
                 if (isRelevant) {
@@ -591,7 +597,7 @@ export default function Accounts() {
             // Orders before the period
             const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
             const beforeOrders = relevantOrders.filter(o => {
-                if (!isVisibleInAccountStatement(o)) return false;
+                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
                 const isDirectOrder = o.doctorId === selectedEntityId;
                 const isChildOrder = selectedIsCenter && o.doctorId &&
                     doctors.find(d => d.id === o.doctorId)?.parentId === selectedEntityId;
@@ -599,9 +605,13 @@ export default function Accounts() {
                 if (childDoctorFilter && o.doctorId !== childDoctorFilter) return false;
                 if (branchFilter && o.branchName !== branchFilter) return false;
                 const orderDate = getOfficialStatementDate(o);
+                if (showAllOrders) return orderDate < dateRange.start;
                 return orderDate < dateRange.start && isDoctorStatementIncluded(o);
             });
-            openingDebit = beforeOrders.reduce((sum, o) => sum + getDoctorReceivableAmount(o), 0);
+            openingDebit = beforeOrders.reduce((sum, o) => {
+                const amount = showAllOrders ? getOrderDisplayValue(o) : getDoctorReceivableAmount(o);
+                return sum + amount;
+            }, 0);
 
             // Transactions before the period
             const beforeTx = relevantTransactions.filter(t => {
@@ -633,7 +643,7 @@ export default function Accounts() {
             return openingDebit - openingCredit;
         } else if (activeTab === 'suppliers') {
             const beforeOrders = relevantOrders.filter(o => {
-                if (!isVisibleInAccountStatement(o)) return false;
+                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
                 if (o.supplierId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
                 const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -675,7 +685,7 @@ export default function Accounts() {
             return openingCredit - openingDebit;
         } else if (activeTab === 'designers') {
             const beforeOrders = relevantOrders.filter(o => {
-                if (!isVisibleInAccountStatement(o)) return false;
+                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
                 if (o.designerId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
                 const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -733,7 +743,7 @@ export default function Accounts() {
             const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
 
             const docOrders = relevantOrders.filter(o => {
-                if (!isVisibleInAccountStatement(o)) return false;
+                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
                 // Match direct orders OR orders by child doctors of the selected center
                 const isDirectOrder = o.doctorId === selectedEntityId;
                 const isChildOrder = selectedIsCenter && o.doctorId &&
@@ -795,7 +805,7 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'suppliers') {
-            const supOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
+            const supOrders = relevantOrders.filter(o => (isVisibleInAccountStatement(o) || showAllOrders) && o.supplierId === selectedEntityId && (showAllOrders || o.status === 'Delivered' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
             items = supOrders.map(o => {
                 const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const designer = designers.find(d => d.id === o.designerId);
@@ -837,7 +847,7 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => isVisibleInAccountStatement(o) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
+            const desOrders = relevantOrders.filter(o => (isVisibleInAccountStatement(o) || showAllOrders) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
             
             const designerUser = designers.find(d => d.id === selectedEntityId);
             const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
@@ -958,22 +968,7 @@ export default function Accounts() {
     }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter, branchFilter]);
 
 
-    const handlePrint = async () => {
-        if (!selectedEntityId || !individualStatement) return;
-        const entityName = getSelectedEntityName();
-        const doctor = doctors.find(d => d.id === selectedEntityId);
-        const filteredDoctor = childDoctorFilter ? doctors.find(d => d.id === childDoctorFilter) : undefined;
 
-        const statementForPdf: StatementResult = {
-            ...individualStatement,
-            items: individualStatement.items.filter(i => !i.isHidden),
-            doctorName: entityName,
-            doctorCode: doctor?.doctorCode,
-            filteredDoctorName: filteredDoctor?.name
-        };
-
-        await generateDoctorStatementPDF(statementForPdf, dateRange, DEFAULT_LAB_INFO, { print: true });
-    };
 
     const handleExportStatementPDF = async () => {
         if (!selectedEntityId || !individualStatement) return;
@@ -1429,8 +1424,8 @@ export default function Accounts() {
 
                     <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl overflow-x-auto">
                         {([
-                            { id: 'currentMonth', label: `الشهر الحالي (${monthLabel(0)})` },
-                            { id: 'previousMonth', label: `الشهر السابق (${monthLabel(-1)})` },
+                            { id: 'currentMonth', label: `الحالي (${monthLabel(0)})` },
+                            { id: 'previousMonth', label: `السابق (${monthLabel(-1)})` },
                             { id: 'all', label: 'الكل' },
                         ] as { id: TimeFilter; label: string }[]).map((filter) => (
                             <button
@@ -1746,8 +1741,8 @@ export default function Accounts() {
                 {/* Time Filter Pills */}
                 <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl overflow-x-auto">
                     {([
-                        { id: 'currentMonth', label: `الشهر الحالي (${monthLabel(0)})` },
-                        { id: 'previousMonth', label: `الشهر السابق (${monthLabel(-1)})` },
+                        { id: 'currentMonth', label: `الحالي (${monthLabel(0)})` },
+                        { id: 'previousMonth', label: `السابق (${monthLabel(-1)})` },
                         { id: 'all', label: 'الكل' },
                     ] as { id: TimeFilter; label: string }[]).map((filter) => (
                         <button
@@ -1830,9 +1825,6 @@ export default function Accounts() {
                         className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all"
                     >
                         <FileSpreadsheet size={18} /> تصدير
-                    </button>
-                    <button onClick={handlePrint} className="bg-slate-800 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-900 shadow-lg shadow-slate-200 transition-all">
-                        <Printer size={18} /> طباعة
                     </button>
                     <button onClick={handleExportStatementPDF} className="bg-blue-600 text-white px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">
                         <FileDown size={18} /> PDF
@@ -2000,16 +1992,18 @@ export default function Accounts() {
                                 ? (individualStatement.totals.allOrdersDisplayTotal ?? individualStatement.totals.totalDebit)
                                 : individualStatement.totals.totalDebit;
                             const effectiveBalance = effectiveDebit - individualStatement.totals.totalCredit + individualStatement.totals.openingBalance;
+                            const isRed = activeTab === 'doctors' ? effectiveBalance > 0 : effectiveBalance < 0;
                             return (
                                 <>
-                                    <p className={clsx("text-xl font-black", effectiveBalance > 0 ? "text-rose-600" : "text-emerald-600")}>
+                                    <p className={clsx("text-xl font-black", isRed ? "text-rose-600" : "text-emerald-600")}>
                                         {Math.abs(effectiveBalance).toLocaleString()}
                                         <span className="text-xs font-normal text-gray-400 mr-1">ج.م</span>
                                     </p>
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {effectiveBalance > 0
-                                            ? (activeTab === 'doctors' ? 'مطلوب سداده' : 'مستحق له')
-                                            : (activeTab === 'doctors' ? 'رصيد دائن' : 'مدفوع زيادة')}
+                                        {activeTab === 'doctors'
+                                            ? (effectiveBalance > 0 ? 'مطلوب سداده' : 'رصيد دائن')
+                                            : (effectiveBalance < 0 ? 'مستحق له' : 'مدفوع زيادة')
+                                        }
                                     </p>
                                 </>
                             );

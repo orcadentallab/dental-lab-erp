@@ -88,8 +88,8 @@ const isInRange = (dateStr: string, start: string, end: string) => {
     return true;
 };
 
-const isVisible = (order: Partial<Order>) => {
-    return isVisibleInAccountStatement(order);
+const isVisible = (order: Partial<Order>, showAll: boolean = false) => {
+    return isVisibleInAccountStatement(order) || showAll;
 };
 
 // For "all" time filter: get receivable amount for any order status
@@ -253,7 +253,7 @@ export default function StatementsPage() {
             const countMap = new Map<string, number>();
 
             for (const o of orders) {
-                if (!isVisible(o) || !o.doctorId) continue;
+                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (!inRange(statDate)) continue;
                 // "all" filter: show every order regardless of status (rejected/cancelled = 0)
@@ -289,7 +289,7 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!isVisible(o) || !o.supplierId) continue;
+                if (!isVisible(o, timeFilter === 'all') || !o.supplierId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -325,7 +325,7 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!isVisible(o) || !o.designerId || o.workflowType !== 'split') continue;
+                if (!isVisible(o, timeFilter === 'all') || !o.designerId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -376,7 +376,7 @@ export default function StatementsPage() {
 
         if (activeTab === 'doctors') {
             for (const o of orders) {
-                if (!isVisible(o) || !o.doctorId) continue;
+                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
@@ -417,7 +417,7 @@ export default function StatementsPage() {
 
         if (activeTab === 'suppliers') {
             for (const o of orders) {
-                if (!isVisible(o) || o.supplierId !== selectedId) continue;
+                if (!isVisible(o, timeFilter === 'all') || o.supplierId !== selectedId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -453,7 +453,7 @@ export default function StatementsPage() {
 
         if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!isVisible(o) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (!isVisible(o, timeFilter === 'all') || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -515,7 +515,7 @@ export default function StatementsPage() {
 
         if (activeTab === 'doctors') {
             for (const o of orders) {
-                if (!isVisible(o) || !o.doctorId) continue;
+                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
@@ -541,7 +541,7 @@ export default function StatementsPage() {
             }
 
             for (const o of orders) {
-                if (!isVisible(o) || !o.doctorId) continue;
+                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
@@ -563,7 +563,7 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'suppliers') {
             for (const o of orders) {
-                if (!isVisible(o) || o.supplierId !== selectedId) continue;
+                if (!isVisible(o, timeFilter === 'all') || o.supplierId !== selectedId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const relevant = (!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost);
@@ -605,7 +605,7 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!isVisible(o) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (!isVisible(o, timeFilter === 'all') || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const relevant = o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;

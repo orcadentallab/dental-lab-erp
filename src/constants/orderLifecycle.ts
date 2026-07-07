@@ -55,6 +55,7 @@ export const DOCTOR_STATEMENT_INCLUDED_STATUSES = [
     'rejected',
     'doctor rejected',
     'lab rejected',
+    'returned for adjustments',
 ] as const;
 
 type LifecycleOrder = Partial<Order> & {
@@ -212,7 +213,7 @@ export function isExternalLabPayableEligible(order: LifecycleOrder): boolean {
 export function isDeliveredForDoctorReceivable(order: LifecycleOrder): boolean {
     const status = getProductionStatus(order);
     const issue = getEffectiveIssueState(order);
-    return status === 'final_delivered' && !['cancelled', 'rejected', 'redo'].includes(issue);
+    return status === 'final_delivered' && !['cancelled', 'rejected', 'redo', 'returned', 'doctor_rejected', 'lab_rejected'].includes(issue);
 }
 
 export function isBillableToDoctor(order: LifecycleOrder): boolean {

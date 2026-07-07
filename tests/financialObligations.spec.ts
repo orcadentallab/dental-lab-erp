@@ -1157,7 +1157,7 @@ test.describe('financial obligations service wiring', () => {
         expect(reconciliationSource).toContain("transaction.type === 'expense'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'doctor'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'supplier'");
-        expect(reconciliationSource).toContain("const isDoctorRejected = order.status === 'Doctor Rejected';");
+        expect(reconciliationSource).toContain("const isDoctorRejected = isDoctorRejectedStatus(order.status);");
         expect(reconciliationSource).toContain("const hasRejectionCost = isDoctorRejected && typeof order.rejectedLabCost === 'number';");
         expect(reconciliationSource).toContain("getLabCostMetadata(order, isSalaried)");
     });

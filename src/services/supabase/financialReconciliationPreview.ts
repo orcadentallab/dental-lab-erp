@@ -254,44 +254,69 @@ export async function previewFinancialReconciliation(
     const search = params.search?.trim();
     const hasDateRange = Boolean(params.dateFrom || params.dateTo);
 
-    const [
-        doctorsResult,
-        suppliersResult,
-        ordersResult,
-        transactionsResult,
-        obligationsResult,
-        adjustmentsResult,
-        usersResult,
-    ] = await Promise.all([
-        supabase.from('doctors').select('id, name, parent_id, is_center'),
-        supabase.from('suppliers').select('id, name'),
-        supabase.from('orders').select('id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost'),
-        supabase.from('transactions').select('id, type, amount, date, category, description, entity_id, entity_type'),
-        supabase.from('financial_obligations').select('order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status').neq('status', 'void'),
-        supabase.from('adjustments').select('entity_type, entity_id, amount, type, date'),
-        supabase.from('users').select('id, custom_permissions'),
-    ]);
+    const fetchAllRows = async <T = unknown>(table: string, selectFields: string): Promise<T[]> => {
+        let allData: T[] = [];
+        let from = 0;
+        const limit = 1000;
+        let hasMore = true;
+        while (hasMore) {
+            const { data, error } = await supabase.from(table).select(selectFields).range(from, from + limit - 1);
+            if (error) throw error;
+            allData = allData.concat((data || []) as unknown as T[]);
+            if (!data || data.length < limit) {
+                hasMore = false;
+            } else {
+                from += limit;
+            }
+        }
+        return allData;
+    };
 
-    if (doctorsResult.error) throw ErrorHandler.handle(doctorsResult.error, 'previewFinancialReconciliation.doctors');
-    if (suppliersResult.error) throw ErrorHandler.handle(suppliersResult.error, 'previewFinancialReconciliation.suppliers');
-    if (ordersResult.error) throw ErrorHandler.handle(ordersResult.error, 'previewFinancialReconciliation.orders');
-    if (transactionsResult.error) throw ErrorHandler.handle(transactionsResult.error, 'previewFinancialReconciliation.transactions');
-    if (obligationsResult.error) throw ErrorHandler.handle(obligationsResult.error, 'previewFinancialReconciliation.obligations');
-    if (adjustmentsResult.error) throw ErrorHandler.handle(adjustmentsResult.error, 'previewFinancialReconciliation.adjustments');
-    if (usersResult.error) throw ErrorHandler.handle(usersResult.error, 'previewFinancialReconciliation.users');
+    let doctors: DoctorRow[] = [];
+    let suppliers: SupplierRow[] = [];
+    let orders: ReturnType<typeof toLifecycleOrder>[] = [];
+    let transactions: TransactionRow[] = [];
+    let obligations: ObligationRow[] = [];
+    let adjustments: Adjustment[] = [];
+    let salariedDesignerIds = new Set<string>();
 
-    const doctors = (doctorsResult.data || []) as DoctorRow[];
-    const suppliers = (suppliersResult.data || []) as SupplierRow[];
-    const orders = ((ordersResult.data || []) as OrderRow[]).map(toLifecycleOrder);
-    const transactions = (transactionsResult.data || []) as TransactionRow[];
-    const obligations = (obligationsResult.data || []) as ObligationRow[];
-    const adjustments = (adjustmentsResult.data || []) as Adjustment[];
+    try {
+        const [
+            doctorsResult,
+            suppliersResult,
+            ordersData,
+            transactionsData,
+            obligationsData,
+            adjustmentsData,
+            usersResult,
+        ] = await Promise.all([
+            supabase.from('doctors').select('id, name, parent_id, is_center'),
+            supabase.from('suppliers').select('id, name'),
+            fetchAllRows<OrderRow>('orders', 'id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost'),
+            fetchAllRows<TransactionRow>('transactions', 'id, type, amount, date, category, description, entity_id, entity_type'),
+            fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status'),
+            fetchAllRows<Adjustment>('adjustments', 'entity_type, entity_id, amount, type, date'),
+            supabase.from('users').select('id, custom_permissions'),
+        ]);
 
-    const salariedDesignerIds = new Set(
-        (usersResult.data || [])
-            .filter(u => u.custom_permissions && u.custom_permissions['designer_fixed_salary'])
-            .map(u => u.id)
-    );
+        if (doctorsResult.error) throw ErrorHandler.handle(doctorsResult.error, 'previewFinancialReconciliation.doctors');
+        if (suppliersResult.error) throw ErrorHandler.handle(suppliersResult.error, 'previewFinancialReconciliation.suppliers');
+        if (usersResult.error) throw ErrorHandler.handle(usersResult.error, 'previewFinancialReconciliation.users');
+
+        doctors = (doctorsResult.data || []) as DoctorRow[];
+        suppliers = (suppliersResult.data || []) as SupplierRow[];
+        orders = (ordersData as OrderRow[]).map(toLifecycleOrder);
+        transactions = transactionsData as TransactionRow[];
+        obligations = (obligationsData as ObligationRow[]).filter(o => o.status !== 'void');
+        adjustments = adjustmentsData as Adjustment[];
+        salariedDesignerIds = new Set(
+            (usersResult.data || [])
+                .filter(u => u.custom_permissions && u.custom_permissions['designer_fixed_salary'])
+                .map(u => u.id)
+        );
+    } catch (err) {
+        throw ErrorHandler.handle(err, 'previewFinancialReconciliation.fetch');
+    }
 
     const parentByDoctorId = new Map(doctors.map(doctor => [doctor.id, doctor.parent_id || doctor.id]));
     const doctorNames = new Map(doctors.map(doctor => [doctor.id, doctor.name]));

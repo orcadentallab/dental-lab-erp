@@ -34,3 +34,17 @@ When an order is archived (soft-deleted), its obligations (doctor receivable, de
 ### Description
 If voiding an individual financial obligation fails during order archiving/deletion (e.g. database connection drop or check constraint error), the exception is caught, and an error prefixed with `[ORPHANED_OBLIGATION_ERROR]` is logged. Since we do not have a dedicated `reconciliation_flags` database table, these logs must be monitored to review and manually reconcile orphaned obligations.
 
+---
+
+## TD-004: Client-side full-table aggregation for financial summaries
+
+### Description
+Financial summaries on pages like Accounts, Aging Report, Balance Snapshot, and Statements pull the entire `orders` and `transactions` tables to the client browser to calculate debits/credits. This was capped silently at 1000 rows by Supabase's default PostgREST limit, requiring a chunked range-based loop pagination fix. 
+
+### Proposed Fix
+Long-term, client-side aggregation will not scale as the database grows to tens of thousands of rows (creating high network overhead and slow page loads). These aggregations should be moved to database-level SQL queries, views, or RPC functions (e.g. returning aggregated balances per entity ID directly from Postgres).
+
+### Priority
+* **Priority**: MEDIUM
+* **Timeline**: Implement when database size approaches ~5,000+ orders.
+

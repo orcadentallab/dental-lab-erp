@@ -1326,78 +1326,147 @@ export async function getDesignerDashboardOrders(designerId?: string): Promise<O
  * @deprecated Use getOrders(page, limit, filters) instead.
  * This function fetches ALL orders and should only be used for exports or legacy code.
  */
-export async function getAllOrdersUnpaginated(): Promise<Order[]> {
-    // console.warn('getAllOrdersUnpaginated: This function fetches all orders. Use getOrders() with pagination for normal use.');
-    const { data, error } = await supabase
-        .from('orders')
-        .select('*, order_items(*), order_comments(*)')
-        .order('created_at', { ascending: false })
-        .range(0, 4999); // Fetch up to 5000 orders (Safe limit for single request)
 
-    if (error) {
-        throw ErrorHandler.handle(error, 'getAllOrdersUnpaginated');
+
+export async function getAllOrdersUnpaginated(): Promise<Order[]> {
+    let allData: DbOrderWithRelations[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .order('created_at', { ascending: false })
+            .range(from, from + limit - 1);
+
+        if (error) {
+            throw ErrorHandler.handle(error, 'getAllOrdersUnpaginated');
+        }
+
+        allData = allData.concat((data || []) as unknown as DbOrderWithRelations[]);
+        if (!data || data.length < limit) {
+            hasMore = false;
+        } else {
+            from += limit;
+        }
     }
 
-    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+    return allData.map(d => dbToOrder(d));
 }
 
 /**
- * Heavy-duty fetch for Exports. Range up to 20,000.
+ * Heavy-duty fetch for Exports.
  */
 export async function fetchAllOrdersForExport(): Promise<Order[]> {
-    const { data, error } = await supabase
-        .from('orders')
-        .select('*, order_items(*), order_comments(*)')
-        .order('created_at', { ascending: false })
-        .range(0, 19999);
+    let allData: DbOrderWithRelations[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
 
-    if (error) throw ErrorHandler.handle(error, 'fetchAllOrdersForExport');
-    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .order('created_at', { ascending: false })
+            .range(from, from + limit - 1);
+
+        if (error) throw ErrorHandler.handle(error, 'fetchAllOrdersForExport');
+
+        allData = allData.concat((data || []) as unknown as DbOrderWithRelations[]);
+        if (!data || data.length < limit) {
+            hasMore = false;
+        } else {
+            from += limit;
+        }
+    }
+
+    return allData.map(d => dbToOrder(d));
 }
 
 /**
  * LIGHTWEIGHT fetch for Finance Summary (Accounts Page)
  * Fetches only ID, Status, Prices, Dates to calculate totals.
- * Range: 0-9999 (Should be enough for summary, or we can paginate later)
  */
 interface RawOrderItem {
     product_type: string;
     teeth_numbers?: string[] | null;
 }
 
-export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
-    const { data, error } = await supabase
-        .from('orders')
-        .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
-        .order('created_at', { ascending: false })
-        .range(0, 9999);
+interface FinanceSummaryDbRow {
+    id: string;
+    case_id: string | null;
+    patient_name: string | null;
+    doctor_id: string | null;
+    supplier_id: string | null;
+    designer_id: string | null;
+    status: string | null;
+    total_price: number | null;
+    cost: number | null;
+    design_price: number | null;
+    manual_cost: number | null;
+    manual_design_price: number | null;
+    workflow_type: string | null;
+    design_status: string | null;
+    created_at: string | null;
+    delivery_date: string | null;
+    actual_delivery_date: string | null;
+    is_archived: boolean | null;
+    is_deleted: boolean | null;
+    rejected_lab_cost: number | null;
+    production_status: string | null;
+    issue_state: string | null;
+    order_items: { product_type: string; teeth_numbers?: string[] | null }[] | null;
+}
 
-    if (error) throw ErrorHandler.handle(error, 'getOrdersForFinanceSummary');
+export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
+    let allData: FinanceSummaryDbRow[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
+            .order('created_at', { ascending: false })
+            .range(from, from + limit - 1);
+
+        if (error) throw ErrorHandler.handle(error, 'getOrdersForFinanceSummary');
+
+        allData = allData.concat((data || []) as unknown as FinanceSummaryDbRow[]);
+        if (!data || data.length < limit) {
+            hasMore = false;
+        } else {
+            from += limit;
+        }
+    }
 
     // Map to Partial<Order> - manually to avoid heavy dbToOrder overhead
-    return (data || []).map(d => ({
+    return allData.map(d => ({
         id: d.id,
         caseId: d.case_id || undefined,
         patientName: d.patient_name || undefined,
-        doctorId: d.doctor_id,
+        doctorId: d.doctor_id || undefined,
         supplierId: d.supplier_id || undefined,
         designerId: d.designer_id || undefined,
-        status: d.status,
-        totalPrice: d.total_price,
-        cost: d.cost,
+        status: (d.status || undefined) as Order['status'],
+        totalPrice: d.total_price || undefined,
+        cost: d.cost || undefined,
         designPrice: d.design_price || undefined,
         manualCost: d.manual_cost ?? null,
         manualDesignPrice: d.manual_design_price ?? null,
-        workflowType: d.workflow_type || undefined,
-        designStatus: d.design_status || undefined,
-        createdAt: d.created_at,
-        deliveryDate: d.delivery_date,
+        workflowType: (d.workflow_type || undefined) as Order['workflowType'],
+        designStatus: (d.design_status || undefined) as Order['designStatus'],
+        createdAt: d.created_at || undefined,
+        deliveryDate: d.delivery_date || undefined,
         actualDeliveryDate: d.actual_delivery_date || undefined,
         isArchived: d.is_archived || undefined,
         isDeleted: d.is_deleted || undefined,
         rejectedLabCost: d.rejected_lab_cost || undefined,
-        productionStatus: d.production_status || undefined,
-        issueState: d.issue_state || undefined,
+        productionStatus: (d.production_status || undefined) as Order['productionStatus'],
+        issueState: (d.issue_state || undefined) as Order['issueState'],
         items: d.order_items ? (d.order_items as unknown as RawOrderItem[]).map((i) => ({
             serviceType: i.product_type,
             teethNumbers: i.teeth_numbers || [],

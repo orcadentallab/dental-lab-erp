@@ -41,34 +41,73 @@ function transactionToDb(tx: Omit<Transaction, 'id'>): DbTransactionInsert {
 }
 
 export async function getTransactions(): Promise<Transaction[]> {
-    const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('date', { ascending: false });
+    let allData: DbTransaction[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
 
-    if (error) {
-        throw ErrorHandler.handle(error, 'getTransactions');
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .order('date', { ascending: false })
+            .range(from, from + limit - 1);
+
+        if (error) {
+            throw ErrorHandler.handle(error, 'getTransactions');
+        }
+
+        allData = allData.concat((data || []) as unknown as DbTransaction[]);
+        if (!data || data.length < limit) {
+            hasMore = false;
+        } else {
+            from += limit;
+        }
     }
 
-    return (data || []).map(dbToTransaction);
+    return allData.map(dbToTransaction);
 }
 
 /**
  * LIGHTWEIGHT fetch for Finance Summary (Accounts Page)
  */
-export async function getTransactionsForFinanceSummary(): Promise<Partial<Transaction>[]> {
-    const { data, error } = await supabase
-        .from('transactions')
-        .select('id, entity_id, entity_type, type, amount, date')
-        .order('date', { ascending: false });
+interface FinanceSummaryTxDbRow {
+    id: string;
+    entity_id: string | null;
+    entity_type: string | null;
+    type: 'income' | 'expense';
+    amount: number;
+    date: string;
+}
 
-    if (error) throw ErrorHandler.handle(error, 'getTransactionsForFinanceSummary');
+export async function getTransactionsForFinanceSummary(): Promise<Partial<Transaction>[]> {
+    let allData: FinanceSummaryTxDbRow[] = [];
+    let from = 0;
+    const limit = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('id, entity_id, entity_type, type, amount, date')
+            .order('date', { ascending: false })
+            .range(from, from + limit - 1);
+
+        if (error) throw ErrorHandler.handle(error, 'getTransactionsForFinanceSummary');
+
+        allData = allData.concat((data || []) as unknown as FinanceSummaryTxDbRow[]);
+        if (!data || data.length < limit) {
+            hasMore = false;
+        } else {
+            from += limit;
+        }
+    }
 
     // Map to Partial<Transaction>
-    return (data || []).map(t => ({
+    return allData.map(t => ({
         id: t.id,
         entityId: t.entity_id || undefined,
-        entityType: t.entity_type || undefined,
+        entityType: (t.entity_type || undefined) as Transaction['entityType'],
         type: t.type,
         amount: t.amount,
         date: t.date
