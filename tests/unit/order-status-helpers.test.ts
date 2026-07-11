@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../../src/lib/orderStatusHelpers';
+import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../../src/lib/orderStatusHelpers';
 
 describe('Order Status Helpers - Financial Relevance & Statement Visibility', () => {
     describe('isVisibleInAccountStatement', () => {
@@ -127,6 +127,83 @@ describe('Order Status Helpers - Financial Relevance & Statement Visibility', ()
 
             // 2. Result of cost calculation should be null (excluded entirely)
             expect(calculateSupplierCost(order)).toBeNull();
+        });
+    });
+
+    // ─── isDesignerPayable ──────────────────────────────────────────────────────
+    describe('isDesignerPayable', () => {
+        it('terminal order (Delivered) is payable even without designStatus', () => {
+            expect(isDesignerPayable({ status: 'Delivered' })).toBe(true);
+        });
+
+        it('all terminal statuses are payable', () => {
+            const terminals = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'];
+            for (const status of terminals) {
+                expect(isDesignerPayable({ status })).toBe(true);
+            }
+        });
+
+        // ✅ KEY BUSINESS RULE FIX
+        it('split order with designStatus=completed is payable even when order is still Under Production', () => {
+            expect(isDesignerPayable({
+                status: 'Under Production',
+                workflowType: 'split',
+                designStatus: 'completed',
+            })).toBe(true);
+        });
+
+        it('split order with designStatus=completed is payable for all non-terminal production statuses', () => {
+            const inProgressStatuses = ['Under Production', 'Try In', 'Try In Approved', 'Ready'];
+            for (const status of inProgressStatuses) {
+                expect(isDesignerPayable({
+                    status,
+                    workflowType: 'split',
+                    designStatus: 'completed',
+                })).toBe(true);
+            }
+        });
+
+        it('split order with designStatus NOT completed is NOT payable', () => {
+            expect(isDesignerPayable({
+                status: 'Under Design',
+                workflowType: 'split',
+                designStatus: 'in_progress',
+            })).toBe(false);
+        });
+
+        it('split order with designStatus=waiting_approval is NOT payable', () => {
+            expect(isDesignerPayable({
+                status: 'Waiting Dr Approval',
+                workflowType: 'split',
+                designStatus: 'waiting_approval',
+            })).toBe(false);
+        });
+
+        it('non-split order with completed-like status is still payable via terminal path', () => {
+            // non-split orders don't have designStatus, but they can still be Delivered
+            expect(isDesignerPayable({ status: 'Delivered', workflowType: 'standard' })).toBe(true);
+        });
+
+        it('soft-deleted order is NOT payable even if design is completed', () => {
+            expect(isDesignerPayable({
+                status: 'Under Production',
+                workflowType: 'split',
+                designStatus: 'completed',
+                isDeleted: true,
+            })).toBe(false);
+        });
+
+        it('soft-deleted terminal order is NOT payable', () => {
+            expect(isDesignerPayable({ status: 'Delivered', isDeleted: true })).toBe(false);
+        });
+
+        it('returns false for null/undefined order', () => {
+            expect(isDesignerPayable(null as unknown as object)).toBe(false);
+            expect(isDesignerPayable(undefined as unknown as object)).toBe(false);
+        });
+
+        it('returns false when status and designStatus are both missing', () => {
+            expect(isDesignerPayable({})).toBe(false);
         });
     });
 });

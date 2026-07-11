@@ -14,7 +14,7 @@ import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
-import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
+import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 import { getLabCostMetadata } from '../constants/financialObligations';
 import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -194,10 +194,10 @@ export default function Accounts() {
         const targetTab = urlTab || defaultTab;
         const targetEntity = urlEntity || defaultEntity;
 
-        if (targetMode !== viewMode) setViewMode(targetMode);
-        if (targetTab !== activeTab) setActiveTab(targetTab);
-        if (targetEntity !== selectedEntityId) setSelectedEntityId(targetEntity);
-    }, [searchParams, isRepresentative, isLab, isDesigner, user, viewMode, activeTab, selectedEntityId]);
+        setViewMode(prev => prev !== targetMode ? targetMode : prev);
+        setActiveTab(prev => prev !== targetTab ? targetTab : prev);
+        setSelectedEntityId(prev => prev !== targetEntity ? targetEntity : prev);
+    }, [searchParams, isRepresentative, isLab, isDesigner, user]);
 
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
@@ -733,7 +733,7 @@ export default function Accounts() {
             return openingCredit - openingDebit;
         } else if (activeTab === 'designers') {
             const beforeOrders = relevantOrders.filter(o => {
-                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
+                if (!isDesignerPayable(o) && !showAllOrders) return false;
                 if (o.designerId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
                 const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -897,7 +897,7 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => (isVisibleInAccountStatement(o) || showAllOrders) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
+            const desOrders = relevantOrders.filter(o => (isDesignerPayable(o) || showAllOrders) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
             
             const designerUser = designers.find(d => d.id === selectedEntityId);
             const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);

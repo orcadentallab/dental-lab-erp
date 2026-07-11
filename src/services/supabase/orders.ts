@@ -2358,6 +2358,7 @@ export interface StatusUpdateContext {
     userName?: string;       // User name for comment attribution
     actorRole?: string;      // User role when available
     rejectedLabCost?: number; // Cost to lab when rejected
+    issueState?: Order['issueState']; // Optional issueState to set atomically with status
 }
 
 /**
@@ -2463,6 +2464,10 @@ export async function updateOrderStatus(
 
     if (context.rejectedLabCost !== undefined) {
         updates.rejectedLabCost = context.rejectedLabCost;
+    }
+
+    if (context.issueState !== undefined) {
+        updates.issueState = context.issueState;
     }
 
     // Use existing updateOrder for the actual update (handles history tracking)

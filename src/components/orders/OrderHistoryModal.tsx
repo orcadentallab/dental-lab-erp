@@ -108,6 +108,8 @@ const FIELD_LABELS: Record<string, string> = {
     designer_id: 'المصمم',
     is_redo: 'طلب إعادة العمل',
     is_urgent: 'حالة عاجلة',
+    issue_state: 'حالة المشكلة/الإرجاع',
+    rejected_lab_cost: 'تكلفة الرفض على المعمل',
 };
 
 function formatDiffValue(
@@ -141,7 +143,7 @@ function formatDiffValue(
     }
 
     // Format monetary values
-    const monetaryFields = ['cost', 'manual_cost', 'total_price', 'design_price', 'manual_design_price', 'discount'];
+    const monetaryFields = ['cost', 'manual_cost', 'total_price', 'design_price', 'manual_design_price', 'discount', 'rejected_lab_cost'];
     if (monetaryFields.includes(key)) {
         const num = Number(val);
         if (!isNaN(num)) {
@@ -159,6 +161,20 @@ function formatDiffValue(
     if (key === 'delivery_type') {
         if (valStr === 'Final') return 'نهائي (Final)';
         if (valStr === 'Try-In' || valStr === 'TryIn') return 'تجربة (Try-In)';
+    }
+
+    // Issue state translations
+    if (key === 'issue_state') {
+        const issueMap: Record<string, string> = {
+            'none': 'لا يوجد',
+            'returned': 'مرتجع للتعديل',
+            'cancelled': 'ملغي',
+            'on_hold': 'موقوف مؤقتاً',
+            'redo': 'إعادة إنتاج',
+            'doctor_rejected': 'مرتجع طبيب',
+            'lab_rejected': 'رفض معمل',
+        };
+        return issueMap[valStr] || valStr;
     }
 
     // General status translations

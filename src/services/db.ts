@@ -842,7 +842,7 @@ class MockDB {
     async updateOrderStatus(
         orderId: string,
         newStatus: Order['status'],
-        context?: { designUrl?: string | null; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number }
+        context?: { designUrl?: string | null; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number; issueState?: Order['issueState'] }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);

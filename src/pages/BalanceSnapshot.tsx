@@ -17,7 +17,7 @@ import {
 import { getLabCostMetadata } from '../constants/financialObligations';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { useAuth } from '../context/AuthContext';
-import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
+import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,9 +94,10 @@ export default function BalanceSnapshotPage() {
                 db.getTransactionsForFinanceSummary(),  // ← نفس Accounts.tsx تماماً
             ]);
 
-            // نفس منطق isVisibleInAccountStatement في Accounts.tsx
-            const allOrders = allOrdersRaw.filter(o => 
-                isVisibleInAccountStatement(o)
+            // نفس منطق isVisibleInAccountStatement في Accounts.tsx، مع إضافة الأوردرات
+            // التي أكمل فيها المصمم مرحلة التصميم حتى لو الأوردر لسه تحت التشغيل
+            const allOrders = allOrdersRaw.filter(o =>
+                isVisibleInAccountStatement(o) || isDesignerPayable(o)
             );
 
             const designers = users.filter(isDesignerUser);

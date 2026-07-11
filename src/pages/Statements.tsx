@@ -6,7 +6,7 @@ import { db, type Doctor, type Supplier, type Order, type Transaction, type User
 import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
-import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
+import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 import { getLabCostMetadata } from '../constants/financialObligations';
 import { BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { generateDoctorStatementPDF, generateMonthlyInvoicePDF } from '../services/pdfService';
@@ -341,7 +341,7 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!isVisible(o, showAllOrders) || !o.designerId || o.workflowType !== 'split') continue;
+                if (!(isDesignerPayable(o) || showAllOrders) || !o.designerId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -469,7 +469,7 @@ export default function StatementsPage() {
 
         if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!isVisible(o, showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (!(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -621,7 +621,7 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!isVisible(o, showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (!(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;

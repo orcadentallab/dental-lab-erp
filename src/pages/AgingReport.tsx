@@ -5,7 +5,7 @@ import { matchArabic } from '../lib/searchUtils';
 import { calculateDueDate, BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import { getLabCostMetadata } from '../constants/financialObligations';
-import { isVisibleInAccountStatement, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
+import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -232,7 +232,9 @@ export default function AgingReport() {
             };
         }
 
-        const visibleOrders = orders.filter(o => isVisibleInAccountStatement(o));
+        // للمصممين: يتم تضمين الأوردرات التي أكمل فيها المصمم مرحلته
+        // حتى لو الأوردر لسه في حالة نهائية
+        const visibleOrders = orders.filter(o => isVisibleInAccountStatement(o) || isDesignerPayable(o));
 
         // Determine entities to process
         let targetEntities: (Doctor | Supplier | User)[] = [];

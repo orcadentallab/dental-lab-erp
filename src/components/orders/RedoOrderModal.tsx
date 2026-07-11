@@ -34,15 +34,13 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
         setIsLoading(true);
         try {
             // 1. Mark old order as redo
-            const updateFields: Partial<Order> = {
-                issueState: 'redo',
-                ...(rejectedLabCost !== '' ? { rejectedLabCost: Number(rejectedLabCost) } : {}),
-            };
-            await db.updateOrder(order.id, updateFields);
-            await db.updateOrderStatus(order.id, 'Rejected', {
+            await db.updateOrderStatus(order.id, 'Doctor Rejected', {
                 userId: user?.id,
                 userName: user?.name || user?.role || 'User',
                 actorRole: user?.role,
+                issueState: 'redo',
+                comment: `إعادة إنتاج من #${order.caseId} — السبب: ${REDO_REASONS.find(r => r.value === reason)?.label} — ${notes}`,
+                ...(rejectedLabCost !== '' ? { rejectedLabCost: Number(rejectedLabCost) } : {}),
             });
 
             // 2. Create new linked order (copy all data)
