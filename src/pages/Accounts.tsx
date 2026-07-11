@@ -1795,13 +1795,13 @@ export default function Accounts() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4 print-hidden">
                 {/* Hide back button for lab/designer - they can only see their own account */}
                 {!isLab && !isDesigner ? (
-                    <button onClick={() => {
-                        setSelectedEntityId('');
-                        setViewMode(isRepresentative ? 'rep-search' : 'summary');
-                    }} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+                    <Link
+                        to={`/accounts?tab=${activeTab}${isRepresentative ? '&mode=rep-search' : ''}`}
+                        className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors"
+                    >
                         <ArrowRight size={20} />
                         <span>عودة للعملاء</span>
-                    </button>
+                    </Link>
                 ) : (
                     <div className="flex items-center gap-2 text-gray-600 font-bold px-4 py-2">
                         <Wallet size={20} className="text-blue-600" />
