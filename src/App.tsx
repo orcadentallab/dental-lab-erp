@@ -37,12 +37,14 @@ import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import TitleUpdater from './components/TitleUpdater';
 
 function App() {
   return (
     <LanguageProvider>
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <BrowserRouter>
+          <TitleUpdater />
           <ErrorBoundary>
             <AuthProvider>
               <ToastProvider>
