@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type EntityBillingSettings } from '../services/db';
 import { financeService, type Adjustment } from '../services/financeService';
@@ -161,12 +162,27 @@ export default function StatementsPage() {
     const [designers, setDesigners] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const [searchParams, setSearchParams] = useSearchParams();
+
     // ─ UI state
-    const [activeTab, setActiveTab] = useState<TabType>('doctors');
+    const activeTab = (searchParams.get('tab') as TabType) || 'doctors';
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
     const [customRange, setCustomRange] = useState({ start: '', end: '' });
+    const [showAllOrders, setShowAllOrders] = useState(false);
     const [search, setSearch] = useState('');
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const selectedId = searchParams.get('id');
+
+    const setSelectedId = useCallback((id: string | null) => {
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            if (id) {
+                next.set('id', id);
+            } else {
+                next.delete('id');
+            }
+            return next;
+        });
+    }, [setSearchParams]);
     const [viewMode, setViewMode] = useState<ViewMode>('statement');
     const [invoiceMonth, setInvoiceMonth] = useState(() => {
         const d = new Date();
@@ -253,14 +269,14 @@ export default function StatementsPage() {
             const countMap = new Map<string, number>();
 
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
+                if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (!inRange(statDate)) continue;
-                // "all" filter: show every order regardless of status (rejected/cancelled = 0)
-                // Other filters: only statement-included statuses (delivered/completed)
-                if (timeFilter !== 'all' && !isDoctorStatementIncluded(o)) continue;
+                // "all" filter -> showAllOrders: show every order regardless of status (rejected/cancelled = 0)
+                // Otherwise: only statement-included statuses (delivered/completed)
+                if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
-                const amount = timeFilter === 'all' ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
                 workMap.set(pid, (workMap.get(pid) ?? 0) + amount);
                 countMap.set(pid, (countMap.get(pid) ?? 0) + 1);
             }
@@ -289,11 +305,11 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || !o.supplierId) continue;
+                if (!isVisible(o, showAllOrders) || !o.supplierId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = (!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost);
+                const relevant = showAllOrders || ((!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost));
                 if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
@@ -325,11 +341,11 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || !o.designerId || o.workflowType !== 'split') continue;
+                if (!isVisible(o, showAllOrders) || !o.designerId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
+                const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
                 if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
@@ -358,7 +374,7 @@ export default function StatementsPage() {
         }
 
         return [];
-    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, timeFilter]);
+    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, timeFilter, showAllOrders]);
 
     const totalBalance = useMemo(() => summaries.reduce((s, e) => s + e.balance, 0), [summaries]);
     const filtered = useMemo(() => {
@@ -376,15 +392,15 @@ export default function StatementsPage() {
 
         if (activeTab === 'doctors') {
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
+                if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (!inRange(statDate)) continue;
-                // "all" filter: include every order (rejected/cancelled shown with 0)
+                // "all" filter -> showAllOrders: include every order (rejected/cancelled shown with 0)
                 // Other filters: only statement-included statuses
-                if (timeFilter !== 'all' && !isDoctorStatementIncluded(o)) continue;
-                const amount = timeFilter === 'all' ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
+                const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
                 // Sub-doctor name (if order is from a child clinic)
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
                 lines.push({
@@ -417,11 +433,11 @@ export default function StatementsPage() {
 
         if (activeTab === 'suppliers') {
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || o.supplierId !== selectedId) continue;
+                if (!isVisible(o, showAllOrders) || o.supplierId !== selectedId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = (!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost);
+                const relevant = showAllOrders || ((!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost));
                 if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
@@ -453,11 +469,11 @@ export default function StatementsPage() {
 
         if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (!isVisible(o, showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
+                const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
                 if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
@@ -493,7 +509,7 @@ export default function StatementsPage() {
             running += l.type === 'debit' ? l.amount : -l.amount;
             return { ...l, runningBalance: running };
         });
-    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, timeFilter]);
+    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, timeFilter, showAllOrders]);
 
     // ─ Invoice lines (فاتورة شهرية) ─────────────────────────────────────────
 
@@ -515,13 +531,13 @@ export default function StatementsPage() {
 
         if (activeTab === 'doctors') {
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
+                if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (statDate >= monthStart) continue;
-                if (!isDoctorStatementIncluded(o)) continue;
-                openingDebit += getDoctorReceivableAmount(o);
+                if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
+                openingDebit += showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
             }
             for (const t of transactions) {
                 if ((t.entityType !== 'doctor' && t.entityType) || t.type !== 'income') continue;
@@ -541,13 +557,13 @@ export default function StatementsPage() {
             }
 
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || !o.doctorId) continue;
+                if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (statDate < monthStart || statDate > monthEnd) continue;
-                if (!isDoctorStatementIncluded(o)) continue;
-                const amount = getDoctorReceivableAmount(o);
+                if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
+                const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
                 monthOrders.push({
                     id: o.id, date: statDate,
@@ -563,10 +579,10 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'suppliers') {
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || o.supplierId !== selectedId) continue;
+                if (!isVisible(o, showAllOrders) || o.supplierId !== selectedId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = (!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost);
+                const relevant = showAllOrders || ((!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost));
                 if (!relevant) continue;
 
                 const designer = designers.find(d => d.id === o.designerId);
@@ -605,10 +621,10 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!isVisible(o, timeFilter === 'all') || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (!isVisible(o, showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
+                const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
                 if (!relevant) continue;
 
                 const designer = designers.find(d => d.id === o.designerId);
@@ -655,7 +671,7 @@ export default function StatementsPage() {
         const totalDue = openingBalance + monthTotal;
 
         return { openingBalance, monthOrders, monthTotal, totalDue, monthStart, monthEnd };
-    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, transactions, adjustments, doctorParentById, doctorById, designers]);
+    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders]);
 
     // ─ Selected entity info ───────────────────────────────────────────────────
 
@@ -674,21 +690,21 @@ export default function StatementsPage() {
         if (!selectedId || activeTab !== 'doctors') return;
         const doctor = primaryDoctors.find(d => d.id === selectedId);
         const result = statementService.calculateDoctorStatement(
-            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[]
+            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[], showAllOrders
         );
         result.doctorName = doctor?.name;
         await generateDoctorStatementPDF(result, dateRange, DEFAULT_LAB_INFO);
-    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange]);
+    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange, showAllOrders]);
 
     const handlePrint = useCallback(async () => {
         if (!selectedId || activeTab !== 'doctors') return;
         const doctor = primaryDoctors.find(d => d.id === selectedId);
         const result = statementService.calculateDoctorStatement(
-            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[]
+            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[], showAllOrders
         );
         result.doctorName = doctor?.name;
         await generateDoctorStatementPDF(result, dateRange, DEFAULT_LAB_INFO, { print: true });
-    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange]);
+    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange, showAllOrders]);
 
     const handleInvoicePDF = useCallback(async (print = false) => {
         if (!selectedId || !selectedEntity || !invoiceData) return;
@@ -742,7 +758,15 @@ export default function StatementsPage() {
                     const activeClass = { doctors: 'bg-teal-600', suppliers: 'bg-indigo-600', designers: 'bg-amber-500' }[tab.id];
                     return (
                         <button key={tab.id}
-                            onClick={() => { setActiveTab(tab.id); setSelectedId(null); setSearch(''); }}
+                            onClick={() => {
+                                setSearchParams(prev => {
+                                    const next = new URLSearchParams(prev);
+                                    next.set('tab', tab.id);
+                                    next.delete('id');
+                                    return next;
+                                });
+                                setSearch('');
+                            }}
                             className={clsx('flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200', isActive ? `${activeClass} text-white shadow-md` : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50')}
                         >
                             <Icon size={16} /> {tab.label}
@@ -788,6 +812,24 @@ export default function StatementsPage() {
                                 className="w-full pr-9 pl-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-100"
                             />
                         </div>
+                        <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                            <span className="text-xs text-slate-500 font-semibold">حساب جميع الحالات (بما فيها غير المنتهية)</span>
+                            <button
+                                type="button"
+                                onClick={() => setShowAllOrders(!showAllOrders)}
+                                className={clsx(
+                                    "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                                    showAllOrders ? "bg-teal-600" : "bg-slate-200"
+                                )}
+                            >
+                                <span
+                                    className={clsx(
+                                        "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                        showAllOrders ? "-translate-x-4" : "translate-x-0"
+                                    )}
+                                />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Total card */}
@@ -806,8 +848,9 @@ export default function StatementsPage() {
                         ) : (
                             <div className="divide-y divide-slate-100 max-h-[calc(100vh-380px)] overflow-y-auto">
                                 {[...filtered].sort((a, b) => b.balance - a.balance).map(entity => (
-                                    <button key={entity.id} onClick={() => setSelectedId(entity.id === selectedId ? null : entity.id)}
-                                        className={clsx('w-full text-right px-4 py-3 transition-all duration-150 hover:bg-slate-50 flex items-center justify-between gap-3', selectedId === entity.id && 'bg-teal-50 border-r-4 border-teal-500')}
+                                    <Link key={entity.id}
+                                        to={`/statements?tab=${activeTab}${selectedId === entity.id ? '' : `&id=${entity.id}`}`}
+                                        className={clsx('w-full text-right px-4 py-3 transition-all duration-150 hover:bg-slate-50 flex items-center justify-between gap-3 block', selectedId === entity.id && 'bg-teal-50 border-r-4 border-teal-500')}
                                     >
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
@@ -825,7 +868,7 @@ export default function StatementsPage() {
                                                 {entity.balance > 0 ? '+' : ''}{fmt(entity.balance)}
                                             </span>
                                         </div>
-                                    </button>
+                                    </Link>
                                 ))}
                             </div>
                         )}

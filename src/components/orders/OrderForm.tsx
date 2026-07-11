@@ -532,10 +532,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 ? await generateNextCaseIdForDoctor(finalDoctor, doctors)
                 : 'UNKNOWN');
 
-            await onSubmit({
+            const payload = {
                 caseId,
                 doctorId: activeDoctorId,
-                branchName: currentDoctor?.hasBranches ? (branchName || undefined) : undefined,
+                branchName: branchName || undefined,
                 patientName,
                 items: items.map(i => {
                     const svc = services.find(s => s.name === i.serviceType);
@@ -568,14 +568,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 designPrice: workflowType === 'split' ? totalDesignPrice : 0,
                 manualDesignPrice: workflowType === 'split' ? manualDesignPrice : null,
                 discount,
-                priority: isUrgent ? 'Urgent' : 'Normal',
+                priority: (isUrgent ? 'Urgent' : 'Normal') as 'Urgent' | 'Normal',
                 deliveryType,
                 needsDesignReview: initialData?.needsDesignReview || false,
                 isUrgent,
                 supplierId: selectedSupplier || undefined,
                 representativeId: representativeId || undefined,
                 comments: initialData?.comments || []
-            });
+            };
+            console.log('1) FORM SUBMIT payload:', JSON.stringify(payload, null, 2));
+            await onSubmit(payload);
         } finally {
             setIsSubmitting(false);
         }

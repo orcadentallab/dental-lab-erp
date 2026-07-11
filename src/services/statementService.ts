@@ -6,6 +6,7 @@ export interface StatementItem {
     id: string;
     date: string;
     description: string;
+    cleanDescription?: string;
     type: 'debit' | 'credit' | 'opening';
     amount: number;
     details?: string;
@@ -14,6 +15,7 @@ export interface StatementItem {
     services?: string;
     count?: number;
     branchName?: string;
+    doctorName?: string;
 }
 
 export interface StatementResult {
@@ -29,6 +31,12 @@ export interface StatementResult {
     filteredDoctorName?: string;
 }
 
+const ZERO_VALUE_STATUSES = new Set(['doctor rejected', 'lab rejected', 'cancelled', 'rejected']);
+const getAllDoctorAmount = (order: Partial<Order>): number => {
+    if (ZERO_VALUE_STATUSES.has((order.status || '').trim().toLowerCase())) return 0;
+    return order.totalPrice || 0;
+};
+
 export const statementService = {
     /**
      * Calculates the statement for a specific doctor over a date range.
@@ -37,6 +45,8 @@ export const statementService = {
      * @param allTransactions Array of ALL transactions (will be filtered)
      * @param startDate YYYY-MM-DD
      * @param endDate YYYY-MM-DD
+     * @param allAdjustments Adjustments array
+     * @param showAllOrders If true, calculate balance based on all statuses
      */
     calculateDoctorStatement: (
         doctorId: string,
@@ -44,7 +54,8 @@ export const statementService = {
         allTransactions: Transaction[],
         startDate: string,
         endDate: string,
-        allAdjustments?: Adjustment[]
+        allAdjustments?: Adjustment[],
+        showAllOrders?: boolean
     ): StatementResult => {
         // 1. Calculate Opening Balance (Everything BEFORE startDate)
         let openingDebit = 0;
@@ -58,11 +69,11 @@ export const statementService = {
             // Check if before start date
             if (startDate && sortDate >= startDate) return false;
 
-            return isDoctorStatementIncluded(o);
+            return showAllOrders || isDoctorStatementIncluded(o);
         });
 
         openingDebit = pastOrders.reduce((sum, o) => {
-            const amount = getDoctorReceivableAmount(o);
+            const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
             return sum + amount;
         }, 0);
 
@@ -107,7 +118,7 @@ export const statementService = {
             // Let's assume Standard View: valid statuses only.
             // Actually, Accounts.tsx logic for `individualStatement` includes Cancelled/Rejected if showAll is true.
             // For a formal statement, we usually only want billable items.
-            return isDoctorStatementIncluded(o);
+            return showAllOrders || isDoctorStatementIncluded(o);
         });
 
         items = items.concat(periodOrders.map(o => {
@@ -120,7 +131,7 @@ export const statementService = {
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                 details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
-                amount: getDoctorReceivableAmount(o),
+                amount: showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o),
                 status: o.status,
                 services,
                 count,

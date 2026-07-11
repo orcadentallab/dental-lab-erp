@@ -334,6 +334,9 @@ export default function Orders() {
                 }, {})
                 : orderData;
 
+            console.log('2) SAFE UPDATES:', JSON.stringify(safeUpdates, null, 2));
+            console.log('2b) changedFields:', changedFields);
+
             const { status, ...restOfUpdates } = safeUpdates;
 
             // 1. Update non-status fields

@@ -621,10 +621,11 @@ function buildStatementHTML(
     const endLabel = dateRange.end || '-';
 
     const hasBranches = statement.items.some(item => item.branchName);
+    const showDoctorColumn = statement.items.some(item => item.doctorName);
     let rows = '';
 
     if (statement.items.length === 0) {
-        rows = `<tr><td colspan="6" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حركات في هذه الفترة</td></tr>`;
+        rows = `<tr><td colspan="${showDoctorColumn ? 7 : 6}" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حركات في هذه الفترة</td></tr>`;
     } else if (hasBranches) {
         // Group items: debits by branchName, credits/adjustments together
         const debitGroups: Record<string, typeof statement.items> = {};
@@ -647,7 +648,7 @@ function buildStatementHTML(
             // Add branch header row
             rows += `
                 <tr style="background-color: ${COLORS.bgSoft}; font-weight: bold;">
-                    <td colspan="6" style="text-align: right; padding: 6px 10px; color: ${COLORS.primary}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.primary};">
+                    <td colspan="${showDoctorColumn ? 7 : 6}" style="text-align: right; padding: 6px 10px; color: ${COLORS.primary}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.primary};">
                         🏢 <span style="font-family:'Cairo', sans-serif; font-weight: 800; margin-left: 5px; margin-right: 5px;">${branch}</span> (${branchItems.length} حالات)
                     </td>
                 </tr>
@@ -655,9 +656,11 @@ function buildStatementHTML(
 
             // Add items
             branchItems.forEach(item => {
+                const desc = showDoctorColumn ? (item.cleanDescription || item.description) : item.description;
                 rows += `
                     <tr>
-                        <td style="text-align:right">${item.description || '-'}</td>
+                        <td style="text-align:right">${desc || '-'}</td>
+                        ${showDoctorColumn ? `<td style="text-align:right;font-size:10px;color:${COLORS.darkMuted}">${item.doctorName || '-'}</td>` : ''}
                         <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                         <td>${item.count ? `(${item.count})` : '-'}</td>
                         <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
@@ -670,7 +673,7 @@ function buildStatementHTML(
             // Add branch subtotal row
             rows += `
                 <tr style="border-bottom: 2px solid ${COLORS.border}; font-weight: bold; background-color: #fafafa;">
-                    <td colspan="4" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي ${branch}</td>
+                    <td colspan="${showDoctorColumn ? 5 : 4}" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي ${branch}</td>
                     <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:11px;font-weight:700">${formatCurrency(branchTotal)}</td>
                     <td>-</td>
                 </tr>
@@ -684,7 +687,7 @@ function buildStatementHTML(
             // Add credit header row
             rows += `
                 <tr style="background-color: ${COLORS.successBg}; font-weight: bold;">
-                    <td colspan="6" style="text-align: right; padding: 6px 10px; color: ${COLORS.success}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.success};">
+                    <td colspan="${showDoctorColumn ? 7 : 6}" style="text-align: right; padding: 6px 10px; color: ${COLORS.success}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.success};">
                         💳 المدفوعات والتسويات الدائنة (${creditItems.length} حركات)
                     </td>
                 </tr>
@@ -692,9 +695,11 @@ function buildStatementHTML(
 
             // Add items
             creditItems.forEach(item => {
+                const desc = showDoctorColumn ? (item.cleanDescription || item.description) : item.description;
                 rows += `
                     <tr>
-                        <td style="text-align:right">${item.description || '-'}</td>
+                        <td style="text-align:right">${desc || '-'}</td>
+                        ${showDoctorColumn ? `<td>-</td>` : ''}
                         <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                         <td>${item.count ? `(${item.count})` : '-'}</td>
                         <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
@@ -707,22 +712,26 @@ function buildStatementHTML(
             // Add credit subtotal row
             rows += `
                 <tr style="border-bottom: 2px solid ${COLORS.border}; font-weight: bold; background-color: #fafafa;">
-                    <td colspan="5" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي المدفوعات</td>
+                    <td colspan="${showDoctorColumn ? 6 : 5}" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي المدفوعات</td>
                     <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.success};font-size:11px;font-weight:700">${formatCurrency(creditTotal)}</td>
                 </tr>
             `;
         }
     } else {
-        rows = statement.items.map(item => `
+        rows = statement.items.map(item => {
+            const desc = showDoctorColumn ? (item.cleanDescription || item.description) : item.description;
+            return `
             <tr>
-                <td style="text-align:right">${item.description || '-'}</td>
+                <td style="text-align:right">${desc || '-'}</td>
+                ${showDoctorColumn ? `<td style="text-align:right;font-size:10px;color:${COLORS.darkMuted}">${item.doctorName || '-'}</td>` : ''}
                 <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                 <td>${item.count ? `(${item.count})` : '-'}</td>
                 <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:600">${item.type === 'debit' ? formatCurrency(item.amount) : '-'}</td>
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.success};font-weight:600">${item.type === 'credit' ? formatCurrency(item.amount) : '-'}</td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 
     return `<div class="doc"><style>${styles}</style>
@@ -780,6 +789,7 @@ function buildStatementHTML(
             <table>
                 <thead><tr>
                     <th style="text-align:right">البيان</th>
+                    ${showDoctorColumn ? `<th style="text-align:right">الطبيب المنفذ</th>` : ''}
                     <th>الخدمات</th>
                     <th>العدد</th>
                     <th>التاريخ</th>
@@ -789,6 +799,7 @@ function buildStatementHTML(
                 <tbody>${rows}</tbody>
                 <tfoot><tr>
                     <td style="text-align:right">الإجمالي</td>
+                    ${showDoctorColumn ? `<td></td>` : ''}
                     <td></td>
                     <td></td>
                     <td></td>
@@ -894,6 +905,7 @@ export interface CasesInvoiceItem {
     instructions?: string;
     userComments?: string; // Pipe-separated user-added comments
     branchName?: string;
+    doctorName?: string;
 }
 
 export async function generateCasesInvoicePDF(
@@ -921,10 +933,11 @@ function buildCasesInvoiceHTML(
     const grandTotal = items.reduce((sum, i) => sum + i.amount, 0);
 
     const hasBranches = items.some(item => item.branchName);
+    const showDoctorColumn = items.some(item => item.doctorName);
     let rows = '';
 
     if (items.length === 0) {
-        rows = `<tr><td colspan="7" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
+        rows = `<tr><td colspan="${showDoctorColumn ? 7 : 6}" style="text-align:center;color:${COLORS.light};padding:28px">لا توجد حالات في هذه الفترة</td></tr>`;
     } else if (hasBranches) {
         const branchGroups: Record<string, CasesInvoiceItem[]> = {};
         items.forEach(item => {
@@ -940,7 +953,7 @@ function buildCasesInvoiceHTML(
             // Add branch header row
             rows += `
                 <tr style="background-color: ${COLORS.bgSoft}; font-weight: bold;">
-                    <td colspan="7" style="text-align: right; padding: 6px 10px; color: ${COLORS.primary}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.primary};">
+                    <td colspan="${showDoctorColumn ? 7 : 6}" style="text-align: right; padding: 6px 10px; color: ${COLORS.primary}; font-size: 11px; border-bottom: 1px solid #ddd; border-right: 4px solid ${COLORS.primary};">
                         🏢 <span style="font-family:'Cairo', sans-serif; font-weight: 800; margin-left: 5px; margin-right: 5px;">${branch}</span> (${branchItems.length} حالات)
                     </td>
                 </tr>
@@ -949,19 +962,14 @@ function buildCasesInvoiceHTML(
             // Add items
             branchItems.forEach(item => {
                 globalIdx++;
-                const notesLines: string[] = [];
-                if (item.instructions) notesLines.push(`<div style="margin-bottom:3px"><strong style="color:${COLORS.primary}">تعليمات:</strong> ${item.instructions}</div>`);
-                if (item.userComments) notesLines.push(`<div style="color:${COLORS.darkMuted};font-size:9px;white-space:pre-wrap">${item.userComments}</div>`);
-                const notesCell = notesLines.length > 0 ? notesLines.join('') : '<span style="color:#ccc">-</span>';
-
                 rows += `
                     <tr>
                         <td style="text-align:center;color:${COLORS.muted};font-size:10px;font-family:'Courier New',monospace">${globalIdx}</td>
                         <td style="text-align:right">${item.description || '-'}</td>
+                        ${showDoctorColumn ? `<td style="text-align:right;font-size:10px;color:${COLORS.darkMuted}">${item.doctorName || '-'}</td>` : ''}
                         <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                         <td>${item.count ? `(${item.count})` : '-'}</td>
                         <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
-                        <td style="font-size:9px;text-align:right;max-width:160px;word-break:break-word">${notesCell}</td>
                         <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:700">${formatCurrency(item.amount)}</td>
                     </tr>
                 `;
@@ -970,29 +978,23 @@ function buildCasesInvoiceHTML(
             // Add branch subtotal row
             rows += `
                 <tr style="border-bottom: 2px solid ${COLORS.border}; font-weight: bold; background-color: #fafafa;">
-                    <td colspan="6" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي ${branch}</td>
+                    <td colspan="${showDoctorColumn ? 6 : 5}" style="text-align: left; padding: 6px 10px; font-size: 10px; color: ${COLORS.darkMuted};">إجمالي ${branch}</td>
                     <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:11px;font-weight:700">${formatCurrency(branchTotal)}</td>
                 </tr>
             `;
         });
     } else {
-        rows = items.map((item, idx) => {
-            const notesLines: string[] = [];
-            if (item.instructions) notesLines.push(`<div style="margin-bottom:3px"><strong style="color:${COLORS.primary}">تعليمات:</strong> ${item.instructions}</div>`);
-            if (item.userComments) notesLines.push(`<div style="color:${COLORS.darkMuted};font-size:9px;white-space:pre-wrap">${item.userComments}</div>`);
-            const notesCell = notesLines.length > 0 ? notesLines.join('') : '<span style="color:#ccc">-</span>';
-            return `
+        rows = items.map((item, idx) => `
             <tr>
                 <td style="text-align:center;color:${COLORS.muted};font-size:10px;font-family:'Courier New',monospace">${idx + 1}</td>
                 <td style="text-align:right">${item.description || '-'}</td>
+                ${showDoctorColumn ? `<td style="text-align:right;font-size:10px;color:${COLORS.darkMuted}">${item.doctorName || '-'}</td>` : ''}
                 <td style="font-size:10px;color:${COLORS.darkMuted}">${item.services || '-'}</td>
                 <td>${item.count ? `(${item.count})` : '-'}</td>
                 <td style="direction:ltr">${item.date ? new Date(item.date).toLocaleDateString('en-GB') : '-'}</td>
-                <td style="font-size:9px;text-align:right;max-width:160px;word-break:break-word">${notesCell}</td>
                 <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-weight:700">${formatCurrency(item.amount)}</td>
             </tr>
-        `;
-        }).join('');
+        `).join('');
     }
 
     return `<div class="doc"><style>${styles}</style>
@@ -1039,15 +1041,15 @@ function buildCasesInvoiceHTML(
                 <thead><tr>
                     <th style="width:40px">#</th>
                     <th style="text-align:right">البيان</th>
+                    ${showDoctorColumn ? `<th style="text-align:right">الطبيب المنفذ</th>` : ''}
                     <th>الخدمات</th>
                     <th>العدد</th>
                     <th>التاريخ</th>
-                    <th style="text-align:right">التعليمات والملاحظات</th>
                     <th>المبلغ</th>
                 </tr></thead>
                 <tbody>${rows}</tbody>
                 <tfoot><tr>
-                    <td colspan="6" style="text-align:right;font-weight:800">الإجمالي المستحق</td>
+                    <td colspan="${showDoctorColumn ? 6 : 5}" style="text-align:right;font-weight:800">الإجمالي المستحق</td>
                     <td style="font-family:'Courier New',monospace;direction:ltr;color:${COLORS.danger};font-size:13px;font-weight:800">${formatCurrency(grandTotal)}</td>
                 </tr></tfoot>
             </table>
@@ -1089,15 +1091,16 @@ export function generateCasesInvoiceExcel(
         return;
     }
 
+    const showDoctorColumn = items.some(item => item.doctorName);
+
     const rows = items.map((item, idx) => ({
         '#': idx + 1,
         'البيان': item.description || '',
+        ...(showDoctorColumn ? { 'الطبيب المنفذ': item.doctorName || '' } : {}),
         'الخدمات': item.services || '',
         'العدد': item.count ? `(${item.count})` : '',
         'الفرع': item.branchName || '',
         'التاريخ': item.date ? new Date(item.date).toLocaleDateString('en-GB') : '',
-        'التعليمات': item.instructions || '',
-        'الملاحظات / التعليقات': item.userComments || '',
         'المبلغ': item.amount,
     }));
 
@@ -1108,26 +1111,13 @@ export function generateCasesInvoiceExcel(
     ws['!cols'] = [
         { wch: 5 },   // #
         { wch: 35 },  // البيان
+        ...(showDoctorColumn ? [{ wch: 20 }] : []), // الطبيب المنفذ
         { wch: 20 },  // الخدمات
         { wch: 8 },   // العدد
         { wch: 15 },  // الفرع
         { wch: 14 },  // التاريخ
-        { wch: 35 },  // التعليمات
-        { wch: 45 },  // الملاحظات
         { wch: 14 },  // المبلغ
     ];
-
-    // Enable wrap text on التعليمات and الملاحظات columns for all data rows
-    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
-    for (let R = range.s.r + 1; R <= range.e.r; ++R) {
-        // Column G (index 6) = التعليمات, Column H (index 7) = الملاحظات
-        for (const C of [6, 7]) {
-            const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
-            if (!ws[cellAddr]) ws[cellAddr] = { t: 's', v: '' };
-            if (!ws[cellAddr].s) ws[cellAddr].s = {};
-            ws[cellAddr].s = { alignment: { wrapText: true, vertical: 'top', readingOrder: 2 } };
-        }
-    }
 
     XLSX.utils.book_append_sheet(wb, ws, 'فاتورة مطالبة');
 

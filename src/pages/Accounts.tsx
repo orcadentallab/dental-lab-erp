@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type Service } from '../services/db';
-import { ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown, Receipt } from 'lucide-react';
+import { ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown, Receipt, Phone } from 'lucide-react';
 import clsx from 'clsx';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 import { statementService, type StatementResult } from '../services/statementService';
@@ -25,6 +25,7 @@ interface StatementItem {
     id: string;
     date: string;
     description: string;
+    cleanDescription?: string;
     type: 'debit' | 'credit' | 'opening';
     amount: number;
     displayAmount?: number;
@@ -37,6 +38,8 @@ interface StatementItem {
     isHidden?: boolean;
     isOrderValue?: boolean;
     isInformationalOnly?: boolean;
+    branchName?: string;
+    doctorName?: string;
 }
 
 // Time filter presets
@@ -51,6 +54,20 @@ const formatDateInput = (date: Date) => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+};
+
+const formatWhatsAppNumber = (phone: string) => {
+    const clean = phone.trim().replace(/[^\d+]/g, '');
+    if (clean.startsWith('+')) {
+        return clean.substring(1);
+    }
+    if (clean.startsWith('00')) {
+        return clean.substring(2);
+    }
+    if (clean.startsWith('0') && clean.length === 11) {
+        return '20' + clean.substring(1);
+    }
+    return clean;
 };
 
 const getOperationalOrderDate = (order: Partial<Order>) => (order.deliveryDate || order.createdAt || '').split('T')[0];
@@ -150,6 +167,37 @@ export default function Accounts() {
 
         setSearchParams(newParams, { replace: true });
     }, [viewMode, activeTab, selectedEntityId, setSearchParams]);
+
+    // Sync URL search parameters back to component state (handles history navigation and sidebar clicks)
+    useEffect(() => {
+        const urlMode = searchParams.get('mode') as 'summary' | 'detail' | 'rep-search';
+        const urlTab = searchParams.get('tab') as 'doctors' | 'suppliers' | 'designers';
+        const urlEntity = searchParams.get('entity') || '';
+
+        // Determine default mode
+        let defaultMode: 'summary' | 'detail' | 'rep-search' = 'summary';
+        if (isRepresentative) defaultMode = 'rep-search';
+        else if (isLab && user?.entityId) defaultMode = 'detail';
+        else if (isDesigner && user?.id) defaultMode = 'detail';
+
+        // Determine default tab
+        let defaultTab: 'doctors' | 'suppliers' | 'designers' = 'doctors';
+        if (isLab && user?.entityId) defaultTab = 'suppliers';
+        else if (isDesigner && user?.id) defaultTab = 'designers';
+
+        // Determine default entity
+        let defaultEntity = '';
+        if (isLab && user?.entityId) defaultEntity = user.entityId;
+        else if (isDesigner && user?.id) defaultEntity = user.id;
+
+        const targetMode = urlMode || defaultMode;
+        const targetTab = urlTab || defaultTab;
+        const targetEntity = urlEntity || defaultEntity;
+
+        if (targetMode !== viewMode) setViewMode(targetMode);
+        if (targetTab !== activeTab) setActiveTab(targetTab);
+        if (targetEntity !== selectedEntityId) setSelectedEntityId(targetEntity);
+    }, [searchParams, isRepresentative, isLab, isDesigner, user, viewMode, activeTab, selectedEntityId]);
 
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
@@ -762,13 +810,14 @@ export default function Accounts() {
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
-                // If center, show child doctor name in description
+                // If center, find child doctor name
                 const childDoc = selectedIsCenter ? doctors.find(d => d.id === o.doctorId && d.parentId === selectedEntityId) : null;
                 const doctorSuffix = childDoc ? ` (د. ${childDoc.name})` : '';
                 return {
                     id: o.id || '',
                     date: getOfficialStatementDate(o),
                     description: `حالة #${o.caseId} - المريض: ${o.patientName}${doctorSuffix}`,
+                    cleanDescription: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                     details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                     type: 'debit' as const,
                     amount: officialReceivableAmount,
@@ -779,7 +828,8 @@ export default function Accounts() {
                     count,
                     isOrderValue: true,
                     isInformationalOnly: displayOrderValue !== officialReceivableAmount,
-                    branchName: o.branchName || undefined
+                    branchName: o.branchName || undefined,
+                    doctorName: childDoc?.name || undefined
                 };
             });
 
@@ -1032,13 +1082,14 @@ export default function Accounts() {
                 return {
                     id: i.id,
                     date: i.date,
-                    description: i.description,
+                    description: i.cleanDescription || i.description,
                     services: i.services,
                     count: i.count,
                     amount: i.amount,
                     instructions: order?.instructions || undefined,
                     userComments: userComments || undefined,
                     branchName: order?.branchName || undefined,
+                    doctorName: i.doctorName,
                 };
             });
     };
@@ -1158,6 +1209,13 @@ export default function Accounts() {
         if (activeTab === 'suppliers') return suppliers.find(s => s.id === selectedEntityId)?.name;
         return designers.find(u => u.id === selectedEntityId)?.name;
     };
+
+    const selectedPhone = useMemo(() => {
+        if (!selectedEntityId) return null;
+        if (activeTab === 'doctors') return doctors.find(d => d.id === selectedEntityId)?.phone;
+        if (activeTab === 'suppliers') return suppliers.find(s => s.id === selectedEntityId)?.phone;
+        return null;
+    }, [selectedEntityId, activeTab, doctors, suppliers]);
 
     // -- VIEW: REPRESENTATIVE SEARCH (No aggregated data) --
     if (viewMode === 'rep-search') {
@@ -1280,10 +1338,10 @@ export default function Accounts() {
                             </div>
                         ) : (
                             repFilteredCustomers.map((item) => (
-                                <button
+                                <Link
                                     key={item.id}
-                                    onClick={() => { setSelectedEntityId(item.id); setViewMode('detail'); }}
-                                    className="w-full flex items-center justify-between p-4 hover:bg-blue-50/50 transition-colors text-right"
+                                    to={`/accounts?tab=${activeTab}&mode=detail&entity=${item.id}`}
+                                    className="w-full flex items-center justify-between p-4 hover:bg-blue-50/50 transition-colors text-right block"
                                 >
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-sm font-bold text-gray-500 border border-gray-200">
@@ -1295,7 +1353,7 @@ export default function Accounts() {
                                         </div>
                                     </div>
                                     <ArrowRight size={18} className="text-gray-400 rtl:rotate-180" />
-                                </button>
+                                </Link>
                             ))
                         )}
                     </div>
@@ -1589,12 +1647,16 @@ export default function Accounts() {
                                         >
                                             <td className="p-4 text-gray-400 font-mono text-sm">{idx + 1}</td>
                                             <td className="p-4">
-                                                <div className="flex items-center gap-3">
+                                                <Link
+                                                    to={`/accounts?tab=${activeTab}&mode=detail&entity=${item.id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="flex items-center gap-3 hover:text-blue-600 transition-colors inline-flex"
+                                                >
                                                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-sm font-bold text-gray-500 group-hover:from-blue-100 group-hover:to-blue-50 group-hover:text-blue-600 transition-all border border-gray-200 group-hover:border-blue-200">
                                                         {item.name.charAt(0)}
                                                     </div>
-                                                    <span className="font-bold text-gray-800">{item.name}</span>
-                                                </div>
+                                                    <span className="font-bold text-gray-800 hover:text-blue-600">{item.name}</span>
+                                                </Link>
                                             </td>
                                             {activeTab === 'doctors' && <td className="p-4 text-gray-500 text-sm font-mono">{item.code || '-'}</td>}
                                             <td className="p-4 text-gray-600 font-medium">{item.totalOrders}</td>
@@ -1611,9 +1673,15 @@ export default function Accounts() {
                                                 </span>
                                             </td>
                                             <td className="p-4">
-                                                <button className="text-gray-400 group-hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-blue-100" aria-label="View Details" title="عرض كشف الحساب">
+                                                <Link
+                                                    to={`/accounts?tab=${activeTab}&mode=detail&entity=${item.id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="text-gray-400 group-hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-blue-100 inline-block"
+                                                    aria-label="View Details"
+                                                    title="عرض كشف الحساب"
+                                                >
                                                     <ArrowRight size={18} className="rtl:rotate-180" />
-                                                </button>
+                                                </Link>
                                             </td>
                                         </tr>
                                     ))
@@ -1727,7 +1795,10 @@ export default function Accounts() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-white p-4 rounded-2xl shadow-sm border border-gray-100 gap-4 print-hidden">
                 {/* Hide back button for lab/designer - they can only see their own account */}
                 {!isLab && !isDesigner ? (
-                    <button onClick={() => setViewMode(isRepresentative ? 'rep-search' : 'summary')} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
+                    <button onClick={() => {
+                        setSelectedEntityId('');
+                        setViewMode(isRepresentative ? 'rep-search' : 'summary');
+                    }} className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-bold px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors">
                         <ArrowRight size={20} />
                         <span>عودة للعملاء</span>
                     </button>
@@ -1777,12 +1848,14 @@ export default function Accounts() {
                         onClick={() => {
                             const fileName = `statement_${activeTab}_${selectedEntityId}_${new Date().toISOString().split('T')[0]} `;
                             const exportData = [];
+                            const showDoctorColumn = activeTab === 'doctors' && !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
 
                             // Add opening balance row if applicable
                             if (dateRange.start && individualStatement.totals.openingBalance !== 0) {
                                 exportData.push({
                                     date: dateRange.start,
                                     description: 'رصيد سابق',
+                                    ...(showDoctorColumn ? { doctorName: '' } : {}),
                                     services: '',
                                     count: '',
                                     debit: individualStatement.totals.openingBalance > 0 ? individualStatement.totals.openingBalance : 0,
@@ -1796,7 +1869,8 @@ export default function Accounts() {
                             // Add statement items
                             exportData.push(...individualStatement.items.filter(i => !i.isHidden).map(i => ({
                                 date: i.date,
-                                description: i.description,
+                                description: showDoctorColumn ? (i.cleanDescription || i.description) : i.description,
+                                ...(showDoctorColumn ? { doctorName: i.doctorName || '' } : {}),
                                 services: i.services || '',
                                 count: i.count || '',
                                 debit: i.type === 'debit' ? i.amount : 0,
@@ -1811,6 +1885,7 @@ export default function Accounts() {
                                 {
                                     date: 'تاريخ الاستلام',
                                     description: 'البيان',
+                                    ...(showDoctorColumn ? { doctorName: 'الطبيب المنفذ' } : {}),
                                     services: 'الخدمات',
                                     count: 'العدد',
                                     debit: 'مدين',
@@ -1818,7 +1893,7 @@ export default function Accounts() {
                                     runningBalance: 'الرصيد',
                                     details: 'التفاصيل',
                                     status: 'الحالة'
-                                },
+                                } as any,
                                 fileName
                             );
                         }}
@@ -1945,7 +2020,35 @@ export default function Accounts() {
                         <span className="inline-block bg-gray-100 text-gray-600 text-xs font-medium px-3 py-1 rounded-full mt-1">
                             {activeTab === 'doctors' ? 'عميل' : (activeTab === 'suppliers' ? 'مورد' : 'مصمم')}
                         </span>
-                        <div className="mt-4 text-sm">
+                        <div className="mt-4 flex items-center gap-3 text-sm print-hidden">
+                            <div>
+                                <p className="text-gray-400">تاريخ التقرير</p>
+                                <p className="font-bold text-gray-700">{new Date().toLocaleDateString('ar-EG')}</p>
+                            </div>
+                            {selectedPhone && (
+                                <div className="flex gap-2 mr-3 border-r border-gray-200 pr-3">
+                                    <a
+                                        href={`https://wa.me/${formatWhatsAppNumber(selectedPhone)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-2 bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100 rounded-xl transition-colors flex items-center justify-center"
+                                        title="تواصل عبر واتساب"
+                                    >
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.717-1.458L0 24zM6.59 5.908c-.228-.51-.47-.52-.688-.53-.177-.008-.38-.011-.583-.011s-.533.076-.812.384c-.279.309-1.066 1.042-1.066 2.54 0 1.498 1.09 2.946 1.242 3.15.152.204 2.146 3.277 5.197 4.595.725.313 1.29.5 1.73.64.729.23 1.39.197 1.91.12.583-.087 1.78-.727 2.03-1.428.25-.7.25-1.3.177-1.428-.073-.128-.27-.204-.57-.354-.299-.15-1.78-.875-2.05-.975-.27-.1-.47-.15-.67.15-.2.3-.77.975-.95 1.175-.177.2-.355.228-.655.078-.3-.15-1.26-.464-2.4-1.48-.888-.79-1.488-1.77-1.666-2.07-.177-.3-.02-.46.13-.61.137-.135.3-.35.45-.525.15-.175.2-.29.3-.49.1-.2.05-.375-.025-.525-.075-.15-.67-1.62-.92-2.2z"/>
+                                        </svg>
+                                    </a>
+                                    <a
+                                        href={`tel:${selectedPhone}`}
+                                        className="p-2 bg-blue-50 text-blue-600 border border-blue-100 hover:bg-blue-100 rounded-xl transition-colors flex items-center justify-center"
+                                        title="اتصال هاتفياً"
+                                    >
+                                        <Phone size={16} />
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                        <div className="mt-4 text-sm hidden print:block">
                             <p className="text-gray-400">تاريخ التقرير</p>
                             <p className="font-bold text-gray-700">{new Date().toLocaleDateString('ar-EG')}</p>
                         </div>

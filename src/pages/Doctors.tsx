@@ -8,7 +8,6 @@ import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 import { matchArabic } from '../lib/searchUtils';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
-import { supabase } from '../lib/supabase';
 
 interface DoctorForm {
     name: string;
@@ -24,15 +23,7 @@ interface DoctorForm {
     hasBranches: boolean;
 }
 
-interface MigrationMatch {
-    id: string;
-    orderCode: string;
-    patientName: string;
-    doctorName: string;
-    instructions: string;
-    detectedBranch: string;
-    selected: boolean;
-}
+
 
 export default function Doctors() {
     const { user } = useAuth();
@@ -62,117 +53,7 @@ export default function Doctors() {
     const [branches, setBranches] = useState<import('../services/db').DoctorBranch[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    // Migration State
-    const [showMigrationModal, setShowMigrationModal] = useState(false);
-    const [migrationMatches, setMigrationMatches] = useState<MigrationMatch[]>([]);
-    const [loadingMigration, setLoadingMigration] = useState(false);
-    const [updatingMigration, setUpdatingMigration] = useState(false);
 
-    const loadMigrationMatches = async () => {
-        setLoadingMigration(true);
-        try {
-            const docsWithBranches = doctors.filter(d => d.hasBranches && d.branches && d.branches.length > 0);
-            if (docsWithBranches.length === 0) {
-                alert('لا يوجد أطباء لديهم فروع مفعّلة في النظام حالياً.');
-                setLoadingMigration(false);
-                return;
-            }
-
-            const doctorIds = docsWithBranches.map(d => d.id);
-            
-            const { data: ordersData, error: ordersError } = await supabase
-                .from('orders')
-                .select('id, case_id, patient_name, doctor_id, instructions')
-                .in('doctor_id', doctorIds)
-                .or('branch_name.is.null,branch_name.eq.""');
-
-            if (ordersError) {
-                throw ordersError;
-            }
-
-            const matchesArr: MigrationMatch[] = [];
-
-            if (ordersData) {
-                for (const order of ordersData) {
-                    const doc = docsWithBranches.find(d => d.id === order.doctor_id);
-                    if (!doc || !doc.branches) continue;
-
-                    const instructions = order.instructions || '';
-                    if (!instructions.trim()) continue;
-
-                    const normalizedInstructions = normalizeText(instructions);
-                    let detectedBranch: string | null = null;
-
-                    for (const branch of doc.branches) {
-                        const normalizedBranchName = normalizeText(branch.name);
-                        if (!normalizedBranchName) continue;
-
-                        if (normalizedInstructions.includes(normalizedBranchName)) {
-                            detectedBranch = branch.name;
-                            break;
-                        }
-                    }
-
-                    if (detectedBranch) {
-                        matchesArr.push({
-                            id: order.id,
-                            orderCode: order.case_id || '-',
-                            patientName: order.patient_name || '-',
-                            doctorName: doc.name,
-                            instructions: instructions,
-                            detectedBranch: detectedBranch,
-                            selected: true
-                        });
-                    }
-                }
-            }
-
-            setMigrationMatches(matchesArr);
-            setShowMigrationModal(true);
-        } catch (err) {
-            console.error('Error loading migration matches:', err);
-            const errMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تحميل الطلبات للمراجعة.';
-            alert(errMsg);
-        } finally {
-            setLoadingMigration(false);
-        }
-    };
-
-    const handleExecuteMigration = async () => {
-        const selectedMatches = migrationMatches.filter(m => m.selected);
-        if (selectedMatches.length === 0) {
-            alert('يرجى تحديد طلب واحد على الأقل للترحيل.');
-            return;
-        }
-
-        setUpdatingMigration(true);
-        try {
-            let successCount = 0;
-            for (const match of selectedMatches) {
-                try {
-                    await db.repUpdateOrderWithAudit(
-                        match.id,
-                        { branchName: match.detectedBranch },
-                        'other',
-                        'ترحيل تلقائي للفرع بناءً على تعليمات الطلب'
-                    );
-                    successCount++;
-                } catch (updateError) {
-                    console.error(`Failed to update Order ${match.orderCode}:`, updateError);
-                }
-            }
-
-            alert(`تم ترحيل وتحديث ${successCount} طلب بنجاح.`);
-            setShowMigrationModal(false);
-            setMigrationMatches([]);
-        } catch (err) {
-            console.error('Error executing migration:', err);
-            const errMsg = err instanceof Error ? err.message : 'حدث خطأ أثناء تحديث الطلبات.';
-            alert(errMsg);
-        } finally {
-            setUpdatingMigration(false);
-        }
-    };
 
     const normalizeText = (text: string) => {
         if (!text) return '';
@@ -429,15 +310,6 @@ export default function Doctors() {
                             >
                                 <Printer size={18} />
                                 <span className="hidden sm:inline">طباعة</span>
-                            </button>
-                            <button
-                                onClick={loadMigrationMatches}
-                                disabled={loadingMigration}
-                                className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white px-3 py-2 rounded-lg transition-colors font-semibold shadow-md"
-                                title="مراجعة وتحديث فروع الطلبات القديمة"
-                            >
-                                <AlertTriangle size={18} />
-                                <span className="hidden sm:inline">{loadingMigration ? 'جاري الفحص...' : 'ربط الفروع القديمة'}</span>
                             </button>
                         </>
                     )}
@@ -901,96 +773,7 @@ export default function Doctors() {
                 </div>
             )}
 
-            {/* Migration Review Modal */}
-            {showMigrationModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
-                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                                🏢 مراجعة وربط الفروع للطلبات القديمة
-                            </h2>
-                            <button onClick={() => setShowMigrationModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" aria-label="إغلاق">✕</button>
-                        </div>
 
-                        <div className="p-6 overflow-y-auto flex-1 space-y-4">
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
-                                تم فحص الطلبات السابقة ومطابقة أسماء الفروع المكتوبة في خانة التعليمات مع الفروع المسجلة للأطباء. يرجى مراجعة وتأكيد المطابقة أدناه لضمان عدم ربط أي أوردر بفرع خاطئ.
-                            </p>
-
-                            {migrationMatches.length === 0 ? (
-                                <div className="text-center py-8 text-gray-400">
-                                    لا توجد طلبات قديمة تحتاج لربط فروع حالياً.
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto border border-gray-100 dark:border-gray-700 rounded-lg">
-                                    <table className="w-full text-sm text-right text-gray-600 dark:text-gray-300">
-                                        <thead className="bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold">
-                                            <tr>
-                                                <th className="p-3 text-center w-12">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={migrationMatches.every(m => m.selected)}
-                                                        onChange={(e) => {
-                                                            const checked = e.target.checked;
-                                                            setMigrationMatches(prev => prev.map(m => ({ ...m, selected: checked })));
-                                                        }}
-                                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                                                    />
-                                                </th>
-                                                <th className="p-3">كود الأوردر</th>
-                                                <th className="p-3">اسم المريض</th>
-                                                <th className="p-3">الطبيب / المركز</th>
-                                                <th className="p-3 text-blue-600 dark:text-blue-400">الفرع المكتشف</th>
-                                                <th className="p-3">نص التعليمات</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                                            {migrationMatches.map((match) => (
-                                                <tr key={match.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                                    <td className="p-3 text-center">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={match.selected}
-                                                            onChange={(e) => {
-                                                                const checked = e.target.checked;
-                                                                setMigrationMatches(prev => prev.map(m => m.id === match.id ? { ...m, selected: checked } : m));
-                                                            }}
-                                                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                                                        />
-                                                    </td>
-                                                    <td className="p-3 font-mono font-bold">{match.orderCode}</td>
-                                                    <td className="p-3 font-semibold">{match.patientName}</td>
-                                                    <td className="p-3">{match.doctorName}</td>
-                                                    <td className="p-3"><span className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-md font-bold">{match.detectedBranch}</span></td>
-                                                    <td className="p-3 text-xs max-w-xs truncate" title={match.instructions}>{match.instructions}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="p-6 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-2 shrink-0">
-                            <button
-                                type="button"
-                                onClick={() => setShowMigrationModal(false)}
-                                className="px-4 py-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                type="button"
-                                disabled={updatingMigration || migrationMatches.filter(m => m.selected).length === 0}
-                                onClick={handleExecuteMigration}
-                                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-bold transition-colors flex items-center gap-2"
-                            >
-                                {updatingMigration ? 'جاري التحديث...' : `تأكيد ترحيل الطلبات المحددة (${migrationMatches.filter(m => m.selected).length})`}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
