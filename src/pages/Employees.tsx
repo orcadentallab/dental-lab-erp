@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, type User, type EmployeeAdvance, type EmployeeCustody, type EmployeeCommission, type Transaction } from '../services/db';
+import { financeService, type Cashbox } from '../services/financeService';
 import { getEmployeeFinanceStats, type EmployeeFinanceStats } from '../utils/employeeFinance';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -31,6 +32,8 @@ export default function Employees() {
     const [custodies, setCustodies] = useState<EmployeeCustody[]>([]);
     const [commissions, setCommissions] = useState<EmployeeCommission[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
+    const [selectedCashboxId, setSelectedCashboxId] = useState('');
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState<string>('all');
@@ -74,12 +77,13 @@ export default function Employees() {
 
     const loadData = useCallback(async () => {
         try {
-            const [allUsers, allAdvances, allCustodies, allCommissions, allTransactions] = await Promise.all([
+            const [allUsers, allAdvances, allCustodies, allCommissions, allTransactions, allCashboxes] = await Promise.all([
                 db.getUsers(),
                 db.getEmployeeAdvances(),
                 db.getEmployeeCustodies(),
                 db.getEmployeeCommissions(),
-                db.getTransactions()
+                db.getTransactions(),
+                financeService.getCashboxes()
             ]);
 
             setUsers(allUsers);
@@ -87,6 +91,7 @@ export default function Employees() {
             setCustodies(allCustodies);
             setCommissions(allCommissions);
             setTransactions(allTransactions);
+            setCashboxes(allCashboxes);
         } catch (error) {
             console.error('Error loading employees data:', error);
             toastError('حدث خطأ أثناء تحميل البيانات');
@@ -161,6 +166,36 @@ export default function Employees() {
 
     const toggleRepDetails = (repId: string) => {
         setExpandedReps(prev => ({ ...prev, [repId]: !prev[repId] }));
+    };
+
+    const getCashboxForCashOut = (label: string) => {
+        if (cashboxes.length === 0) return '';
+        if (selectedCashboxId) return selectedCashboxId;
+        const options = cashboxes.map((box, index) => `${index + 1}. ${box.name}`).join('\n');
+        const answer = prompt(`${label}\nاختر رقم الصندوق:\n${options}`);
+        if (!answer) return '';
+        const index = Number(answer) - 1;
+        return cashboxes[index]?.id || '';
+    };
+
+    const addTransferFeeIfNeeded = async (transaction: Transaction, cashboxId: string, effectiveDate?: string) => {
+        const cashbox = cashboxes.find(box => box.id === cashboxId);
+        const fee = financeService.calculateCashboxFee(cashbox, transaction.amount);
+        if (!cashbox?.feeEnabled || fee <= 0) return;
+        await db.addTransaction({
+            type: 'expense',
+            amount: fee,
+            category: 'transfer_fee',
+            description: `مصاريف بنك/محفظة - ${transaction.description}`.slice(0, 500),
+            date: transaction.date,
+            effectiveDate,
+            entityType: 'general',
+            cashboxId,
+            linkedTransactionId: transaction.id,
+            isSystemGeneratedFee: true,
+            isRegistered: true,
+            status: 'approved'
+        });
     };
 
     // Calculate aggregated stats
@@ -285,6 +320,11 @@ export default function Employees() {
             toastError('مبلغ غير صحيح');
             return;
         }
+        const cashboxId = getCashboxForCashOut('تسوية مصاريف المندوب ستخرج من الخزينة.');
+        if (cashboxes.length > 0 && !cashboxId) {
+            toastError('يرجى اختيار الصندوق قبل التسوية');
+            return;
+        }
 
         try {
             const today = new Date().toISOString().split('T')[0];
@@ -299,17 +339,19 @@ export default function Employees() {
             ));
 
             // 2. Add one consolidated transaction for the accounting ledger
-            await db.addTransaction({
+            const tx = await db.addTransaction({
                 type: 'expense',
                 amount: settledAmount,
                 category: 'شحن وتوصيل',
                 description: `مصاريف شحن المندوب ${repName} لشهر ${selectedMonth} - التفاصيل: ${combinedDescription}`.slice(0, 500),
                 date: today,
                 entityType: 'general',
+                cashboxId,
                 isRegistered: false,
                 status: 'approved',
                 effectiveDate: selectedMonth + '-01'
             });
+            await addTransferFeeIfNeeded(tx, cashboxId, selectedMonth + '-01');
 
             await loadData();
             toastSuccess('تم تسوية المصاريف بنجاح ✅');
@@ -335,6 +377,10 @@ export default function Employees() {
     };
 
     const handleConfirmPayAllSalaries = async () => {
+        if (cashboxes.length > 0 && !selectedCashboxId) {
+            toastError('يرجى اختيار الصندوق قبل صرف الرواتب');
+            return;
+        }
         setShowPayConfirmModal(false);
         try {
             const today = new Date().toISOString().split('T')[0];
@@ -355,7 +401,7 @@ export default function Employees() {
                 const adjustmentsDesc = adjustmentDetails ? ` [تفاصيل: ${adjustmentDetails}]` : '';
 
                 // Record salary payout transaction
-                await db.addTransaction({
+                const tx = await db.addTransaction({
                     type: 'expense',
                     amount: stats.salaryDue,
                     category: 'مرتبات وأجور',
@@ -363,9 +409,12 @@ export default function Employees() {
                     date: today,
                     entityId: user.id,
                     entityType: 'general',
+                    cashboxId: selectedCashboxId,
                     isRegistered: true,
+                    status: 'approved',
                     effectiveDate: selectedMonth + '-01'
                 });
+                await addTransferFeeIfNeeded(tx, selectedCashboxId, selectedMonth + '-01');
 
                 // Remove individual adjustments to prevent double counting
                 if (monthlyAdjustments.length > 0) {
@@ -1129,6 +1178,20 @@ export default function Employees() {
 
                         {/* Body - employee breakdown */}
                         <div className="p-5 max-h-72 overflow-y-auto">
+                            {cashboxes.length > 0 && (
+                                <div className="mb-4">
+                                    <label className="block text-xs font-semibold text-gray-600 mb-1">الصندوق الذي سيتم الصرف منه *</label>
+                                    <select
+                                        required
+                                        value={selectedCashboxId}
+                                        onChange={(e) => setSelectedCashboxId(e.target.value)}
+                                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                    >
+                                        <option value="">-- اختر الصندوق --</option>
+                                        {cashboxes.map(box => <option key={box.id} value={box.id}>{box.name}</option>)}
+                                    </select>
+                                </div>
+                            )}
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="text-xs text-gray-500 border-b">

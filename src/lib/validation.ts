@@ -126,7 +126,11 @@ export const TransactionSchema = z.object({
     entityId: z.string().uuid().optional().nullable(),
     entityType: z.enum(['doctor', 'supplier', 'general', 'designer', 'representative']).optional().nullable(),
     isRegistered: z.boolean().default(false),
-    status: z.enum(['pending', 'approved', 'rejected', 'settled']).optional().default('pending')
+    status: z.enum(['pending', 'approved', 'rejected', 'settled']).optional().default('pending'),
+    effectiveDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'التاريخ المالي غير صحيح').optional().nullable(),
+    cashboxId: z.string().uuid().optional().nullable(),
+    linkedTransactionId: z.string().uuid().optional().nullable(),
+    isSystemGeneratedFee: z.boolean().optional()
 });
 
 export const TransactionCreateSchema = TransactionSchema.omit({ id: true });

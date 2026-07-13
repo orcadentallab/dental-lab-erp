@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, type User, type EmployeeAdvance, type EmployeeCustody, type EmployeeCommission, type Transaction } from '../services/db';
+import { financeService, type Cashbox } from '../services/financeService';
 import { getEmployeeFinanceStats } from '../utils/employeeFinance';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -31,6 +32,7 @@ export default function EmployeeDetail() {
     const [custodies, setCustodies] = useState<EmployeeCustody[]>([]);
     const [commissions, setCommissions] = useState<EmployeeCommission[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -74,12 +76,13 @@ export default function EmployeeDetail() {
         if (!id) return;
         setIsLoading(true);
         try {
-            const [allUsers, allAdvances, allCustodies, allCommissions, allTransactions] = await Promise.all([
+            const [allUsers, allAdvances, allCustodies, allCommissions, allTransactions, allCashboxes] = await Promise.all([
                 db.getUsers(),
                 db.getEmployeeAdvances(id),
                 db.getEmployeeCustodies(id),
                 db.getEmployeeCommissions(id),
-                db.getTransactions()
+                db.getTransactions(),
+                financeService.getCashboxes()
             ]);
 
             setUsers(allUsers);
@@ -95,6 +98,7 @@ export default function EmployeeDetail() {
             setCustodies(allCustodies);
             setCommissions(allCommissions);
             setTransactions(allTransactions);
+            setCashboxes(allCashboxes);
         } catch (error) {
             console.error('Error loading employee details:', error);
             toastError('حدث خطأ أثناء تحميل بيانات الموظف');
@@ -323,6 +327,24 @@ export default function EmployeeDetail() {
         const confirmMsg = `هل أنت متأكد من صرف الراتب للموظف ${employee.name} لشهر ${selectedMonth} بمبلغ ${formatCurrency(stats.salaryDue)}؟\nملاحظة: هذا الإجراء سيسجل مصروفاً ولا يسوي السلف أو العهد تلقائياً.`;
         if (!confirm(confirmMsg)) return;
 
+        const activeBoxes = cashboxes.filter(b => b.isActive);
+        const cashboxRequired = activeBoxes.length > 0;
+        let cashboxId = '';
+        if (cashboxRequired) {
+            const options = activeBoxes.map((box, index) => `${index + 1}. ${box.name}`).join('\n');
+            const answer = prompt(`صرف راتب الموظف سيخرج من الخزينة.\nاختر رقم الصندوق:\n${options}`);
+            if (!answer) {
+                toastError('يرجى اختيار الصندوق قبل صرف الراتب');
+                return;
+            }
+            const index = Number(answer) - 1;
+            cashboxId = activeBoxes[index]?.id || '';
+            if (!cashboxId) {
+                toastError('اختيار صندوق غير صالح');
+                return;
+            }
+        }
+
         try {
             const today = new Date().toISOString().split('T')[0];
             const adjustmentsDesc = monthlyAdjustments.length > 0
@@ -330,7 +352,7 @@ export default function EmployeeDetail() {
                 : '';
 
             // 1. Create consolidated expense transaction
-            await db.addTransaction({
+            const tx = await db.addTransaction({
                 type: 'expense',
                 amount: stats.salaryDue,
                 category: 'مرتبات وأجور',
@@ -338,9 +360,31 @@ export default function EmployeeDetail() {
                 date: today,
                 entityId: employee.id,
                 entityType: 'general',
+                cashboxId: cashboxId || undefined,
                 isRegistered: true,
                 effectiveDate: selectedMonth + '-01'
             });
+
+            if (cashboxId) {
+                const cashbox = cashboxes.find(box => box.id === cashboxId);
+                const fee = financeService.calculateCashboxFee(cashbox, stats.salaryDue);
+                if (cashbox?.feeEnabled && fee > 0) {
+                    await db.addTransaction({
+                        type: 'expense',
+                        amount: fee,
+                        category: 'transfer_fee',
+                        description: `مصاريف بنك/محفظة - راتب شهر ${selectedMonth} - ${employee.name}`.slice(0, 500),
+                        date: today,
+                        effectiveDate: selectedMonth + '-01',
+                        entityType: 'general',
+                        cashboxId,
+                        linkedTransactionId: tx.id,
+                        isSystemGeneratedFee: true,
+                        isRegistered: true,
+                        status: 'approved'
+                    });
+                }
+            }
 
             // 2. Delete monthly adjustment tokens (bonuses/deductions)
             if (monthlyAdjustments.length > 0) {

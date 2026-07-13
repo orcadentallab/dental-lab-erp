@@ -44,6 +44,50 @@ export interface Transaction {
     isApproved?: boolean; // Flag for individual expense approval (DEPRECATED: Use status)
     status?: 'pending' | 'approved' | 'rejected' | 'settled'; // New Status Field
     effectiveDate?: string;
+    cashboxId?: string;
+    linkedTransactionId?: string;
+    isSystemGeneratedFee?: boolean;
+    createdAt?: string;
+}
+
+export type CashboxType = 'cash' | 'bank' | 'wallet' | 'other';
+
+export interface Cashbox {
+    id: string;
+    name: string;
+    type: CashboxType;
+    openingBalance: number;
+    openingDate: string;
+    isActive: boolean;
+    feeEnabled: boolean;
+    feePercentage: number;
+    feeMinAmount: number;
+    feeMaxAmount?: number | null;
+    isSaving: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface CashboxTransfer {
+    id: string;
+    fromCashboxId: string;
+    toCashboxId: string;
+    amount: number;
+    date: string;
+    description?: string | null;
+    createdBy?: string | null;
+    createdAt?: string;
+}
+
+export interface CashboxReconciliation {
+    id: string;
+    cashboxId: string;
+    expectedBalance: number;
+    actualBalance: number;
+    difference: number;
+    date: string;
+    notes?: string | null;
+    createdBy?: string | null;
     createdAt?: string;
 }
 

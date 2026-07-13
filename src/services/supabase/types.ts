@@ -107,6 +107,9 @@ export interface DbTransaction {
     is_approved?: boolean;
     status?: 'pending' | 'approved' | 'rejected' | 'settled';
     effective_date?: string | null;
+    cashbox_id?: string | null;
+    linked_transaction_id?: string | null;
+    is_system_generated_fee?: boolean;
     created_at: string;
     updated_at: string;
 }

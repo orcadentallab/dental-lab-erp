@@ -13,12 +13,13 @@ import AllocationPreviewPanel from '../components/finance/AllocationPreviewPanel
 import HistoricalObligationsPreview from '../components/finance/HistoricalObligationsPreview';
 import HistoricalObligationsBackfillDryRun from '../components/finance/HistoricalObligationsBackfillDryRun';
 import { financeService } from '../services/financeService';
-import type { Adjustment } from '../services/financeService';
+import type { Adjustment, Cashbox } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
 import type { FilterType } from '../components/finance/FinanceFilters';
 import { useToast } from '../context/ToastContext';
 import { isDesignerUser } from '../lib/userRoles';
 import { useSearchParams } from 'react-router-dom';
+import CashboxPanel from '../components/finance/CashboxPanel';
 
 export default function Finance() {
     const { user } = useAuth();
@@ -28,10 +29,22 @@ export default function Finance() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const todayDate = new Date().toISOString().split('T')[0];
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments' | 'obligations' | 'allocationPreview' | 'historicalObligationsPreview' | 'historicalBackfillDryRun'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments' | 'obligations' | 'allocationPreview' | 'historicalObligationsPreview' | 'historicalBackfillDryRun' | 'cashboxes'>('expenses');
+    const [hasInitializedTab, setHasInitializedTab] = useState(false);
+    
+    useEffect(() => {
+        if (user && !hasInitializedTab) {
+            const isAdmin = user.role === 'admin' || user.username === 'admin';
+            setActiveTab(isAdmin ? 'cashboxes' : 'expenses');
+            setHasInitializedTab(true);
+        }
+    }, [user, hasInitializedTab]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+    const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
+    const [selectedCashboxId, setSelectedCashboxId] = useState('');
+    const [transferFeeAmount, setTransferFeeAmount] = useState(0);
 
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -70,18 +83,20 @@ export default function Finance() {
                 // PERFORMANCE: Removed getAllOrdersUnpaginated() from eager load.
                 // Orders are now loaded lazily when entity tabs are opened.
                 // Dashboard metrics use server-side RPC instead.
-                const [transactionsData, doctorsData, suppliersData, usersData, adjustmentsData] = await Promise.all([
+                const [transactionsData, doctorsData, suppliersData, usersData, adjustmentsData, cashboxesData] = await Promise.all([
                     db.getTransactions(),
                     db.getDoctors(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    financeService.getAdjustments()
+                    financeService.getAdjustments(),
+                    financeService.getCashboxes()
                 ]);
                 setTransactions(transactionsData);
                 setDoctors(doctorsData);
                 setSuppliers(suppliersData);
                 setDesigners(usersData.filter(u => isDesignerUser(u)));
                 setAdjustments(adjustmentsData);
+                setCashboxes(cashboxesData);
             } catch (error) {
                 console.error('Error loading finance data:', error);
             } finally {
@@ -104,7 +119,11 @@ export default function Finance() {
 
     // Memoized filtered transactions for different tabs
     const generalExpenses = useMemo(() =>
-        transactions.filter(t => t.type === 'expense' && (t.entityType === 'general' || !t.entityType)),
+        transactions.filter(t => 
+            t.type === 'expense' && 
+            (t.entityType === 'general' || !t.entityType) &&
+            !(t.entityId && t.category !== 'مرتبات وأجور')
+        ),
         [transactions]
     );
 
@@ -135,6 +154,102 @@ export default function Finance() {
     const filteredSupplierPayments = useMemo(() => filterEntries(supplierPayments, supplierPaymentFilter), [supplierPayments, supplierPaymentFilter]);
     const filteredDesignerPayments = useMemo(() => filterEntries(designerPayments, designerPaymentFilter), [designerPayments, designerPaymentFilter]);
 
+    const selectedCashbox = useMemo(() => cashboxes.find(c => c.id === selectedCashboxId), [cashboxes, selectedCashboxId]);
+    const cashboxRequired = cashboxes.length > 0;
+    const isOutgoingCashboxFlow = ['expenses', 'suppliers', 'designers'].includes(activeTab);
+
+    useEffect(() => {
+        if (!selectedCashbox || !isOutgoingCashboxFlow || editingTransaction) {
+            setTransferFeeAmount(0);
+            return;
+        }
+        setTransferFeeAmount(financeService.calculateCashboxFee(selectedCashbox, amount));
+    }, [amount, selectedCashbox, isOutgoingCashboxFlow, editingTransaction]);
+
+    const getCashboxName = (cashboxId?: string) => cashboxes.find(c => c.id === cashboxId)?.name || 'غير حدد';
+
+    const ensureCashboxSelected = () => {
+        if (cashboxRequired && !selectedCashboxId) {
+            toastError('يرجى تحديد الخزينة/الصندوق أولاً');
+            return false;
+        }
+        return true;
+    };
+
+    const createTransferFeeIfNeeded = async (originalTransaction: Transaction, feeEffectiveDate?: string) => {
+        if (!selectedCashboxId || !selectedCashbox?.feeEnabled || transferFeeAmount <= 0) return;
+        await db.addTransaction({
+            type: 'expense',
+            amount: transferFeeAmount,
+            category: 'transfer_fee',
+            description: `عمولة سحب/تحويل - ${originalTransaction.description}`.slice(0, 500),
+            date: originalTransaction.date,
+            effectiveDate: feeEffectiveDate,
+            entityType: 'general',
+            cashboxId: selectedCashboxId,
+            linkedTransactionId: originalTransaction.id,
+            isSystemGeneratedFee: true,
+            isRegistered: true,
+            status: 'approved'
+        });
+    };
+
+    const CashboxFields = ({ includeFee = false, tone = 'blue' }: { includeFee?: boolean; tone?: 'red' | 'green' | 'blue' | 'teal' | 'pink' }) => {
+        if (cashboxes.length === 0) {
+            return (
+                <div className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-700">
+                    لم يتم تهيئة أي صناديق بعد. يرجى تهيئتها من تبويب الصناديق أولاً للمتابعة.
+                </div>
+            );
+        }
+
+        const ringColor = {
+            red: 'focus:ring-red-500',
+            green: 'focus:ring-green-500',
+            blue: 'focus:ring-blue-500',
+            teal: 'focus:ring-teal-500',
+            pink: 'focus:ring-pink-500',
+        }[tone];
+
+        return (
+            <div className="space-y-3">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">الصندوق</label>
+                    <select
+                        required={cashboxRequired}
+                        value={selectedCashboxId}
+                        onChange={e => setSelectedCashboxId(e.target.value)}
+                        className={`w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 ${ringColor} transition-all`}
+                    >
+                        <option value="">-- اختر الصندوق --</option>
+                        {cashboxes
+                            .filter(c => !c.isSaving || c.id === selectedCashboxId)
+                            .map(c => <option key={c.id} value={c.id}>{c.name}</option>)
+                        }
+                    </select>
+                </div>
+                {includeFee && selectedCashbox?.feeEnabled && (
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">عمولة سحب/تحويل</label>
+                        <input
+                            aria-label="عمولة سحب أو تحويل"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={transferFeeAmount || ''}
+                            onChange={e => setTransferFeeAmount(Number(e.target.value))}
+                            className={`w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 ${ringColor} font-bold`}
+                            placeholder="0.00"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                            سيتم خصم هذه العمولة كمعاملة منفصلة من الصندوق.
+                        </p>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const handleResetForm = () => {
         setAmount(0);
         setDescription('');
@@ -142,6 +257,8 @@ export default function Finance() {
         setSelectedId('');
         setTransactionDate(new Date().toISOString().split('T')[0]);
         setEffectiveDate(new Date().toISOString().split('T')[0]);
+        setSelectedCashboxId('');
+        setTransferFeeAmount(0);
         setEditingTransaction(null);
     };
 
@@ -161,6 +278,8 @@ export default function Finance() {
         const ed = t.effectiveDate ? t.effectiveDate : t.date;
         setEffectiveDate(new Date(ed).toISOString().substring(0, 7) + '-01');
         setSelectedId(t.entityId || '');
+        setSelectedCashboxId(t.cashboxId || '');
+        setTransferFeeAmount(0);
         // Scroll to form
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -168,6 +287,7 @@ export default function Finance() {
     const handleAddExpense = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+        if (!ensureCashboxSelected()) return;
         setIsSubmitting(true);
         try {
             if (editingTransaction) {
@@ -176,18 +296,22 @@ export default function Finance() {
                     category: category,
                     description,
                     date: transactionDate,
-                    effectiveDate
+                    effectiveDate,
+                    cashboxId: selectedCashboxId
                 });
             } else {
-                await db.addTransaction({
+                const tx = await db.addTransaction({
                     type: 'expense',
                     amount,
                     category: category,
                     description,
                     date: transactionDate,
                     effectiveDate,
-                    entityType: 'general'
+                    entityType: 'general',
+                    cashboxId: selectedCashboxId,
+                    status: 'approved'
                 });
+                await createTransferFeeIfNeeded(tx, effectiveDate);
             }
             toastSuccess(editingTransaction ? 'تم تعديل المصروف بنجاح' : 'تم تسجيل المصروف بنجاح');
             await handleTransactionUpdate();
@@ -203,6 +327,7 @@ export default function Finance() {
     const handleAddRevenue = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+        if (!ensureCashboxSelected()) return;
         setIsSubmitting(true);
         try {
             if (editingTransaction) {
@@ -210,6 +335,7 @@ export default function Finance() {
                     amount,
                     description,
                     date: transactionDate,
+                    cashboxId: selectedCashboxId
                 });
             } else {
                 await db.addTransaction({
@@ -218,7 +344,9 @@ export default function Finance() {
                     category: 'إيراد عام',
                     description,
                     date: transactionDate,
-                    entityType: 'general'
+                    entityType: 'general',
+                    cashboxId: selectedCashboxId,
+                    status: 'approved'
                 });
             }
             toastSuccess(editingTransaction ? 'تم تعديل الإيراد بنجاح' : 'تم تسجيل الإيراد بنجاح');
@@ -235,6 +363,7 @@ export default function Finance() {
     const handleAddDoctorPayment = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+        if (!ensureCashboxSelected()) return;
         setIsSubmitting(true);
         try {
             const docName = doctors.find(d => d.id === selectedId)?.name;
@@ -243,7 +372,8 @@ export default function Finance() {
                     amount,
                     description,
                     date: transactionDate,
-                    entityId: selectedId
+                    entityId: selectedId,
+                    cashboxId: selectedCashboxId
                 });
             } else {
                 await db.addTransaction({
@@ -253,7 +383,9 @@ export default function Finance() {
                     description: `تحصيل من د. ${docName} - ${description}`,
                     date: transactionDate,
                     entityType: 'doctor',
-                    entityId: selectedId
+                    entityId: selectedId,
+                    cashboxId: selectedCashboxId,
+                    status: 'approved'
                 });
             }
             toastSuccess(editingTransaction ? 'تم تعديل التحصيل بنجاح' : 'تم تسجيل التحصيل بنجاح');
@@ -270,6 +402,7 @@ export default function Finance() {
     const handleAddSupplierPayment = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+        if (!ensureCashboxSelected()) return;
         setIsSubmitting(true);
         try {
             const supName = suppliers.find(s => s.id === selectedId)?.name;
@@ -278,7 +411,8 @@ export default function Finance() {
                     amount,
                     description,
                     date: transactionDate,
-                    entityId: selectedId
+                    entityId: selectedId,
+                    cashboxId: selectedCashboxId
                 });
             } else {
                 await db.addTransaction({
@@ -288,7 +422,9 @@ export default function Finance() {
                     description: `سداد للمورد ${supName} - ${description}`,
                     date: transactionDate,
                     entityType: 'supplier',
-                    entityId: selectedId
+                    entityId: selectedId,
+                    cashboxId: selectedCashboxId,
+                    status: 'approved'
                 });
             }
             toastSuccess(editingTransaction ? 'تم تعديل السداد بنجاح' : 'تم تسجيل السداد بنجاح');
@@ -305,6 +441,7 @@ export default function Finance() {
     const handleAddDesignerPayment = async (e: FormEvent) => {
         e.preventDefault();
         if (isSubmitting) return;
+        if (!ensureCashboxSelected()) return;
         setIsSubmitting(true);
         try {
             const desName = designers.find(d => d.id === selectedId)?.name;
@@ -313,7 +450,8 @@ export default function Finance() {
                     amount,
                     description,
                     date: transactionDate,
-                    entityId: selectedId
+                    entityId: selectedId,
+                    cashboxId: selectedCashboxId
                 });
             } else {
                 await db.addTransaction({
@@ -323,7 +461,9 @@ export default function Finance() {
                     description: `سداد للمصمم ${desName} - ${description}`,
                     date: transactionDate,
                     entityType: 'designer',
-                    entityId: selectedId
+                    entityId: selectedId,
+                    cashboxId: selectedCashboxId,
+                    status: 'approved'
                 });
             }
             toastSuccess(editingTransaction ? 'تم تعديل السداد بنجاح' : 'تم تسجيل السداد بنجاح');
@@ -359,18 +499,20 @@ export default function Finance() {
                 <div className="flex gap-1 min-w-max justify-center">
                     {(() => {
                         const allTabs = [
-                            { id: 'daily_tx', label: 'المعاملات اليومية', icon: '💰', adminOnly: false, internalOnly: false },
-                            { id: 'accounts', label: 'الحسابات', icon: '👥', adminOnly: false, internalOnly: false },
-                            { id: 'obligations', label: 'مراجعة الالتزامات المالية', icon: '📋', adminOnly: false, internalOnly: true },
-                            { id: 'allocation_preview', label: 'معاينة توزيع الدفعات', icon: '🧾', adminOnly: false, internalOnly: true },
-                            { id: 'historical_obligations_preview', label: 'معاينة الالتزامات القديمة', icon: '🗂️', adminOnly: false, internalOnly: true },
-                            { id: 'historical_backfill_dry_run', label: 'تجربة تجهيز الالتزامات القديمة', icon: '🧪', adminOnly: false, internalOnly: true },
-                            { id: 'reports', label: 'رأس المال والأصول', icon: '🏦', adminOnly: true, internalOnly: false },
+                            { id: 'daily_tx', label: 'المعاملات اليومية', icon: '💰', adminOnly: false, internalOnly: false, adminOrAccountant: false },
+                            { id: 'accounts', label: 'الحسابات', icon: '👥', adminOnly: false, internalOnly: false, adminOrAccountant: false },
+                            { id: 'cashboxes', label: 'الخزائن والصناديق', icon: '💼', adminOnly: true, internalOnly: false, adminOrAccountant: false },
+                            { id: 'obligations', label: 'مراجعة الالتزامات المالية', icon: '📋', adminOnly: false, internalOnly: true, adminOrAccountant: false },
+                            { id: 'allocation_preview', label: 'معاينة توزيع الدفعات', icon: '🧾', adminOnly: false, internalOnly: true, adminOrAccountant: false },
+                            { id: 'historical_obligations_preview', label: 'معاينة الالتزامات القديمة', icon: '🗂️', adminOnly: false, internalOnly: true, adminOrAccountant: false },
+                            { id: 'historical_backfill_dry_run', label: 'تجربة تجهيز الالتزامات القديمة', icon: '🧪', adminOnly: false, internalOnly: true, adminOrAccountant: false },
+                            { id: 'reports', label: 'رأس المال والأصول', icon: '🏦', adminOnly: true, internalOnly: false, adminOrAccountant: false },
                         ] as const;
 
                         const tabs = allTabs.filter(t =>
-                            (!t.adminOnly || user?.username === 'admin')
+                            (!t.adminOnly || user?.role === 'admin' || user?.username === 'admin')
                             && (!t.internalOnly || (['admin', 'accountant'].includes(user?.role || '') && isDev))
+                            && (!t.adminOrAccountant || ['admin', 'accountant'].includes(user?.role || ''))
                         );
 
                         return tabs.map((tab) => (
@@ -380,6 +522,7 @@ export default function Finance() {
                                     // Map high-level tabs to specific active views
                                     if (tab.id === 'daily_tx') setActiveTab('expenses'); // default sub-tab
                                     if (tab.id === 'accounts') setActiveTab('doctors'); // default sub-tab
+                                    if (tab.id === 'cashboxes') setActiveTab('cashboxes');
                                     if (tab.id === 'obligations') setActiveTab('obligations');
                                     if (tab.id === 'allocation_preview') setActiveTab('allocationPreview');
                                     if (tab.id === 'historical_obligations_preview') setActiveTab('historicalObligationsPreview');
@@ -391,6 +534,7 @@ export default function Finance() {
                                     (
                                         (tab.id === 'daily_tx' && ['expenses', 'revenue'].includes(activeTab)) ||
                                         (tab.id === 'accounts' && ['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab)) ||
+                                        (tab.id === 'cashboxes' && activeTab === 'cashboxes') ||
                                         (tab.id === 'obligations' && activeTab === 'obligations') ||
                                         (tab.id === 'allocation_preview' && activeTab === 'allocationPreview') ||
                                         (tab.id === 'historical_obligations_preview' && activeTab === 'historicalObligationsPreview') ||
@@ -483,6 +627,7 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ (ج.م)</label>
                                     <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 transition-all font-bold text-lg" placeholder="0.00" />
                                 </div>
+                                <CashboxFields includeFee tone="red" />
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">ملاحظات</label>
                                     <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 transition-all" placeholder="تفاصيل المصروف..." />
@@ -501,13 +646,14 @@ export default function Finance() {
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {filteredExpenses.map(t => (
                                             <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                                 <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                                 <td className="p-4 font-bold text-gray-800">{t.category}</td>
                                                 <td className="p-4 text-gray-600">{t.description}</td>
+                                                <td className="p-4 text-gray-500">{cashboxes.find(c => c.id === t.cashboxId)?.name || 'غير محدد'}</td>
                                                 <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
                                                 <td className="p-4 text-center">
                                                     {t.isRegistered ? (
@@ -533,7 +679,7 @@ export default function Finance() {
                                     </tbody>
                                     <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
                                         <tr>
-                                            <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
+                                            <td colSpan={4} className="p-4 text-gray-700">الإجمالي</td>
                                             <td className="p-4 text-red-700">{calculateTotal(filteredExpenses).toLocaleString()} ج.م</td>
                                             <td colSpan={2}></td>
                                         </tr>
@@ -563,6 +709,7 @@ export default function Finance() {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ (ج.م)</label>
                                     <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all font-bold text-lg" placeholder="0.00" />
                                 </div>
+                                <CashboxFields tone="green" />
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">وصف الإيراد</label>
                                     <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all" placeholder="مصدر الإيراد..." />
@@ -580,12 +727,13 @@ export default function Finance() {
                                 <DateFilter activeFilter={revenueFilter} onFilterChange={setRevenueFilter} />
                             </div>
                             <table className="w-full text-sm text-right">
-                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filteredIncome.map(t => (
                                         <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                             <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                             <td className="p-4 text-gray-800">{t.description}</td>
+                                            <td className="p-4 text-gray-500">{cashboxes.find(c => c.id === t.cashboxId)?.name || 'غير محدد'}</td>
                                             <td className="p-4 font-bold text-green-600">{t.amount.toLocaleString()}</td>
                                             <td className="p-4 text-center">
                                                 {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
@@ -607,7 +755,7 @@ export default function Finance() {
                                 </tbody>
                                 <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
                                     <tr>
-                                        <td colSpan={2} className="p-4 text-gray-700">الإجمالي</td>
+                                        <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                         <td className="p-4 text-green-700">{calculateTotal(filteredIncome).toLocaleString()} ج.م</td>
                                         <td colSpan={2}></td>
                                     </tr>
@@ -654,6 +802,7 @@ export default function Finance() {
                                         <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold" />
                                     </div>
                                 </div>
+                                <CashboxFields tone="blue" />
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" placeholder="مثال: دفعة من الحساب..." />
@@ -686,7 +835,7 @@ export default function Finance() {
                             <DateFilter activeFilter={doctorPaymentFilter} onFilterChange={setDoctorPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredDoctorPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -694,6 +843,7 @@ export default function Finance() {
                                         <td className="p-4 font-bold text-blue-700">{doctors.find(d => d.id === t.entityId)?.name || 'غير معروف'}</td>
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-green-600">{t.amount.toLocaleString()}</td>
+                                        <td className="p-4 text-gray-600">{getCashboxName(t.cashboxId)}</td>
                                         <td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                         </td>
@@ -716,7 +866,7 @@ export default function Finance() {
                                 <tr>
                                     <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                     <td className="p-4 text-green-700">{calculateTotal(filteredDoctorPayments).toLocaleString()} ج.م</td>
-                                    <td colSpan={2}></td>
+                                    <td colSpan={3}></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -751,6 +901,7 @@ export default function Finance() {
                                         <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500 font-bold" />
                                     </div>
                                 </div>
+                                <CashboxFields includeFee tone="teal" />
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" placeholder="مثال: فاتورة رقم..." />
@@ -780,7 +931,7 @@ export default function Finance() {
                             <DateFilter activeFilter={supplierPaymentFilter} onFilterChange={setSupplierPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredSupplierPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -788,6 +939,7 @@ export default function Finance() {
                                         <td className="p-4 font-bold text-teal-700">{suppliers.find(s => s.id === t.entityId)?.name || 'غير معروف'}</td>
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
+                                        <td className="p-4 text-gray-600">{getCashboxName(t.cashboxId)}</td>
                                         <td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                         </td>
@@ -810,7 +962,7 @@ export default function Finance() {
                                 <tr>
                                     <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                     <td className="p-4 text-red-700">{calculateTotal(filteredSupplierPayments).toLocaleString()} ج.م</td>
-                                    <td colSpan={2}></td>
+                                    <td colSpan={3}></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -845,6 +997,7 @@ export default function Finance() {
                                         <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500 font-bold" />
                                     </div>
                                 </div>
+                                <CashboxFields includeFee tone="pink" />
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">بيان</label>
                                     <input aria-label="الوصف" value={description} onChange={e => setDescription(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500" placeholder="مثال: حساب الأسبوع..." />
@@ -874,7 +1027,7 @@ export default function Finance() {
                             <DateFilter activeFilter={designerPaymentFilter} onFilterChange={setDesignerPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredDesignerPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -882,6 +1035,7 @@ export default function Finance() {
                                         <td className="p-4 font-bold text-pink-700">{designers.find(d => d.id === t.entityId)?.name || 'غير معروف'}</td>
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
+                                        <td className="p-4 text-gray-600">{getCashboxName(t.cashboxId)}</td>
                                         <td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
                                         </td>
@@ -904,7 +1058,7 @@ export default function Finance() {
                                 <tr>
                                     <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                     <td className="p-4 text-red-700">{calculateTotal(filteredDesignerPayments).toLocaleString()} ج.م</td>
-                                    <td colSpan={2}></td>
+                                    <td colSpan={3}></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -912,6 +1066,11 @@ export default function Finance() {
                 </div>
             )}
 
+
+            {/* CASHBOXES TAB (ADMIN ONLY) */}
+            {activeTab === 'cashboxes' && (user?.role === 'admin' || user?.username === 'admin') && (
+                <CashboxPanel />
+            )}
 
             {/* CAPITAL & ASSETS TAB (ADMIN ONLY) */}
             {activeTab === 'capital' && user?.role === 'admin' && (
