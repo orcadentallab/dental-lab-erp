@@ -164,6 +164,10 @@ function OrderCard({
     const displayedDesignCost = order.manualDesignPrice ?? order.designPrice ?? 0;
     const showDesignerCost = Boolean(order.designerId && designerFixedSalary[order.designerId] === false);
     const usesRejectionCost = order.status === 'Doctor Rejected' || order.status === 'Rejected';
+    const hasZeroEffectiveCost = order.status === 'Cancelled' || order.status === 'Lab Rejected';
+    const hasZeroEffectiveSalePrice = ['Doctor Rejected', 'Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status);
+    const effectiveDisplayedLabCost = hasZeroEffectiveCost ? 0 : displayedLabCost;
+    const effectiveDisplayedDesignCost = hasZeroEffectiveCost ? 0 : displayedDesignCost;
 
     const compactCost = (value: number, isManual: boolean, tone: 'teal' | 'indigo') => (
         <span className={clsx(
@@ -542,7 +546,7 @@ function OrderCard({
                                                 <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[80px]">
                                                     {order.designerId && users[order.designerId] ? users[order.designerId] : 'مصمم'}
                                                 </span>
-                                                {showDesignerCost && !usesRejectionCost && compactCost(displayedDesignCost, hasManualDesignCost, 'indigo')}
+                                                {showDesignerCost && !usesRejectionCost && compactCost(effectiveDisplayedDesignCost, hasZeroEffectiveCost ? false : hasManualDesignCost, 'indigo')}
                                             </div>
                                             {/* Divider */}
                                             <div className="w-full h-px bg-teal-200 dark:bg-teal-700/50 my-0.5"></div>
@@ -552,7 +556,7 @@ function OrderCard({
                                                 <span className="text-xs font-bold text-teal-700 dark:text-teal-300 truncate max-w-[80px]">
                                                     {order.supplierId && suppliers[order.supplierId] ? suppliers[order.supplierId] : 'خراطة'}
                                                 </span>
-                                                {!usesRejectionCost && compactCost(displayedLabCost, hasManualLabCost, 'teal')}
+                                                {!usesRejectionCost && compactCost(effectiveDisplayedLabCost, hasZeroEffectiveCost ? false : hasManualLabCost, 'teal')}
                                             </div>
                                         </div>
                                     ) : order.supplierId && suppliers[order.supplierId] ? (
@@ -563,7 +567,7 @@ function OrderCard({
                                             <span className="text-sm font-black text-teal-700 dark:text-teal-300 leading-tight text-center mt-0.5">
                                                 {suppliers[order.supplierId]}
                                             </span>
-                                            {!usesRejectionCost && compactCost(displayedLabCost, hasManualLabCost, 'teal')}
+                                            {!usesRejectionCost && compactCost(effectiveDisplayedLabCost, hasZeroEffectiveCost ? false : hasManualLabCost, 'teal')}
                                         </>
                                     ) : order.designerId && users[order.designerId] ? (
                                         /* Designer Only */
@@ -573,7 +577,7 @@ function OrderCard({
                                             <span className="text-sm font-black text-indigo-700 dark:text-indigo-300 leading-tight text-center mt-0.5">
                                                 {users[order.designerId]}
                                             </span>
-                                            {showDesignerCost && !usesRejectionCost && compactCost(displayedDesignCost, hasManualDesignCost, 'indigo')}
+                                            {showDesignerCost && !usesRejectionCost && compactCost(effectiveDisplayedDesignCost, hasZeroEffectiveCost ? false : hasManualDesignCost, 'indigo')}
                                         </>
                                     ) : (
                                         /* Internal Lab */
@@ -590,11 +594,27 @@ function OrderCard({
                         {userRole === 'admin' && (
                             <div className="col-span-1 lg:col-span-2 flex flex-col gap-2 items-center justify-center min-h-[80px]">
                                 <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800/50 rounded-xl p-3">
-                                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1">الإجمالي</span>
-                                    <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
-                                        {(order.totalPrice || 0).toLocaleString('en-EG')}
+                                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1">
+                                        {hasZeroEffectiveSalePrice ? 'الإجمالي غير محتسب' : 'الإجمالي'}
                                     </span>
-                                    <span className="text-[10px] font-bold text-green-600 dark:text-green-400 mt-0.5">ج.م</span>
+                                    {hasZeroEffectiveSalePrice ? (
+                                        <>
+                                            <span className="text-xs font-bold text-surface-500 line-through decoration-red-300 decoration-1 dark:text-surface-400 dark:decoration-red-700/60">
+                                                {(order.totalPrice || 0).toLocaleString('en-EG')} ج.م
+                                            </span>
+                                            <span className="text-xl font-black text-red-600 dark:text-red-300 leading-none">
+                                                0
+                                            </span>
+                                            <span className="text-[10px] font-bold text-red-500 dark:text-red-400 mt-0.5">ج.م</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
+                                                {(order.totalPrice || 0).toLocaleString('en-EG')}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-green-600 dark:text-green-400 mt-0.5">ج.م</span>
+                                        </>
+                                    )}
                                 </div>
 
                                 {/* Rejection Cost Display - Admin Only */}

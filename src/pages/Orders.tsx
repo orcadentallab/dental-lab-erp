@@ -877,7 +877,7 @@ export default function Orders() {
                                 </select>
                                 <select aria-label="حالة المشكلة" value={issueStateFilter} onChange={(e) => setIssueStateFilter(e.target.value)} className={mobileFilterControlClass}>
                                     <option value="">كل حالات المشكلة</option>
-                                    {ISSUE_STATES.filter(s => s !== 'none').map(s => <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>)}
+                                    {ISSUE_STATES.filter(s => s !== 'none' && s !== 'on_hold').map(s => <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>)}
                                 </select>
 
                                 {canFilterByDoctorAndSupplier && (
@@ -1072,7 +1072,7 @@ export default function Orders() {
                                         className={filterSelectClass(Boolean(issueStateFilter), true)}
                                     >
                                         <option value="">حالة المشكلة</option>
-                                        {ISSUE_STATES.filter(s => s !== 'none').map(s => (
+                                        {ISSUE_STATES.filter(s => s !== 'none' && s !== 'on_hold').map(s => (
                                             <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>
                                         ))}
                                     </select>
