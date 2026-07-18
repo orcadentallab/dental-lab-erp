@@ -5,6 +5,8 @@ import type { Adjustment } from '../../services/financeService';
 import { getDoctorReceivableAmount, isDoctorStatementIncluded } from '../../constants/orderLifecycle';
 import { getLabCostMetadata } from '../../constants/financialObligations';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
+import { calculatePayableAdjustmentTotals } from '../../utils/finance';
+import { isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
 
 interface AccountInfoPanelProps {
     entityId: string;
@@ -66,6 +68,7 @@ export function AccountInfoPanel({
 
     const totalCharges = entityAdjustments.filter(a => a.type === 'charge').reduce((sum, a) => sum + a.amount, 0);
     const totalCredits = entityAdjustments.filter(a => a.type === 'credit').reduce((sum, a) => sum + a.amount, 0);
+    const payableAdjustments = calculatePayableAdjustmentTotals(entityAdjustments);
 
     // Filter Orders/Work for this entity
     // Doctor: Orders where he is the doctor. Sum(totalPrice)
@@ -90,7 +93,7 @@ export function AccountInfoPanel({
         
         let calculatedWork = 0;
         entityOrders.forEach(o => {
-            const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
+            const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
             const isRelevant = (o.status || '').toLowerCase() === 'delivered' || hasRejectionCost;
             
             if (isRelevant) {
@@ -105,12 +108,12 @@ export function AccountInfoPanel({
                 calculatedWork += cost;
             }
         });
-        totalWork = calculatedWork + totalCharges;
+        totalWork = calculatedWork + payableAdjustments.additionalWork;
 
         // Expenses to supplier
         totalPaid = entityTransactions
             .filter((t) => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0) + totalCredits;
+            .reduce((sum, t) => sum + t.amount, 0) + payableAdjustments.additionalPaid;
         // Balance = Work Done (Debt) - Paid (Negative means we overpaid, Positive means we owe)
         balance = totalWork - totalPaid;
 
@@ -119,20 +122,20 @@ export function AccountInfoPanel({
         
         let calculatedWork = 0;
         entityOrders.forEach(o => {
-            const hasRejectionCost = o.status === 'Rejected' && typeof o.rejectedLabCost === 'number';
-            const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || o.status === 'Rejected' || o.status === 'Cancelled' || hasRejectionCost);
+            const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
+            const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
 
             if (isRelevant) {
                 const price = hasRejectionCost && o.rejectedLabCost !== undefined ? o.rejectedLabCost : (o.designPrice || 0);
                 calculatedWork += price;
             }
         });
-        totalWork = calculatedWork + totalCharges;
+        totalWork = calculatedWork + payableAdjustments.additionalWork;
 
         // Expenses to designer
         totalPaid = entityTransactions
             .filter((t) => t.type === 'expense')
-            .reduce((sum, t) => sum + t.amount, 0) + totalCredits;
+            .reduce((sum, t) => sum + t.amount, 0) + payableAdjustments.additionalPaid;
         balance = totalWork - totalPaid;
     }
 

@@ -15,6 +15,25 @@ export interface LabInfo {
     logoUrl?: string;
 }
 
+export interface PayableAdjustmentTotals {
+    additionalWork: number;
+    additionalPaid: number;
+}
+
+/**
+ * Translate supplier/designer adjustments to the payable-account direction used
+ * by account statements: credit increases what we owe, charge reduces it.
+ */
+export function calculatePayableAdjustmentTotals(
+    adjustments: { type: 'charge' | 'credit'; amount: number }[]
+): PayableAdjustmentTotals {
+    return adjustments.reduce<PayableAdjustmentTotals>((totals, adjustment) => {
+        if (adjustment.type === 'credit') totals.additionalWork += adjustment.amount;
+        else totals.additionalPaid += adjustment.amount;
+        return totals;
+    }, { additionalWork: 0, additionalPaid: 0 });
+}
+
 export function calculateOpeningBalance(
     orders: Order[],
     transactions: Transaction[],
