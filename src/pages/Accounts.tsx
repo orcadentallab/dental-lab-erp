@@ -207,6 +207,7 @@ export default function Accounts() {
     const [hideZeroBalance, setHideZeroBalance] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [statementSearch, setStatementSearch] = useState('');
+    const [expandedStatementItemId, setExpandedStatementItemId] = useState<string | null>(null);
     const [sortField, setSortField] = useState<SortField>('balance');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
@@ -1017,6 +1018,13 @@ export default function Accounts() {
         };
     }, [viewMode, selectedEntityId, activeTab, showAllOrders, dateRange, orders, transactions, adjustments, detailOrders, detailTransactions, calculateOpeningBalance, hiddenTransactionIds, childDoctorFilter, branchFilter]);
 
+    const visibleStatementItems = useMemo(() => {
+        const visibleItems = individualStatement.items.filter(item => !item.isHidden);
+        return statementSearch
+            ? visibleItems.filter(item => matchesStatementSearch(item, statementSearch))
+            : visibleItems;
+    }, [individualStatement.items, statementSearch]);
+
 
 
 
@@ -1397,8 +1405,8 @@ export default function Accounts() {
                         ))}
                     </nav>
 
-                    <div className="flex items-center gap-3 w-full lg:w-auto">
-                        <div className="relative flex-1 lg:flex-initial lg:w-64">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
+                        <div className="relative basis-full sm:basis-auto sm:flex-1 lg:flex-initial lg:w-64">
                             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
                                 type="text"
@@ -1480,7 +1488,7 @@ export default function Accounts() {
                         <span className="text-sm font-bold text-gray-700">فترة الكشف:</span>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl overflow-x-auto">
+                    <div className="flex w-full items-center gap-2 overflow-x-auto rounded-xl bg-gray-50 p-1 sm:w-auto">
                         {([
                             { id: 'currentMonth', label: `الحالي (${monthLabel(0)})` },
                             { id: 'previousMonth', label: `السابق (${monthLabel(-1)})` },
@@ -1502,13 +1510,13 @@ export default function Accounts() {
                     </div>
 
                     {timeFilter === 'all' && (
-                        <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-                            <span className="text-sm text-gray-500 font-medium px-2">تاريخ مخصص:</span>
+                        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 p-1.5 sm:w-auto sm:flex-nowrap">
+                            <span className="w-full px-2 text-sm font-medium text-gray-500 sm:w-auto">تاريخ مخصص:</span>
                             <input
                                 type="date"
                                 value={dateRange.start}
                                 onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                                className="bg-white border border-gray-200 rounded-lg text-sm px-2 py-1"
+                                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm sm:flex-none"
                                 aria-label="Start Date"
                             />
                             <span className="text-gray-400">إلى</span>
@@ -1516,7 +1524,7 @@ export default function Accounts() {
                                 type="date"
                                 value={dateRange.end}
                                 onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                                className="bg-white border border-gray-200 rounded-lg text-sm px-2 py-1"
+                                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm sm:flex-none"
                                 aria-label="End Date"
                             />
                         </div>
@@ -1562,7 +1570,7 @@ export default function Accounts() {
                 </div>
 
                 {/* Data Table */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="hidden bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden md:block">
                     <div className="overflow-x-auto">
                         <table className="w-full text-right">
                             <thead className="bg-gray-50 text-gray-600 font-semibold text-sm border-b border-gray-100">
@@ -1704,6 +1712,58 @@ export default function Accounts() {
                             )}
                         </table>
                     </div>
+                </div>
+
+                {/* Mobile account summary cards */}
+                <div className="space-y-3 md:hidden">
+                    {filteredSummary.length === 0 ? (
+                        <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-gray-400 shadow-sm">
+                            <Search size={32} className="mx-auto mb-2 text-gray-300" />
+                            <p>لا توجد حسابات مطابقة للبحث</p>
+                        </div>
+                    ) : (
+                        filteredSummary.map((item, idx) => (
+                            <Link
+                                key={item.id}
+                                to={`/accounts?tab=${activeTab}&mode=detail&entity=${item.id}`}
+                                className="block rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-colors active:bg-blue-50"
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-gray-200 bg-gray-50 text-sm font-bold text-gray-500">
+                                            {item.name.charAt(0)}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="truncate font-bold text-gray-800">{item.name}</p>
+                                            <p className="mt-0.5 text-xs text-gray-400">
+                                                #{idx + 1}{activeTab === 'doctors' && ` · كود ${item.code || '-'}`}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={clsx("shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-bold", item.balance > 0 ? "border-rose-100 bg-rose-50 text-rose-600" : (item.balance < 0 ? "border-emerald-100 bg-emerald-50 text-emerald-600" : "border-gray-200 bg-gray-100 text-gray-500"))}>
+                                        {item.balance === 0 ? 'خالص' : (item.balance > 0 ? (activeTab === 'doctors' ? 'مدين' : 'مستحق') : (activeTab === 'doctors' ? 'دائن' : 'مدفوع'))}
+                                    </span>
+                                </div>
+
+                                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3 text-center">
+                                    <div>
+                                        <p className="text-[11px] text-gray-400">الطلبات</p>
+                                        <p className="mt-1 text-sm font-bold text-gray-700">{item.totalOrders}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] text-gray-400">{activeTab === 'doctors' ? 'المبيعات' : 'التعاملات'}</p>
+                                        <p className="mt-1 text-sm font-bold text-gray-700">{item.totalSales.toLocaleString()}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] text-gray-400">الرصيد</p>
+                                        <p className={clsx("mt-1 text-sm font-bold", item.balance > 0 ? "text-rose-600" : (item.balance < 0 ? "text-emerald-600" : "text-gray-500"))}>
+                                            {Math.abs(item.balance).toLocaleString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            </Link>
+                        ))
+                    )}
                 </div>
             </div >
         );
@@ -2000,9 +2060,9 @@ export default function Accounts() {
             )}
 
             {/* Statement Paper */}
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 print-container">
+            <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-gray-100 print-container">
                 {/* Letterhead */}
-                <div className="flex justify-between items-start pb-6 mb-6 border-b-2 border-gray-100 print-header">
+                <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start pb-6 mb-6 border-b-2 border-gray-100 print-header">
                     <div>
                         <img src="/orca-logo.png" alt="ORCA Dental Lab" className="h-14 mb-3" />
                         <h1 className="text-2xl font-black text-gray-900">كشف حساب تفصيلي</h1>
@@ -2129,8 +2189,8 @@ export default function Accounts() {
                     </div>
                 </div>
 
-                {/* Statement Table */}
-                <div className="overflow-x-auto">
+                {/* Desktop statement table */}
+                <div className="hidden overflow-x-auto md:block">
                     <table className="w-full text-right">
                         <thead className="bg-slate-800 text-white">
                             <tr>
@@ -2165,13 +2225,7 @@ export default function Accounts() {
                             )}
 
                             {(() => {
-                                const filteredItems = statementSearch
-                                    ? individualStatement.items.filter(item =>
-                                        !item.isHidden &&
-                                        matchesStatementSearch(item, statementSearch)
-                                    )
-                                    : individualStatement.items.filter(item => !item.isHidden);
-                                return filteredItems.length === 0 ? (
+                                return visibleStatementItems.length === 0 ? (
                                     <tr>
                                         <td colSpan={7} className="p-12 text-center text-gray-400">
                                             <div className="flex flex-col items-center gap-2">
@@ -2181,7 +2235,7 @@ export default function Accounts() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    filteredItems.map((item, idx) => {
+                                    visibleStatementItems.map((item, idx) => {
                                         const showDisplayOrderValue = activeTab === 'doctors' && showAllOrders && item.isOrderValue;
                                         const visibleDebitAmount = showDisplayOrderValue ? (item.displayAmount ?? item.amount) : item.amount;
 
@@ -2261,6 +2315,110 @@ export default function Accounts() {
                             </tr>
                         </tfoot>
                     </table>
+                </div>
+
+                {/* Mobile statement cards */}
+                <div className="space-y-3 md:hidden">
+                    {dateRange.start && individualStatement.totals.openingBalance !== 0 && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="font-black text-amber-900">رصيد سابق (مرحّل)</p>
+                                    <p className="mt-1 text-xs text-amber-700">حتى {new Date(dateRange.start).toLocaleDateString('en-GB')}</p>
+                                </div>
+                                <p className="font-mono text-lg font-black text-amber-800">
+                                    {Math.abs(individualStatement.totals.openingBalance).toLocaleString()} ج.م
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {visibleStatementItems.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
+                            {statementSearch ? `لا توجد نتائج لـ "${statementSearch}"` : 'لا توجد معاملات في هذه الفترة'}
+                        </div>
+                    ) : (
+                        visibleStatementItems.map(item => {
+                            const isExpanded = expandedStatementItemId === item.id;
+                            const isOrderRow = item.description?.includes('حالة #') || Boolean(item.status && item.description?.includes('#'));
+                            const showDisplayOrderValue = activeTab === 'doctors' && showAllOrders && item.isOrderValue;
+                            const visibleAmount = item.type === 'debit'
+                                ? (showDisplayOrderValue ? (item.displayAmount ?? item.amount) : item.amount)
+                                : item.amount;
+
+                            return (
+                                <article key={item.id} className={clsx(
+                                    'overflow-hidden rounded-2xl border bg-white shadow-sm',
+                                    ZERO_VALUE_STATUSES_SET.has((item.status || '').trim().toLowerCase()) ? 'border-red-200 bg-red-50/60' : 'border-gray-200'
+                                )}>
+                                    <div className="flex items-start gap-3 p-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={!item.isHidden}
+                                            onChange={() => toggleTransactionVisibility(item.id)}
+                                            aria-label={`تضمين ${item.description}`}
+                                            className="mt-1 h-5 w-5 shrink-0 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpandedStatementItemId(isExpanded ? null : item.id)}
+                                            aria-expanded={isExpanded}
+                                            className="min-w-0 flex-1 text-right"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className={clsx('text-sm font-black leading-6', ZERO_VALUE_STATUSES_SET.has((item.status || '').trim().toLowerCase()) ? 'text-red-700 line-through decoration-red-300' : 'text-gray-900')}>
+                                                        {item.description}
+                                                    </p>
+                                                    <p className="mt-1 text-xs text-gray-500">{new Date(item.date).toLocaleDateString('en-GB')}</p>
+                                                </div>
+                                                <div className="shrink-0 text-left">
+                                                    <p className={clsx('font-mono text-base font-black', item.type === 'debit' ? 'text-rose-600' : 'text-emerald-600')}>
+                                                        {visibleAmount.toLocaleString()}
+                                                    </p>
+                                                    <p className="text-[10px] font-bold text-gray-400">{item.type === 'debit' ? 'مدين' : 'دائن'}</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                                {item.services && <span className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">{item.services}</span>}
+                                                {item.count ? <span className="rounded-lg bg-gray-100 px-2 py-1 text-[11px] text-gray-600">العدد: {item.count}</span> : null}
+                                                {item.status && <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{item.status}</span>}
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="border-t border-gray-100 bg-gray-50/70 px-4 py-3 text-xs text-gray-600">
+                                            {item.details && <p className="break-words leading-6"><span className="font-bold text-gray-800">التفاصيل:</span> {item.details}</p>}
+                                            {typeof item.runningBalance === 'number' && (
+                                                <div className="mt-2 flex items-center justify-between rounded-xl bg-white px-3 py-2">
+                                                    <span>الرصيد بعد الحركة</span>
+                                                    <span className="font-mono font-black text-gray-800">{Math.abs(item.runningBalance).toLocaleString()} ج.م</span>
+                                                </div>
+                                            )}
+                                            {isOrderRow && (
+                                                <button type="button" onClick={() => handleStatementRowClick(item)} className="mt-3 w-full rounded-xl bg-primary-600 px-3 py-2.5 font-bold text-white">
+                                                    فتح تفاصيل الحالة
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </article>
+                            );
+                        })
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-900 p-3 text-white">
+                        <div>
+                            <p className="text-[11px] text-slate-300">إجمالي المدين</p>
+                            <p className="mt-1 font-mono text-base font-black text-rose-300">{individualStatement.totals.totalDebit.toLocaleString()}</p>
+                        </div>
+                        <div>
+                            <p className="text-[11px] text-slate-300">إجمالي الدائن</p>
+                            <p className="mt-1 font-mono text-base font-black text-emerald-300">{individualStatement.totals.totalCredit.toLocaleString()}</p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Footer */}

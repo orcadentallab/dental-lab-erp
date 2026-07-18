@@ -1,7 +1,9 @@
+import { useId } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from './Button';
 import clsx from 'clsx';
+import { useDialogBehavior } from '../../hooks/useDialogBehavior';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -30,6 +32,9 @@ export function ConfirmDialog({
     confirmDisabled = false,
     children
 }: ConfirmDialogProps) {
+    const titleId = useId();
+    const messageId = useId();
+    const dialogRef = useDialogBehavior(isOpen, onCancel);
     if (!isOpen) return null;
 
     const colors = {
@@ -48,6 +53,12 @@ export function ConfirmDialog({
         <AnimatePresence>
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                 <motion.div
+                    ref={dialogRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby={titleId}
+                    aria-describedby={messageId}
+                    tabIndex={-1}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -66,8 +77,8 @@ export function ConfirmDialog({
                             <AlertTriangle size={32} />
                         </div>
 
-                        <h3 className="text-xl font-bold text-surface-900 dark:text-white mb-2">{title}</h3>
-                        <p className="text-surface-500 text-sm leading-relaxed mb-6">{message}</p>
+                        <h3 id={titleId} className="text-xl font-bold text-surface-900 dark:text-white mb-2">{title}</h3>
+                        <p id={messageId} className="text-surface-500 text-sm leading-relaxed mb-6">{message}</p>
 
                         {children && (
                             <div className="mb-6 text-right">

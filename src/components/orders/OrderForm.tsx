@@ -584,15 +584,15 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     };
 
     const sidebarCardClass = "p-3.5 bg-white border border-surface-100 shadow-sm";
-    const fieldClass = "h-9 w-full rounded-lg border border-surface-200 bg-white px-3 text-sm font-bold text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20";
-    const selectClass = "h-9 w-full rounded-lg border border-surface-200 bg-white px-3 text-sm text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20";
+    const fieldClass = "h-10 w-full rounded-lg border border-surface-200 bg-white px-3 text-base font-bold text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 sm:h-9 sm:text-sm";
+    const selectClass = "h-10 w-full rounded-lg border border-surface-200 bg-white px-3 text-base text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 sm:h-9 sm:text-sm";
     const segmentWrapClass = "grid grid-cols-2 rounded-lg border border-surface-200 bg-surface-50 p-0.5";
     const segmentButtonClass = "h-7 rounded-md text-xs font-bold transition-all";
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 text-right font-sans max-w-7xl mx-auto">
             {/* Header / Top Actions */}
-            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+            <div className="sticky top-0 z-20 -mx-3 flex flex-col items-stretch gap-3 border-b border-surface-100 bg-white/95 px-3 pb-3 pt-1 backdrop-blur lg:static lg:mx-0 lg:flex-row lg:items-center lg:justify-between lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
                 <h2 className="text-lg sm:text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
                     <Box className="text-primary-600" />
                     {initialData ? 'تعديل بيانات الأوردر' : 'إنشاء أوردر جديد'}
@@ -603,7 +603,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         <select
                             title="Representative"
                             aria-label="Select Representative"
-                            className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-sm text-surface-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                            className="h-10 w-full rounded-xl border border-surface-200 bg-white px-3 text-base text-surface-700 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 sm:text-sm"
                             value={representativeId}
                             onChange={(e) => setRepresentativeId(e.target.value)}
                             disabled={isFieldDisabled('representative_id')}

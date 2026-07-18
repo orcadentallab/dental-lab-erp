@@ -135,9 +135,10 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             <button
                 key={action.id}
                 onClick={() => handleActionClick(action)}
+                aria-label={action.label}
                 disabled={disabled}
                 className={clsx(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm transition-all',
+                    'inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm transition-all sm:min-h-0',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
                     getButtonClass(action.variant)
                 )}
@@ -172,8 +173,10 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                         <button
                             onClick={() => setShowIssueMenu(v => !v)}
                             disabled={disabled}
+                            aria-label="فتح إجراءات المشكلة"
+                            aria-expanded={showIssueMenu}
                             className={clsx(
-                                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm transition-all',
+                                'inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shadow-sm transition-all sm:min-h-0',
                                 'disabled:opacity-50 disabled:cursor-not-allowed',
                                 showIssueMenu
                                     ? 'bg-amber-100 text-amber-800 border-amber-300'
@@ -195,7 +198,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                             onClick={() => handleActionClick(action)}
                                             disabled={disabled}
                                             className={clsx(
-                                                'flex w-full items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg transition-colors',
+                                                'flex min-h-11 w-full items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg transition-colors sm:min-h-0',
                                                 action.variant === 'danger'
                                                     ? 'text-red-600 hover:bg-red-50'
                                                     : 'text-amber-700 hover:bg-amber-50'
@@ -214,7 +217,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                         <button
                                             onClick={() => { setShowIssueMenu(false); onRedo!(order); }}
                                             disabled={disabled}
-                                            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg text-amber-600 hover:bg-amber-50 transition-colors"
+                                            className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg text-amber-600 hover:bg-amber-50 transition-colors sm:min-h-0"
                                         >
                                             <RefreshCw size={13} />
                                             <span>إعادة إنتاج</span>
@@ -230,13 +233,15 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 {showLegacyFallback && userRole === 'admin' && (
                     <div className="relative flex items-center">
                         <button
-                            className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-white hover:bg-surface-50 text-surface-500 transition-all focus-within:ring-2 focus-within:ring-primary-500"
+                            className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-white hover:bg-surface-50 text-surface-500 transition-all focus-within:ring-2 focus-within:ring-primary-500 sm:min-h-0 sm:min-w-0"
                             title="خيارات إضافية"
+                            aria-label="تغيير الحالة"
                         >
                             <MoreHorizontal size={14} />
                         </button>
                         <select
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            aria-label="تغيير الحالة"
                             value=""
                             onChange={(e) => {
                                 const val = e.target.value;

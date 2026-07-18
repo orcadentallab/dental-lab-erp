@@ -1130,10 +1130,10 @@ test.describe('financial obligations service wiring', () => {
         expect(dbSource).toContain('previewFinancialReconciliation');
         expect(dbSource).toContain("./supabase/financialReconciliationPreview");
         expect(reconciliationSource).toContain('previewFinancialReconciliation');
-        expect(reconciliationSource).toContain(".from('orders')");
-        expect(reconciliationSource).toContain(".from('transactions')");
-        expect(reconciliationSource).toContain(".from('financial_obligations')");
-        expect(reconciliationSource).toContain(".from('adjustments')");
+        expect(reconciliationSource).toContain("fetchAllRows<OrderRow>('orders'");
+        expect(reconciliationSource).toContain("fetchAllRows<TransactionRow>('transactions'");
+        expect(reconciliationSource).toContain("fetchAllRows<ObligationRow>('financial_obligations'");
+        expect(reconciliationSource).toContain("fetchAllRows<Adjustment>('adjustments'");
         expect(reconciliationSource).toContain(".from('doctors')");
         expect(reconciliationSource).toContain(".from('suppliers')");
         expect(reconciliationSource).toContain('slice(from, from + pageSize)');

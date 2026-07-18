@@ -46,6 +46,7 @@ export default function Orders() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'list' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'list');
+    const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
     const highlightedOrderId = searchParams.get('highlight');
 
@@ -624,6 +625,32 @@ export default function Orders() {
         withLeftIcon ? 'right-2.5' : 'right-2',
         isActive ? 'text-primary-600' : 'text-surface-300'
     );
+    const activeMobileFilterCount = [
+        statusFilter,
+        productionStatusFilter,
+        issueStateFilter,
+        doctorFilter,
+        supplierFilter,
+        designerFilter,
+        representativeFilter,
+        startDate,
+        endDate,
+        showArchived ? 'archived' : ''
+    ].filter(Boolean).length;
+    const mobileFilterControlClass = 'w-full rounded-xl border border-surface-200 bg-surface-50 px-3 py-3 text-sm font-semibold text-surface-700 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/20';
+    const resetMobileFilters = () => {
+        setStatusFilter('');
+        setProductionStatusFilter('');
+        setIssueStateFilter('');
+        setDoctorFilter('');
+        setSupplierFilter('');
+        setDesignerFilter('');
+        setRepresentativeFilter('');
+        setStartDate('');
+        setEndDate('');
+        setHideDelivered(true);
+        setShowArchived(false);
+    };
 
     // Print Logic Removed
 
@@ -671,6 +698,7 @@ export default function Orders() {
                     <div className="flex gap-2">
                         <Button
                             variant="outline"
+                            aria-label="تصدير الأوردرات إلى Excel"
                             onClick={() => {
                                 const exportData = orders.map((order: Order) => {
                                     const doctor = doctors.find(d => d.id === order.doctorId);
@@ -708,6 +736,7 @@ export default function Orders() {
                         </Button>
                         <Button
                             variant="outline"
+                            aria-label="طباعة قائمة الأوردرات"
                             onClick={() => {
                                 generateOrdersListPDF(
                                     orders.map((order: Order) => ({
@@ -729,8 +758,173 @@ export default function Orders() {
                 )}
             </div>
 
-            {/* Header & Filters - Compact Pro Max */}
-            <div className="sticky top-4 z-40 mb-6 space-y-4">
+            {/* Mobile compact toolbar */}
+            <div className="sticky top-2 z-40 mb-4 lg:hidden">
+                <Card className="border-none bg-white/95 p-2 shadow-lg ring-1 ring-surface-950/5 backdrop-blur-md">
+                    <div className="flex items-center gap-2">
+                        {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
+                            <Button
+                                onClick={openNewOrder}
+                                aria-label={t.orders.newOrder}
+                                className="h-10 w-10 shrink-0 rounded-xl bg-primary-600 p-0 text-white shadow-sm hover:bg-primary-700"
+                            >
+                                <Plus size={18} />
+                            </Button>
+                        )}
+
+                        <div className="flex h-11 shrink-0 rounded-xl border border-surface-200 bg-surface-100 p-0.5">
+                            <button
+                                onClick={() => setViewMode('list')}
+                                aria-label="عرض القائمة"
+                                aria-pressed={viewMode === 'list'}
+                                className={clsx('min-h-10 min-w-10 rounded-lg grid place-items-center', viewMode === 'list' ? 'bg-white text-primary-700 shadow-sm' : 'text-surface-400')}
+                            >
+                                <LayoutList size={17} />
+                            </button>
+                            <button
+                                onClick={() => setViewMode('board')}
+                                aria-label="عرض اللوحة"
+                                aria-pressed={viewMode === 'board'}
+                                className={clsx('min-h-10 min-w-10 rounded-lg grid place-items-center', viewMode === 'board' ? 'bg-white text-primary-700 shadow-sm' : 'text-surface-400')}
+                            >
+                                <Columns size={17} />
+                            </button>
+                        </div>
+
+                        <div className="relative min-w-0 flex-1">
+                            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                            <input
+                                type="search"
+                                aria-label="بحث في الأوردرات"
+                                placeholder="بحث..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                className="h-10 w-full rounded-xl border border-surface-200 bg-surface-50 pr-9 pl-2 text-sm outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-500/20"
+                            />
+                        </div>
+
+                        <button
+                            onClick={() => setIsMobileFiltersOpen(true)}
+                            aria-label="فتح الفلاتر"
+                            aria-expanded={isMobileFiltersOpen}
+                            className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-surface-200 bg-white text-surface-600 shadow-sm"
+                        >
+                            <Filter size={18} />
+                            {activeMobileFilterCount > 0 && (
+                                <span className="absolute -top-1.5 -left-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary-600 px-1 text-[10px] font-black text-white ring-2 ring-white">
+                                    {activeMobileFilterCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                </Card>
+            </div>
+
+            <AnimatePresence>
+                {isMobileFiltersOpen && (
+                    <div className="fixed inset-0 z-[90] lg:hidden" role="dialog" aria-modal="true" aria-label="فلاتر الأوردرات">
+                        <motion.button
+                            type="button"
+                            aria-label="إغلاق الفلاتر"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 h-full w-full bg-surface-950/45 backdrop-blur-sm"
+                            onClick={() => setIsMobileFiltersOpen(false)}
+                        />
+                        <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                            className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl"
+                        >
+                            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-surface-100 bg-white/95 px-4 py-3 backdrop-blur-md">
+                                <div>
+                                    <h2 className="font-black text-surface-900">تصفية الأوردرات</h2>
+                                    <p className="text-xs text-surface-500">{activeMobileFilterCount || 'لا توجد'} فلاتر إضافية نشطة</p>
+                                </div>
+                                <button onClick={() => setIsMobileFiltersOpen(false)} aria-label="إغلاق" className="grid h-10 w-10 place-items-center rounded-xl bg-surface-100 text-surface-600">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-3 p-4 pb-6">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input type="date" aria-label="من تاريخ" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={mobileFilterControlClass} />
+                                    <input type="date" aria-label="إلى تاريخ" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={mobileFilterControlClass} />
+                                </div>
+                                <select aria-label="الحالة" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={mobileFilterControlClass}>
+                                    <option value="">كل الحالات</option>
+                                    <option value="New Case">New Case</option>
+                                    <option value="Under Design">Under Design</option>
+                                    <option value="Waiting Dr Approval">Wait Approval</option>
+                                    <option value="Under Production">Production</option>
+                                    <option value="Try In">Try In</option>
+                                    <option value="Review">Review</option>
+                                    <option value="Ready">Ready</option>
+                                    <option value="Completed">Completed</option>
+                                    <option value="Delivered">Delivered</option>
+                                    <option value="Doctor Rejected">Doctor Rejected</option>
+                                    <option value="Lab Rejected">Lab Rejected</option>
+                                    <option value="Rejected">Rejected</option>
+                                    <option value="Cancelled">Cancelled</option>
+                                </select>
+                                <select aria-label="مرحلة الإنتاج" value={productionStatusFilter} onChange={(e) => setProductionStatusFilter(e.target.value)} className={mobileFilterControlClass}>
+                                    <option value="">كل مراحل الإنتاج</option>
+                                    {PRODUCTION_STATUSES.map(s => <option key={s} value={s}>{PRODUCTION_STATUS_LABELS_AR[s]}</option>)}
+                                </select>
+                                <select aria-label="حالة المشكلة" value={issueStateFilter} onChange={(e) => setIssueStateFilter(e.target.value)} className={mobileFilterControlClass}>
+                                    <option value="">كل حالات المشكلة</option>
+                                    {ISSUE_STATES.filter(s => s !== 'none').map(s => <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>)}
+                                </select>
+
+                                {canFilterByDoctorAndSupplier && (
+                                    <>
+                                        <select aria-label="الطبيب" value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)} className={mobileFilterControlClass}>
+                                            <option value="">كل الأطباء</option>
+                                            {doctors.map(doc => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
+                                        </select>
+                                        <select aria-label="المعمل" value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className={mobileFilterControlClass}>
+                                            <option value="">كل المعامل</option>
+                                            <option value="internal">{t.orders.internalLab}</option>
+                                            {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+                                        </select>
+                                        <select aria-label="المصمم" value={designerFilter} onChange={(e) => setDesignerFilter(e.target.value)} className={mobileFilterControlClass}>
+                                            <option value="">كل المصممين</option>
+                                            {users.filter(u => isDesignerUser(u)).map(des => <option key={des.id} value={des.id}>{des.name}</option>)}
+                                        </select>
+                                        <select aria-label="المندوب" value={representativeFilter} onChange={(e) => setRepresentativeFilter(e.target.value)} className={mobileFilterControlClass}>
+                                            <option value="">كل المناديب</option>
+                                            {users.filter(u => isRepresentativeUser(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                                        </select>
+                                    </>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-surface-50 p-3">
+                                    <label className="flex items-center gap-2 text-sm font-semibold text-surface-700">
+                                        <input type="checkbox" checked={hideDelivered} onChange={(e) => setHideDelivered(e.target.checked)} className="h-4 w-4 rounded text-primary-600" />
+                                        إخفاء المنتهية
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm font-semibold text-surface-700">
+                                        <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} className="h-4 w-4 rounded text-amber-500" />
+                                        عرض المؤرشفة
+                                    </label>
+                                </div>
+
+                                <div className="sticky bottom-0 flex gap-2 bg-white pt-2">
+                                    <Button variant="outline" onClick={resetMobileFilters} className="h-11 flex-1">إعادة ضبط</Button>
+                                    <Button onClick={() => setIsMobileFiltersOpen(false)} className="h-11 flex-[2] bg-primary-600 text-white">عرض النتائج</Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Desktop header & filters */}
+            <div className="hidden lg:block sticky top-4 z-40 mb-6 space-y-4">
                 <Card className="p-3 border-none shadow-sm bg-white/95 backdrop-blur-md ring-1 ring-surface-950/5">
                     <div className="flex flex-col gap-2">
                         {/* Row 1: Search, Date, Actions, Checkbox 1 */}
@@ -1027,7 +1221,7 @@ export default function Orders() {
                         variant="outline"
                         onClick={() => handlePageChange(currentPage - 1)}
                         disabled={currentPage <= 1}
-                        className="px-3 py-1.5 text-sm"
+                        className="min-h-10 px-3 py-1.5 text-sm sm:min-h-0"
                     >
                         السابق
                     </Button>
@@ -1048,7 +1242,7 @@ export default function Orders() {
                                     key={pageNum}
                                     variant={currentPage === pageNum ? 'primary' : 'outline'}
                                     onClick={() => handlePageChange(pageNum)}
-                                    className="px-3 py-1.5 text-sm min-w-[40px]"
+                                    className="min-h-10 px-3 py-1.5 text-sm min-w-[40px] sm:min-h-0"
                                 >
                                     {pageNum}
                                 </Button>
@@ -1059,7 +1253,7 @@ export default function Orders() {
                         variant="outline"
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage >= totalPages}
-                        className="px-3 py-1.5 text-sm"
+                        className="min-h-10 px-3 py-1.5 text-sm sm:min-h-0"
                     >
                         التالي
                     </Button>
@@ -1072,16 +1266,9 @@ export default function Orders() {
             {/* Modals - Wrapped with AnimatePresence for transitions */}
             <AnimatePresence>
                 {isFormOpen && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
-                            <div className="p-6">
-                                <div className="flex justify-between items-center mb-6 pb-4 border-b border-surface-100">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-surface-900">إنشاء أوردر جديد</h2>
-                                        <p className="text-surface-500 text-sm mt-1">أدخل بيانات الحالة الجديدة</p>
-                                    </div>
-                                    <button onClick={closeNewOrder} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
-                                </div>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="h-[100dvh] w-full max-w-4xl overflow-y-auto bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-3xl">
+                            <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
                                 <OrderForm onSubmit={handleCreateOrder} onCancel={closeNewOrder} />
                             </div>
                         </motion.div>
@@ -1089,22 +1276,9 @@ export default function Orders() {
                 )}
 
                 {fullEditingOrder && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl">
-                            <div className="p-8">
-                                <div className="flex justify-between items-center mb-8 border-b border-surface-100 pb-4">
-                                    <div className='flex items-center gap-4'>
-                                        <div className='bg-primary-100 p-3 rounded-xl text-primary-600'><FileSpreadsheet size={24} /></div>
-                                        <div>
-                                            <h2 className="text-2xl font-bold text-surface-900">تعديل الأوردر</h2>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-surface-500 text-sm">رقم الحالة:</span>
-                                                <span className="bg-surface-100 px-2 py-0.5 rounded text-sm font-mono font-bold text-surface-700">#{fullEditingOrder.caseId}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button onClick={closeFullEdit} aria-label="Close" className="p-2 rounded-full hover:bg-surface-100 text-surface-400 transition-colors"><X size={24} /></button>
-                                </div>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+                        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="h-[100dvh] w-full max-w-4xl overflow-y-auto bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-3xl">
+                            <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
                                 <OrderForm onSubmit={handleUpdateOrder} onCancel={closeFullEdit} initialData={fullEditingOrder} />
                             </div>
                         </motion.div>

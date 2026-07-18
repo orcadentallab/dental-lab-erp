@@ -1,4 +1,6 @@
+import { useId } from 'react';
 import { X } from 'lucide-react';
+import { useDialogBehavior } from '../hooks/useDialogBehavior';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -21,6 +23,9 @@ export default function ConfirmDialog({
     onCancel,
     variant = 'danger'
 }: ConfirmDialogProps) {
+    const titleId = useId();
+    const messageId = useId();
+    const dialogRef = useDialogBehavior(isOpen, onCancel);
     if (!isOpen) return null;
 
     const variantStyles = {
@@ -31,9 +36,9 @@ export default function ConfirmDialog({
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" dir="rtl">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={messageId} tabIndex={-1} className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <h3 className="text-lg font-bold text-gray-800">{title}</h3>
+                    <h3 id={titleId} className="text-lg font-bold text-gray-800">{title}</h3>
                     <button 
                         onClick={onCancel} 
                         className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -43,8 +48,8 @@ export default function ConfirmDialog({
                     </button>
                 </div>
                 <div className="p-6">
-                    <p className="text-gray-700 mb-6">{message}</p>
-                    <div className="flex gap-3 justify-end">
+                    <p id={messageId} className="text-gray-700 mb-6">{message}</p>
+                    <div className="flex gap-3 justify-end [&>button]:min-h-11">
                         <button
                             type="button"
                             onClick={onCancel}

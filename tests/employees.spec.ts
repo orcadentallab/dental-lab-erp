@@ -336,7 +336,7 @@ test.describe('Employee Management & Detail Flows', () => {
         await page.goto('/employees/rep-uuid');
 
         // Settle Advance
-        await expect(page.locator('text=تسوية')).toBeVisible();
+        await expect(page.getByRole('button', { name: 'تسوية' })).toBeVisible();
         
         // Mock window.confirm to always return true
         page.on('dialog', async (dialog) => {
@@ -347,7 +347,7 @@ test.describe('Employee Management & Detail Flows', () => {
             }
         });
 
-        await page.click('text=تسوية');
+        await page.getByRole('button', { name: 'تسوية' }).click();
 
         // Close Custody
         await page.click('text=استلام');

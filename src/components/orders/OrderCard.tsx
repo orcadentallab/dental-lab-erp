@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useToast } from '../../context/ToastContext';
 import {
@@ -52,7 +52,7 @@ interface OrderCardProps {
     currentUser?: any;
 }
 
-export default function OrderCard({
+function OrderCard({
     order,
     fullDoctors,
     doctors,
@@ -288,7 +288,7 @@ export default function OrderCard({
                                     size="sm"
                                     variant={order.designUrl ? 'outline' : 'primary'}
                                     className={clsx(
-                                        "h-6 px-2 text-xs",
+                                        "min-h-10 min-w-10 h-10 px-2 text-xs sm:min-h-0 sm:min-w-0 sm:h-6",
                                         !order.designUrl ? "bg-orange-600 hover:bg-orange-700 text-white border-orange-600" : "text-blue-600 border-blue-200 hover:bg-blue-50"
                                     )}
                                     onClick={() => onUpdateDesignUrl(order)}
@@ -305,7 +305,7 @@ export default function OrderCard({
                                     variant="outline"
                                     onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
 
-                                    className="h-6 px-2 text-xs text-orange-600 border-orange-200 hover:bg-orange-50 bg-white"
+                                    className="min-h-10 min-w-10 h-10 px-2 text-xs text-orange-600 border-orange-200 hover:bg-orange-50 bg-white sm:min-h-0 sm:min-w-0 sm:h-6"
                                     title="تحميل التصميم"
                                 >
                                     <LinkIcon size={12} />
@@ -319,7 +319,7 @@ export default function OrderCard({
                                     variant="outline"
                                     onClick={() => handleOpenExternalUrl(order.stlUrl, 'رابط ملف STL غير صالح أو معطوب')}
 
-                                    className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 bg-white"
+                                    className="min-h-10 min-w-10 h-10 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 bg-white sm:min-h-0 sm:min-w-0 sm:h-6"
                                     title="STL File"
                                 >
                                     <Box size={12} />
@@ -332,7 +332,7 @@ export default function OrderCard({
                                 <Button
                                     size="sm"
                                     onClick={() => onAccept(order)}
-                                    className="h-6 px-3 text-xs bg-teal-600 hover:bg-teal-700 text-white border-teal-600 shadow-sm shadow-teal-200 animate-pulse"
+                                    className="min-h-10 min-w-10 h-10 px-3 text-xs bg-teal-600 hover:bg-teal-700 text-white border-teal-600 shadow-sm shadow-teal-200 animate-pulse sm:min-h-0 sm:min-w-0 sm:h-6"
                                     title="Accept Order"
                                 >
                                     <Check size={12} strokeWidth={3} />
@@ -345,7 +345,7 @@ export default function OrderCard({
                                     size="sm"
                                     variant="outline"
                                     onClick={() => handleOpenExternalUrl(order.imagesUrl, 'رابط الصور غير صالح أو معطوب')}
-                                    className="h-6 px-2 text-xs text-teal-600 border-teal-200 hover:bg-teal-50 bg-white"
+                                    className="min-h-10 min-w-10 h-10 px-2 text-xs text-teal-600 border-teal-200 hover:bg-teal-50 bg-white sm:min-h-0 sm:min-w-0 sm:h-6"
                                     title="Images"
                                 >
                                     <ImageIcon size={12} />
@@ -358,7 +358,7 @@ export default function OrderCard({
                                     size="sm"
                                     variant="outline"
                                     onClick={() => onAddNote(order)}
-                                    className="h-6 w-6 p-0 relative text-surface-600 border-surface-200 hover:bg-surface-50 bg-white"
+                                    className="min-h-10 h-10 w-10 p-0 relative text-surface-600 border-surface-200 hover:bg-surface-50 bg-white sm:min-h-0 sm:h-6 sm:w-6"
                                     title="ملاحظات"
                                 >
                                     <MessageCircle size={12} />
@@ -398,9 +398,9 @@ export default function OrderCard({
                     </div>
 
                     {/* Content */}
-                    <div className="p-3 grid grid-cols-2 md:grid-cols-12 gap-3">
+                    <div className="p-3 grid grid-cols-2 lg:grid-cols-12 gap-3">
                         {/* Patient Info */}
-                        <div className={`col-span-2 ${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-4'} flex flex-col sm:flex-row md:flex-col gap-2 border-l-0 md:border-l border-surface-100 dark:border-surface-700 pl-0 md:pl-3`}>
+                        <div className={`col-span-2 ${userRole === 'admin' ? 'lg:col-span-4' : 'lg:col-span-4'} flex flex-col sm:flex-row lg:flex-col gap-2 border-l-0 lg:border-l border-surface-100 dark:border-surface-700 pl-0 lg:pl-3`}>
                             <div className="flex items-center gap-2 flex-1">
                                 <div className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 shrink-0">
                                     <User size={16} />
@@ -451,7 +451,7 @@ export default function OrderCard({
                         </div>
 
                         {/* Order Details */}
-                        <div className={`col-span-2 ${userRole === 'admin' ? 'md:col-span-4' : 'md:col-span-8'} flex flex-col gap-2`}>
+                        <div className={`col-span-2 ${userRole === 'admin' ? 'lg:col-span-4' : 'lg:col-span-8'} flex flex-col gap-2`}>
                             <div>
                                 <span className="text-[9px] font-bold text-surface-400 uppercase tracking-wider mb-1 block">الخدمات المطلوبة</span>
                                 <div className="flex flex-wrap gap-1.5">
@@ -503,7 +503,7 @@ export default function OrderCard({
 
                         {/* Supplier/Designer Box - Admin Only */}
                         {userRole === 'admin' && (
-                            <div className="col-span-1 md:col-span-2 flex items-center justify-center min-h-[80px]">
+                            <div className="col-span-1 lg:col-span-2 flex items-center justify-center min-h-[80px]">
                                 <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-teal-50 to-indigo-50 dark:from-teal-900/20 dark:to-indigo-900/20 border border-teal-200 dark:border-teal-800/50 rounded-xl p-2">
                                     {/* Split Workflow: Designer + Supplier */}
                                     {order.workflowType === 'split' ? (
@@ -556,7 +556,7 @@ export default function OrderCard({
 
                         {/* Invoice Total - Admin Only - Far Right Column */}
                         {userRole === 'admin' && (
-                            <div className="col-span-1 md:col-span-2 flex flex-col gap-2 items-center justify-center min-h-[80px]">
+                            <div className="col-span-1 lg:col-span-2 flex flex-col gap-2 items-center justify-center min-h-[80px]">
                                 <div className="h-full w-full flex flex-col items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800/50 rounded-xl p-3">
                                     <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider mb-1">الإجمالي</span>
                                     <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
@@ -616,7 +616,7 @@ export default function OrderCard({
                     )}
 
                     {/* Footer Actions */}
-                    <div className="bg-black/5 dark:bg-white/5 px-2 sm:px-3 py-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-3">
+                    <div className="bg-black/5 dark:bg-white/5 px-2 sm:px-3 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-3">
                         {/* Left: Quick Actions */}
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1">
                             {/* Workflow Action Bar (WF-4) */}
@@ -633,7 +633,7 @@ export default function OrderCard({
                             {canArchiveOrders && isRedStatus && !order.isArchived && !order.isDeleted && (
                                 <button
                                     onClick={() => handleArchive(true)}
-                                    className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-red-200"
+                                    className="flex min-h-10 items-center gap-1 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-red-200 sm:min-h-0"
                                     title="أرشفة الحالة (إخفاء)"
                                 >
                                     <ArchiveIcon size={14} />
@@ -645,7 +645,7 @@ export default function OrderCard({
                             {canArchiveOrders && (order.isArchived || order.isDeleted) && (
                                 <button
                                     onClick={handleRestore}
-                                    className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300"
+                                    className="flex min-h-10 items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors border border-gray-300 sm:min-h-0"
                                     title="استعادة الطلب"
                                 >
                                     <RotateCcw size={14} />
@@ -660,21 +660,21 @@ export default function OrderCard({
                                     <div className="flex bg-white rounded-lg border border-surface-200 p-0.5 shadow-sm">
                                         <button
                                             onClick={() => onTechAction(order.id, 'Approved')}
-                                            className={`p-1.5 rounded hover:bg-green-50 text-surface-400 hover:text-green-600 transition-colors ${order.technicianStatus === 'Approved' ? 'bg-green-100 text-green-700' : ''}`}
+                                    className={`grid min-h-10 min-w-10 place-items-center rounded hover:bg-green-50 text-surface-400 hover:text-green-600 transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${order.technicianStatus === 'Approved' ? 'bg-green-100 text-green-700' : ''}`}
                                             title="قبول"
                                         >
                                             <Check size={14} />
                                         </button>
                                         <button
                                             onClick={() => onTechAction(order.id, 'NeedDetails')}
-                                            className={`p-1.5 rounded hover:bg-orange-50 text-surface-400 hover:text-orange-600 transition-colors ${order.technicianStatus === 'NeedDetails' ? 'bg-orange-100 text-orange-700' : ''}`}
+                                            className={`grid min-h-10 min-w-10 place-items-center rounded hover:bg-orange-50 text-surface-400 hover:text-orange-600 transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${order.technicianStatus === 'NeedDetails' ? 'bg-orange-100 text-orange-700' : ''}`}
                                             title="تفاصيل"
                                         >
                                             <MessageCircle size={14} />
                                         </button>
                                         <button
                                             onClick={() => onTechAction(order.id, 'Rejected')}
-                                            className={`p-1.5 rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors ${order.technicianStatus === 'Rejected' ? 'bg-red-100 text-red-700' : ''}`}
+                                            className={`grid min-h-10 min-w-10 place-items-center rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${order.technicianStatus === 'Rejected' ? 'bg-red-100 text-red-700' : ''}`}
                                             title="رفض"
                                         >
                                             <AlertTriangle size={14} />
@@ -688,23 +688,23 @@ export default function OrderCard({
                         {/* Right: Admin Tools */}
                         <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
                             {(userRole === 'admin' || userRole === 'representative' || currentUser?.customPermissions?.edit_orders) && onEdit && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(order)} title="تعديل">
+                                <Button size="sm" variant="ghost" aria-label="تعديل الأوردر" className="min-h-10 h-10 w-10 p-0 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />
                                 </Button>
                             )}
                             {userRole === 'admin' && onDelete && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => { if (confirm(deleteConfirmMessage)) onDelete(order); }} title={deleteTitle}>
+                                <Button size="sm" variant="ghost" aria-label="حذف الأوردر" className="min-h-10 h-10 w-10 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => { if (confirm(deleteConfirmMessage)) onDelete(order); }} title={deleteTitle}>
                                     <Trash2 size={14} />
                                 </Button>
                             )}
 
 
                             {onExportInvoice && (
-                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50" onClick={() => onExportInvoice(order)} title="فاتورة PDF">
+                                <Button size="sm" variant="ghost" aria-label="تصدير فاتورة الأوردر PDF" className="min-h-10 h-10 w-10 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => onExportInvoice(order)} title="فاتورة PDF">
                                     <FileDown size={14} />
                                 </Button>
                             )}
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary-500" onClick={handleShowHistory} title="سجل">
+                            <Button size="sm" variant="ghost" aria-label="عرض سجل الأوردر" className="min-h-10 h-10 w-10 p-0 text-primary-500 sm:min-h-0 sm:h-7 sm:w-7" onClick={handleShowHistory} title="سجل">
                                 <History size={14} />
                             </Button>
                         </div>
@@ -758,3 +758,5 @@ export default function OrderCard({
         </motion.div>
     );
 };
+
+export default memo(OrderCard);

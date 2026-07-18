@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { db, type Order, type Supplier, type Doctor } from '../services/db';
 import { wasRejected } from '../utils/orderUtils';
 import { AlertCircle, Clock, Star, CheckCircle, Building2 } from 'lucide-react';
+import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 
 export default function QualityDashboard() {
     const [orders, setOrders] = useState<Order[]>([]);
@@ -302,8 +303,8 @@ export default function QualityDashboard() {
                         <Building2 size={20} className="text-gray-400" />
                         أداء المعامل (Suppliers)
                     </h3>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-right">
+                    <ResponsiveTable label="جدول أداء المعامل">
+                        <table className="w-full min-w-[640px] text-right">
                             <thead>
                                 <tr className="text-xs text-gray-500 border-b border-gray-100">
                                     <th className="pb-2 font-medium">المعمل</th>
@@ -351,7 +352,7 @@ export default function QualityDashboard() {
                                 )}
                             </tbody>
                         </table>
-                    </div>
+                    </ResponsiveTable>
                 </div>
 
                 {/* Issues Breakdown */}

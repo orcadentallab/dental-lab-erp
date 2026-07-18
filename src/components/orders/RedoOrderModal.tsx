@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { db, type Order } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Input } from '../ui/Input';
 import { useAuth } from '../../context/AuthContext';
+import { useDialogBehavior } from '../../hooks/useDialogBehavior';
 
 interface Props {
     order: Order;
@@ -21,6 +22,8 @@ const REDO_REASONS = [
 ];
 
 export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Props) {
+    const titleId = useId();
+    const dialogRef = useDialogBehavior(isOpen, onClose);
     const { user } = useAuth();
     const [reason, setReason] = useState('lab_error');
     const [notes, setNotes] = useState('');
@@ -100,14 +103,14 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="h-[100dvh] w-full max-w-lg overflow-y-auto bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-xl animate-in zoom-in-95 sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:p-6">
                 <div className="flex items-center justify-between mb-5">
                     <div className="flex items-center gap-2">
                         <RefreshCw size={18} className="text-amber-500" />
-                        <h3 className="text-lg font-bold text-gray-900">إعادة إنتاج — #{order.caseId}</h3>
+                        <h3 id={titleId} className="text-lg font-bold text-gray-900">إعادة إنتاج — #{order.caseId}</h3>
                     </div>
-                    <button onClick={onClose} className="p-1.5 hover:bg-surface-100 rounded-lg transition-colors">
+                    <button onClick={onClose} aria-label="إغلاق نافذة إعادة الإنتاج" className="grid h-11 w-11 shrink-0 place-items-center hover:bg-surface-100 rounded-lg transition-colors">
                         <X size={16} />
                     </button>
                 </div>
@@ -122,7 +125,7 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                         <select
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
-                            className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm"
+                            className="w-full px-3 py-2 border border-surface-200 rounded-lg text-base sm:text-sm"
                         >
                             {REDO_REASONS.map(r => (
                                 <option key={r.value} value={r.value}>{r.label}</option>
@@ -136,7 +139,7 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                             onChange={(e) => setNotes(e.target.value)}
                             rows={3}
                             placeholder="اشرح المشكلة بالتفاصيل..."
-                            className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm resize-none"
+                            className="w-full px-3 py-2 border border-surface-200 rounded-lg text-base sm:text-sm resize-none"
                         />
                     </div>
                     {(order.supplierId || order.designerId) && (
@@ -155,7 +158,7 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                     )}
                 </div>
 
-                <div className="flex gap-3 justify-end mt-6">
+                <div className="sticky bottom-0 -mx-4 mt-6 flex gap-3 justify-end border-t border-gray-100 bg-white/95 px-4 pb-[max(0.25rem,env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
                     <button
                         onClick={onClose}
                         className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors"

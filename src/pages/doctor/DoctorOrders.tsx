@@ -5,6 +5,7 @@ import { Card } from '../../components/ui/Card';
 import { Star } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Button } from '../../components/ui/Button';
+import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
 export default function DoctorOrders() {
     const { user } = useAuth();
@@ -80,8 +81,8 @@ export default function DoctorOrders() {
             </div>
 
             <Card className="overflow-hidden border border-gray-100 shadow-sm">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-right">
+                <ResponsiveTable label="جدول أوردرات الطبيب">
+                    <table className="w-full min-w-[720px] text-right">
                         <thead className="bg-gray-50 text-gray-500 text-xs uppercase font-bold">
                             <tr>
                                 <th className="p-4">رقم الحالة</th>
@@ -144,7 +145,7 @@ export default function DoctorOrders() {
                             )}
                         </tbody>
                     </table>
-                </div>
+                </ResponsiveTable>
             </Card>
 
             {/* Rating Modal */}

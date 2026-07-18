@@ -15,7 +15,11 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
           'supabase': ['@supabase/supabase-js'],
-          'validation': ['zod']
+          'validation': ['zod'],
+          // Keep infrequently used export/reporting dependencies out of the entry chunk.
+          'pdf-vendor': ['jspdf', 'jspdf-autotable', 'html2canvas-pro'],
+          'spreadsheet-vendor': ['xlsx'],
+          'ui-vendor': ['lucide-react', 'framer-motion']
         }
       }
     }

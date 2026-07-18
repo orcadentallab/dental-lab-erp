@@ -3,29 +3,6 @@ import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/DashboardNew';
 import Orders from './pages/Orders';
-import Doctors from './pages/Doctors';
-import Finance from './pages/Finance';
-import Analytics from './pages/Analytics';
-import DesignerStats from './pages/DesignerStats';
-import Suppliers from './pages/Suppliers';
-import Accounts from './pages/Accounts';
-import UsersPage from './pages/Users';
-import Settings from './pages/Settings';
-import ServicesPage from './pages/Services';
-import QualityDashboard from './pages/Quality';
-import AIAnalytics from './pages/AIAnalytics';
-import CaseRegistration from './pages/CaseRegistration';
-import Employees from './pages/Employees';
-import EmployeeDetail from './pages/EmployeeDetail';
-import IssuesReport from './pages/IssuesReport';
-import NewOrderRequest from './pages/doctor/NewOrderRequest';
-import DoctorOrders from './pages/doctor/DoctorOrders';
-import DoctorFinance from './pages/doctor/DoctorFinance';
-import BalanceSnapshot from './pages/BalanceSnapshot';
-import Statements from './pages/Statements';
-import AgingReport from './pages/AgingReport';
-
-import DoctorRetention from './pages/DoctorRetention';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
@@ -33,6 +10,28 @@ import { lazy, Suspense } from 'react';
 
 const MarketingPage = lazy(() => import('./marketing/MarketingPage'));
 const MarketingAnalytics = lazy(() => import('./pages/MarketingAnalytics'));
+const Doctors = lazy(() => import('./pages/Doctors'));
+const Finance = lazy(() => import('./pages/Finance'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const DesignerStats = lazy(() => import('./pages/DesignerStats'));
+const Suppliers = lazy(() => import('./pages/Suppliers'));
+const Accounts = lazy(() => import('./pages/Accounts'));
+const UsersPage = lazy(() => import('./pages/Users'));
+const Settings = lazy(() => import('./pages/Settings'));
+const ServicesPage = lazy(() => import('./pages/Services'));
+const QualityDashboard = lazy(() => import('./pages/Quality'));
+const AIAnalytics = lazy(() => import('./pages/AIAnalytics'));
+const CaseRegistration = lazy(() => import('./pages/CaseRegistration'));
+const Employees = lazy(() => import('./pages/Employees'));
+const EmployeeDetail = lazy(() => import('./pages/EmployeeDetail'));
+const IssuesReport = lazy(() => import('./pages/IssuesReport'));
+const NewOrderRequest = lazy(() => import('./pages/doctor/NewOrderRequest'));
+const DoctorOrders = lazy(() => import('./pages/doctor/DoctorOrders'));
+const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
+const BalanceSnapshot = lazy(() => import('./pages/BalanceSnapshot'));
+const Statements = lazy(() => import('./pages/Statements'));
+const AgingReport = lazy(() => import('./pages/AgingReport'));
+const DoctorRetention = lazy(() => import('./pages/DoctorRetention'));
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
@@ -48,6 +47,7 @@ function App() {
           <ErrorBoundary>
             <AuthProvider>
               <ToastProvider>
+                <Suspense fallback={<div className="min-h-screen bg-brand-offwhite" />}>
                 <Routes>
                   <Route path="/login" element={<Login />} />
 
@@ -131,6 +131,7 @@ function App() {
 
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
+                </Suspense>
               </ToastProvider>
             </AuthProvider>
           </ErrorBoundary>

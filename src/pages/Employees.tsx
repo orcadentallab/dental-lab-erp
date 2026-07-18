@@ -20,6 +20,7 @@ import {
     XCircle
 } from 'lucide-react';
 import clsx from 'clsx';
+import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 
 export default function Employees() {
     const { user: currentUser } = useAuth();
@@ -737,8 +738,8 @@ export default function Employees() {
 
             {/* Employees Table */}
             <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-right border-collapse">
+                <ResponsiveTable label="جدول الموظفين">
+                    <table className="w-full min-w-[900px] text-right border-collapse">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-100 text-sm font-semibold text-gray-600">
                                 <th className="p-4">اسم الموظف</th>
@@ -847,7 +848,7 @@ export default function Employees() {
                             )}
                         </tbody>
                     </table>
-                </div>
+                </ResponsiveTable>
             </div>
 
             {/* Representative Expenses review panel */}

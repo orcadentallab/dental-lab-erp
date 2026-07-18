@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { db, type OrderIssue, type Doctor, type Supplier, type User, type OrderItem } from '../services/db';
 import { AlertTriangle, BarChart2, RefreshCw, XCircle, RotateCcw, Ban, UserX } from 'lucide-react';
+import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 
 // Issue type display config
 const ISSUE_TYPE_LABELS: Record<string, string> = {
@@ -273,7 +274,7 @@ export default function IssuesReport() {
                         <p className="text-sm text-surface-400">لا توجد مشكلات مسجلة</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
+                    <ResponsiveTable label="جدول المشكلات المسجلة">
                         <table className="w-full text-right text-sm min-w-[1000px]">
                             <thead className="bg-surface-50 border-b border-surface-200 text-surface-600 text-xs font-bold">
                                 <tr>
@@ -358,7 +359,7 @@ export default function IssuesReport() {
                                 })}
                             </tbody>
                         </table>
-                    </div>
+                    </ResponsiveTable>
                 )}
             </div>
         </div>

@@ -583,5 +583,3 @@ export default function CashboxPanel() {
         </div>
     );
 }
-
-export { cashboxTypeLabels };

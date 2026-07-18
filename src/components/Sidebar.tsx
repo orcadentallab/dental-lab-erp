@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
 import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers, Receipt, Clock } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { db } from '../services/db';
@@ -29,6 +29,7 @@ export default function Sidebar() {
     const { user, logout } = useAuth();
     const location = useLocation();
     const [isOpen, setIsOpen] = useState(false);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
     const { t } = useTranslation();
     const [unregisteredCount, setUnregisteredCount] = useState(0);
 
@@ -155,6 +156,31 @@ export default function Sidebar() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [location.pathname]);
 
+    useEffect(() => {
+        setIsOpen(false);
+    }, [location.pathname]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const mainContent = document.getElementById('dashboard-main');
+        const previousOverflow = mainContent?.style.overflow;
+        if (mainContent) mainContent.style.overflow = 'hidden';
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setIsOpen(false);
+                menuButtonRef.current?.focus();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            if (mainContent) mainContent.style.overflow = previousOverflow || '';
+        };
+    }, [isOpen]);
+
     const toggleGroup = (groupId: string) => {
         setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
     };
@@ -163,8 +189,15 @@ export default function Sidebar() {
         <>
             {/* Mobile Menu Button */}
             <button
+                ref={menuButtonRef}
                 onClick={() => setIsOpen(!isOpen)}
-                className="md:hidden fixed top-4 right-4 z-50 p-2.5 bg-cyan-600/90 backdrop-blur-md border border-cyan-500/50 rounded-xl shadow-lg text-white print:hidden hover:bg-cyan-700 transition-colors"
+                className={clsx(
+                    "fixed right-4 top-[max(1rem,env(safe-area-inset-top))] grid h-11 w-11 place-items-center rounded-xl border border-cyan-500/50 bg-cyan-600/90 text-white shadow-lg backdrop-blur-md transition-colors hover:bg-cyan-700 lg:hidden print:hidden",
+                    isOpen ? "z-[70]" : "z-50"
+                )}
+                aria-label={isOpen ? 'إغلاق القائمة الرئيسية' : 'فتح القائمة الرئيسية'}
+                aria-expanded={isOpen}
+                aria-controls="dashboard-sidebar"
             >
                 {isOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
@@ -176,21 +209,22 @@ export default function Sidebar() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 bg-teal-900/40 z-40 md:hidden print:hidden backdrop-blur-sm"
+                        className="fixed inset-0 bg-teal-900/40 z-40 lg:hidden print:hidden backdrop-blur-sm"
                         onClick={() => setIsOpen(false)}
+                        aria-hidden="true"
                     />
                 )}
             </AnimatePresence>
 
             {/* Sidebar */}
-            <div className={clsx(
-                "fixed inset-y-0 right-0 w-[280px] bg-gradient-to-b from-teal-50 via-white to-teal-50/50 border-l border-teal-100 shadow-2xl md:shadow-xl md:shadow-teal-100/50 transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:h-screen print:hidden",
+            <aside id="dashboard-sidebar" aria-label="القائمة الرئيسية" className={clsx(
+                "fixed inset-y-0 right-0 w-[min(280px,calc(100vw-3rem))] bg-gradient-to-b from-teal-50 via-white to-teal-50/50 border-l border-teal-100 shadow-2xl lg:w-[280px] lg:shadow-xl lg:shadow-teal-100/50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:h-screen print:hidden",
                 isOpen ? "translate-x-0 z-[60]" : "translate-x-full z-40"
             )}>
                 <div className="flex flex-col h-full">
 
                     {/* Header / Logo */}
-                    <div className="px-6 py-6 border-b border-teal-100/80 bg-white/50 backdrop-blur-sm">
+                    <div className="border-b border-teal-100/80 bg-white/50 px-6 pb-6 pt-[max(1.5rem,env(safe-area-inset-top))] backdrop-blur-sm">
                         <div className="flex items-center gap-4">
                             <motion.div
                                 initial={{ scale: 0.8, opacity: 0 }}
@@ -223,7 +257,7 @@ export default function Sidebar() {
                                     <button
                                         onClick={() => toggleGroup(group.id)}
                                         className={clsx(
-                                            "w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-200 group cursor-pointer border border-transparent",
+                                            "min-h-11 w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-200 group cursor-pointer border border-transparent",
                                             hasActiveItem && !isGroupOpen
                                                 ? "bg-white shadow-sm border-teal-100"
                                                 : "hover:bg-teal-50/80"
@@ -292,7 +326,7 @@ export default function Sidebar() {
                                                                     />
                                                                 )}
                                                                 <div className={clsx(
-                                                                    "relative flex items-center justify-between px-3.5 py-2 rounded-lg transition-all duration-200",
+                                                                    "relative flex min-h-11 items-center justify-between px-3.5 py-2 rounded-lg transition-all duration-200",
                                                                     isActive
                                                                         ? "text-cyan-900"
                                                                         : "text-slate-500 hover:text-cyan-700 hover:bg-slate-50/50"
@@ -326,7 +360,7 @@ export default function Sidebar() {
                     </nav>
 
                     {/* Footer */}
-                    <div className="p-4 border-t border-teal-100 bg-white/30">
+                    <div className="border-t border-teal-100 bg-white/30 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                         {/* User Card */}
                         <div className="group flex items-center gap-3.5 px-3.5 py-3 bg-white rounded-2xl mb-3 border border-teal-100 shadow-sm hover:shadow-md hover:border-cyan-200 transition-all duration-300">
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center font-bold text-xs text-white uppercase shadow-lg shadow-cyan-500/20 ring-2 ring-white flex-shrink-0 group-hover:scale-105 transition-transform">
@@ -343,14 +377,14 @@ export default function Sidebar() {
                         {/* Logout */}
                         <button
                             onClick={() => logout()}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:shadow-sm border border-transparent hover:border-red-100 cursor-pointer group"
+                            className="min-h-11 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl transition-all duration-200 text-slate-500 hover:bg-red-50 hover:text-red-600 hover:shadow-sm border border-transparent hover:border-red-100 cursor-pointer group"
                         >
                             <LogOut size={16} className="group-hover:-translate-x-1 transition-transform" />
                             <span className="font-semibold text-xs">{t.nav.logout}</span>
                         </button>
                     </div>
                 </div>
-            </div>
+            </aside>
         </>
     );
 }
