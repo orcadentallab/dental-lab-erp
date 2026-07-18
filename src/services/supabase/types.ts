@@ -89,6 +89,7 @@ export interface DbOrder {
     is_archived?: boolean;
     is_deleted?: boolean;
     rejected_lab_cost?: number | null;
+    rejected_designer_cost?: number | null;
     // WF-1: shadow workflow columns (added by migration 086).
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';

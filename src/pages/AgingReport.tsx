@@ -396,7 +396,7 @@ export default function AgingReport() {
                             if (!isRelevant) return;
 
                             let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                            if (hasRejectionCost) price = o.rejectedLabCost!;
+                            if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
 
                             if (price > 0) {
                                 debits.push({

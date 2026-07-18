@@ -46,16 +46,18 @@ function isValidOrderStatus(status: string): status is Order['status'] {
 interface Props {
     order: Order;
     userRole?: string;
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
+    showRejectedDesignerCost?: boolean;
     onRedo?: (order: Order) => void;
     showLegacyFallback?: boolean;
     disabled?: boolean;
 }
 
-export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled }: Props) {
+export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled, showRejectedDesignerCost = false }: Props) {
     const [confirmAction, setConfirmAction] = useState<WorkflowAction | null>(null);
     const [showIssueMenu, setShowIssueMenu] = useState(false);
     const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
+    const [rejectedDesignerCost, setRejectedDesignerCost] = useState<number | ''>('');
     const [noteText, setNoteText] = useState('');
     const issueMenuRef = useRef<HTMLDivElement>(null);
 
@@ -93,6 +95,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         if (action.requiresConfirmation) {
             setConfirmAction(action);
             setRejectedLabCost('');
+            setRejectedDesignerCost('');
             setNoteText('');
         } else {
             if (isValidOrderStatus(action.targetLegacyStatus)) {
@@ -104,9 +107,12 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const handleConfirm = () => {
         if (!confirmAction) return;
         if (confirmAction.requiresNote && !noteText.trim()) return;
-        const context: { rejectedLabCost?: number; comment?: string } = {};
+        const context: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string } = {};
         if (['reject', 'cancel'].includes(confirmAction.id)) {
             context.rejectedLabCost = rejectedLabCost !== '' ? Number(rejectedLabCost) : 0;
+        }
+        if (confirmAction.id === 'reject' && showRejectedDesignerCost) {
+            context.rejectedDesignerCost = rejectedDesignerCost !== '' ? Number(rejectedDesignerCost) : 0;
         }
         if (noteText.trim()) {
             context.comment = noteText.trim();
@@ -116,6 +122,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         }
         setConfirmAction(null);
         setRejectedLabCost('');
+        setRejectedDesignerCost('');
         setNoteText('');
     };
 
@@ -285,7 +292,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 cancelLabel="تراجع"
                 onConfirm={handleConfirm}
                 confirmDisabled={confirmAction?.requiresNote && !noteText.trim()}
-                onCancel={() => { setConfirmAction(null); setRejectedLabCost(''); setNoteText(''); }}
+                onCancel={() => { setConfirmAction(null); setRejectedLabCost(''); setRejectedDesignerCost(''); setNoteText(''); }}
             >
                 {confirmAction?.requiresNote && (
                     <div className="text-right">
@@ -305,7 +312,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 {['reject', 'cancel'].includes(confirmAction?.id || '') && (order.supplierId || order.designerId) && (
                     <div className="text-right">
                         <label className="block text-sm font-medium text-surface-700 mb-1">
-                            تكلفة الاستحقاق للمعمل/المصمم في حالة الرفض أو الإلغاء (تلقائياً 0 إذا تُركت فارغة)
+                            تكلفة استحقاق المعمل في حالة الرفض أو الإلغاء (تلقائياً 0 إذا تُركت فارغة)
                         </label>
                         <Input
                             type="number"
@@ -313,6 +320,20 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                             placeholder="أدخل التكلفة (اختياري)"
                             value={rejectedLabCost}
                             onChange={(e) => setRejectedLabCost(e.target.value ? Number(e.target.value) : '')}
+                        />
+                    </div>
+                )}
+                {confirmAction?.id === 'reject' && showRejectedDesignerCost && (
+                    <div className="text-right">
+                        <label className="block text-sm font-medium text-surface-700 mb-1">
+                            تكلفة استحقاق المصمم في حالة الرفض (تلقائياً 0 إذا تُركت فارغة)
+                        </label>
+                        <Input
+                            type="number"
+                            min="0"
+                            placeholder="أدخل تكلفة المصمم (اختياري)"
+                            value={rejectedDesignerCost}
+                            onChange={(e) => setRejectedDesignerCost(e.target.value ? Number(e.target.value) : '')}
                         />
                     </div>
                 )}

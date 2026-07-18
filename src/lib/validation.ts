@@ -78,6 +78,8 @@ export const OrderSchema = z.object({
     deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'تاريخ التسليم غير صحيح (الصيغة المطلوبة: YYYY-MM-DD)'),
     cost: z.number().min(0, 'التكلفة لا يمكن أن تكون أقل من صفر'),
     manualCost: z.number().min(0, 'التكلفة اليدوية لا يمكن أن تكون أقل من صفر').optional().nullable(),
+    rejectedLabCost: z.number().min(0, 'تكلفة رفض المعمل لا يمكن أن تكون أقل من صفر').optional().nullable(),
+    rejectedDesignerCost: z.number().min(0, 'تكلفة رفض المصمم لا يمكن أن تكون أقل من صفر').optional().nullable(),
     stlUrl: z.string().url('رابط ملف STL غير صالح، يجب أن يكون رابطاً صحيحاً يبدأ بـ http أو https').optional().nullable(),
     supplierId: z.string().uuid('يرجى اختيار معمل صالح').optional().nullable(),
     instructions: z.string().max(2000, 'الملاحظات يجب ألا تتجاوز 2000 حرف').optional().nullable(),

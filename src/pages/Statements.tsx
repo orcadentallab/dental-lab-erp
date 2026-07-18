@@ -351,7 +351,7 @@ export default function StatementsPage() {
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 if (isSalaried) continue;
                 let price = (o.status === 'Cancelled' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                if (hasRejCost) price = o.rejectedLabCost ?? 0;
+                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
                 workMap.set(o.designerId, (workMap.get(o.designerId) ?? 0) + price);
                 countMap.set(o.designerId, (countMap.get(o.designerId) ?? 0) + 1);
             }
@@ -479,7 +479,7 @@ export default function StatementsPage() {
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 if (isSalaried) continue;
                 let price = (o.status === 'Cancelled' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                if (hasRejCost) price = o.rejectedLabCost ?? 0;
+                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
                 lines.push({
                     id: o.id, date: opDate,
                     description: `حالة #${o.caseId || '—'} — ${o.patientName || '—'}`,
@@ -632,7 +632,7 @@ export default function StatementsPage() {
                 if (isSalaried) continue;
 
                 let price = (o.status === 'Cancelled' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                if (hasRejCost) price = o.rejectedLabCost ?? 0;
+                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
 
                 if (opDate < monthStart) {
                     openingDebit += price;

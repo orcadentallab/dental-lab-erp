@@ -21,7 +21,7 @@ const statuses = [
 
 interface OrderBoardProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
     userRole?: string;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;

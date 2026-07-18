@@ -119,14 +119,17 @@ export function AccountInfoPanel({
 
     } else if (entityType === 'designer') {
         const entityOrders = orders.filter((o) => o.designerId === entityId);
+        const designer = designers.find(d => d.id === entityId);
+        const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
         
         let calculatedWork = 0;
         entityOrders.forEach(o => {
-            const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-            const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
+            const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled');
 
-            if (isRelevant) {
-                const price = hasRejectionCost && o.rejectedLabCost !== undefined ? o.rejectedLabCost : (o.designPrice || 0);
+            if (isRelevant && !isSalaried) {
+                const price = isDoctorRejectedStatus(o.status)
+                    ? (o.rejectedDesignerCost ?? 0)
+                    : (o.status === 'Cancelled' || isLabRejectedStatus(o.status) ? 0 : (o.designPrice || 0));
                 calculatedWork += price;
             }
         });

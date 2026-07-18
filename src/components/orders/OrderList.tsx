@@ -8,7 +8,7 @@ import OrderCard from './OrderCard';
 
 interface OrderListProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
     userRole?: string;
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)
@@ -36,6 +36,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const filteredOrders = orders || []; // Define filteredOrders
 
     const [usersMap, setUsersMap] = useState<Record<string, string>>({});
+    const [designerFixedSalaryMap, setDesignerFixedSalaryMap] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         const loadAuxData = async () => {
@@ -56,8 +57,13 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 setSuppliers(mapS);
 
                 const mapU: Record<string, string> = {};
-                allUsers.forEach(u => mapU[u.id] = u.name);
+                const fixedSalaryMap: Record<string, boolean> = {};
+                allUsers.forEach(u => {
+                    mapU[u.id] = u.name;
+                    fixedSalaryMap[u.id] = Boolean(u.customPermissions?.designer_fixed_salary);
+                });
                 setUsersMap(mapU);
+                setDesignerFixedSalaryMap(fixedSalaryMap);
 
                 // Add Designers Map logic if needed for filters inside list, though handled above
             } catch (error) {
@@ -143,6 +149,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         doctors={doctors}
                         suppliers={suppliers}
                         users={usersMap}
+                        designerFixedSalary={designerFixedSalaryMap}
                         userRole={userRole}
                         onStatusChange={onStatusChange}
                         onEdit={onEdit}

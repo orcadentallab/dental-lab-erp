@@ -252,6 +252,7 @@ export interface Order {
         durationMinutes?: number;
     }[];
     rejectedLabCost?: number;
+    rejectedDesignerCost?: number;
     // WF-1: shadow workflow columns. Optional for backwards-compat with all
     // existing call sites; finance helpers do not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
@@ -886,7 +887,7 @@ class MockDB {
     async updateOrderStatus(
         orderId: string,
         newStatus: Order['status'],
-        context?: { designUrl?: string | null; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number; issueState?: Order['issueState'] }
+        context?: { designUrl?: string | null; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number; rejectedDesignerCost?: number; issueState?: Order['issueState'] }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);

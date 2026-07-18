@@ -988,6 +988,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         isArchived: dbOrder.is_archived || false,
         isDeleted: dbOrder.is_deleted || false,
         rejectedLabCost: dbOrder.rejected_lab_cost || undefined,
+        rejectedDesignerCost: dbOrder.rejected_designer_cost || undefined,
         // WF-1 shadow workflow columns (default to 'not_started'/'none' if absent).
         productionStatus: dbOrder.production_status || undefined,
         issueState: dbOrder.issue_state || undefined,
@@ -1035,6 +1036,9 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         is_archived: order.isArchived || false,
         is_deleted: order.isDeleted || false,
         rejected_lab_cost: order.rejectedLabCost || null,
+        ...(order.rejectedDesignerCost !== undefined
+            ? { rejected_designer_cost: order.rejectedDesignerCost || null }
+            : {}),
         // WF-1 shadow columns: pass through if the caller specified them; the DB
         // defaults handle inserts that omit them. Finance logic does not depend
         // on these in WF-1.
@@ -1415,6 +1419,7 @@ interface FinanceSummaryDbRow {
     is_archived: boolean | null;
     is_deleted: boolean | null;
     rejected_lab_cost: number | null;
+    rejected_designer_cost: number | null;
     production_status: string | null;
     issue_state: string | null;
     order_items: { product_type: string; teeth_numbers?: string[] | null }[] | null;
@@ -1429,7 +1434,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     while (hasMore) {
         const { data, error } = await supabase
             .from('orders')
-            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
+            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
             .order('created_at', { ascending: false })
             .range(from, from + limit - 1);
 
@@ -1465,6 +1470,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         isArchived: d.is_archived || undefined,
         isDeleted: d.is_deleted || undefined,
         rejectedLabCost: d.rejected_lab_cost || undefined,
+        rejectedDesignerCost: d.rejected_designer_cost || undefined,
         productionStatus: (d.production_status || undefined) as Order['productionStatus'],
         issueState: (d.issue_state || undefined) as Order['issueState'],
         items: d.order_items ? (d.order_items as unknown as RawOrderItem[]).map((i) => ({
@@ -1733,8 +1739,8 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
         throw new ValidationError('تحديث حالة الطلب يجب أن يتم عبر الممر الموحد updateOrderStatus فقط لحماية الحسابات المالية.');
     }
 
-    const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
-    const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost'];
+    const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments'];
+    const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost'];
     const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
     const updateFields = Object.keys(updates) as (keyof Order)[];
     const businessUpdateFields = updateFields.filter(field => !workflowFields.includes(field));
@@ -1904,11 +1910,12 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
     if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
     if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost || null;
+    if (updates.rejectedDesignerCost !== undefined) dbUpdates.rejected_designer_cost = updates.rejectedDesignerCost || null;
 
     // --- SENSITIVE CHANGE DETECTION ---
     // If a sensitive financial or identity field changes, we reset registration status
     // so the accountant can review and re-register if necessary.
-    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'status', 'isArchived', 'isDeleted'];
+    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'rejectedDesignerCost', 'status', 'isArchived', 'isDeleted'];
     const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
 
     const canChangeRegistered = !context.actorRole || ['admin', 'accountant'].includes(context.actorRole);
@@ -2359,6 +2366,7 @@ export interface StatusUpdateContext {
     userName?: string;       // User name for comment attribution
     actorRole?: string;      // User role when available
     rejectedLabCost?: number; // Cost to lab when rejected
+    rejectedDesignerCost?: number; // Cost to per-piece designer when rejected
     issueState?: Order['issueState']; // Optional issueState to set atomically with status
 }
 
@@ -2465,6 +2473,9 @@ export async function updateOrderStatus(
 
     if (context.rejectedLabCost !== undefined) {
         updates.rejectedLabCost = context.rejectedLabCost;
+    }
+    if (context.rejectedDesignerCost !== undefined) {
+        updates.rejectedDesignerCost = context.rejectedDesignerCost;
     }
 
     if (context.issueState !== undefined) {

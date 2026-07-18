@@ -315,7 +315,7 @@ export default function Orders() {
     const handleUpdateOrder = async (orderData: Partial<Order>) => {
         if (!fullEditingOrder) return;
         try {
-            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'comments'];
+            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments'];
             const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
             const changedFields = (Object.keys(orderData) as (keyof Order)[]).filter(field => {
                 const nextValue = orderData[field];
@@ -367,7 +367,7 @@ export default function Orders() {
     };
 
     // CENTRALIZED STATUS UPDATE - ensures status/designStatus sync for Split Workflows
-    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => {
+    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => {
         if (status === 'same' && !context) {
             await refreshOrders();
             return;

@@ -32,8 +32,9 @@ interface OrderCardProps {
     doctors: Record<string, string>;
     suppliers: Record<string, string>;
     users: Record<string, string>;
+    designerFixedSalary?: Record<string, boolean>;
     userRole?: string;
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
     onUpdate?: () => void;
     showFinancials?: boolean;
     onEdit?: (order: Order) => void;
@@ -58,6 +59,7 @@ function OrderCard({
     doctors,
     suppliers,
     users,
+    designerFixedSalary = {},
     userRole,
     onStatusChange,
     onEdit,
@@ -95,10 +97,14 @@ function OrderCard({
     // Confirmation State — handled by WorkflowActionBar
     const [isEditingCost, setIsEditingCost] = useState(false);
     const [editCostValue, setEditCostValue] = useState<number | ''>('');
+    const [editDesignerCostValue, setEditDesignerCostValue] = useState<number | ''>('');
 
 
     const handleUpdateRejectedCost = () => {
-        onStatusChange(order.id, 'same', { rejectedLabCost: editCostValue === '' ? 0 : Number(editCostValue) });
+        onStatusChange(order.id, 'same', {
+            rejectedLabCost: editCostValue === '' ? 0 : Number(editCostValue),
+            ...(showDesignerCost ? { rejectedDesignerCost: editDesignerCostValue === '' ? 0 : Number(editDesignerCostValue) } : {})
+        });
         success('تم تحديث تكلفة الرفض بنجاح');
         setIsEditingCost(false);
     };
@@ -152,6 +158,28 @@ function OrderCard({
     const visibleComments = filterVisibleOrderComments(order.comments);
     const latestComment = getLatestVisibleOrderComment(order.comments);
     const displayDate = getOrderCardDisplayDate(order);
+    const hasManualLabCost = order.manualCost !== null && order.manualCost !== undefined;
+    const displayedLabCost = order.manualCost ?? order.cost ?? 0;
+    const hasManualDesignCost = order.manualDesignPrice !== null && order.manualDesignPrice !== undefined;
+    const displayedDesignCost = order.manualDesignPrice ?? order.designPrice ?? 0;
+    const showDesignerCost = Boolean(order.designerId && designerFixedSalary[order.designerId] === false);
+    const usesRejectionCost = order.status === 'Doctor Rejected' || order.status === 'Rejected';
+
+    const compactCost = (value: number, isManual: boolean, tone: 'teal' | 'indigo') => (
+        <span className={clsx(
+            'inline-flex shrink-0 items-center gap-1 rounded px-1 py-0.5 text-[9px] font-black tabular-nums',
+            tone === 'teal'
+                ? 'bg-teal-100 text-teal-800 dark:bg-teal-950/50 dark:text-teal-200'
+                : 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200'
+        )}>
+            {value.toLocaleString('en-EG')} ج.م
+            {isManual && (
+                <span className="rounded-full bg-amber-100 px-1 text-[8px] text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                    يدوي
+                </span>
+            )}
+        </span>
+    );
 
     // Terminal statuses (red/rose/slate): Doctor Rejected, Lab Rejected, Cancelled, and legacy Rejected — these get archive button and styling
     const isRedStatus = ['Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(order.status) || order.technicianStatus === 'Rejected';
@@ -514,6 +542,7 @@ function OrderCard({
                                                 <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[80px]">
                                                     {order.designerId && users[order.designerId] ? users[order.designerId] : 'مصمم'}
                                                 </span>
+                                                {showDesignerCost && !usesRejectionCost && compactCost(displayedDesignCost, hasManualDesignCost, 'indigo')}
                                             </div>
                                             {/* Divider */}
                                             <div className="w-full h-px bg-teal-200 dark:bg-teal-700/50 my-0.5"></div>
@@ -523,6 +552,7 @@ function OrderCard({
                                                 <span className="text-xs font-bold text-teal-700 dark:text-teal-300 truncate max-w-[80px]">
                                                     {order.supplierId && suppliers[order.supplierId] ? suppliers[order.supplierId] : 'خراطة'}
                                                 </span>
+                                                {!usesRejectionCost && compactCost(displayedLabCost, hasManualLabCost, 'teal')}
                                             </div>
                                         </div>
                                     ) : order.supplierId && suppliers[order.supplierId] ? (
@@ -533,6 +563,7 @@ function OrderCard({
                                             <span className="text-sm font-black text-teal-700 dark:text-teal-300 leading-tight text-center mt-0.5">
                                                 {suppliers[order.supplierId]}
                                             </span>
+                                            {!usesRejectionCost && compactCost(displayedLabCost, hasManualLabCost, 'teal')}
                                         </>
                                     ) : order.designerId && users[order.designerId] ? (
                                         /* Designer Only */
@@ -542,6 +573,7 @@ function OrderCard({
                                             <span className="text-sm font-black text-indigo-700 dark:text-indigo-300 leading-tight text-center mt-0.5">
                                                 {users[order.designerId]}
                                             </span>
+                                            {showDesignerCost && !usesRejectionCost && compactCost(displayedDesignCost, hasManualDesignCost, 'indigo')}
                                         </>
                                     ) : (
                                         /* Internal Lab */
@@ -571,12 +603,13 @@ function OrderCard({
                                         className="w-full flex flex-col items-center justify-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl p-2 cursor-pointer hover:bg-red-100 transition-colors group"
                                         onClick={() => {
                                             setEditCostValue(order.rejectedLabCost ?? '');
+                                            setEditDesignerCostValue(order.rejectedDesignerCost ?? '');
                                             setIsEditingCost(true);
                                         }}
                                         title="تعديل تكلفة الرفض"
                                     >
                                         <div className="flex items-center gap-1">
-                                            <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">تكلفة الرفض</span>
+                                            <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">رفض المعمل</span>
                                             <Edit3 size={10} className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                                         </div>
                                         <div className="flex items-baseline gap-1">
@@ -585,6 +618,15 @@ function OrderCard({
                                             </span>
                                             <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase">ج.م</span>
                                         </div>
+                                        {showDesignerCost && (
+                                            <div className="flex items-baseline gap-1 border-t border-red-200/70 pt-1 mt-1">
+                                                <span className="text-[9px] font-bold text-red-600 dark:text-red-400">رفض المصمم</span>
+                                                <span className="text-sm font-black text-red-700 dark:text-red-300">
+                                                    {(order.rejectedDesignerCost || 0).toLocaleString('en-EG')}
+                                                </span>
+                                                <span className="text-[9px] font-bold text-red-600 dark:text-red-400">ج.م</span>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -625,6 +667,7 @@ function OrderCard({
                                 userRole={userRole}
                                 onStatusChange={onStatusChange}
                                 onRedo={onRedo}
+                                showRejectedDesignerCost={showDesignerCost}
                                 showLegacyFallback={userRole === 'admin'}
                                 disabled={userRole === 'lab' && order.status === 'Delivered'}
                             />
@@ -731,7 +774,7 @@ function OrderCard({
             <ConfirmDialog
                 isOpen={isEditingCost}
                 title="تعديل تكلفة الرفض"
-                message="قم بتعديل المبلغ المستحق للمعمل/المصمم عن هذا الأوردر المرفوض."
+                message="قم بتعديل المبالغ المستحقة عن هذا الأوردر المرفوض."
                 variant="info"
                 confirmLabel="حفظ التعديلات"
                 cancelLabel="إلغاء"
@@ -740,7 +783,7 @@ function OrderCard({
             >
                 <div className="text-right">
                     <label className="block text-sm font-medium text-surface-700 mb-1">
-                        المبلغ المستحق (ج.م)
+                        المبلغ المستحق للمعمل (ج.م)
                     </label>
                     <div className="relative">
                         <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" size={16} />
@@ -754,6 +797,19 @@ function OrderCard({
                         />
                     </div>
                 </div>
+                {showDesignerCost && (
+                    <div className="text-right mt-3">
+                        <label className="block text-sm font-medium text-surface-700 mb-1">
+                            المبلغ المستحق للمصمم (ج.م)
+                        </label>
+                        <Input
+                            type="number"
+                            min="0"
+                            value={editDesignerCostValue}
+                            onChange={(e) => setEditDesignerCostValue(e.target.value ? Number(e.target.value) : '')}
+                        />
+                    </div>
+                )}
             </ConfirmDialog>
         </motion.div>
     );

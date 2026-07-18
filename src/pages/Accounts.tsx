@@ -465,7 +465,7 @@ export default function Accounts() {
                     const stats = getStats(o.designerId);
                     stats.count++;
                     let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status) ? 0 : getEffectiveDesignPrice(o));
-                    if (hasRejectionCost) price = o.rejectedLabCost!;
+                    if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
                     stats.totalCredit += price;
                     stats.totalSales += price;
                 }
@@ -748,9 +748,8 @@ export default function Accounts() {
 
             openingCredit = beforeOrders.reduce((sum, o) => {
                 if (hideVirtualCosts) return sum;
-                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status) ? 0 : getEffectiveDesignPrice(o));
-                if (hasRejectionCost) price = o.rejectedLabCost!;
+                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
                 return sum + price;
             }, 0);
 
@@ -905,7 +904,6 @@ export default function Accounts() {
             const hideVirtualCosts = isSalariedDesigner;
 
             items = desOrders.map(o => {
-                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
@@ -913,7 +911,7 @@ export default function Accounts() {
                 let price = hideVirtualCosts ? 0 : getEffectiveDesignPrice(o);
                 if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) price = 0;
                 else if (isDoctorRejectedStatus(o.status)) {
-                    price = hasRejectionCost ? o.rejectedLabCost! : 0;
+                    price = o.rejectedDesignerCost ?? 0;
                 }
 
                 return {

@@ -228,7 +228,7 @@ export default function BalanceSnapshotPage() {
                         // نفس منطق Accounts.tsx سطر 393:
                         // price = (Cancelled||Rejected) ? 0 : getEffectiveDesignPrice
                         let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                        if (hasRejectionCost) price = o.rejectedLabCost!;
+                        if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
                         totalWork += price;
                     });
                 }
