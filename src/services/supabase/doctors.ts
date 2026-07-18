@@ -145,7 +145,10 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
                         .from('orders')
                         .select('id', { count: 'exact', head: true })
                         .eq('doctor_id', id)
-                        .eq('branch_name', oldB.name);
+                        .eq('branch_name', oldB.name)
+                        // Orders are soft-deleted, so deleted records must not
+                        // prevent a branch from being removed.
+                        .or('is_deleted.eq.false,is_deleted.is.null');
 
                     if (countErr) {
                         throw ErrorHandler.handle(countErr, 'checkBranchUsage');
