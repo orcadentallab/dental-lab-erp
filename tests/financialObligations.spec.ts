@@ -1265,6 +1265,12 @@ test.describe('manualCost clearing contract', () => {
         expect(orderFormSource).toContain('cost: finalCost,');
         expect(orderFormSource).toContain('manualCost: (isAdmin && manualCost !== null) ? manualCost : null,');
     });
+
+    test('split workflow preserves explicit lab and designer overrides across edits', () => {
+        expect(orderFormSource).toContain('setManualCost(initialData.manualCost);');
+        expect(orderFormSource).not.toContain('setManualCost(initialData.manualCost - designPrice);');
+        expect(ordersSource).toContain('if (updates.manualDesignPrice !== undefined) dbUpdates.manual_design_price = updates.manualDesignPrice ?? null;');
+    });
 });
 
 test.describe('financial obligations migration', () => {

@@ -1893,6 +1893,7 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     if (updates.designUrl !== undefined) dbUpdates.design_url = updates.designUrl || null;
     if (updates.designStatus !== undefined) dbUpdates.design_status = updates.designStatus || null;
     if (updates.designPrice !== undefined) dbUpdates.design_price = updates.designPrice || null;
+    if (updates.manualDesignPrice !== undefined) dbUpdates.manual_design_price = updates.manualDesignPrice ?? null;
     if (updates.actualDeliveryDate !== undefined) dbUpdates.actual_delivery_date = updates.actualDeliveryDate || null;
     if (updates.feedback !== undefined) dbUpdates.feedback = updates.feedback || null;
     if (updates.isRedo !== undefined) dbUpdates.is_redo = updates.isRedo;

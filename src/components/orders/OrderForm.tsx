@@ -347,14 +347,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     })) : [{ serviceType: '', teethNumbers: [], price: 0 }];
 
                     if (initialData.manualCost !== undefined && initialData.manualCost !== null) {
-                        const designPrice = initialData.designPrice || 0;
-                        const autoMilling = calculateAutomaticMillingPrice(initialItems, servicesData, suppliersData, initialData.supplierId || '');
-                        // If manualCost is equal to total cost (e.g. 550) instead of milling cost (500)
-                        if (initialData.workflowType === 'split' && designPrice > 0 && Math.abs(initialData.manualCost - autoMilling - designPrice) < Math.abs(initialData.manualCost - autoMilling)) {
-                            setManualCost(initialData.manualCost - designPrice);
-                        } else {
-                            setManualCost(initialData.manualCost);
-                        }
+                        // manualCost is the explicit milling/lab override. Never infer or
+                        // transform an explicitly stored value when reopening the form.
+                        setManualCost(initialData.manualCost);
                     } else {
                         if (initialData.workflowType === 'split') {
                             const autoMilling = calculateAutomaticMillingPrice(initialItems, servicesData, suppliersData, initialData.supplierId || '');
