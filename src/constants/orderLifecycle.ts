@@ -217,7 +217,12 @@ export function isDeliveredForDoctorReceivable(order: LifecycleOrder): boolean {
 }
 
 export function isBillableToDoctor(order: LifecycleOrder): boolean {
-    return isDeliveredForDoctorReceivable(order);
+    if (isDeliveredForDoctorReceivable(order)) return true;
+    const issue = getEffectiveIssueState(order);
+    if (issue === 'doctor_rejected' || issue === 'lab_rejected') {
+        return !!order.rejectionDoctorDecision && (order.rejectedDoctorAmount ?? 0) > 0;
+    }
+    return false;
 }
 
 export function isDoctorStatementIncluded(order: LifecycleOrder): boolean {
@@ -227,7 +232,13 @@ export function isDoctorStatementIncluded(order: LifecycleOrder): boolean {
 }
 
 export function getDoctorReceivableAmount(order: LifecycleOrder): number {
-    return isBillableToDoctor(order) ? order.totalPrice || 0 : 0;
+    const issue = getEffectiveIssueState(order);
+    if (issue === 'doctor_rejected' || issue === 'lab_rejected') {
+        return order.rejectionDoctorDecision
+            ? Math.max(0, order.rejectedDoctorAmount ?? 0)
+            : 0;
+    }
+    return isDeliveredForDoctorReceivable(order) ? order.totalPrice || 0 : 0;
 }
 
 const dateOnly = (date?: string | null): string => (date || '').split('T')[0];

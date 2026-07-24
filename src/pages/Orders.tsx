@@ -364,7 +364,11 @@ export default function Orders() {
     };
 
     // CENTRALIZED STATUS UPDATE - ensures status/designStatus sync for Split Workflows
-    const handleStatusUpdate = async (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => {
+    const handleStatusUpdate = async (
+        id: string,
+        status: Order['status'] | 'same',
+        context?: import('../constants/rejectionFinancialDecision').RejectionFinancialContext
+    ) => {
         if (status === 'same' && !context) {
             await refreshOrders();
             return;

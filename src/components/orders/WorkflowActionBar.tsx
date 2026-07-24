@@ -9,6 +9,13 @@ import { Input } from '../ui/Input';
 import type { Order } from '../../services/db';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { getForwardActions, getIssueActions, type WorkflowAction } from '../../constants/workflowTransitions';
+import {
+    REJECTION_DOCTOR_DECISIONS,
+    resolveRejectionDoctorDecision,
+    type RejectionDoctorDecision,
+    type RejectionFinancialReviewStatus,
+    type RejectionPartyCostStatus,
+} from '../../constants/rejectionFinancialDecision';
 import clsx from 'clsx';
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -46,7 +53,16 @@ function isValidOrderStatus(status: string): status is Order['status'] {
 interface Props {
     order: Order;
     userRole?: string;
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: {
+        rejectedLabCost?: number;
+        rejectedDesignerCost?: number;
+        rejectionDoctorDecision?: RejectionDoctorDecision;
+        rejectedDoctorAmount?: number;
+        rejectionFinancialReviewStatus?: RejectionFinancialReviewStatus;
+        rejectedLabCostStatus?: RejectionPartyCostStatus;
+        rejectedDesignerCostStatus?: RejectionPartyCostStatus;
+        comment?: string;
+    }) => void;
     showRejectedDesignerCost?: boolean;
     onRedo?: (order: Order) => void;
     showLegacyFallback?: boolean;
@@ -58,6 +74,10 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const [showIssueMenu, setShowIssueMenu] = useState(false);
     const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
     const [rejectedDesignerCost, setRejectedDesignerCost] = useState<number | ''>('');
+    const [doctorDecision, setDoctorDecision] = useState<RejectionDoctorDecision>(
+        REJECTION_DOCTOR_DECISIONS.fullPrice
+    );
+    const [customDoctorAmount, setCustomDoctorAmount] = useState<number | ''>('');
     const [noteText, setNoteText] = useState('');
     const issueMenuRef = useRef<HTMLDivElement>(null);
 
@@ -96,6 +116,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             setConfirmAction(action);
             setRejectedLabCost('');
             setRejectedDesignerCost('');
+            setDoctorDecision(REJECTION_DOCTOR_DECISIONS.fullPrice);
+            setCustomDoctorAmount('');
             setNoteText('');
         } else {
             if (isValidOrderStatus(action.targetLegacyStatus)) {
@@ -107,12 +129,32 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const handleConfirm = () => {
         if (!confirmAction) return;
         if (confirmAction.requiresNote && !noteText.trim()) return;
-        const context: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string } = {};
-        if (['reject', 'cancel'].includes(confirmAction.id)) {
+        const context: {
+            rejectedLabCost?: number;
+            rejectedDesignerCost?: number;
+            rejectionDoctorDecision?: RejectionDoctorDecision;
+            rejectedDoctorAmount?: number;
+            rejectionFinancialReviewStatus?: RejectionFinancialReviewStatus;
+            rejectedLabCostStatus?: RejectionPartyCostStatus;
+            rejectedDesignerCostStatus?: RejectionPartyCostStatus;
+            comment?: string;
+        } = {};
+        const isRejection = ['reject', 'lab_reject'].includes(confirmAction.id);
+        if (isRejection) {
+            const resolved = resolveRejectionDoctorDecision({
+                decision: doctorDecision,
+                orderTotal: order.totalPrice || 0,
+                customAmount: customDoctorAmount === '' ? null : customDoctorAmount,
+            });
+            context.rejectionDoctorDecision = resolved.decision;
+            context.rejectedDoctorAmount = resolved.doctorAmount;
+            context.rejectionFinancialReviewStatus = resolved.reviewStatus;
+            context.rejectedLabCost = 0;
+            context.rejectedDesignerCost = 0;
+            context.rejectedLabCostStatus = order.supplierId ? 'pending' : 'not_applicable';
+            context.rejectedDesignerCostStatus = order.designerId ? 'pending' : 'not_applicable';
+        } else if (confirmAction.id === 'cancel') {
             context.rejectedLabCost = rejectedLabCost !== '' ? Number(rejectedLabCost) : 0;
-        }
-        if (confirmAction.id === 'reject' && showRejectedDesignerCost) {
-            context.rejectedDesignerCost = rejectedDesignerCost !== '' ? Number(rejectedDesignerCost) : 0;
         }
         if (noteText.trim()) {
             context.comment = noteText.trim();
@@ -123,6 +165,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         setConfirmAction(null);
         setRejectedLabCost('');
         setRejectedDesignerCost('');
+        setDoctorDecision(REJECTION_DOCTOR_DECISIONS.fullPrice);
+        setCustomDoctorAmount('');
         setNoteText('');
     };
 
@@ -291,8 +335,26 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 confirmLabel="نعم، متأكد"
                 cancelLabel="تراجع"
                 onConfirm={handleConfirm}
-                confirmDisabled={confirmAction?.requiresNote && !noteText.trim()}
-                onCancel={() => { setConfirmAction(null); setRejectedLabCost(''); setRejectedDesignerCost(''); setNoteText(''); }}
+                confirmDisabled={
+                    (confirmAction?.requiresNote && !noteText.trim())
+                    || (
+                        ['reject', 'lab_reject'].includes(confirmAction?.id || '')
+                        && doctorDecision === REJECTION_DOCTOR_DECISIONS.customAmount
+                        && (
+                            customDoctorAmount === ''
+                            || customDoctorAmount < 0
+                            || customDoctorAmount > (order.totalPrice || 0)
+                        )
+                    )
+                }
+                onCancel={() => {
+                    setConfirmAction(null);
+                    setRejectedLabCost('');
+                    setRejectedDesignerCost('');
+                    setDoctorDecision(REJECTION_DOCTOR_DECISIONS.fullPrice);
+                    setCustomDoctorAmount('');
+                    setNoteText('');
+                }}
             >
                 {confirmAction?.requiresNote && (
                     <div className="text-right">
@@ -309,7 +371,62 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                         />
                     </div>
                 )}
-                {['reject', 'cancel'].includes(confirmAction?.id || '') && (order.supplierId || order.designerId) && (
+                {['reject', 'lab_reject'].includes(confirmAction?.id || '') && (
+                    <div className="space-y-3 text-right">
+                        <label className="block text-sm font-bold text-surface-800">
+                            المبلغ الذي يتحمله الطبيب
+                        </label>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            {[
+                                { value: REJECTION_DOCTOR_DECISIONS.decideLater, label: 'يُحدد لاحقًا' },
+                                { value: REJECTION_DOCTOR_DECISIONS.fullPrice, label: 'كامل السعر' },
+                                { value: REJECTION_DOCTOR_DECISIONS.zero, label: 'صفر' },
+                                { value: REJECTION_DOCTOR_DECISIONS.customAmount, label: 'مبلغ مخصص' },
+                            ].map(option => (
+                                <label
+                                    key={option.value}
+                                    className={clsx(
+                                        'flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm font-medium',
+                                        doctorDecision === option.value
+                                            ? 'border-primary-500 bg-primary-50 text-primary-800'
+                                            : 'border-surface-200 bg-white text-surface-700'
+                                    )}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="doctor-rejection-decision"
+                                        value={option.value}
+                                        checked={doctorDecision === option.value}
+                                        onChange={() => setDoctorDecision(option.value)}
+                                    />
+                                    {option.label}
+                                </label>
+                            ))}
+                        </div>
+                        {doctorDecision === REJECTION_DOCTOR_DECISIONS.customAmount && (
+                            <div>
+                                <label className="mb-1 block text-sm font-medium text-surface-700">
+                                    المبلغ المتفق أن يتحمله الطبيب
+                                </label>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    max={order.totalPrice || 0}
+                                    value={customDoctorAmount}
+                                    onChange={(e) => setCustomDoctorAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="0"
+                                />
+                                <p className="mt-1 text-xs text-surface-500">
+                                    الحد الأقصى: {(order.totalPrice || 0).toLocaleString('en-EG')} ج.م
+                                </p>
+                            </div>
+                        )}
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                            استحقاق المورد والمصمم سيكون صفرًا مؤقتًا، ويمكن للـAdmin تسجيل المستحق لاحقًا من المراجعة المالية.
+                        </div>
+                    </div>
+                )}
+                {confirmAction?.id === 'cancel' && (order.supplierId || order.designerId) && (
                     <div className="text-right">
                         <label className="block text-sm font-medium text-surface-700 mb-1">
                             تكلفة استحقاق المعمل في حالة الرفض أو الإلغاء (تلقائياً 0 إذا تُركت فارغة)
@@ -323,7 +440,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                         />
                     </div>
                 )}
-                {confirmAction?.id === 'reject' && showRejectedDesignerCost && (
+                {confirmAction?.id === 'cancel' && showRejectedDesignerCost && (
                     <div className="text-right">
                         <label className="block text-sm font-medium text-surface-700 mb-1">
                             تكلفة استحقاق المصمم في حالة الرفض (تلقائياً 0 إذا تُركت فارغة)

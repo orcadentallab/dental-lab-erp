@@ -33,7 +33,11 @@ export interface StatementResult {
 
 const ZERO_VALUE_STATUSES = new Set(['doctor rejected', 'lab rejected', 'cancelled', 'rejected']);
 const getAllDoctorAmount = (order: Partial<Order>): number => {
-    if (ZERO_VALUE_STATUSES.has((order.status || '').trim().toLowerCase())) return 0;
+    const normalizedStatus = (order.status || '').trim().toLowerCase();
+    if (normalizedStatus === 'doctor rejected' || normalizedStatus === 'lab rejected' || normalizedStatus === 'rejected') {
+        return getDoctorReceivableAmount(order);
+    }
+    if (ZERO_VALUE_STATUSES.has(normalizedStatus)) return 0;
     return order.totalPrice || 0;
 };
 

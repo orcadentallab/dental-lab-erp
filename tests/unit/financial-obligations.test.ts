@@ -188,6 +188,29 @@ vi.mock('../../src/lib/supabase', () => {
                     }
                     return order;
                 });
+            } else if (name === 'apply_order_rejection_atomic') {
+                const id = args.p_order_id;
+                mockDatabase['orders'] = mockDatabase['orders'].map(order => {
+                    if (order.id !== id) return order;
+                    const doctorAmount = args.p_doctor_decision === 'zero'
+                        ? 0
+                        : args.p_doctor_decision === 'custom_amount'
+                            ? args.p_custom_doctor_amount
+                            : order.total_price;
+                    return {
+                        ...order,
+                        status: args.p_target_status,
+                        production_status: 'not_started',
+                        issue_state: args.p_issue_state,
+                        rejected_doctor_amount: doctorAmount,
+                        rejection_doctor_decision: args.p_doctor_decision,
+                        rejection_financial_review_status: args.p_doctor_decision === 'decide_later'
+                            ? 'pending'
+                            : 'resolved',
+                        rejected_lab_cost: null,
+                        rejected_designer_cost: null,
+                    };
+                });
             }
             return Promise.resolve({ data: null, error: null });
         },
@@ -326,6 +349,49 @@ describe('Financial Obligations Integration Tests', () => {
 
         // The state should be exactly the same after the second run
         expect(obligationsAfterSecondRun).toEqual(obligationsAfterFirstRun);
+    });
+
+    it('applies a representative custom doctor amount immediately when rejecting an order', async () => {
+        const db = _mockDatabase as Record<string, any[]>;
+        const orderId = 'abababab-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+        db.orders.push({
+            id: orderId,
+            case_id: 'CASE-REJECT-1',
+            doctor_id: 'd2d2d2d2-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            patient_name: 'Test',
+            status: 'Delivered',
+            total_price: 2_000,
+            discount: 0,
+            shade: '',
+            delivery_date: '2026-07-24',
+            cost: 800,
+            priority: 'Normal',
+            workflow_type: 'full',
+            production_status: 'final_delivered',
+            issue_state: 'none',
+            is_archived: false,
+            is_deleted: false,
+            items: [],
+            comments: [],
+        });
+
+        const updated = await updateOrderStatus(orderId, 'Doctor Rejected', {
+            userId: 'u3u3u3u3-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+            userName: 'Representative Test',
+            actorRole: 'representative',
+            rejectionDoctorDecision: 'custom_amount',
+            rejectedDoctorAmount: 750,
+            rejectionFinancialReviewStatus: 'resolved',
+            rejectedLabCostStatus: 'pending',
+            rejectedDesignerCostStatus: 'not_applicable',
+        });
+
+        expect(updated?.status).toBe('Doctor Rejected');
+        expect(updated?.rejectionDoctorDecision).toBe('custom_amount');
+        expect(updated?.rejectedDoctorAmount).toBe(750);
+        expect(updated?.rejectionFinancialReviewStatus).toBe('resolved');
+        expect(updated?.rejectedLabCost).toBeUndefined();
     });
 
     it('Scenario: should void all obligations (including multiple lab rejections) on order deletion, even if one fails', async () => {
