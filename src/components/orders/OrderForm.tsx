@@ -571,7 +571,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 representativeId: representativeId || undefined,
                 comments: initialData?.comments || []
             };
-            console.log('1) FORM SUBMIT payload:', JSON.stringify(payload, null, 2));
             await onSubmit(payload);
         } finally {
             setIsSubmitting(false);

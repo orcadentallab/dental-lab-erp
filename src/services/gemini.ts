@@ -263,9 +263,6 @@ export async function getInsights(
     type?: 'weekly_auto' | 'on_demand',
     limit: number = 10
 ): Promise<InsightReport[]> {
-    console.log('[getInsights] Loading insights from database...');
-    console.log('[getInsights] Type filter:', type || 'all');
-
     let query = supabase
         .from('ai_insights')
         .select('id, insight_type, content, rating, created_at, model_version, prompt_version')
@@ -286,11 +283,6 @@ export async function getInsights(
         throw new Error('فشل جلب التحليلات');
     }
 
-    console.log('[getInsights] Loaded', data?.length || 0, 'insights');
-    if (data && data.length > 0) {
-        console.log('[getInsights] First insight ID:', data[0].id);
-        console.log('[getInsights] First insight type:', data[0].insight_type);
-    }
     return data || [];
 }
 

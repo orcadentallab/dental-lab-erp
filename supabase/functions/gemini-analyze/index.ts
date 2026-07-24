@@ -74,15 +74,37 @@ serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        // Auth
         const authHeader = req.headers.get('Authorization')
-        let userId: string | null = null
-        if (authHeader) {
-            const token = authHeader.replace('Bearer ', '')
-            const { data: { user } } = await supabaseClient.auth.getUser(token)
-            userId = user?.id || null
+        if (!authHeader?.startsWith('Bearer ')) {
+            return new Response(
+                JSON.stringify({ error: 'Authentication required' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
         }
 
+        const token = authHeader.slice('Bearer '.length)
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+        if (authError || !user) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid authentication token' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        const { data: profile, error: profileError } = await supabaseClient
+            .from('users')
+            .select('role')
+            .eq('auth_id', user.id)
+            .single()
+
+        if (profileError || profile?.role !== 'admin') {
+            return new Response(
+                JSON.stringify({ error: 'Admin access required' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        const userId = user.id
         const { context, insightType = 'on_demand' } = await req.json()
 
         const today = new Date()
@@ -171,8 +193,6 @@ ${(context.topServices || []).map((s: any, i: number) =>
 
         const groqData = await groqResponse.json()
         const responseText = groqData.choices?.[0]?.message?.content || ''
-        console.log('Groq raw response:', responseText.substring(0, 200))
-
         // Parse response
         const parsedResponse: {
             executive_summary: string

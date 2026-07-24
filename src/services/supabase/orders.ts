@@ -2002,8 +2002,6 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as unknown as Record<string, unknown>;
 
-    console.log('3) DB UPDATE PAYLOAD (cleanUpdates):', JSON.stringify(cleanUpdates, null, 2));
-
     try {
         const { error } = await supabase.rpc('update_order_atomic', {
             p_order_id: id,

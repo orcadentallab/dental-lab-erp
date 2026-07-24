@@ -66,11 +66,33 @@ serve(async (req: any) => {
         )
 
         const authHeader = req.headers.get('Authorization')
-        if (authHeader) {
-            const token = authHeader.replace('Bearer ', '')
-            const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-            console.log('Chat User found:', !!user)
-            if (authError) console.log('Auth Error:', authError.message)
+        if (!authHeader?.startsWith('Bearer ')) {
+            return new Response(
+                JSON.stringify({ error: 'Authentication required' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        const token = authHeader.slice('Bearer '.length)
+        const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+        if (authError || !user) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid authentication token' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        const { data: profile, error: profileError } = await supabaseClient
+            .from('users')
+            .select('role')
+            .eq('auth_id', user.id)
+            .single()
+
+        if (profileError || profile?.role !== 'admin') {
+            return new Response(
+                JSON.stringify({ error: 'Admin access required' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
         }
 
         const { message, context, conversationHistory = [] }: ChatRequest = await req.json()

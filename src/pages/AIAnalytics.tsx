@@ -330,23 +330,13 @@ export default function AIAnalytics() {
             // Always generate 'on_demand' when manually triggered
             const response = await generateInsights(analyzeContext, 'on_demand');
 
-            // Log debug info from Edge Function
-            console.log('[AI Analytics] Generation response received');
-            console.log('[AI Analytics] Analysis ID:', response.analysis_id);
             const responseWithDebug = response as unknown as { _debug?: { saved?: boolean; savedId?: string; saveError?: string } };
             const debugInfo = responseWithDebug._debug;
             let savedId = debugInfo?.savedId;
             let saveSucceeded = debugInfo?.saved === true;
 
-            if (debugInfo) {
-                console.log('[AI Analytics] Edge Function save status:', debugInfo.saved ? '✅ SAVED' : '❌ FAILED');
-                if (debugInfo.savedId) console.log('[AI Analytics] Saved with DB ID:', debugInfo.savedId);
-                if (debugInfo.saveError) console.error('[AI Analytics] Edge Function save error:', debugInfo.saveError);
-            }
-
             // Fallback: If Edge Function didn't save, save from frontend
             if (!saveSucceeded) {
-                console.log('[AI Analytics] Attempting fallback save from frontend...');
                 try {
                     const responseContent = JSON.stringify(response);
                     savedId = await saveInsight(
@@ -356,7 +346,6 @@ export default function AIAnalytics() {
                         response.model_version || 'gemini-1.5-flash',
                         response.prompt_version || 'v2.0'
                     );
-                    console.log('[AI Analytics] Fallback save SUCCESS with ID:', savedId);
                     saveSucceeded = true;
                 } catch (saveErr: unknown) {
                     console.error('[AI Analytics] Fallback save FAILED:', saveErr);
