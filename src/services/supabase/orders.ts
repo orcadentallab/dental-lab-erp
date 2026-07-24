@@ -987,8 +987,13 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         statusHistory: dbOrder.status_history || undefined,
         isArchived: dbOrder.is_archived || false,
         isDeleted: dbOrder.is_deleted || false,
-        rejectedLabCost: dbOrder.rejected_lab_cost || undefined,
-        rejectedDesignerCost: dbOrder.rejected_designer_cost || undefined,
+        rejectedLabCost: dbOrder.rejected_lab_cost ?? undefined,
+        rejectedDesignerCost: dbOrder.rejected_designer_cost ?? undefined,
+        rejectionDoctorDecision: dbOrder.rejection_doctor_decision || undefined,
+        rejectedDoctorAmount: dbOrder.rejected_doctor_amount ?? undefined,
+        rejectionFinancialReviewStatus: dbOrder.rejection_financial_review_status || undefined,
+        rejectedLabCostStatus: dbOrder.rejected_lab_cost_status || undefined,
+        rejectedDesignerCostStatus: dbOrder.rejected_designer_cost_status || undefined,
         // WF-1 shadow workflow columns (default to 'not_started'/'none' if absent).
         productionStatus: dbOrder.production_status || undefined,
         issueState: dbOrder.issue_state || undefined,
@@ -1035,10 +1040,15 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         status_history: order.statusHistory || [],
         is_archived: order.isArchived || false,
         is_deleted: order.isDeleted || false,
-        rejected_lab_cost: order.rejectedLabCost || null,
+        rejected_lab_cost: order.rejectedLabCost ?? null,
         ...(order.rejectedDesignerCost !== undefined
-            ? { rejected_designer_cost: order.rejectedDesignerCost || null }
+            ? { rejected_designer_cost: order.rejectedDesignerCost }
             : {}),
+        rejection_doctor_decision: order.rejectionDoctorDecision || null,
+        rejected_doctor_amount: order.rejectedDoctorAmount ?? null,
+        rejection_financial_review_status: order.rejectionFinancialReviewStatus || null,
+        rejected_lab_cost_status: order.rejectedLabCostStatus || null,
+        rejected_designer_cost_status: order.rejectedDesignerCostStatus || null,
         // WF-1 shadow columns: pass through if the caller specified them; the DB
         // defaults handle inserts that omit them. Finance logic does not depend
         // on these in WF-1.
@@ -1909,8 +1919,17 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     if (updates.originalOrderId !== undefined) dbUpdates.original_order_id = updates.originalOrderId;
     if (updates.isArchived !== undefined) dbUpdates.is_archived = updates.isArchived;
     if (updates.isDeleted !== undefined) dbUpdates.is_deleted = updates.isDeleted;
-    if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost || null;
-    if (updates.rejectedDesignerCost !== undefined) dbUpdates.rejected_designer_cost = updates.rejectedDesignerCost || null;
+    if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost;
+    if (updates.rejectedDesignerCost !== undefined) dbUpdates.rejected_designer_cost = updates.rejectedDesignerCost;
+    if (updates.rejectionDoctorDecision !== undefined) dbUpdates.rejection_doctor_decision = updates.rejectionDoctorDecision;
+    if (updates.rejectedDoctorAmount !== undefined) dbUpdates.rejected_doctor_amount = updates.rejectedDoctorAmount;
+    if (updates.rejectionFinancialReviewStatus !== undefined) {
+        dbUpdates.rejection_financial_review_status = updates.rejectionFinancialReviewStatus;
+    }
+    if (updates.rejectedLabCostStatus !== undefined) dbUpdates.rejected_lab_cost_status = updates.rejectedLabCostStatus;
+    if (updates.rejectedDesignerCostStatus !== undefined) {
+        dbUpdates.rejected_designer_cost_status = updates.rejectedDesignerCostStatus;
+    }
 
     // --- SENSITIVE CHANGE DETECTION ---
     // If a sensitive financial or identity field changes, we reset registration status
@@ -2365,6 +2384,11 @@ export interface StatusUpdateContext {
     actorRole?: string;      // User role when available
     rejectedLabCost?: number; // Cost to lab when rejected
     rejectedDesignerCost?: number; // Cost to per-piece designer when rejected
+    rejectionDoctorDecision?: import('../../constants/rejectionFinancialDecision').RejectionDoctorDecision;
+    rejectedDoctorAmount?: number;
+    rejectionFinancialReviewStatus?: import('../../constants/rejectionFinancialDecision').RejectionFinancialReviewStatus;
+    rejectedLabCostStatus?: import('../../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
+    rejectedDesignerCostStatus?: import('../../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     issueState?: Order['issueState']; // Optional issueState to set atomically with status
 }
 
@@ -2475,16 +2499,61 @@ export async function updateOrderStatus(
     if (context.rejectedDesignerCost !== undefined) {
         updates.rejectedDesignerCost = context.rejectedDesignerCost;
     }
+    if (context.rejectionDoctorDecision !== undefined) {
+        updates.rejectionDoctorDecision = context.rejectionDoctorDecision;
+    }
+    if (context.rejectedDoctorAmount !== undefined) {
+        updates.rejectedDoctorAmount = context.rejectedDoctorAmount;
+    }
+    if (context.rejectionFinancialReviewStatus !== undefined) {
+        updates.rejectionFinancialReviewStatus = context.rejectionFinancialReviewStatus;
+    }
+    if (context.rejectedLabCostStatus !== undefined) {
+        updates.rejectedLabCostStatus = context.rejectedLabCostStatus;
+    }
+    if (context.rejectedDesignerCostStatus !== undefined) {
+        updates.rejectedDesignerCostStatus = context.rejectedDesignerCostStatus;
+    }
 
     if (context.issueState !== undefined) {
         updates.issueState = context.issueState;
     }
 
-    // Use existing updateOrder for the actual update (handles history tracking)
-    const updatedOrder = await updateOrder(orderId, updates, {
-        ...context,
-        allowStatusChange: true,
-    });
+    // Rejections use a dedicated database transaction so the status, doctor
+    // decision, party-cost review state, obligations, allocations, and credits
+    // either all succeed or all roll back.
+    let updatedOrder: Order | null;
+    const usesAtomicRejectionDecision =
+        ['Doctor Rejected', 'Lab Rejected'].includes(newStatus)
+        && context.issueState !== 'redo';
+
+    if (usesAtomicRejectionDecision) {
+        const decision = context.rejectionDoctorDecision || 'full_price';
+        const { error } = await supabase.rpc('apply_order_rejection_atomic', {
+            p_order_id: orderId,
+            p_target_status: newStatus,
+            p_issue_state: newStatus === 'Lab Rejected' ? 'lab_rejected' : 'doctor_rejected',
+            p_doctor_decision: decision,
+            p_custom_doctor_amount: decision === 'custom_amount'
+                ? (context.rejectedDoctorAmount ?? null)
+                : null,
+            p_comment: context.comment || null,
+            p_user_name: context.userName || null,
+        });
+
+        if (error) {
+            console.error('Atomic rejection update failed', error);
+            throw new Error('فشل تنفيذ قرار الرفض المالي، ولم يتم تغيير أي بيانات.');
+        }
+
+        updatedOrder = await getOrder(orderId);
+    } else {
+        // Use existing updateOrder for non-rejection status changes.
+        updatedOrder = await updateOrder(orderId, updates, {
+            ...context,
+            allowStatusChange: true,
+        });
+    }
 
     const wasDelivered = getProductionStatus(currentOrder) === 'final_delivered';
     const isNowDelivered = updatedOrder ? getProductionStatus(updatedOrder) === 'final_delivered' : false;
@@ -2679,6 +2748,39 @@ export async function updateOrderStatus(
     }
 
     return updatedOrder;
+}
+
+export async function updateRejectedOrderFinancials(
+    orderId: string,
+    input: {
+        doctorAmount: number;
+        labCost?: number | null;
+        labCostStatus: 'pending' | 'resolved' | 'not_applicable';
+        designerCost?: number | null;
+        designerCostStatus: 'pending' | 'resolved' | 'not_applicable';
+        reason: string;
+    }
+): Promise<Order | null> {
+    if (!input.reason.trim()) {
+        throw new ValidationError('سبب التعديل المالي مطلوب');
+    }
+
+    const { error } = await supabase.rpc('admin_update_rejection_financials_atomic', {
+        p_order_id: orderId,
+        p_doctor_amount: input.doctorAmount,
+        p_lab_cost: input.labCost ?? null,
+        p_lab_cost_status: input.labCostStatus,
+        p_designer_cost: input.designerCost ?? null,
+        p_designer_cost_status: input.designerCostStatus,
+        p_reason: input.reason.trim(),
+    });
+
+    if (error) {
+        console.error('Atomic rejection financial review failed', error);
+        throw new Error('فشل التعديل المالي، ولم يتم تغيير أي بيانات.');
+    }
+
+    return getOrder(orderId);
 }
 
 /**

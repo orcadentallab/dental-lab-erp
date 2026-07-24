@@ -253,6 +253,11 @@ export interface Order {
     }[];
     rejectedLabCost?: number;
     rejectedDesignerCost?: number;
+    rejectionDoctorDecision?: import('../constants/rejectionFinancialDecision').RejectionDoctorDecision;
+    rejectedDoctorAmount?: number;
+    rejectionFinancialReviewStatus?: import('../constants/rejectionFinancialDecision').RejectionFinancialReviewStatus;
+    rejectedLabCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
+    rejectedDesignerCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     // WF-1: shadow workflow columns. Optional for backwards-compat with all
     // existing call sites; finance helpers do not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
@@ -887,10 +892,39 @@ class MockDB {
     async updateOrderStatus(
         orderId: string,
         newStatus: Order['status'],
-        context?: { designUrl?: string | null; comment?: string; userId?: string; userName?: string; actorRole?: string; rejectedLabCost?: number; rejectedDesignerCost?: number; issueState?: Order['issueState'] }
+        context?: {
+            designUrl?: string | null;
+            comment?: string;
+            userId?: string;
+            userName?: string;
+            actorRole?: string;
+            rejectedLabCost?: number;
+            rejectedDesignerCost?: number;
+            rejectionDoctorDecision?: import('../constants/rejectionFinancialDecision').RejectionDoctorDecision;
+            rejectedDoctorAmount?: number;
+            rejectionFinancialReviewStatus?: import('../constants/rejectionFinancialDecision').RejectionFinancialReviewStatus;
+            rejectedLabCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
+            rejectedDesignerCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
+            issueState?: Order['issueState'];
+        }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);
+    }
+
+    async updateRejectedOrderFinancials(
+        orderId: string,
+        input: {
+            doctorAmount: number;
+            labCost?: number | null;
+            labCostStatus: 'pending' | 'resolved' | 'not_applicable';
+            designerCost?: number | null;
+            designerCostStatus: 'pending' | 'resolved' | 'not_applicable';
+            reason: string;
+        }
+    ): Promise<Order | null> {
+        const { updateRejectedOrderFinancials } = await import('./supabase/orders');
+        return updateRejectedOrderFinancials(orderId, input);
     }
 
     /**

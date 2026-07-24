@@ -25,6 +25,7 @@ import IssueStateBadge from './IssueStateBadge';
 import CaseLocationChip from './CaseLocationChip';
 import { getEffectiveProductionStatus, getEffectiveIssueState, getCaseLocation } from '../../constants/orderLifecycle';
 import WorkflowActionBar from './WorkflowActionBar';
+import type { RejectionFinancialContext } from '../../constants/rejectionFinancialDecision';
 
 interface OrderCardProps {
     order: Order;
@@ -34,7 +35,7 @@ interface OrderCardProps {
     users: Record<string, string>;
     designerFixedSalary?: Record<string, boolean>;
     userRole?: string;
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: RejectionFinancialContext) => void;
     onUpdate?: () => void;
     showFinancials?: boolean;
     onEdit?: (order: Order) => void;
@@ -62,6 +63,7 @@ function OrderCard({
     designerFixedSalary = {},
     userRole,
     onStatusChange,
+    onUpdate,
     onEdit,
     onAddNote,
     onUpdateDesignUrl,
@@ -98,15 +100,45 @@ function OrderCard({
     const [isEditingCost, setIsEditingCost] = useState(false);
     const [editCostValue, setEditCostValue] = useState<number | ''>('');
     const [editDesignerCostValue, setEditDesignerCostValue] = useState<number | ''>('');
+    const [editDoctorAmount, setEditDoctorAmount] = useState<number | ''>('');
+    const [deferLabCost, setDeferLabCost] = useState(true);
+    const [deferDesignerCost, setDeferDesignerCost] = useState(true);
+    const [financialEditReason, setFinancialEditReason] = useState('');
+    const [isSavingFinancialReview, setIsSavingFinancialReview] = useState(false);
 
 
-    const handleUpdateRejectedCost = () => {
-        onStatusChange(order.id, 'same', {
-            rejectedLabCost: editCostValue === '' ? 0 : Number(editCostValue),
-            ...(showDesignerCost ? { rejectedDesignerCost: editDesignerCostValue === '' ? 0 : Number(editDesignerCostValue) } : {})
-        });
-        success('تم تحديث تكلفة الرفض بنجاح');
-        setIsEditingCost(false);
+    const handleUpdateRejectedCost = async () => {
+        if (editDoctorAmount === '' || editDoctorAmount < 0 || editDoctorAmount > (order.totalPrice || 0)) {
+            toastError('مبلغ الطبيب يجب أن يكون بين صفر وإجمالي سعر الأوردر');
+            return;
+        }
+        if (!financialEditReason.trim()) {
+            toastError('سبب التعديل المالي مطلوب');
+            return;
+        }
+
+        setIsSavingFinancialReview(true);
+        try {
+            await db.updateRejectedOrderFinancials(order.id, {
+                doctorAmount: Number(editDoctorAmount),
+                labCost: deferLabCost ? null : (editCostValue === '' ? 0 : Number(editCostValue)),
+                labCostStatus: order.supplierId ? (deferLabCost ? 'pending' : 'resolved') : 'not_applicable',
+                designerCost: deferDesignerCost ? null : (editDesignerCostValue === '' ? 0 : Number(editDesignerCostValue)),
+                designerCostStatus: order.designerId
+                    ? (deferDesignerCost ? 'pending' : 'resolved')
+                    : 'not_applicable',
+                reason: financialEditReason,
+            });
+            success('تم تحديث المراجعة المالية وإعادة توزيع الحسابات بنجاح');
+            setIsEditingCost(false);
+            onUpdate?.();
+        } catch (error) {
+            toastError(error instanceof Error
+                ? error.message
+                : 'فشل التعديل المالي، ولم يتم تغيير أي بيانات.');
+        } finally {
+            setIsSavingFinancialReview(false);
+        }
     };
 
     const isLate = checkIsLate(order);
@@ -165,7 +197,11 @@ function OrderCard({
     const showDesignerCost = Boolean(order.designerId && designerFixedSalary[order.designerId] === false);
     const usesRejectionCost = order.status === 'Doctor Rejected' || order.status === 'Rejected';
     const hasZeroEffectiveCost = order.status === 'Cancelled' || order.status === 'Lab Rejected';
-    const hasZeroEffectiveSalePrice = ['Doctor Rejected', 'Rejected', 'Lab Rejected', 'Cancelled'].includes(order.status);
+    const isRejectedStatus = ['Doctor Rejected', 'Rejected', 'Lab Rejected'].includes(order.status);
+    const effectiveDoctorAmount = isRejectedStatus
+        ? (order.rejectionDoctorDecision ? (order.rejectedDoctorAmount ?? 0) : 0)
+        : (order.totalPrice || 0);
+    const hasZeroEffectiveSalePrice = order.status === 'Cancelled' || effectiveDoctorAmount === 0;
     const effectiveDisplayedLabCost = hasZeroEffectiveCost ? 0 : displayedLabCost;
     const effectiveDisplayedDesignCost = hasZeroEffectiveCost ? 0 : displayedDesignCost;
 
@@ -610,7 +646,7 @@ function OrderCard({
                                     ) : (
                                         <>
                                             <span className="text-xl font-black text-green-700 dark:text-green-300 leading-none">
-                                                {(order.totalPrice || 0).toLocaleString('en-EG')}
+                                                {effectiveDoctorAmount.toLocaleString('en-EG')}
                                             </span>
                                             <span className="text-[10px] font-bold text-green-600 dark:text-green-400 mt-0.5">ج.م</span>
                                         </>
@@ -622,11 +658,16 @@ function OrderCard({
                                     <div 
                                         className="w-full flex flex-col items-center justify-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl p-2 cursor-pointer hover:bg-red-100 transition-colors group"
                                         onClick={() => {
+                                            if (userRole !== 'admin') return;
                                             setEditCostValue(order.rejectedLabCost ?? '');
                                             setEditDesignerCostValue(order.rejectedDesignerCost ?? '');
+                                            setEditDoctorAmount(order.rejectedDoctorAmount ?? order.totalPrice ?? 0);
+                                            setDeferLabCost(order.rejectedLabCostStatus !== 'resolved');
+                                            setDeferDesignerCost(order.rejectedDesignerCostStatus !== 'resolved');
+                                            setFinancialEditReason('');
                                             setIsEditingCost(true);
                                         }}
-                                        title="تعديل تكلفة الرفض"
+                                        title={userRole === 'admin' ? 'تعديل المراجعة المالية' : 'المراجعة المالية متاحة للعرض فقط'}
                                     >
                                         <div className="flex items-center gap-1">
                                             <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">رفض المعمل</span>
@@ -793,15 +834,39 @@ function OrderCard({
             {/* Edit Rejection Cost Dialog */}
             <ConfirmDialog
                 isOpen={isEditingCost}
-                title="تعديل تكلفة الرفض"
-                message="قم بتعديل المبالغ المستحقة عن هذا الأوردر المرفوض."
+                title="المراجعة المالية للأوردر المرفوض"
+                message="راجع مبلغ الطبيب واستحقاق المورد والمصمم. سيتم تطبيق التعديل وإعادة التوزيع كعملية واحدة."
                 variant="info"
                 confirmLabel="حفظ التعديلات"
                 cancelLabel="إلغاء"
                 onConfirm={handleUpdateRejectedCost}
                 onCancel={() => setIsEditingCost(false)}
+                confirmDisabled={isSavingFinancialReview || editDoctorAmount === '' || !financialEditReason.trim()}
             >
-                <div className="text-right">
+                <div className="space-y-4 text-right">
+                    <div>
+                        <label className="block text-sm font-medium text-surface-700 mb-1">
+                            المبلغ الذي يتحمله الطبيب (ج.م)
+                        </label>
+                        <Input
+                            type="number"
+                            min="0"
+                            max={order.totalPrice || 0}
+                            value={editDoctorAmount}
+                            onChange={(e) => setEditDoctorAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                            autoFocus
+                        />
+                    </div>
+                    <div className="rounded-lg border border-surface-200 p-3">
+                        <label className="mb-2 flex items-center gap-2 text-sm font-medium text-surface-700">
+                            <input
+                                type="checkbox"
+                                checked={deferLabCost}
+                                onChange={(e) => setDeferLabCost(e.target.checked)}
+                                disabled={!order.supplierId}
+                            />
+                            تحديد استحقاق المورد لاحقًا
+                        </label>
                     <label className="block text-sm font-medium text-surface-700 mb-1">
                         المبلغ المستحق للمعمل (ج.م)
                     </label>
@@ -813,12 +878,21 @@ function OrderCard({
                             className="pl-10"
                             value={editCostValue}
                             onChange={(e) => setEditCostValue(e.target.value ? Number(e.target.value) : '')}
-                            autoFocus
+                            disabled={deferLabCost || !order.supplierId}
                         />
                     </div>
-                </div>
+                    </div>
                 {showDesignerCost && (
-                    <div className="text-right mt-3">
+                    <div className="rounded-lg border border-surface-200 p-3">
+                        <label className="mb-2 flex items-center gap-2 text-sm font-medium text-surface-700">
+                            <input
+                                type="checkbox"
+                                checked={deferDesignerCost}
+                                onChange={(e) => setDeferDesignerCost(e.target.checked)}
+                                disabled={!order.designerId}
+                            />
+                            تحديد استحقاق المصمم لاحقًا
+                        </label>
                         <label className="block text-sm font-medium text-surface-700 mb-1">
                             المبلغ المستحق للمصمم (ج.م)
                         </label>
@@ -827,9 +901,23 @@ function OrderCard({
                             min="0"
                             value={editDesignerCostValue}
                             onChange={(e) => setEditDesignerCostValue(e.target.value ? Number(e.target.value) : '')}
+                            disabled={deferDesignerCost || !order.designerId}
                         />
                     </div>
                 )}
+                    <div>
+                        <label className="block text-sm font-medium text-surface-700 mb-1">
+                            سبب التعديل المالي <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            value={financialEditReason}
+                            onChange={(e) => setFinancialEditReason(e.target.value)}
+                            rows={2}
+                            className="w-full rounded-lg border border-surface-200 px-3 py-2 text-sm"
+                            placeholder="مثال: تم الاتفاق مع الطبيب/المورد على مبلغ جديد"
+                        />
+                    </div>
+                </div>
             </ConfirmDialog>
         </motion.div>
     );

@@ -177,6 +177,8 @@ export function getIssueActions(
             icon: 'XCircle',
             requiresConfirmation: true,
             confirmMessage: 'هل أنت متأكد من رفض الأوردر (مرتجع طبيب)؟',
+            requiresNote: true,
+            notePlaceholder: 'سبب الرفض والاتفاق المالي مع الطبيب…',
             adminOnly: true,
         });
         actions.push({
@@ -187,6 +189,8 @@ export function getIssueActions(
             icon: 'XCircle',
             requiresConfirmation: true,
             confirmMessage: 'هل أنت متأكد من رفض المعمل للأوردر؟',
+            requiresNote: true,
+            notePlaceholder: 'سبب رفض المعمل والقرار المالي…',
             adminOnly: true,
         });
         actions.push({
