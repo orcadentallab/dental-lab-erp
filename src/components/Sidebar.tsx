@@ -71,6 +71,7 @@ export default function Sidebar() {
                 { name: t.nav.accounts, href: '/accounts', icon: FileText, roles: ['admin', 'accountant', 'lab', 'designer', 'representative'] },
                 { name: 'الفواتير', href: '/statements', icon: Receipt, roles: ['admin', 'accountant'] },
                 { name: 'أعمار الديون', href: '/aging-report', icon: Clock, roles: ['admin', 'accountant'] },
+                { name: 'المراجعة المالية الموحدة', href: '/financial-review', icon: Shield, roles: ['admin', 'accountant'] },
                 { name: t.nav.caseRegistration, href: '/case-registration', icon: FileText, roles: ['admin', 'accountant'] },
                 { name: 'متابعة وتنشيط الأطباء', href: '/doctors/retention', icon: Users, roles: ['admin'] },
             ]

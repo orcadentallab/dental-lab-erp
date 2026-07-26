@@ -5,7 +5,7 @@ import type { Order } from '../db';
 import { getLabCostMetadata } from '../../constants/financialObligations';
 import { isVisibleInAccountStatement as isVisibleInAccountStatementHelper, isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
 
-export type FinancialReconciliationEntityType = 'all' | 'doctor' | 'external_lab';
+export type FinancialReconciliationEntityType = 'all' | 'doctor' | 'external_lab' | 'designer';
 
 export type FinancialReconciliationFlag =
     | 'difference_zero'
@@ -31,7 +31,7 @@ export interface FinancialReconciliationPreviewParams {
 }
 
 export interface FinancialReconciliationPreviewRow {
-    entityType: 'doctor' | 'external_lab';
+    entityType: 'doctor' | 'external_lab' | 'designer';
     entityId: string;
     entityName: string;
     officialBalance: number;
@@ -51,6 +51,7 @@ export interface FinancialReconciliationPreviewResult {
     summary: {
         doctorCount: number;
         supplierCount: number;
+        designerCount: number;
         totalOfficialBalance: number;
         totalObligationBasedBalance: number;
         totalDifference: number;
@@ -89,6 +90,8 @@ type OrderRow = {
     is_archived: boolean | null;
     is_deleted: boolean | null;
     rejected_lab_cost: number | null;
+    rejected_designer_cost: number | null;
+    design_status: string | null;
 };
 
 type TransactionRow = {
@@ -111,6 +114,14 @@ type ObligationRow = {
     net_amount: number;
     trigger_date: string;
     status: string;
+};
+
+type DesignerUserRow = {
+    id: string;
+    name: string | null;
+    username: string | null;
+    role: string;
+    custom_permissions: Record<string, unknown> | null;
 };
 
 const EMPTY_UUID = '00000000-0000-0000-0000-000000000000';
@@ -150,6 +161,7 @@ function toLifecycleOrder(row: OrderRow) {
         totalPrice: row.total_price || 0,
         cost: row.cost || 0,
         designPrice: row.design_price || undefined,
+        designStatus: (row.design_status || undefined) as Order['designStatus'],
         manualCost: row.manual_cost ?? null,
         workflowType: row.workflow_type as 'full' | 'split' | undefined,
         deliveryDate: row.delivery_date || '',
@@ -158,6 +170,7 @@ function toLifecycleOrder(row: OrderRow) {
         isArchived: row.is_archived || false,
         isDeleted: row.is_deleted || false,
         rejectedLabCost: row.rejected_lab_cost ?? undefined,
+        rejectedDesignerCost: row.rejected_designer_cost ?? undefined,
     };
 }
 
@@ -198,7 +211,7 @@ function buildFlags(input: {
     issueSettlementTotal?: number;
     hasDateRange: boolean;
     entityName?: string;
-    entityType?: 'doctor' | 'external_lab';
+    entityType?: 'doctor' | 'external_lab' | 'designer';
     obligationBasedBalance?: number;
     hasSettlementTransaction?: boolean;
     hasStaleDoctorReceivable?: boolean;
@@ -238,6 +251,7 @@ function summarize(rows: FinancialReconciliationPreviewRow[]): FinancialReconcil
     return {
         doctorCount: rows.filter(row => row.entityType === 'doctor').length,
         supplierCount: rows.filter(row => row.entityType === 'external_lab').length,
+        designerCount: rows.filter(row => row.entityType === 'designer').length,
         totalOfficialBalance: rows.reduce((sum, row) => sum + row.officialBalance, 0),
         totalObligationBasedBalance: rows.reduce((sum, row) => sum + row.obligationBasedBalance, 0),
         totalDifference: rows.reduce((sum, row) => sum + row.difference, 0),
@@ -279,6 +293,7 @@ export async function previewFinancialReconciliation(
     let obligations: ObligationRow[] = [];
     let adjustments: Adjustment[] = [];
     let salariedDesignerIds = new Set<string>();
+    let designerUsers: DesignerUserRow[] = [];
 
     try {
         const [
@@ -292,11 +307,11 @@ export async function previewFinancialReconciliation(
         ] = await Promise.all([
             supabase.from('doctors').select('id, name, parent_id, is_center'),
             supabase.from('suppliers').select('id, name'),
-            fetchAllRows<OrderRow>('orders', 'id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost'),
+            fetchAllRows<OrderRow>('orders', 'id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost, rejected_designer_cost'),
             fetchAllRows<TransactionRow>('transactions', 'id, type, amount, date, category, description, entity_id, entity_type'),
             fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status'),
             fetchAllRows<Adjustment>('adjustments', 'entity_type, entity_id, amount, type, date'),
-            supabase.from('users').select('id, custom_permissions'),
+            supabase.from('users').select('id, name, username, role, custom_permissions'),
         ]);
 
         if (doctorsResult.error) throw ErrorHandler.handle(doctorsResult.error, 'previewFinancialReconciliation.doctors');
@@ -309,10 +324,12 @@ export async function previewFinancialReconciliation(
         transactions = transactionsData as TransactionRow[];
         obligations = (obligationsData as ObligationRow[]).filter(o => o.status !== 'void');
         adjustments = adjustmentsData as Adjustment[];
+        const userRows = (usersResult.data || []) as unknown as DesignerUserRow[];
+        designerUsers = userRows.filter(user => user.role === 'designer');
         salariedDesignerIds = new Set(
-            (usersResult.data || [])
-                .filter(u => u.custom_permissions && u.custom_permissions['designer_fixed_salary'])
-                .map(u => u.id)
+            userRows
+                .filter(user => user.custom_permissions?.designer_fixed_salary === true)
+                .map(user => user.id)
         );
     } catch (err) {
         throw ErrorHandler.handle(err, 'previewFinancialReconciliation.fetch');
@@ -321,27 +338,54 @@ export async function previewFinancialReconciliation(
     const parentByDoctorId = new Map(doctors.map(doctor => [doctor.id, doctor.parent_id || doctor.id]));
     const doctorNames = new Map(doctors.map(doctor => [doctor.id, doctor.name]));
     const supplierNames = new Map(suppliers.map(supplier => [supplier.id, supplier.name]));
+    const designerNames = new Map(
+        designerUsers.map(user => [user.id, user.name || user.username || user.id])
+    );
 
     const officialDoctorDebits = new Map<string, number>();
     const officialDoctorCredits = new Map<string, number>();
     const officialSupplierCredits = new Map<string, number>();
     const officialSupplierDebits = new Map<string, number>();
+    const officialDesignerCredits = new Map<string, number>();
+    const officialDesignerDebits = new Map<string, number>();
 
     for (const order of orders) {
-        if (!isVisibleInAccountStatement(order)) continue;
+        if (isVisibleInAccountStatement(order)) {
+            if (order.doctorId) {
+                const statementDate = getOfficialStatementDate(order);
+                if (isInRange(statementDate, params) && isDoctorStatementIncluded(order)) {
+                    addTo(officialDoctorDebits, getDoctorSummaryId(order.doctorId, parentByDoctorId), getDoctorReceivableAmount(order));
+                }
+            }
 
-        if (order.doctorId) {
-            const statementDate = getOfficialStatementDate(order);
-            if (isInRange(statementDate, params) && isDoctorStatementIncluded(order)) {
-                addTo(officialDoctorDebits, getDoctorSummaryId(order.doctorId, parentByDoctorId), getDoctorReceivableAmount(order));
+            if (order.supplierId) {
+                const supplierDate = getOperationalOrderDate(order);
+                if (isInRange(supplierDate, params)) {
+                    const amount = getSupplierOfficialOrderAmount(order, salariedDesignerIds);
+                    if (amount !== null) addTo(officialSupplierCredits, order.supplierId, amount);
+                }
             }
         }
 
-        if (order.supplierId) {
-            const supplierDate = getOperationalOrderDate(order);
-            if (isInRange(supplierDate, params)) {
-                const amount = getSupplierOfficialOrderAmount(order, salariedDesignerIds);
-                if (amount !== null) addTo(officialSupplierCredits, order.supplierId, amount);
+        if (
+            order.designerId
+            && order.workflowType === 'split'
+            && !salariedDesignerIds.has(order.designerId)
+        ) {
+            const designerDate = getOperationalOrderDate(order);
+            if (isInRange(designerDate, params)) {
+                const isRejected = isDoctorRejectedStatus(order.status) || isLabRejectedStatus(order.status);
+                const isRelevant = order.designStatus === 'completed'
+                    || isRejected
+                    || order.status === 'Cancelled';
+                if (isRelevant) {
+                    let amount = order.designPrice || 0;
+                    if (order.status === 'Cancelled' || isLabRejectedStatus(order.status)) amount = 0;
+                    else if (isDoctorRejectedStatus(order.status)) {
+                        amount = order.rejectedDesignerCost ?? 0;
+                    }
+                    addTo(officialDesignerCredits, order.designerId, amount);
+                }
             }
         }
     }
@@ -353,6 +397,8 @@ export async function previewFinancialReconciliation(
             addTo(officialDoctorCredits, getDoctorSummaryId(transaction.entity_id, parentByDoctorId), transaction.amount || 0);
         } else if ((transaction.entity_type === 'supplier' || !transaction.entity_type) && transaction.entity_id && transaction.type === 'expense') {
             addTo(officialSupplierDebits, transaction.entity_id, transaction.amount || 0);
+        } else if (transaction.entity_type === 'designer' && transaction.entity_id && transaction.type === 'expense') {
+            addTo(officialDesignerDebits, transaction.entity_id, transaction.amount || 0);
         }
     }
 
@@ -366,12 +412,16 @@ export async function previewFinancialReconciliation(
         } else if (adjustment.entity_type === 'supplier') {
             if (adjustment.type === 'charge') addTo(officialSupplierDebits, adjustment.entity_id, adjustment.amount);
             else addTo(officialSupplierCredits, adjustment.entity_id, adjustment.amount);
+        } else if (adjustment.entity_type === 'designer') {
+            if (adjustment.type === 'charge') addTo(officialDesignerCredits, adjustment.entity_id, adjustment.amount);
+            else addTo(officialDesignerDebits, adjustment.entity_id, adjustment.amount);
         }
     }
 
     const obligationDoctorReceivables = new Map<string, number>();
     const obligationSupplierReadyPayables = new Map<string, number>();
     const obligationSupplierIssuePayables = new Map<string, number>();
+    const obligationDesignerPayables = new Map<string, number>();
     const staleDoctorReceivableByEntity = new Map<string, number>();
     const supplierSettlementTransactionByEntity = new Map<string, boolean>();
     const orderById = new Map(orders.map(order => [order.id, order]));
@@ -407,12 +457,18 @@ export async function previewFinancialReconciliation(
             addTo(obligationSupplierReadyPayables, obligation.entity_id, obligation.net_amount || 0);
         } else if (obligation.entity_type === 'external_lab' && obligation.direction === 'payable' && obligation.trigger_type === 'external_lab_issue_settlement') {
             addTo(obligationSupplierIssuePayables, obligation.entity_id, obligation.net_amount || 0);
+        } else if (
+            obligation.entity_type === 'designer'
+            && obligation.direction === 'payable'
+            && ['designer_approved', 'designer_issue_settlement'].includes(obligation.trigger_type)
+        ) {
+            addTo(obligationDesignerPayables, obligation.entity_id, obligation.net_amount || 0);
         }
     }
 
     const rows: FinancialReconciliationPreviewRow[] = [];
 
-    if (params.entityType !== 'external_lab') {
+    if (params.entityType !== 'external_lab' && params.entityType !== 'designer') {
         const doctorEntityIds = new Set<string>([
             ...doctors.filter(doctor => !doctor.parent_id).map(doctor => doctor.id),
             ...officialDoctorDebits.keys(),
@@ -452,7 +508,7 @@ export async function previewFinancialReconciliation(
         }
     }
 
-    if (params.entityType !== 'doctor') {
+    if (params.entityType !== 'doctor' && params.entityType !== 'designer') {
         const supplierEntityIds = new Set<string>([
             ...suppliers.map(supplier => supplier.id),
             ...officialSupplierCredits.keys(),
@@ -498,6 +554,44 @@ export async function previewFinancialReconciliation(
         }
     }
 
+    if (params.entityType !== 'doctor' && params.entityType !== 'external_lab') {
+        const designerEntityIds = new Set<string>([
+            ...designerUsers.map(designer => designer.id),
+            ...officialDesignerCredits.keys(),
+            ...officialDesignerDebits.keys(),
+            ...obligationDesignerPayables.keys(),
+        ]);
+
+        for (const entityId of designerEntityIds) {
+            const officialBalance = (officialDesignerCredits.get(entityId) || 0)
+                - (officialDesignerDebits.get(entityId) || 0);
+            const obligationTotal = obligationDesignerPayables.get(entityId) || 0;
+            const transactionPaymentTotal = officialDesignerDebits.get(entityId) || 0;
+            const obligationBasedBalance = obligationTotal - transactionPaymentTotal;
+            const difference = obligationBasedBalance - officialBalance;
+            const { flags, notes } = buildFlags({
+                difference,
+                obligationTotal,
+                transactionPaymentTotal,
+                hasDateRange,
+                entityName: designerNames.get(entityId),
+            });
+
+            rows.push({
+                entityType: 'designer',
+                entityId,
+                entityName: designerNames.get(entityId) || entityId,
+                officialBalance,
+                obligationTotal,
+                transactionPaymentTotal,
+                obligationBasedBalance,
+                difference,
+                flags,
+                notes,
+            });
+        }
+    }
+
     const filteredRows = rows
         .filter(row => {
             if (!search) return true;
@@ -514,7 +608,7 @@ export async function previewFinancialReconciliation(
 
     return {
         rows: pagedRows,
-        summary: summarize(pagedRows),
+        summary: summarize(filteredRows),
         page,
         pageSize,
     };

@@ -29,6 +29,7 @@ const NewOrderRequest = lazy(() => import('./pages/doctor/NewOrderRequest'));
 const DoctorOrders = lazy(() => import('./pages/doctor/DoctorOrders'));
 const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
 const BalanceSnapshot = lazy(() => import('./pages/BalanceSnapshot'));
+const FinancialReview = lazy(() => import('./pages/FinancialReview'));
 const Statements = lazy(() => import('./pages/Statements'));
 const AgingReport = lazy(() => import('./pages/AgingReport'));
 const DoctorRetention = lazy(() => import('./pages/DoctorRetention'));
@@ -100,6 +101,7 @@ function App() {
                       <Route path="/suppliers" element={<Suppliers />} />
                       <Route path="/case-registration" element={<CaseRegistration />} />
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
+                      <Route path="/financial-review" element={<FinancialReview />} />
                       <Route path="/statements" element={<Statements />} />
                       <Route path="/aging-report" element={<AgingReport />} />
                     </Route>

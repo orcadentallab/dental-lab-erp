@@ -508,7 +508,7 @@ export interface HistoricalObligationsBackfillBatchResult {
 }
 
 export interface FinancialReconciliationPreviewParams {
-    entityType?: 'all' | 'doctor' | 'external_lab';
+    entityType?: 'all' | 'doctor' | 'external_lab' | 'designer';
     search?: string;
     page?: number;
     pageSize?: number;
@@ -517,7 +517,7 @@ export interface FinancialReconciliationPreviewParams {
 }
 
 export interface FinancialReconciliationPreviewRow {
-    entityType: 'doctor' | 'external_lab';
+    entityType: 'doctor' | 'external_lab' | 'designer';
     entityId: string;
     entityName: string;
     officialBalance: number;
@@ -550,6 +550,7 @@ export interface FinancialReconciliationPreviewResult {
     summary: {
         doctorCount: number;
         supplierCount: number;
+        designerCount: number;
         totalOfficialBalance: number;
         totalObligationBasedBalance: number;
         totalDifference: number;
