@@ -227,7 +227,9 @@ export default function FinancialReview() {
                                         <th className="px-4 py-3 text-right">الطرف</th>
                                         <th className="px-4 py-3 text-right">النوع</th>
                                         <th className="px-4 py-3 text-right">الحالي</th>
-                                        <th className="px-4 py-3 text-right">الالتزامات</th>
+                                        <th className="px-4 py-3 text-right">قيد مدين</th>
+                                        <th className="px-4 py-3 text-right">قيد دائن</th>
+                                        <th className="px-4 py-3 text-right">بعد الالتزامات والقيود</th>
                                         <th className="px-4 py-3 text-right">الفرق</th>
                                     </tr>
                                 </thead>
@@ -239,12 +241,14 @@ export default function FinancialReview() {
                                                 <td className="px-4 py-3 font-medium text-gray-900">{row.entityName}</td>
                                                 <td className="px-4 py-3">{entityLabel[row.entityType]}</td>
                                                 <td className="px-4 py-3">{money(row.officialBalance)}</td>
+                                                <td className="px-4 py-3">{money(row.adjustmentDebitTotal)}</td>
+                                                <td className="px-4 py-3">{money(row.adjustmentCreditTotal)}</td>
                                                 <td className="px-4 py-3">{money(row.obligationBasedBalance)}</td>
                                                 <td className="px-4 py-3 font-bold text-red-700">{money(row.difference)}</td>
                                             </tr>
                                         ))}
                                     {criticalRows.length === 0 && (
-                                        <tr><td colSpan={5} className="px-4 py-8 text-center text-emerald-700">لا توجد فروق حرجة.</td></tr>
+                                        <tr><td colSpan={7} className="px-4 py-8 text-center text-emerald-700">لا توجد فروق حرجة.</td></tr>
                                     )}
                                 </tbody>
                             </table>

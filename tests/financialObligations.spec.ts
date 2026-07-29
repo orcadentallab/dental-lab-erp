@@ -1167,7 +1167,7 @@ test.describe('financial obligations service wiring', () => {
         expect(reconciliationSource).toContain("obligation.trigger_type === 'doctor_delivered'");
         expect(reconciliationSource).toContain("obligation.trigger_type === 'external_lab_ready'");
         expect(reconciliationSource).toContain("obligation.trigger_type === 'external_lab_issue_settlement'");
-        expect(reconciliationSource).toContain('const obligationBasedBalance = obligationTotal - transactionPaymentTotal');
+        expect(reconciliationSource).toContain('calculateCanonicalAccountBalance');
         expect(reconciliationSource).toContain('const difference = obligationBasedBalance - officialBalance');
         expect(reconciliationSource).toContain("'difference_zero'");
         expect(reconciliationSource).toContain("'difference_nonzero'");

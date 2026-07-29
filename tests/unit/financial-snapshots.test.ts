@@ -11,6 +11,8 @@ const row = (
     officialBalance: 1_000,
     obligationTotal: 1_000,
     transactionPaymentTotal: 0,
+    adjustmentDebitTotal: 0,
+    adjustmentCreditTotal: 0,
     obligationBasedBalance: 1_000,
     difference: 0,
     flags: ['difference_zero'],

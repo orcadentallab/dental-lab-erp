@@ -523,6 +523,8 @@ export interface FinancialReconciliationPreviewRow {
     officialBalance: number;
     obligationTotal: number;
     transactionPaymentTotal: number;
+    adjustmentDebitTotal: number;
+    adjustmentCreditTotal: number;
     obligationBasedBalance: number;
     difference: number;
     flags: (

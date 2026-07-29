@@ -37,6 +37,8 @@ export interface FinancialReconciliationPreviewRow {
     officialBalance: number;
     obligationTotal: number;
     transactionPaymentTotal: number;
+    adjustmentDebitTotal: number;
+    adjustmentCreditTotal: number;
     obligationBasedBalance: number;
     difference: number;
     flags: FinancialReconciliationFlag[];
@@ -44,6 +46,27 @@ export interface FinancialReconciliationPreviewRow {
     totalDoctorReceivableObligations?: number;
     totalExternalLabReadyPayables?: number;
     totalExternalLabIssueSettlementPayables?: number;
+}
+
+export function calculateCanonicalAccountBalance(input: {
+    accountNature: 'debit' | 'credit';
+    obligationDebitTotal: number;
+    obligationCreditTotal: number;
+    adjustmentDebitTotal: number;
+    adjustmentCreditTotal: number;
+    cashDebitTotal: number;
+    cashCreditTotal: number;
+}): number {
+    const totalDebit = input.obligationDebitTotal
+        + input.adjustmentDebitTotal
+        + input.cashDebitTotal;
+    const totalCredit = input.obligationCreditTotal
+        + input.adjustmentCreditTotal
+        + input.cashCreditTotal;
+
+    return input.accountNature === 'debit'
+        ? totalDebit - totalCredit
+        : totalCredit - totalDebit;
 }
 
 export interface FinancialReconciliationPreviewResult {
@@ -348,6 +371,11 @@ export async function previewFinancialReconciliation(
     const officialSupplierDebits = new Map<string, number>();
     const officialDesignerCredits = new Map<string, number>();
     const officialDesignerDebits = new Map<string, number>();
+    const doctorCashCredits = new Map<string, number>();
+    const supplierCashDebits = new Map<string, number>();
+    const designerCashDebits = new Map<string, number>();
+    const adjustmentDebits = new Map<string, number>();
+    const adjustmentCredits = new Map<string, number>();
 
     for (const order of orders) {
         if (isVisibleInAccountStatement(order)) {
@@ -394,11 +422,15 @@ export async function previewFinancialReconciliation(
         if (!isInRange(transaction.date, params)) continue;
 
         if ((transaction.entity_type === 'doctor' || !transaction.entity_type) && transaction.entity_id && transaction.type === 'income') {
-            addTo(officialDoctorCredits, getDoctorSummaryId(transaction.entity_id, parentByDoctorId), transaction.amount || 0);
+            const entityId = getDoctorSummaryId(transaction.entity_id, parentByDoctorId);
+            addTo(officialDoctorCredits, entityId, transaction.amount || 0);
+            addTo(doctorCashCredits, entityId, transaction.amount || 0);
         } else if ((transaction.entity_type === 'supplier' || !transaction.entity_type) && transaction.entity_id && transaction.type === 'expense') {
             addTo(officialSupplierDebits, transaction.entity_id, transaction.amount || 0);
+            addTo(supplierCashDebits, transaction.entity_id, transaction.amount || 0);
         } else if (transaction.entity_type === 'designer' && transaction.entity_id && transaction.type === 'expense') {
             addTo(officialDesignerDebits, transaction.entity_id, transaction.amount || 0);
+            addTo(designerCashDebits, transaction.entity_id, transaction.amount || 0);
         }
     }
 
@@ -407,14 +439,29 @@ export async function previewFinancialReconciliation(
 
         if (adjustment.entity_type === 'doctor') {
             const entityId = getDoctorSummaryId(adjustment.entity_id, parentByDoctorId);
-            if (adjustment.type === 'charge') addTo(officialDoctorDebits, entityId, adjustment.amount);
-            else addTo(officialDoctorCredits, entityId, adjustment.amount);
+            if (adjustment.type === 'charge') {
+                addTo(officialDoctorDebits, entityId, adjustment.amount);
+                addTo(adjustmentDebits, `doctor:${entityId}`, adjustment.amount);
+            } else {
+                addTo(officialDoctorCredits, entityId, adjustment.amount);
+                addTo(adjustmentCredits, `doctor:${entityId}`, adjustment.amount);
+            }
         } else if (adjustment.entity_type === 'supplier') {
-            if (adjustment.type === 'charge') addTo(officialSupplierDebits, adjustment.entity_id, adjustment.amount);
-            else addTo(officialSupplierCredits, adjustment.entity_id, adjustment.amount);
+            if (adjustment.type === 'charge') {
+                addTo(officialSupplierDebits, adjustment.entity_id, adjustment.amount);
+                addTo(adjustmentDebits, `external_lab:${adjustment.entity_id}`, adjustment.amount);
+            } else {
+                addTo(officialSupplierCredits, adjustment.entity_id, adjustment.amount);
+                addTo(adjustmentCredits, `external_lab:${adjustment.entity_id}`, adjustment.amount);
+            }
         } else if (adjustment.entity_type === 'designer') {
-            if (adjustment.type === 'charge') addTo(officialDesignerCredits, adjustment.entity_id, adjustment.amount);
-            else addTo(officialDesignerDebits, adjustment.entity_id, adjustment.amount);
+            if (adjustment.type === 'charge') {
+                addTo(officialDesignerDebits, adjustment.entity_id, adjustment.amount);
+                addTo(adjustmentDebits, `designer:${adjustment.entity_id}`, adjustment.amount);
+            } else {
+                addTo(officialDesignerCredits, adjustment.entity_id, adjustment.amount);
+                addTo(adjustmentCredits, `designer:${adjustment.entity_id}`, adjustment.amount);
+            }
         }
     }
 
@@ -479,8 +526,18 @@ export async function previewFinancialReconciliation(
         for (const entityId of doctorEntityIds) {
             const officialBalance = (officialDoctorDebits.get(entityId) || 0) - (officialDoctorCredits.get(entityId) || 0);
             const obligationTotal = obligationDoctorReceivables.get(entityId) || 0;
-            const transactionPaymentTotal = officialDoctorCredits.get(entityId) || 0;
-            const obligationBasedBalance = obligationTotal - transactionPaymentTotal;
+            const transactionPaymentTotal = doctorCashCredits.get(entityId) || 0;
+            const adjustmentDebitTotal = adjustmentDebits.get(`doctor:${entityId}`) || 0;
+            const adjustmentCreditTotal = adjustmentCredits.get(`doctor:${entityId}`) || 0;
+            const obligationBasedBalance = calculateCanonicalAccountBalance({
+                accountNature: 'debit',
+                obligationDebitTotal: obligationTotal,
+                obligationCreditTotal: 0,
+                adjustmentDebitTotal,
+                adjustmentCreditTotal,
+                cashDebitTotal: 0,
+                cashCreditTotal: transactionPaymentTotal,
+            });
             const difference = obligationBasedBalance - officialBalance;
             const { flags, notes } = buildFlags({
                 difference,
@@ -499,6 +556,8 @@ export async function previewFinancialReconciliation(
                 officialBalance,
                 obligationTotal,
                 transactionPaymentTotal,
+                adjustmentDebitTotal,
+                adjustmentCreditTotal,
                 obligationBasedBalance,
                 difference,
                 flags,
@@ -522,8 +581,18 @@ export async function previewFinancialReconciliation(
             const readyTotal = obligationSupplierReadyPayables.get(entityId) || 0;
             const issueTotal = obligationSupplierIssuePayables.get(entityId) || 0;
             const obligationTotal = readyTotal + issueTotal;
-            const transactionPaymentTotal = officialSupplierDebits.get(entityId) || 0;
-            const obligationBasedBalance = obligationTotal - transactionPaymentTotal;
+            const transactionPaymentTotal = supplierCashDebits.get(entityId) || 0;
+            const adjustmentDebitTotal = adjustmentDebits.get(`external_lab:${entityId}`) || 0;
+            const adjustmentCreditTotal = adjustmentCredits.get(`external_lab:${entityId}`) || 0;
+            const obligationBasedBalance = calculateCanonicalAccountBalance({
+                accountNature: 'credit',
+                obligationDebitTotal: 0,
+                obligationCreditTotal: obligationTotal,
+                adjustmentDebitTotal,
+                adjustmentCreditTotal,
+                cashDebitTotal: transactionPaymentTotal,
+                cashCreditTotal: 0,
+            });
             const difference = obligationBasedBalance - officialBalance;
             const { flags, notes } = buildFlags({
                 difference,
@@ -544,6 +613,8 @@ export async function previewFinancialReconciliation(
                 officialBalance,
                 obligationTotal,
                 transactionPaymentTotal,
+                adjustmentDebitTotal,
+                adjustmentCreditTotal,
                 obligationBasedBalance,
                 difference,
                 flags,
@@ -566,8 +637,18 @@ export async function previewFinancialReconciliation(
             const officialBalance = (officialDesignerCredits.get(entityId) || 0)
                 - (officialDesignerDebits.get(entityId) || 0);
             const obligationTotal = obligationDesignerPayables.get(entityId) || 0;
-            const transactionPaymentTotal = officialDesignerDebits.get(entityId) || 0;
-            const obligationBasedBalance = obligationTotal - transactionPaymentTotal;
+            const transactionPaymentTotal = designerCashDebits.get(entityId) || 0;
+            const adjustmentDebitTotal = adjustmentDebits.get(`designer:${entityId}`) || 0;
+            const adjustmentCreditTotal = adjustmentCredits.get(`designer:${entityId}`) || 0;
+            const obligationBasedBalance = calculateCanonicalAccountBalance({
+                accountNature: 'credit',
+                obligationDebitTotal: 0,
+                obligationCreditTotal: obligationTotal,
+                adjustmentDebitTotal,
+                adjustmentCreditTotal,
+                cashDebitTotal: transactionPaymentTotal,
+                cashCreditTotal: 0,
+            });
             const difference = obligationBasedBalance - officialBalance;
             const { flags, notes } = buildFlags({
                 difference,
@@ -584,6 +665,8 @@ export async function previewFinancialReconciliation(
                 officialBalance,
                 obligationTotal,
                 transactionPaymentTotal,
+                adjustmentDebitTotal,
+                adjustmentCreditTotal,
                 obligationBasedBalance,
                 difference,
                 flags,
