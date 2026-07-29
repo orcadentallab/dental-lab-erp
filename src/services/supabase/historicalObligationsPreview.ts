@@ -66,6 +66,9 @@ export interface HistoricalObligationPreviewRow {
 
 export interface HistoricalObligationsPreviewResult {
     rows: HistoricalObligationPreviewRow[];
+    scannedOrders: number;
+    totalCandidateOrders: number;
+    hasMoreCandidateOrders: boolean;
     counts: {
         missingDoctorReceivables: number;
         missingExternalLabPayables: number;
@@ -409,7 +412,10 @@ export async function previewHistoricalObligationsBackfill(
 
     let query = supabase
         .from('orders')
-        .select('id, case_id, patient_name, doctor_id, supplier_id, status, delivery_type, total_price, cost, manual_cost, delivery_date, actual_delivery_date, rejected_lab_cost, created_at')
+        .select(
+            'id, case_id, patient_name, doctor_id, supplier_id, status, delivery_type, total_price, cost, manual_cost, delivery_date, actual_delivery_date, rejected_lab_cost, created_at',
+            { count: 'exact' }
+        )
         .in('status', PREVIEW_CANDIDATE_STATUSES)
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -425,7 +431,7 @@ export async function previewHistoricalObligationsBackfill(
         query = query.or(filters.join(','));
     }
 
-    const { data: orderRows, error: ordersError } = await query;
+    const { data: orderRows, error: ordersError, count: candidateOrderCount } = await query;
     if (ordersError) throw ErrorHandler.handle(ordersError, 'previewHistoricalObligationsBackfill.orders');
 
     const orders = ((orderRows || []) as HistoricalPreviewOrderRow[]).map(toPreviewOrder);
@@ -473,6 +479,9 @@ export async function previewHistoricalObligationsBackfill(
 
     return {
         rows,
+        scannedOrders: orders.length,
+        totalCandidateOrders: candidateOrderCount || 0,
+        hasMoreCandidateOrders: to + 1 < (candidateOrderCount || 0),
         counts: countRows(rows),
         page,
         pageSize,

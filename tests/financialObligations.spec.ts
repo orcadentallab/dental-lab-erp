@@ -909,6 +909,8 @@ test.describe('financial obligations service wiring', () => {
         expect(historicalPreviewSource).toContain(".from('doctors')");
         expect(historicalPreviewSource).toContain(".from('suppliers')");
         expect(historicalPreviewSource).toContain('.range(from, to)');
+        expect(historicalPreviewSource).toContain("{ count: 'exact' }");
+        expect(historicalPreviewSource).toContain('hasMoreCandidateOrders');
         expect(historicalPreviewSource).toContain('Counts are based on the current fetched candidate orders page');
 
         expect(historicalPreviewSource).not.toContain('.insert(');
@@ -1082,6 +1084,8 @@ test.describe('financial obligations service wiring', () => {
         expect(historicalBackfillSource).not.toContain('analytics');
         expect(historicalBackfillSource).not.toContain('account_credits');
         expect(historicalBackfillSource).not.toContain('payment_allocations');
+        expect(historicalBackfillSource).toContain('hasMore: preview.hasMoreCandidateOrders');
+        expect(historicalBackfillSource).not.toContain('hasMore: preview.rows.length >= pageSize');
     });
 
     test('historical backfill dry-run UI is a Finance tab and hardcodes dryRun true', () => {

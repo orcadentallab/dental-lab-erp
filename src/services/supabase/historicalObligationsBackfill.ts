@@ -257,8 +257,11 @@ export async function createHistoricalObligationsBackfillBatch(
         skippedDuplicate: 0,
         warnings: 0,
         errors: [],
-        hasMore: preview.rows.length >= pageSize,
-        nextPage: preview.rows.length >= pageSize ? page + 1 : null,
+        // Pagination follows the candidate order query, not the number of
+        // discrepancies found on this page. A clean/low-difference page must
+        // never hide later historical orders that still need backfilling.
+        hasMore: preview.hasMoreCandidateOrders,
+        nextPage: preview.hasMoreCandidateOrders ? page + 1 : null,
         rows: [],
     };
 
