@@ -254,6 +254,77 @@ export default function FinancialReview() {
                             </table>
                         </div>
                     </section>
+
+                    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                        <h2 className="font-bold text-gray-900">تشخيص الفروق على مستوى الأوردر</h2>
+                        <p className="mt-1 text-sm text-gray-500">
+                            عرض للقراءة فقط يوضح قيمة الأوردر الرسمية مقابل الالتزام الفعال أو الملغي.
+                        </p>
+                        <div className="mt-4 space-y-3">
+                            {(payload?.closing.rows ?? [])
+                                .filter(row => Math.abs(row.difference) >= 0.01)
+                                .map(row => (
+                                    <details
+                                        key={`details:${row.entityType}:${row.entityId}`}
+                                        className="rounded-xl border border-gray-200 bg-gray-50"
+                                    >
+                                        <summary className="cursor-pointer px-4 py-3 font-bold text-gray-900">
+                                            {row.entityName} · {entityLabel[row.entityType]} · {money(row.difference)}
+                                            <span className="mr-2 text-xs font-normal text-gray-500">
+                                                ({row.orderDifferences.length} أوردر مختلف)
+                                            </span>
+                                        </summary>
+                                        <div className="overflow-x-auto border-t border-gray-200 bg-white">
+                                            <table className="min-w-full text-xs">
+                                                <thead className="bg-gray-50 text-gray-600">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-right">الأوردر</th>
+                                                        <th className="px-3 py-2 text-right">الحالة</th>
+                                                        <th className="px-3 py-2 text-right">الرسمي</th>
+                                                        <th className="px-3 py-2 text-right">التزام فعال</th>
+                                                        <th className="px-3 py-2 text-right">التزام ملغي</th>
+                                                        <th className="px-3 py-2 text-right">مصادر الالتزام الفعال</th>
+                                                        <th className="px-3 py-2 text-right">التصنيف</th>
+                                                        <th className="px-3 py-2 text-right">الفرق</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {row.orderDifferences.map(item => (
+                                                        <tr key={`${row.entityType}:${row.entityId}:${item.orderId}`}>
+                                                            <td className="px-3 py-2 font-medium">#{item.caseId}</td>
+                                                            <td className="px-3 py-2">{item.status}</td>
+                                                            <td className="px-3 py-2">{money(item.officialAmount)}</td>
+                                                            <td className="px-3 py-2">{money(item.activeObligationAmount)}</td>
+                                                            <td className="px-3 py-2">{money(item.voidObligationAmount)}</td>
+                                                            <td className="px-3 py-2">
+                                                                {item.activeComponents
+                                                                    .map(component => `${component.triggerType} · ${component.source} · ${money(component.amount)}`)
+                                                                    .join(' | ') || '—'}
+                                                            </td>
+                                                            <td className="px-3 py-2">
+                                                                {item.classification === 'missing_obligation'
+                                                                    ? 'التزام ناقص'
+                                                                    : item.classification === 'orphan_obligation'
+                                                                        ? 'التزام دون قيمة رسمية'
+                                                                        : 'اختلاف مبلغ'}
+                                                            </td>
+                                                            <td className="px-3 py-2 font-bold text-red-700">{money(item.difference)}</td>
+                                                        </tr>
+                                                    ))}
+                                                    {row.orderDifferences.length === 0 && (
+                                                        <tr>
+                                                            <td colSpan={8} className="px-3 py-5 text-center text-amber-700">
+                                                                الفرق ليس مرتبطًا بأوردر واحد داخل النطاق ويحتاج مراجعة تاريخ أو رصيد افتتاحي.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </details>
+                                ))}
+                        </div>
+                    </section>
                 </>
             )}
 

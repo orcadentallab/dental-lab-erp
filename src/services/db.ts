@@ -545,6 +545,30 @@ export interface FinancialReconciliationPreviewRow {
     totalDoctorReceivableObligations?: number;
     totalExternalLabReadyPayables?: number;
     totalExternalLabIssueSettlementPayables?: number;
+    orderDifferences: Array<{
+        orderId: string;
+        caseId: string;
+        status: string;
+        officialAmount: number;
+        activeObligationAmount: number;
+        voidObligationAmount: number;
+        difference: number;
+        classification: 'missing_obligation' | 'orphan_obligation' | 'amount_mismatch';
+        triggerTypes: string[];
+        triggerDates: string[];
+        activeComponents: Array<{
+            triggerType: string;
+            source: string;
+            amount: number;
+            date: string;
+        }>;
+        voidComponents: Array<{
+            triggerType: string;
+            source: string;
+            amount: number;
+            date: string;
+        }>;
+    }>;
 }
 
 export interface FinancialReconciliationPreviewResult {

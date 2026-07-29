@@ -46,6 +46,32 @@ export interface FinancialReconciliationPreviewRow {
     totalDoctorReceivableObligations?: number;
     totalExternalLabReadyPayables?: number;
     totalExternalLabIssueSettlementPayables?: number;
+    orderDifferences: FinancialReconciliationOrderDifference[];
+}
+
+export interface FinancialReconciliationOrderDifference {
+    orderId: string;
+    caseId: string;
+    status: string;
+    officialAmount: number;
+    activeObligationAmount: number;
+    voidObligationAmount: number;
+    difference: number;
+    classification: 'missing_obligation' | 'orphan_obligation' | 'amount_mismatch';
+    triggerTypes: string[];
+    triggerDates: string[];
+    activeComponents: Array<{
+        triggerType: string;
+        source: string;
+        amount: number;
+        date: string;
+    }>;
+    voidComponents: Array<{
+        triggerType: string;
+        source: string;
+        amount: number;
+        date: string;
+    }>;
 }
 
 export function calculateCanonicalAccountBalance(input: {
@@ -98,6 +124,7 @@ type SupplierRow = {
 
 type OrderRow = {
     id: string;
+    case_id: string | null;
     doctor_id: string | null;
     supplier_id: string | null;
     designer_id: string | null;
@@ -137,6 +164,7 @@ type ObligationRow = {
     net_amount: number;
     trigger_date: string;
     status: string;
+    source: string;
 };
 
 type DesignerUserRow = {
@@ -177,6 +205,7 @@ function getDoctorSummaryId(doctorId: string, parentByDoctorId: Map<string, stri
 function toLifecycleOrder(row: OrderRow) {
     return {
         id: row.id,
+        caseId: row.case_id || row.id,
         doctorId: row.doctor_id || '',
         supplierId: row.supplier_id || undefined,
         designerId: row.designer_id || undefined,
@@ -313,6 +342,7 @@ export async function previewFinancialReconciliation(
     let suppliers: SupplierRow[] = [];
     let orders: ReturnType<typeof toLifecycleOrder>[] = [];
     let transactions: TransactionRow[] = [];
+    let allObligations: ObligationRow[] = [];
     let obligations: ObligationRow[] = [];
     let adjustments: Adjustment[] = [];
     let salariedDesignerIds = new Set<string>();
@@ -330,9 +360,9 @@ export async function previewFinancialReconciliation(
         ] = await Promise.all([
             supabase.from('doctors').select('id, name, parent_id, is_center'),
             supabase.from('suppliers').select('id, name'),
-            fetchAllRows<OrderRow>('orders', 'id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost, rejected_designer_cost'),
+            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost, rejected_designer_cost'),
             fetchAllRows<TransactionRow>('transactions', 'id, type, amount, date, category, description, entity_id, entity_type'),
-            fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status'),
+            fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status, source'),
             fetchAllRows<Adjustment>('adjustments', 'entity_type, entity_id, amount, type, date'),
             supabase.from('users').select('id, name, username, role, custom_permissions'),
         ]);
@@ -345,7 +375,8 @@ export async function previewFinancialReconciliation(
         suppliers = (suppliersResult.data || []) as SupplierRow[];
         orders = (ordersData as OrderRow[]).map(toLifecycleOrder);
         transactions = transactionsData as TransactionRow[];
-        obligations = (obligationsData as ObligationRow[]).filter(o => o.status !== 'void');
+        allObligations = obligationsData as ObligationRow[];
+        obligations = allObligations.filter(o => o.status !== 'void');
         adjustments = adjustmentsData as Adjustment[];
         const userRows = (usersResult.data || []) as unknown as DesignerUserRow[];
         designerUsers = userRows.filter(user => user.role === 'designer');
@@ -376,13 +407,26 @@ export async function previewFinancialReconciliation(
     const designerCashDebits = new Map<string, number>();
     const adjustmentDebits = new Map<string, number>();
     const adjustmentCredits = new Map<string, number>();
+    const officialOrderAmounts = new Map<string, number>();
+    const orderMetadata = new Map(orders.map(order => [order.id, {
+        caseId: order.caseId,
+        status: order.status,
+    }]));
+    const orderComponentKey = (
+        entityType: 'doctor' | 'external_lab' | 'designer',
+        entityId: string,
+        orderId: string
+    ) => `${entityType}:${entityId}:${orderId}`;
 
     for (const order of orders) {
         if (isVisibleInAccountStatement(order)) {
             if (order.doctorId) {
                 const statementDate = getOfficialStatementDate(order);
                 if (isInRange(statementDate, params) && isDoctorStatementIncluded(order)) {
-                    addTo(officialDoctorDebits, getDoctorSummaryId(order.doctorId, parentByDoctorId), getDoctorReceivableAmount(order));
+                    const entityId = getDoctorSummaryId(order.doctorId, parentByDoctorId);
+                    const amount = getDoctorReceivableAmount(order);
+                    addTo(officialDoctorDebits, entityId, amount);
+                    addTo(officialOrderAmounts, orderComponentKey('doctor', entityId, order.id), amount);
                 }
             }
 
@@ -390,7 +434,10 @@ export async function previewFinancialReconciliation(
                 const supplierDate = getOperationalOrderDate(order);
                 if (isInRange(supplierDate, params)) {
                     const amount = getSupplierOfficialOrderAmount(order, salariedDesignerIds);
-                    if (amount !== null) addTo(officialSupplierCredits, order.supplierId, amount);
+                    if (amount !== null) {
+                        addTo(officialSupplierCredits, order.supplierId, amount);
+                        addTo(officialOrderAmounts, orderComponentKey('external_lab', order.supplierId, order.id), amount);
+                    }
                 }
             }
         }
@@ -413,6 +460,7 @@ export async function previewFinancialReconciliation(
                         amount = order.rejectedDesignerCost ?? 0;
                     }
                     addTo(officialDesignerCredits, order.designerId, amount);
+                    addTo(officialOrderAmounts, orderComponentKey('designer', order.designerId, order.id), amount);
                 }
             }
         }
@@ -469,6 +517,11 @@ export async function previewFinancialReconciliation(
     const obligationSupplierReadyPayables = new Map<string, number>();
     const obligationSupplierIssuePayables = new Map<string, number>();
     const obligationDesignerPayables = new Map<string, number>();
+    const activeObligationOrderAmounts = new Map<string, number>();
+    const voidObligationOrderAmounts = new Map<string, number>();
+    const obligationMetadata = new Map<string, { triggerTypes: Set<string>; triggerDates: Set<string> }>();
+    const activeObligationComponents = new Map<string, FinancialReconciliationOrderDifference['activeComponents']>();
+    const voidObligationComponents = new Map<string, FinancialReconciliationOrderDifference['voidComponents']>();
     const staleDoctorReceivableByEntity = new Map<string, number>();
     const supplierSettlementTransactionByEntity = new Map<string, boolean>();
     const orderById = new Map(orders.map(order => [order.id, order]));
@@ -492,6 +545,30 @@ export async function previewFinancialReconciliation(
 
     for (const obligation of obligations) {
         if (!isInRange(obligation.trigger_date, params)) continue;
+        const componentKey = orderComponentKey(
+            obligation.entity_type,
+            obligation.entity_type === 'doctor'
+                ? getDoctorSummaryId(obligation.entity_id, parentByDoctorId)
+                : obligation.entity_id,
+            obligation.order_id
+        );
+        addTo(activeObligationOrderAmounts, componentKey, obligation.net_amount || 0);
+        const metadata = obligationMetadata.get(componentKey) || {
+            triggerTypes: new Set<string>(),
+            triggerDates: new Set<string>(),
+        };
+        metadata.triggerTypes.add(obligation.trigger_type);
+        metadata.triggerDates.add(dateOnly(obligation.trigger_date));
+        obligationMetadata.set(componentKey, metadata);
+        activeObligationComponents.set(componentKey, [
+            ...(activeObligationComponents.get(componentKey) || []),
+            {
+                triggerType: obligation.trigger_type,
+                source: obligation.source,
+                amount: obligation.net_amount || 0,
+                date: dateOnly(obligation.trigger_date),
+            },
+        ]);
 
         if (obligation.entity_type === 'doctor' && obligation.direction === 'receivable' && obligation.trigger_type === 'doctor_delivered') {
             const summaryId = getDoctorSummaryId(obligation.entity_id, parentByDoctorId);
@@ -512,6 +589,79 @@ export async function previewFinancialReconciliation(
             addTo(obligationDesignerPayables, obligation.entity_id, obligation.net_amount || 0);
         }
     }
+
+    for (const obligation of allObligations) {
+        if (obligation.status !== 'void' || !isInRange(obligation.trigger_date, params)) continue;
+        const componentKey = orderComponentKey(
+            obligation.entity_type,
+            obligation.entity_type === 'doctor'
+                ? getDoctorSummaryId(obligation.entity_id, parentByDoctorId)
+                : obligation.entity_id,
+            obligation.order_id
+        );
+        addTo(voidObligationOrderAmounts, componentKey, obligation.net_amount || 0);
+        const metadata = obligationMetadata.get(componentKey) || {
+            triggerTypes: new Set<string>(),
+            triggerDates: new Set<string>(),
+        };
+        metadata.triggerTypes.add(obligation.trigger_type);
+        metadata.triggerDates.add(dateOnly(obligation.trigger_date));
+        obligationMetadata.set(componentKey, metadata);
+        voidObligationComponents.set(componentKey, [
+            ...(voidObligationComponents.get(componentKey) || []),
+            {
+                triggerType: obligation.trigger_type,
+                source: obligation.source,
+                amount: obligation.net_amount || 0,
+                date: dateOnly(obligation.trigger_date),
+            },
+        ]);
+    }
+
+    const buildOrderDifferences = (
+        entityType: 'doctor' | 'external_lab' | 'designer',
+        entityId: string
+    ): FinancialReconciliationOrderDifference[] => {
+        const prefix = `${entityType}:${entityId}:`;
+        const componentKeys = new Set<string>([
+            ...[...officialOrderAmounts.keys()].filter(key => key.startsWith(prefix)),
+            ...[...activeObligationOrderAmounts.keys()].filter(key => key.startsWith(prefix)),
+            ...[...voidObligationOrderAmounts.keys()].filter(key => key.startsWith(prefix)),
+        ]);
+
+        return [...componentKeys]
+            .map(componentKey => {
+                const orderId = componentKey.slice(prefix.length);
+                const officialAmount = officialOrderAmounts.get(componentKey) || 0;
+                const activeObligationAmount = activeObligationOrderAmounts.get(componentKey) || 0;
+                const voidObligationAmount = voidObligationOrderAmounts.get(componentKey) || 0;
+                const difference = activeObligationAmount - officialAmount;
+                const metadata = obligationMetadata.get(componentKey);
+                const order = orderMetadata.get(orderId);
+                const classification: FinancialReconciliationOrderDifference['classification'] = officialAmount > 0 && activeObligationAmount === 0
+                    ? 'missing_obligation'
+                    : officialAmount === 0 && activeObligationAmount > 0
+                        ? 'orphan_obligation'
+                        : 'amount_mismatch';
+
+                return {
+                    orderId,
+                    caseId: order?.caseId || orderId,
+                    status: order?.status || 'unknown',
+                    officialAmount,
+                    activeObligationAmount,
+                    voidObligationAmount,
+                    difference,
+                    classification,
+                    triggerTypes: [...(metadata?.triggerTypes || [])],
+                    triggerDates: [...(metadata?.triggerDates || [])],
+                    activeComponents: activeObligationComponents.get(componentKey) || [],
+                    voidComponents: voidObligationComponents.get(componentKey) || [],
+                };
+            })
+            .filter(item => Math.abs(item.difference) >= 0.01)
+            .sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
+    };
 
     const rows: FinancialReconciliationPreviewRow[] = [];
 
@@ -562,6 +712,7 @@ export async function previewFinancialReconciliation(
                 difference,
                 flags,
                 notes,
+                orderDifferences: buildOrderDifferences('doctor', entityId),
                 totalDoctorReceivableObligations: obligationTotal,
             });
         }
@@ -619,6 +770,7 @@ export async function previewFinancialReconciliation(
                 difference,
                 flags,
                 notes,
+                orderDifferences: buildOrderDifferences('external_lab', entityId),
                 totalExternalLabReadyPayables: readyTotal,
                 totalExternalLabIssueSettlementPayables: issueTotal,
             });
@@ -671,6 +823,7 @@ export async function previewFinancialReconciliation(
                 difference,
                 flags,
                 notes,
+                orderDifferences: buildOrderDifferences('designer', entityId),
             });
         }
     }

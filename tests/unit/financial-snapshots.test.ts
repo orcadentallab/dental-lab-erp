@@ -17,6 +17,7 @@ const row = (
     difference: 0,
     flags: ['difference_zero'],
     notes: [],
+    orderDifferences: [],
     ...overrides,
 });
 
