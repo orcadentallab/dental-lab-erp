@@ -1135,6 +1135,7 @@ test.describe('financial obligations service wiring', () => {
         expect(dbSource).toContain("./supabase/financialReconciliationPreview");
         expect(reconciliationSource).toContain('previewFinancialReconciliation');
         expect(reconciliationSource).toContain("fetchAllRows<OrderRow>('orders'");
+        expect(reconciliationSource).toContain('is_archived, is_deleted, rejected_lab_cost');
         expect(reconciliationSource).toContain("fetchAllRows<TransactionRow>('transactions'");
         expect(reconciliationSource).toContain("fetchAllRows<ObligationRow>('financial_obligations'");
         expect(reconciliationSource).toContain("fetchAllRows<Adjustment>('adjustments'");
@@ -1452,5 +1453,61 @@ test.describe('external lab issue settlement trigger migration', () => {
         expect(lowerMigration).not.toContain('statement');
         expect(lowerMigration).not.toContain('dashboard');
         expect(lowerMigration).not.toContain('analytics');
+    });
+});
+
+test.describe('approved doctor obligation repair and integrity guard', () => {
+    const migration = readFileSync(
+        resolve('supabase/migrations/20260729000000_repair_doctor_obligations_and_enforce_integrity.sql'),
+        'utf8'
+    );
+
+    test('fails closed unless the approved production repair scope is exact', () => {
+        expect(migration).toContain('v_count <> 41 OR v_total <> 39450');
+        expect(migration).toContain('Approved doctor repair guard failed');
+        expect(migration).toContain('Doctor obligation repair verification failed');
+    });
+
+    test('repairs through the atomic synchronization path so FIFO credits are applied', () => {
+        expect(migration).toContain('public.sync_single_order_obligation(');
+        expect(migration).toContain("'doctor_delivered'");
+        expect(migration).toContain("'historicalRepair', true");
+        expect(migration).not.toContain('INSERT INTO public.financial_obligations');
+    });
+
+    test('adds deferred guards on both order and obligation changes', () => {
+        expect(migration).toContain('CREATE CONSTRAINT TRIGGER constraint_delivered_order_has_doctor_obligation');
+        expect(migration).toContain('CREATE CONSTRAINT TRIGGER constraint_doctor_obligation_matches_delivered_order');
+        expect(migration.match(/DEFERRABLE INITIALLY DEFERRED/g)).toHaveLength(2);
+        expect(migration).toContain('Delivered order % must have one matching active doctor receivable');
+    });
+});
+
+test.describe('returned external-lab obligation price synchronization', () => {
+    const migration = readFileSync(
+        resolve('supabase/migrations/20260729010000_sync_returned_lab_obligation_price_changes.sql'),
+        'utf8'
+    );
+
+    test('preserves a returned payable only when its financial inputs did not change', () => {
+        expect(migration).toContain('sync_preserved_external_lab_price_change');
+        expect(migration).toContain('NEW.cost IS NOT DISTINCT FROM OLD.cost');
+        expect(migration).toContain("NOT IN ('returned', 'cancelled', 'on_hold')");
+        expect(migration).toContain('OR NOT EXISTS (');
+    });
+
+    test('allows an existing returned payable to be repriced outside final-ready status', () => {
+        expect(migration).toContain('trigger_sync_preserved_external_lab_price_change');
+        expect(migration).toContain('AFTER UPDATE OF');
+        expect(migration).toContain("'preservedIssueStatePriceCorrection', true");
+    });
+
+    test('repairs the known salaried-designer order through atomic replacement', () => {
+        expect(migration).toContain("case_id = '2005-260706-511'");
+        expect(migration).toContain('v_order.cost <> 850');
+        expect(migration).toContain('v_obligation.net_amount <> 740');
+        expect(migration).toContain('public.sync_single_order_obligation(');
+        expect(migration).toContain("'returnedPriceCorrection', true");
+        expect(migration).toContain('AND obligation.net_amount = 850');
     });
 });

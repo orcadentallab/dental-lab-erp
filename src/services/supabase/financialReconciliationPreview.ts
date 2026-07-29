@@ -360,7 +360,7 @@ export async function previewFinancialReconciliation(
         ] = await Promise.all([
             supabase.from('doctors').select('id, name, parent_id, is_center'),
             supabase.from('suppliers').select('id, name'),
-            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, rejected_lab_cost, rejected_designer_cost'),
+            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost'),
             fetchAllRows<TransactionRow>('transactions', 'id, type, amount, date, category, description, entity_id, entity_type'),
             fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status, source'),
             fetchAllRows<Adjustment>('adjustments', 'entity_type, entity_id, amount, type, date'),
