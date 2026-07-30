@@ -8,7 +8,7 @@ import OrderCard from './OrderCard';
 
 interface OrderListProps {
     orders: Order[];
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: { rejectedLabCost?: number; rejectedDesignerCost?: number; comment?: string }) => void | Promise<void>;
     userRole?: string;
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)
@@ -37,6 +37,8 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     const [usersMap, setUsersMap] = useState<Record<string, string>>({});
     const [designerFixedSalaryMap, setDesignerFixedSalaryMap] = useState<Record<string, boolean>>({});
+    const [originalCaseIds, setOriginalCaseIds] = useState<Record<string, string>>({});
+    const [redoCaseIdsByOriginalId, setRedoCaseIdsByOriginalId] = useState<Record<string, string[]>>({});
 
     useEffect(() => {
         const loadAuxData = async () => {
@@ -72,6 +74,46 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         };
         loadAuxData();
     }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const loadRedoLinks = async () => {
+            const originalIds = orders
+                .map(order => order.originalOrderId)
+                .filter((id): id is string => Boolean(id));
+            const visibleIds = orders.map(order => order.id);
+
+            try {
+                const [originalOrders, redoOrders] = await Promise.all([
+                    db.getOrdersByIds(originalIds),
+                    db.getRedoOrdersByOriginalIds(visibleIds),
+                ]);
+                if (cancelled) return;
+
+                setOriginalCaseIds(Object.fromEntries(
+                    originalOrders.map(original => [original.id, original.caseId])
+                ));
+
+                const reverseLinks: Record<string, string[]> = {};
+                redoOrders.forEach(redo => {
+                    if (!redo.originalOrderId) return;
+                    reverseLinks[redo.originalOrderId] = [
+                        ...(reverseLinks[redo.originalOrderId] || []),
+                        redo.caseId,
+                    ];
+                });
+                setRedoCaseIdsByOriginalId(reverseLinks);
+            } catch (error) {
+                console.error('Error loading redo order links:', error);
+            }
+        };
+
+        void loadRedoLinks();
+        return () => {
+            cancelled = true;
+        };
+    }, [orders]);
 
     const finalOrders = filteredOrders;
 
@@ -150,8 +192,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         suppliers={suppliers}
                         users={usersMap}
                         designerFixedSalary={designerFixedSalaryMap}
+                        originalOrderCaseId={order.originalOrderId ? originalCaseIds[order.originalOrderId] : undefined}
+                        redoOrderCaseIds={redoCaseIdsByOriginalId[order.id] || []}
                         userRole={userRole}
                         onStatusChange={onStatusChange}
+                        onUpdate={() => onStatusChange(order.id, 'same')}
                         onEdit={onEdit}
                         onAddNote={onAddNote}
                         onUpdateDesignUrl={onUpdateDesignUrl}

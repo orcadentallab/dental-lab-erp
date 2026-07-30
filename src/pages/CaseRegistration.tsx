@@ -40,7 +40,10 @@ const normalizeArabic = (text: string) => {
 const ACCOUNTING_CHANGE_MARKER = 'بعد التسجيل المحاسبي';
 
 const hasPostRegistrationChange = (order: Order) =>
-    order.comments?.some(c => c.text.includes(ACCOUNTING_CHANGE_MARKER)) || false;
+    Boolean(
+        order.needsAccountingReregistration ||
+        order.comments?.some(c => c.text.includes(ACCOUNTING_CHANGE_MARKER))
+    );
 
 const isArchivedAfterRegistration = (order: Order) =>
     Boolean(order.isArchived && hasPostRegistrationChange(order));
@@ -73,9 +76,6 @@ export default function CaseRegistration() {
         setLoading(true);
         try {
             // Statuses eligible for accounting registration.
-            // 'Cancelled' and 'Returned for Adjustments' are intentionally excluded:
-            //   - Cancelled: order was voided, no financial entry needed.
-            //   - Returned for Adjustments: order is back in progress, not final yet.
             const registrableStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Rejected'];
 
             const { data } = await db.getOrders(1, 1000, {
@@ -83,10 +83,11 @@ export default function CaseRegistration() {
             });
 
             const filtered = data.filter(order => {
-                // Cancelled orders never appear in registration — not in pending, not in history.
-                if (order.status === 'Cancelled') return false;
-                // Returned for Adjustments orders are back in progress — exclude from registration flow.
-                if (order.status === 'Returned for Adjustments') return false;
+                // Once an order was registered, every later business change must
+                // return it for review, even if it is now returned or cancelled.
+                if (activeTab === 'pending' && hasPostRegistrationChange(order) && !order.isRegistered) {
+                    return true;
+                }
 
                 if (order.isArchived) {
                     // Archived path: only show orders archived AFTER an accounting change was made.

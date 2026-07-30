@@ -28,12 +28,6 @@ import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import RepEditModal from '../components/orders/RepEditModal';
 import RedoOrderModal from '../components/orders/RedoOrderModal';
 
-function isCaseCodeSearchTerm(term: string): boolean {
-    const normalized = term.trim().replace(/^#/, '').replace(/\s+/g, '');
-    return /^[0-9-]+$/.test(normalized) && /\d/.test(normalized);
-}
-
-
 export default function Orders() {
     const { user } = useAuth();
     const { error: toastError } = useToast();
@@ -138,7 +132,6 @@ export default function Orders() {
             search?: string;
             hideDelivered?: boolean;
             showArchived?: boolean;
-            includeArchived?: boolean;
         } = {};
 
         if (statusFilter) filters.status = statusFilter;
@@ -152,9 +145,6 @@ export default function Orders() {
         if (designerFilter) filters.designerId = designerFilter;
         if (searchQuery.trim()) {
             filters.search = searchQuery.trim();
-            if (isCaseCodeSearchTerm(searchQuery)) {
-                filters.includeArchived = true;
-            }
         }
         if (hideDelivered) filters.hideDelivered = true;
         if (showArchived) filters.showArchived = true;

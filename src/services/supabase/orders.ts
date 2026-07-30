@@ -45,6 +45,7 @@ import {
 interface DbOrderWithRelations extends DbOrder {
     order_items?: DbOrderItemRow[];
     order_comments?: DbOrderCommentRow[];
+    needs_accounting_reregistration?: boolean | null;
 }
 
 export interface OrderEventActorContext {
@@ -974,6 +975,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         comments: comments,
         representativeId: dbOrder.representative_id || undefined,
         isRegistered: dbOrder.is_registered || undefined,
+        needsAccountingReregistration: dbOrder.needs_accounting_reregistration || undefined,
         workflowType: dbOrder.workflow_type || undefined,
         designerId: dbOrder.designer_id || undefined,
         designUrl: dbOrder.design_url || undefined,
@@ -1190,7 +1192,11 @@ export async function getOrders(
 
     // Search filter: case_id OR patient_name OR doctor_name OR doctor_code
     if (filters.search && filters.search.trim()) {
-        const regexBuilder = generateArabicSearchPattern(filters.search.trim());
+        // Order codes are displayed with a leading "#", but case_id is stored
+        // without it. Accept pasted/displayed codes such as "#3006-260615-509".
+        const rawSearchTerm = filters.search.trim();
+        const searchTerm = rawSearchTerm.replace(/^#\s*/, '') || rawSearchTerm;
+        const regexBuilder = generateArabicSearchPattern(searchTerm);
         const regex = `"${regexBuilder}"`; // Wrap in quotes for PostgREST to handle meaningful characters
 
         // 1. Find matching doctors first
@@ -1620,6 +1626,28 @@ export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
 
     if (error) {
         throw ErrorHandler.handle(error, 'getOrdersByIds');
+    }
+
+    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+}
+
+export async function getRedoOrdersByOriginalIds(originalOrderIds: string[]): Promise<Order[]> {
+    if (!originalOrderIds || originalOrderIds.length === 0) return [];
+
+    const validIds = Array.from(new Set(originalOrderIds)).filter(
+        id => id && typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    );
+    if (validIds.length === 0) return [];
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_items(*), order_comments(*)')
+        .in('original_order_id', validIds)
+        .eq('is_deleted', false)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'getRedoOrdersByOriginalIds');
     }
 
     return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));

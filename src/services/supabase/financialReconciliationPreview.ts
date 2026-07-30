@@ -141,6 +141,11 @@ type OrderRow = {
     is_deleted: boolean | null;
     rejected_lab_cost: number | null;
     rejected_designer_cost: number | null;
+    rejection_doctor_decision: 'decide_later' | 'full_price' | 'zero' | 'custom_amount' | null;
+    rejected_doctor_amount: number | null;
+    rejection_financial_review_status: 'pending' | 'resolved' | null;
+    production_status: Order['productionStatus'] | null;
+    issue_state: Order['issueState'] | null;
     design_status: string | null;
 };
 
@@ -223,6 +228,11 @@ function toLifecycleOrder(row: OrderRow) {
         isDeleted: row.is_deleted || false,
         rejectedLabCost: row.rejected_lab_cost ?? undefined,
         rejectedDesignerCost: row.rejected_designer_cost ?? undefined,
+        rejectionDoctorDecision: row.rejection_doctor_decision ?? undefined,
+        rejectedDoctorAmount: row.rejected_doctor_amount ?? undefined,
+        rejectionFinancialReviewStatus: row.rejection_financial_review_status ?? undefined,
+        productionStatus: row.production_status ?? undefined,
+        issueState: row.issue_state ?? undefined,
     };
 }
 
@@ -360,7 +370,7 @@ export async function previewFinancialReconciliation(
         ] = await Promise.all([
             supabase.from('doctors').select('id, name, parent_id, is_center'),
             supabase.from('suppliers').select('id, name'),
-            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost'),
+            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, rejection_financial_review_status, production_status, issue_state'),
             fetchAllRows<TransactionRow>('transactions', 'id, type, amount, date, category, description, entity_id, entity_type'),
             fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status, source'),
             fetchAllRows<Adjustment>('adjustments', 'entity_type, entity_id, amount, type, date'),

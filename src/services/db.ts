@@ -41,6 +41,7 @@ export interface Transaction {
     entityId?: string; // Doctor or Supplier ID
     entityType?: 'doctor' | 'supplier' | 'general' | 'designer' | 'representative';
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
+    needsAccountingReregistration?: boolean;
     isApproved?: boolean; // Flag for individual expense approval (DEPRECATED: Use status)
     status?: 'pending' | 'approved' | 'rejected' | 'settled'; // New Status Field
     effectiveDate?: string;
@@ -219,6 +220,7 @@ export interface Order {
     }[];
     representativeId?: string; // Linked Representative
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
+    needsAccountingReregistration?: boolean;
 
     // Split Workflow Fields
     workflowType?: 'full' | 'split';
@@ -864,6 +866,11 @@ class MockDB {
     async getOrdersByIds(ids: string[]): Promise<Order[]> {
         const { getOrdersByIds } = await import('./supabase/orders');
         return getOrdersByIds(ids);
+    }
+
+    async getRedoOrdersByOriginalIds(originalOrderIds: string[]): Promise<Order[]> {
+        const { getRedoOrdersByOriginalIds } = await import('./supabase/orders');
+        return getRedoOrdersByOriginalIds(originalOrderIds);
     }
 
     async addOrder(order: Omit<Order, 'id' | 'createdAt'>, context?: { userId?: string; actorRole?: string }): Promise<Order> {

@@ -34,9 +34,11 @@ interface OrderCardProps {
     suppliers: Record<string, string>;
     users: Record<string, string>;
     designerFixedSalary?: Record<string, boolean>;
+    originalOrderCaseId?: string;
+    redoOrderCaseIds?: string[];
     userRole?: string;
-    onStatusChange: (id: string, status: Order['status'] | 'same', context?: RejectionFinancialContext) => void;
-    onUpdate?: () => void;
+    onStatusChange: (id: string, status: Order['status'] | 'same', context?: RejectionFinancialContext) => void | Promise<void>;
+    onUpdate?: () => void | Promise<void>;
     showFinancials?: boolean;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
@@ -61,6 +63,8 @@ function OrderCard({
     suppliers,
     users,
     designerFixedSalary = {},
+    originalOrderCaseId,
+    redoOrderCaseIds = [],
     userRole,
     onStatusChange,
     onUpdate,
@@ -130,8 +134,8 @@ function OrderCard({
                 reason: financialEditReason,
             });
             success('تم تحديث المراجعة المالية وإعادة توزيع الحسابات بنجاح');
+            await onUpdate?.();
             setIsEditingCost(false);
-            onUpdate?.();
         } catch (error) {
             toastError(error instanceof Error
                 ? error.message
@@ -274,23 +278,29 @@ function OrderCard({
                 className={clsx(
                     "relative transition-all duration-200 border-l-4",
                     isHighlighted ? 'ring-2 ring-primary-500 shadow-lg scale-[1.01] z-10' : 'hover:shadow-md',
-                    order.isArchived
-                        ? 'bg-gray-50 dark:bg-gray-800/50 border-l-gray-400 border-gray-200 opacity-75'
-                        : isDelivered
-                            ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
-                            : order.status === 'Returned for Adjustments'
-                                ? 'bg-amber-50 dark:bg-amber-900/20 border-l-amber-500 border-amber-200 dark:border-amber-800'
-                                : order.status === 'Doctor Rejected' || order.status === 'Rejected'
-                                    ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
-                                    : order.status === 'Lab Rejected'
-                                        ? 'bg-rose-50 dark:bg-rose-900/20 border-l-rose-500 border-rose-200 dark:border-rose-800'
-                                        : order.status === 'Cancelled'
-                                            ? 'bg-gray-100 dark:bg-gray-800/80 border-l-gray-500 border-gray-300 dark:border-gray-800 opacity-75'
-                                            : order.technicianStatus === 'Rejected'
-                                                ? 'bg-red-50/50 dark:bg-red-950/10 border-l-red-400 border-red-100 dark:border-red-950'
-                                                : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
+                    isDelivered
+                        ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
+                        : order.status === 'Returned for Adjustments'
+                            ? 'bg-amber-50 dark:bg-amber-900/20 border-l-amber-500 border-amber-200 dark:border-amber-800'
+                            : order.status === 'Doctor Rejected' || order.status === 'Rejected'
+                                ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
+                                : order.status === 'Lab Rejected'
+                                    ? 'bg-rose-50 dark:bg-rose-900/20 border-l-rose-500 border-rose-200 dark:border-rose-800'
+                                    : order.status === 'Cancelled'
+                                        ? 'bg-gray-100 dark:bg-gray-800/80 border-l-gray-500 border-gray-300 dark:border-gray-800 opacity-75'
+                                        : order.technicianStatus === 'Rejected'
+                                            ? 'bg-red-50/50 dark:bg-red-950/10 border-l-red-400 border-red-100 dark:border-red-950'
+                                            : 'bg-white dark:bg-surface-800 border-l-primary-500 border-surface-200 dark:border-surface-700'
                 )}
             >
+                {order.isArchived && (
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center">
+                        <span className="inline-flex items-center gap-1.5 rounded-b-lg border-x border-b border-slate-500 bg-slate-700 px-3 py-1 text-[10px] font-black tracking-wide text-white shadow-md">
+                            <ArchiveIcon size={12} strokeWidth={2.5} />
+                            حالة مؤرشفة
+                        </span>
+                    </div>
+                )}
                 {/* Urgent Strip */}
                 {(order.isUrgent || order.priority === 'Urgent') && (
                     <div className="absolute top-0 right-0 w-16 h-16 pointer-events-none overflow-hidden">
@@ -307,6 +317,21 @@ function OrderCard({
                             <span className="font-mono text-xs font-bold text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded-md border border-primary-100 dark:border-primary-800">
                                 #{order.caseId}
                             </span>
+                            {order.originalOrderId && originalOrderCaseId && (
+                                <span className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-100 px-2 py-1 text-[10px] font-black text-violet-800 shadow-sm dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                                    <RotateCcw size={11} strokeWidth={2.5} />
+                                    إعادة من #{originalOrderCaseId}
+                                </span>
+                            )}
+                            {redoOrderCaseIds.map(redoCaseId => (
+                                <span
+                                    key={redoCaseId}
+                                    className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800 shadow-sm dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+                                >
+                                    <RotateCcw size={11} strokeWidth={2.5} />
+                                    اتعادت في #{redoCaseId}
+                                </span>
+                            ))}
 
                             {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
                                 <span
@@ -337,13 +362,8 @@ function OrderCard({
                                 </span>
                             )}
                             {order.isArchived && (
-                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-gray-100 text-gray-600 border border-gray-300 flex items-center gap-1">
-                                    <ArchiveIcon size={9} /> مؤرشف
-                                </span>
-                            )}
-                            {order.workflowType === 'split' && (
-                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300 dark:border-cyan-800 flex items-center gap-1">
-                                    <Settings size={9} /> خراطة
+                                <span className="flex items-center gap-1 rounded-md border border-slate-600 bg-slate-700 px-2 py-1 text-[10px] font-black text-white shadow-sm">
+                                    <ArchiveIcon size={11} strokeWidth={2.5} /> مؤرشف
                                 </span>
                             )}
                         </div>
@@ -497,7 +517,7 @@ function OrderCard({
                                     <div className="min-w-0 flex items-center gap-3 max-w-full">
                                         <div>
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="font-semibold text-sm md:text-base text-surface-700 dark:text-surface-300 leading-tight truncate">d. {doctorDisplayName}</p>
+                                                <p className="max-w-[220px] whitespace-normal break-words text-sm font-semibold leading-tight text-surface-700 dark:text-surface-300 md:text-base">d. {doctorDisplayName}</p>
                                                 {order.branchName && (
                                                     <span className="text-[9px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900 px-1.5 py-0.5 rounded font-bold shrink-0">
                                                         {order.branchName}
@@ -579,7 +599,7 @@ function OrderCard({
                                             {/* Designer (Top) */}
                                             <div className="flex items-center gap-1 text-center">
                                                 <User size={14} className="text-indigo-600 dark:text-indigo-400" />
-                                                <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 truncate max-w-[80px]">
+                                                <span className="max-w-[105px] whitespace-normal break-words text-center text-xs font-bold leading-tight text-indigo-700 dark:text-indigo-300">
                                                     {order.designerId && users[order.designerId] ? users[order.designerId] : 'مصمم'}
                                                 </span>
                                                 {showDesignerCost && !usesRejectionCost && compactCost(effectiveDisplayedDesignCost, hasZeroEffectiveCost ? false : hasManualDesignCost, 'indigo')}
@@ -589,7 +609,7 @@ function OrderCard({
                                             {/* Supplier (Bottom) */}
                                             <div className="flex items-center gap-1 text-center">
                                                 <Building2 size={14} className="text-teal-600 dark:text-teal-400" />
-                                                <span className="text-xs font-bold text-teal-700 dark:text-teal-300 truncate max-w-[80px]">
+                                                <span className="max-w-[100px] whitespace-normal break-words text-center text-xs font-bold leading-tight text-teal-700 dark:text-teal-300">
                                                     {order.supplierId && suppliers[order.supplierId] ? suppliers[order.supplierId] : 'خراطة'}
                                                 </span>
                                                 {!usesRejectionCost && compactCost(effectiveDisplayedLabCost, hasZeroEffectiveCost ? false : hasManualLabCost, 'teal')}
@@ -600,7 +620,7 @@ function OrderCard({
                                         <>
                                             <Building2 size={16} className="text-teal-600 dark:text-teal-400 mb-1" />
                                             <span className="text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">المعمل</span>
-                                            <span className="text-sm font-black text-teal-700 dark:text-teal-300 leading-tight text-center mt-0.5">
+                                            <span className="mt-0.5 max-w-full whitespace-normal break-words text-center text-sm font-black leading-tight text-teal-700 dark:text-teal-300">
                                                 {suppliers[order.supplierId]}
                                             </span>
                                             {!usesRejectionCost && compactCost(effectiveDisplayedLabCost, hasZeroEffectiveCost ? false : hasManualLabCost, 'teal')}
@@ -653,42 +673,52 @@ function OrderCard({
                                     )}
                                 </div>
 
-                                {/* Rejection Cost Display - Admin Only */}
-                                {(order.status === 'Doctor Rejected' || order.status === 'Rejected') && (order.supplierId || order.designerId) && (
-                                    <div 
-                                        className="w-full flex flex-col items-center justify-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 rounded-xl p-2 cursor-pointer hover:bg-red-100 transition-colors group"
+                                {/* Rejection Financial Review - Admin Only */}
+                                {(order.status === 'Doctor Rejected' || order.status === 'Rejected') && (
+                                    <button
+                                        type="button"
+                                        aria-label="تعديل المراجعة المالية للأوردر المرفوض"
+                                        className="group w-full rounded-xl border border-red-200 bg-red-50 p-2 text-right transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:border-red-800/50 dark:bg-red-900/20 dark:hover:bg-red-900/30"
                                         onClick={() => {
-                                            if (userRole !== 'admin') return;
                                             setEditCostValue(order.rejectedLabCost ?? '');
                                             setEditDesignerCostValue(order.rejectedDesignerCost ?? '');
                                             setEditDoctorAmount(order.rejectedDoctorAmount ?? order.totalPrice ?? 0);
                                             setDeferLabCost(order.rejectedLabCostStatus !== 'resolved');
                                             setDeferDesignerCost(order.rejectedDesignerCostStatus !== 'resolved');
-                                            setFinancialEditReason('');
+                                            setFinancialEditReason('تم الاتفاق مع الطبيب/المورد على مبلغ جديد');
                                             setIsEditingCost(true);
                                         }}
-                                        title={userRole === 'admin' ? 'تعديل المراجعة المالية' : 'المراجعة المالية متاحة للعرض فقط'}
+                                        title="تعديل تحمل الطبيب واستحقاق المورد والمصمم"
                                     >
-                                        <div className="flex items-center gap-1">
-                                            <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">رفض المعمل</span>
-                                            <Edit3 size={10} className="text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                        </div>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-sm font-black text-red-700 dark:text-red-300">
-                                                {(order.rejectedLabCost || 0).toLocaleString('en-EG')}
+                                        <div className="mb-1.5 flex items-center justify-between gap-2 border-b border-red-200/70 pb-1.5 dark:border-red-800/60">
+                                            <span className="text-[10px] font-black text-red-700 dark:text-red-300">
+                                                تعديل المراجعة المالية
                                             </span>
-                                            <span className="text-[9px] font-bold text-red-600 dark:text-red-400 uppercase">ج.م</span>
+                                            <Edit3 size={12} className="text-red-500 transition-transform group-hover:scale-110" />
                                         </div>
-                                        {showDesignerCost && (
-                                            <div className="flex items-baseline gap-1 border-t border-red-200/70 pt-1 mt-1">
-                                                <span className="text-[9px] font-bold text-red-600 dark:text-red-400">رفض المصمم</span>
-                                                <span className="text-sm font-black text-red-700 dark:text-red-300">
-                                                    {(order.rejectedDesignerCost || 0).toLocaleString('en-EG')}
+                                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-red-700 dark:text-red-300">
+                                            <span>تحمل الطبيب</span>
+                                            <span>
+                                                {effectiveDoctorAmount.toLocaleString('en-EG')} ج.م
+                                            </span>
+                                        </div>
+                                        {order.supplierId && (
+                                            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-bold text-red-700 dark:text-red-300">
+                                                <span>استحقاق المورد</span>
+                                                <span>
+                                                    {(order.rejectedLabCost || 0).toLocaleString('en-EG')} ج.م
                                                 </span>
-                                                <span className="text-[9px] font-bold text-red-600 dark:text-red-400">ج.م</span>
                                             </div>
                                         )}
-                                    </div>
+                                        {showDesignerCost && order.designerId && (
+                                            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-bold text-red-700 dark:text-red-300">
+                                                <span>استحقاق المصمم</span>
+                                                <span>
+                                                    {(order.rejectedDesignerCost || 0).toLocaleString('en-EG')} ج.م
+                                                </span>
+                                            </div>
+                                        )}
+                                    </button>
                                 )}
                             </div>
                         )}
