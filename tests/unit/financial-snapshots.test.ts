@@ -58,4 +58,26 @@ describe('financial snapshot issue classification', () => {
 
         expect(issues).toEqual({ critical: [], warnings: [] });
     });
+
+    it('keeps the generic date-range note informational instead of warning every entity', () => {
+        const issues = classifyFinancialSnapshotIssues([
+            row({ flags: ['difference_zero', 'possible_date_range_mismatch'] }),
+        ]);
+
+        expect(issues).toEqual({ critical: [], warnings: [] });
+    });
+
+    it('retains a real warning even when the row also has a date-range note', () => {
+        const issues = classifyFinancialSnapshotIssues([
+            row({
+                flags: [
+                    'difference_zero',
+                    'possible_date_range_mismatch',
+                    'issue_settlement_present',
+                ],
+            }),
+        ]);
+
+        expect(issues.warnings).toHaveLength(1);
+    });
 });

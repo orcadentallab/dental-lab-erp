@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import { db } from '../services/db';
 import { getUserRoleDisplay, isDesignerUser } from '../lib/userRoles';
+import { isAccountingRegistrationCandidate } from '../constants/accountingRegistration';
 
 import type { LucideIcon } from 'lucide-react';
 
@@ -37,12 +38,9 @@ export default function Sidebar() {
         if (user?.role === 'admin' || user?.role === 'accountant') {
             const checkUnregistered = async () => {
                 try {
-                    const response = await db.getOrders();
-                    const allOrders = Array.isArray(response) ? response : [];
-                    const statuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Rejected'];
-                    const unreg = allOrders.filter((o) =>
-                        !o.isRegistered &&
-                        (statuses.includes(o.status) || o.needsAccountingReregistration)
+                    const allOrders = await db.getOrdersForAccountingRegistration();
+                    const unreg = allOrders.filter(order =>
+                        isAccountingRegistrationCandidate(order, 'pending')
                     );
                     setUnregisteredCount(unreg.length);
                 } catch (error) {

@@ -4,6 +4,7 @@ import {
     approveFinancialSnapshot,
     buildFinancialSnapshotPayload,
     createFinancialSnapshot,
+    getActionableFinancialWarningFlags,
     listFinancialSnapshots,
     type FinancialReportSnapshot,
     type FinancialSnapshotIssueSummary,
@@ -24,6 +25,15 @@ const entityLabel: Record<string, string> = {
     doctor: 'طبيب',
     external_lab: 'مورد',
     designer: 'مصمم',
+};
+
+const warningFlagLabel: Record<string, string> = {
+    missing_transactions: 'لا توجد حركات مالية مسجلة',
+    obligations_without_transactions: 'التزامات بلا حركات مالية',
+    payments_without_obligations: 'مدفوعات بلا التزام مقابل',
+    issue_settlement_present: 'توجد تسوية رفض أو مشكلة',
+    data_missing: 'بيانات مالية ناقصة',
+    account_closing_or_dispute_settlement_needed: 'الحساب يحتاج إقفالًا أو تسوية نزاع',
 };
 
 export default function FinancialReview() {
@@ -200,6 +210,46 @@ export default function FinancialReview() {
                             value={String(previewSummary.entitiesWithDifference)}
                             danger={previewSummary.entitiesWithDifference > 0}
                         />
+                    </section>
+
+                    <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                        <div className="border-b border-gray-100 p-5">
+                            <h2 className="font-bold text-gray-900">تحذيرات مالية تحتاج مراجعة</h2>
+                            <p className="mt-1 text-sm text-gray-500">
+                                ملاحظة نطاق التاريخ معلوماتية فقط، ولا تُحتسب تحذيرًا. القائمة التالية تعرض التحذيرات القابلة للتصرف فقط.
+                            </p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full text-sm">
+                                <thead className="bg-gray-50 text-gray-600">
+                                    <tr>
+                                        <th className="px-4 py-3 text-right">الطرف</th>
+                                        <th className="px-4 py-3 text-right">النوع</th>
+                                        <th className="px-4 py-3 text-right">سبب التحذير</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {warningRows.map(row => (
+                                        <tr key={`warning:${row.entityType}:${row.entityId}`}>
+                                            <td className="px-4 py-3 font-medium text-gray-900">{row.entityName}</td>
+                                            <td className="px-4 py-3">{entityLabel[row.entityType]}</td>
+                                            <td className="px-4 py-3 text-amber-800">
+                                                {getActionableFinancialWarningFlags(row.flags)
+                                                    .map(flag => warningFlagLabel[flag] ?? flag)
+                                                    .join(' · ')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {warningRows.length === 0 && (
+                                        <tr>
+                                            <td colSpan={3} className="px-4 py-8 text-center text-emerald-700">
+                                                لا توجد تحذيرات مالية قابلة للتصرف.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </section>
 
                     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

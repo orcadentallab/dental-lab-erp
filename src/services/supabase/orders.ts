@@ -1377,6 +1377,37 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
 }
 
 /**
+ * Fetch every non-deleted order needed by the accounting-registration screen.
+ * Pagination is handled internally so older re-registration rows cannot be
+ * hidden by the generic 1,000-row UI limit.
+ */
+export async function getOrdersForAccountingRegistration(): Promise<Order[]> {
+    const allData: DbOrderWithRelations[] = [];
+    const pageSize = 1000;
+    let from = 0;
+
+    while (true) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .or('is_deleted.eq.false,is_deleted.is.null')
+            .order('created_at', { ascending: false })
+            .range(from, from + pageSize - 1);
+
+        if (error) {
+            throw ErrorHandler.handle(error, 'getOrdersForAccountingRegistration');
+        }
+
+        const page = (data || []) as unknown as DbOrderWithRelations[];
+        allData.push(...page);
+        if (page.length < pageSize) break;
+        from += pageSize;
+    }
+
+    return allData.map(row => dbToOrder(row));
+}
+
+/**
  * Heavy-duty fetch for Exports.
  */
 export async function fetchAllOrdersForExport(): Promise<Order[]> {
@@ -1962,7 +1993,10 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     // --- SENSITIVE CHANGE DETECTION ---
     // If a sensitive financial or identity field changes, we reset registration status
     // so the accountant can review and re-register if necessary.
-    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'items', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'rejectedDesignerCost', 'status', 'isArchived', 'isDeleted'];
+    // Relational item changes are compared atomically in update_order_atomic.
+    // Keeping `items` here would reopen a registered order even when the caller
+    // sends an identical item list.
+    const sensitiveFields: (keyof Order)[] = ['totalPrice', 'cost', 'doctorId', 'patientName', 'supplierId', 'isRedo', 'rejectedLabCost', 'rejectedDesignerCost', 'status', 'isDeleted'];
     const hasSensitiveUpdate = sensitiveFields.some(field => updates[field] !== undefined);
 
     const canChangeRegistered = !context.actorRole || ['admin', 'accountant'].includes(context.actorRole);

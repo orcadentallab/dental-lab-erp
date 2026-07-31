@@ -817,6 +817,11 @@ class MockDB {
         return getAllOrdersUnpaginated();
     }
 
+    async getOrdersForAccountingRegistration(): Promise<Order[]> {
+        const { getOrdersForAccountingRegistration } = await import('./supabase/orders');
+        return getOrdersForAccountingRegistration();
+    }
+
     /**
      * Dedicated heavy fetch for Full Exports.
      * Fetches virtually unlimited orders (up to 20,000 safety limit).

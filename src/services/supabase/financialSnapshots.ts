@@ -61,6 +61,23 @@ export interface FinancialReportSnapshot {
     updatedAt: string;
 }
 
+export const ACTIONABLE_FINANCIAL_WARNING_FLAGS = [
+    'missing_transactions',
+    'obligations_without_transactions',
+    'payments_without_obligations',
+    'issue_settlement_present',
+    'data_missing',
+    'account_closing_or_dispute_settlement_needed',
+] as const satisfies readonly FinancialReconciliationPreviewRow['flags'][number][];
+
+const actionableFinancialWarningFlags = new Set<string>(ACTIONABLE_FINANCIAL_WARNING_FLAGS);
+
+export function getActionableFinancialWarningFlags(
+    flags: FinancialReconciliationPreviewRow['flags']
+): FinancialReconciliationPreviewRow['flags'] {
+    return flags.filter(flag => actionableFinancialWarningFlags.has(flag));
+}
+
 type SnapshotRow = {
     id: string;
     period_start: string;
@@ -119,15 +136,7 @@ export function classifyFinancialSnapshotIssues(
     const warnings = rows
         .filter(row => (
             Math.abs(row.difference) < 0.01
-            && row.flags.some(flag => [
-                'missing_transactions',
-                'obligations_without_transactions',
-                'payments_without_obligations',
-                'issue_settlement_present',
-                'possible_date_range_mismatch',
-                'data_missing',
-                'account_closing_or_dispute_settlement_needed',
-            ].includes(flag))
+            && getActionableFinancialWarningFlags(row.flags).length > 0
         ))
         .map(row => ({
             entityType: row.entityType,
