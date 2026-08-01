@@ -1053,6 +1053,17 @@ class MockDB {
         return deleteTransaction(id);
     }
 
+    async settleEmployeeExpenses(params: {
+        expenseIds: string[];
+        settledAmount: number;
+        cashboxId?: string;
+        settlementDate: string;
+        effectiveDate: string;
+    }) {
+        const { settleEmployeeExpenses } = await import('./supabase/transactions');
+        return settleEmployeeExpenses(params);
+    }
+
     async bulkUpsertTransactions(newTxs: Transaction[]): Promise<number> {
         const { bulkUpsertTransactions } = await import('./supabase/transactions');
         return bulkUpsertTransactions(newTxs);

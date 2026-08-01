@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2 } from 'lucide-react';
 import { db, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
+import { isLedgerTransaction } from '../utils/transactions';
 import clsx from 'clsx';
 import { useAuth } from '../context/AuthContext';
 import { AccountInfoPanel } from '../components/finance/AccountInfoPanel';
@@ -122,7 +123,7 @@ export default function Finance() {
         transactions.filter(t => 
             t.type === 'expense' && 
             (t.entityType === 'general' || !t.entityType) &&
-            !(t.entityId && t.category !== 'مرتبات وأجور')
+            isLedgerTransaction(t)
         ),
         [transactions]
     );

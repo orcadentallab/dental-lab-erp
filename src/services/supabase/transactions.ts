@@ -207,6 +207,48 @@ export async function deleteTransaction(id: string): Promise<void> {
     }
 }
 
+export interface EmployeeExpenseSettlementResult {
+    employeeId: string;
+    employeeName: string;
+    claimTotal: number;
+    settledAmount: number;
+    createdTransactions: Transaction[];
+}
+
+export async function settleEmployeeExpenses(params: {
+    expenseIds: string[];
+    settledAmount: number;
+    cashboxId?: string;
+    settlementDate: string;
+    effectiveDate: string;
+}): Promise<EmployeeExpenseSettlementResult> {
+    const { data, error } = await supabase.rpc('settle_employee_expenses', {
+        p_expense_ids: params.expenseIds,
+        p_settled_amount: params.settledAmount,
+        p_cashbox_id: params.cashboxId || null,
+        p_settlement_date: params.settlementDate,
+        p_effective_date: params.effectiveDate,
+    });
+
+    if (error) throw ErrorHandler.handle(error, 'settleEmployeeExpenses');
+
+    const result = data as unknown as {
+        employee_id: string;
+        employee_name: string;
+        claim_total: number;
+        settled_amount: number;
+        created_transactions: DbTransaction[];
+    };
+
+    return {
+        employeeId: result.employee_id,
+        employeeName: result.employee_name,
+        claimTotal: Number(result.claim_total),
+        settledAmount: Number(result.settled_amount),
+        createdTransactions: (result.created_transactions || []).map(dbToTransaction),
+    };
+}
+
 export async function bulkUpsertTransactions(transactions: Transaction[]): Promise<number> {
     const dbTransactions = transactions.map(tx => {
         const dbTx = transactionToDb(tx);

@@ -290,9 +290,11 @@ function buildFlags(input: {
     if ((input.issueSettlementTotal || 0) > 0) flags.push('issue_settlement_present');
     if (input.hasDateRange) flags.push('possible_date_range_mismatch');
     if (!input.entityName) flags.push('data_missing');
-    if (input.entityType === 'external_lab' && (input.hasSettlementTransaction || (input.obligationBasedBalance || 0) < 0)) {
+    if (input.entityType === 'external_lab' && (input.obligationBasedBalance || 0) < -0.01) {
         flags.push('account_closing_or_dispute_settlement_needed');
-        notes.push('Supplier payments exceed normal open obligation balance or include account-closing/dispute wording; review through future settlement workflow, not automatic allocation.');
+        notes.push('Supplier payments exceed the settled obligation balance; review through the settlement workflow, not automatic allocation.');
+    } else if (input.entityType === 'external_lab' && input.hasSettlementTransaction) {
+        notes.push('The supplier account contains a documented account-closing or dispute settlement that already reconciles to the official balance.');
     }
     if (input.hasStaleDoctorReceivable) {
         flags.push('stale_doctor_receivable_after_rejection');
@@ -357,6 +359,7 @@ export async function previewFinancialReconciliation(
     let adjustments: Adjustment[] = [];
     let salariedDesignerIds = new Set<string>();
     let designerUsers: DesignerUserRow[] = [];
+    let allUsers: DesignerUserRow[] = [];
 
     try {
         const [
@@ -389,6 +392,7 @@ export async function previewFinancialReconciliation(
         obligations = allObligations.filter(o => o.status !== 'void');
         adjustments = adjustmentsData as Adjustment[];
         const userRows = (usersResult.data || []) as unknown as DesignerUserRow[];
+        allUsers = userRows;
         designerUsers = userRows.filter(user => user.role === 'designer');
         salariedDesignerIds = new Set(
             userRows
@@ -403,7 +407,7 @@ export async function previewFinancialReconciliation(
     const doctorNames = new Map(doctors.map(doctor => [doctor.id, doctor.name]));
     const supplierNames = new Map(suppliers.map(supplier => [supplier.id, supplier.name]));
     const designerNames = new Map(
-        designerUsers.map(user => [user.id, user.name || user.username || user.id])
+        allUsers.map(user => [user.id, user.name || user.username || user.id])
     );
 
     const officialDoctorDebits = new Map<string, number>();

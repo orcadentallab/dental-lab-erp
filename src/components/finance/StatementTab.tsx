@@ -18,6 +18,7 @@ import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
+import { isLedgerTransaction } from '../../utils/transactions';
 
 interface StatementTabProps {
     type: 'service' | 'expense';
@@ -383,6 +384,7 @@ export default function StatementTab({
         let totalAmount = 0;
         transactions.filter(t => {
             if (t.type !== 'expense') return false;
+            if (!isLedgerTransaction(t)) return false;
             if (t.entityType === 'supplier' || t.entityType === 'designer' || t.entityType === 'representative') return false;
             if (NON_OPERATIONAL_CATEGORIES.includes(t.category || '')) return false;
             if (!t.amount || t.amount <= 0) return false;
@@ -439,6 +441,7 @@ export default function StatementTab({
         let supplierTotal = 0, designerTotal = 0, supplierCount = 0, designerCount = 0;
         transactions.forEach(t => {
             if (t.type !== 'expense') return;
+            if (!isLedgerTransaction(t)) return;
             if (!NON_OPERATIONAL_CATEGORIES.includes(t.category || '')) return;
             if (!t.amount || t.amount <= 0) return;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

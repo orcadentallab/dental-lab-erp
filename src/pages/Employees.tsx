@@ -304,7 +304,7 @@ export default function Employees() {
         }
     };
 
-    const handleSettleRepExpenses = async (_repId: string, repName: string, repExpenses: Transaction[]) => {
+    const handleSettleRepExpenses = async (_repId: string, _repName: string, repExpenses: Transaction[]) => {
         const approved = repExpenses.filter(e => e.status === 'approved' || e.isApproved);
         if (approved.length === 0) {
             toastError('لا توجد مصاريف معتمدة للتسوية');
@@ -329,30 +329,13 @@ export default function Employees() {
 
         try {
             const today = new Date().toISOString().split('T')[0];
-            const combinedDescription = approved.map(e => `${e.description} (${e.amount} ج.م)`).join('، ');
-
-            // 1. Mark all as settled
-            await Promise.all(approved.map(exp => 
-                db.updateTransaction(exp.id, {
-                    status: 'settled',
-                    description: `${exp.description} (تمت التسوية بتاريخ ${today} - إجمالي: ${settledAmount} ج.م)`.slice(0, 500)
-                })
-            ));
-
-            // 2. Add one consolidated transaction for the accounting ledger
-            const tx = await db.addTransaction({
-                type: 'expense',
-                amount: settledAmount,
-                category: 'شحن وتوصيل',
-                description: `مصاريف شحن المندوب ${repName} لشهر ${selectedMonth} - التفاصيل: ${combinedDescription}`.slice(0, 500),
-                date: today,
-                entityType: 'general',
-                cashboxId,
-                isRegistered: false,
-                status: 'approved',
-                effectiveDate: selectedMonth + '-01'
+            await db.settleEmployeeExpenses({
+                expenseIds: approved.map(expense => expense.id),
+                settledAmount,
+                cashboxId: cashboxId || undefined,
+                settlementDate: today,
+                effectiveDate: selectedMonth + '-01',
             });
-            await addTransferFeeIfNeeded(tx, cashboxId, selectedMonth + '-01');
 
             await loadData();
             toastSuccess('تم تسوية المصاريف بنجاح ✅');
@@ -443,7 +426,7 @@ export default function Employees() {
                 description: newExpense.description,
                 date: newExpense.date,
                 entityId: currentUser.id,
-                entityType: 'general',
+                entityType: 'representative',
                 isRegistered: false,
                 status: 'pending',
                 effectiveDate: selectedMonth + '-01'

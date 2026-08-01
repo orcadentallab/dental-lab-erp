@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { classifyFinancialSnapshotIssues } from '../../src/services/supabase/financialSnapshots';
+import {
+    ACTIONABLE_FINANCIAL_WARNING_FLAGS,
+    classifyFinancialSnapshotIssues,
+} from '../../src/services/supabase/financialSnapshots';
 import type { FinancialReconciliationPreviewRow } from '../../src/services/supabase/financialReconciliationPreview';
 
 const row = (
@@ -45,7 +48,7 @@ describe('financial snapshot issue classification', () => {
         const issues = classifyFinancialSnapshotIssues([
             row({
                 difference: 0,
-                flags: ['difference_zero', 'issue_settlement_present'],
+                flags: ['difference_zero', 'payments_without_obligations'],
             }),
         ]);
 
@@ -73,11 +76,29 @@ describe('financial snapshot issue classification', () => {
                 flags: [
                     'difference_zero',
                     'possible_date_range_mismatch',
-                    'issue_settlement_present',
+                    'payments_without_obligations',
                 ],
             }),
         ]);
 
         expect(issues.warnings).toHaveLength(1);
+    });
+
+    it('keeps zero activity, normal open receivables, and settled issues informational', () => {
+        const issues = classifyFinancialSnapshotIssues([
+            row({ flags: ['difference_zero', 'missing_transactions'] }),
+            row({ flags: ['difference_zero', 'missing_transactions', 'obligations_without_transactions'] }),
+            row({ flags: ['difference_zero', 'issue_settlement_present'] }),
+        ]);
+
+        expect(issues).toEqual({ critical: [], warnings: [] });
+    });
+
+    it('limits warnings to records that indicate a reconciliation problem', () => {
+        expect(ACTIONABLE_FINANCIAL_WARNING_FLAGS).toEqual([
+            'payments_without_obligations',
+            'data_missing',
+            'account_closing_or_dispute_settlement_needed',
+        ]);
     });
 });

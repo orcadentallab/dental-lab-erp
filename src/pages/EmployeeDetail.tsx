@@ -260,7 +260,7 @@ export default function EmployeeDetail() {
                 description: newExpense.description,
                 date: newExpense.date,
                 entityId: employee.id,
-                entityType: 'general',
+                entityType: 'representative',
                 isRegistered: false,
                 status: 'pending',
                 effectiveDate: selectedMonth + '-01'
@@ -412,7 +412,7 @@ export default function EmployeeDetail() {
                 date: selectedMonth + '-01',
                 category: adjustmentType,
                 entityId: employee.id,
-                entityType: 'general',
+                entityType: 'representative',
                 isRegistered: false,
                 effectiveDate: selectedMonth + '-01'
             });

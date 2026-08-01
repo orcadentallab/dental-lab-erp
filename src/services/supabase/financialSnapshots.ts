@@ -62,10 +62,7 @@ export interface FinancialReportSnapshot {
 }
 
 export const ACTIONABLE_FINANCIAL_WARNING_FLAGS = [
-    'missing_transactions',
-    'obligations_without_transactions',
     'payments_without_obligations',
-    'issue_settlement_present',
     'data_missing',
     'account_closing_or_dispute_settlement_needed',
 ] as const satisfies readonly FinancialReconciliationPreviewRow['flags'][number][];

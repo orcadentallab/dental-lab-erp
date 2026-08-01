@@ -234,9 +234,9 @@ export const financeService = {
             .select('amount, entity_id, entity_type, category')
             .eq('type', 'expense');
             
-        // Filter out employee daily expenses (which have entity_id and entity_type is 'general' or empty, and category is NOT 'مرتبات وأجور' or 'salaries')
+        // Employee claims are review records, not ledger/cash movements.
         const filteredExpenses = expenses?.filter(t => {
-            const isEmployeeTx = t.entity_id && (t.entity_type === 'general' || !t.entity_type);
+            const isEmployeeTx = t.entity_id && ['representative', 'general', null].includes(t.entity_type);
             if (isEmployeeTx) {
                 return t.category === 'مرتبات وأجور' || t.category === 'salaries';
             }
@@ -492,12 +492,18 @@ export const financeService = {
             this.getCashboxReconciliations(),
             supabase
                 .from('transactions')
-                .select('id, type, amount, cashbox_id, is_system_generated_fee, date')
+                .select('id, type, amount, cashbox_id, is_system_generated_fee, date, entity_id, entity_type, category')
         ]);
 
         if (txResult.error) throw txResult.error;
-        type TxRow = { id: string; type: string; amount: number; cashbox_id: string | null; is_system_generated_fee: boolean; date: string };
-        const transactions = (txResult.data ?? []) as TxRow[];
+        type TxRow = { id: string; type: string; amount: number; cashbox_id: string | null; is_system_generated_fee: boolean; date: string; entity_id: string | null; entity_type: string | null; category: string };
+        const transactions = ((txResult.data ?? []) as TxRow[]).filter(t => {
+            const employeeClaim = t.type === 'expense'
+                && !!t.entity_id
+                && ['representative', 'general', null].includes(t.entity_type)
+                && !['مرتبات وأجور', 'salaries'].includes(t.category);
+            return !employeeClaim;
+        });
 
         const latestReconciliationByCashbox = new Map<string, CashboxReconciliation>();
         reconciliations.forEach(rec => {
