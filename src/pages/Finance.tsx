@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
-import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2 } from 'lucide-react';
+import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2, Car, Landmark, Building2, Wrench } from 'lucide-react';
 import { db, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
 import { isLedgerTransaction } from '../utils/transactions';
 import clsx from 'clsx';
@@ -21,6 +21,7 @@ import { useToast } from '../context/ToastContext';
 import { isDesignerUser } from '../lib/userRoles';
 import { useSearchParams } from 'react-router-dom';
 import CashboxPanel from '../components/finance/CashboxPanel';
+import { EXPENSE_CATEGORY } from '../constants/expenseCategories';
 
 export default function Finance() {
     const { user } = useAuth();
@@ -69,12 +70,16 @@ export default function Finance() {
 
     // Expense Categories
     const expenseCategories = [
-        { id: 'salaries', label: 'مرتبات وأجور', icon: Users },
-        { id: 'marketing', label: 'دعايا وسوشيال ميديا', icon: Megaphone },
-        { id: 'shipping', label: 'شحن وتوصيل', icon: Truck },
-        { id: 'meetings', label: 'اجتماعات ونثريات', icon: Coffee },
-        { id: 'material', label: 'خامات ومستهلكات', icon: Package },
-        { id: 'other', label: 'مصروفات أخرى', icon: Banknote },
+        { id: 'salaries', label: EXPENSE_CATEGORY.salaries, icon: Users },
+        { id: 'shipping', label: EXPENSE_CATEGORY.shipping, icon: Truck },
+        { id: 'transport', label: EXPENSE_CATEGORY.transport, icon: Car },
+        { id: 'marketing', label: EXPENSE_CATEGORY.marketing, icon: Megaphone },
+        { id: 'hospitality', label: EXPENSE_CATEGORY.hospitality, icon: Coffee },
+        { id: 'materials', label: EXPENSE_CATEGORY.materials, icon: Package },
+        { id: 'bankFees', label: EXPENSE_CATEGORY.bankFees, icon: Landmark },
+        { id: 'rentUtilities', label: EXPENSE_CATEGORY.rentUtilities, icon: Building2 },
+        { id: 'maintenance', label: EXPENSE_CATEGORY.maintenance, icon: Wrench },
+        { id: 'other', label: EXPENSE_CATEGORY.other, icon: Banknote },
     ];
 
     useEffect(() => {
@@ -182,7 +187,7 @@ export default function Finance() {
         await db.addTransaction({
             type: 'expense',
             amount: transferFeeAmount,
-            category: 'transfer_fee',
+            category: EXPENSE_CATEGORY.bankFees,
             description: `عمولة سحب/تحويل - ${originalTransaction.description}`.slice(0, 500),
             date: originalTransaction.date,
             effectiveDate: feeEffectiveDate,

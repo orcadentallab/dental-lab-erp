@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from './supabase';
+import { EXPENSE_CATEGORY } from '../constants/expenseCategories';
 
 export type CapitalEntry = {
     id: string;
@@ -238,7 +239,7 @@ export const financeService = {
         const filteredExpenses = expenses?.filter(t => {
             const isEmployeeTx = t.entity_id && ['representative', 'general', null].includes(t.entity_type);
             if (isEmployeeTx) {
-                return t.category === 'مرتبات وأجور' || t.category === 'salaries';
+                return t.category === EXPENSE_CATEGORY.salaries || t.category === 'salaries';
             }
             return true;
         }) || [];
@@ -501,7 +502,7 @@ export const financeService = {
             const employeeClaim = t.type === 'expense'
                 && !!t.entity_id
                 && ['representative', 'general', null].includes(t.entity_type)
-                && !['مرتبات وأجور', 'salaries'].includes(t.category);
+                && ![EXPENSE_CATEGORY.salaries, 'salaries'].includes(t.category);
             return !employeeClaim;
         });
 

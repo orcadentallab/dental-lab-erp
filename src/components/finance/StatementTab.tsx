@@ -19,6 +19,7 @@ import clsx from 'clsx';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
+import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
 
 interface StatementTabProps {
     type: 'service' | 'expense';
@@ -57,45 +58,6 @@ interface ServiceStats {
 
 const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
 
-// Robust Arabic normalization: unify letter variants → canonical form
-const normalizeArabic = (text: string): string =>
-    text.trim()
-        .replace(/\s+/g, ' ')
-        .replace(/[\u064B-\u065F\u0670]/g, '')  // strip diacritics
-        .replace(/[أإآٱ]/g, 'ا')                // alef variants → ا
-        .replace(/ة/g, 'ه')                     // ة → ه
-        .replace(/ى/g, 'ي')                     // ى → ي
-        .replace(/ؤ/g, 'و')
-        .replace(/ئ/g, 'ي')
-        .toLowerCase();
-
-// Semantic aliases: English keys + common Arabic variants → canonical Arabic
-const SEMANTIC_ALIASES: [string, string][] = [
-    ['salaries',                'مرتبات وأجور'],
-    ['مرتبات واجور',            'مرتبات وأجور'],
-    ['shipping',                'شحن وتوصيل'],
-    ['meetings',                'اجتماعات ونثريات'],
-    ['material',                'خامات ومستهلكات'],
-    ['other',                   'مصروفات أخرى'],
-    ['bonus',                   'منحة/مكافأة'],
-    ['deduction',               'خصم/جزاء'],
-    ['advertising',             'دعاية وسوشيال ميديا'],
-    ['marketing',               'دعاية وسوشيال ميديا'],
-    ['دعايا وسوشيال ميديا',    'دعاية وسوشيال ميديا'],
-    ['دعايه وسوشيال ميديا',    'دعاية وسوشيال ميديا'],
-];
-
-// Normalize: alias lookup on normalized key, fallback to trimmed original
-const normalizeCategory = (cat: string | undefined): string => {
-    if (!cat) return 'أخرى';
-    const trimmed = cat.trim();
-    const normed = normalizeArabic(trimmed);
-    for (const [alias, canonical] of SEMANTIC_ALIASES) {
-        if (normalizeArabic(alias) === normed) return canonical;
-    }
-    return trimmed || 'أخرى';
-};
-
 const EXCLUDE_STATUSES = new Set(['New Case', 'In Progress', 'Pending', 'Wait', 'Cancelled']);
 
 export default function StatementTab({
@@ -121,10 +83,7 @@ export default function StatementTab({
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
 
-    const expenseCategories = [
-        'مرتبات وأجور', 'دعايا وسوشيال ميديا', 'شحن وتوصيل',
-        'اجتماعات ونثريات', 'خامات ومستهلكات', 'مصروفات أخرى',
-    ];
+    const expenseCategories = ALL_EXPENSE_CATEGORIES;
 
 
 
@@ -393,10 +352,10 @@ export default function StatementTab({
             const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
             if (start && txDate < start) return false;
             if (end && txDate > end) return false;
-            if (selectedExpenseCategory && normalizeCategory(t.category) !== selectedExpenseCategory) return false;
+            if (selectedExpenseCategory && normalizeExpenseCategory(t.category) !== selectedExpenseCategory) return false;
             return true;
         }).forEach(t => {
-            items.push({ id: t.id, date: (t.date || '').split('T')[0], category: normalizeCategory(t.category), description: t.description || '', amount: t.amount || 0 });
+            items.push({ id: t.id, date: (t.date || '').split('T')[0], category: normalizeExpenseCategory(t.category), description: t.description || '', amount: t.amount || 0 });
             totalAmount += (t.amount || 0);
         });
         items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

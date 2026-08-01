@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
+import { EMPLOYEE_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory, type ExpenseCategory } from '../constants/expenseCategories';
 
 export default function Employees() {
     const { user: currentUser } = useAuth();
@@ -43,9 +44,14 @@ export default function Employees() {
 
     // Expense Registration State
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-    const [newExpense, setNewExpense] = useState({
+    const [newExpense, setNewExpense] = useState<{
+        amount: string;
+        category: ExpenseCategory;
+        description: string;
+        date: string;
+    }>({
         amount: '',
-        category: 'شحن وتوصيل',
+        category: EXPENSE_CATEGORY.shipping,
         description: '',
         date: new Date().toISOString().split('T')[0]
     });
@@ -186,7 +192,7 @@ export default function Employees() {
         await db.addTransaction({
             type: 'expense',
             amount: fee,
-            category: 'transfer_fee',
+            category: EXPENSE_CATEGORY.bankFees,
             description: `مصاريف بنك/محفظة - ${transaction.description}`.slice(0, 500),
             date: transaction.date,
             effectiveDate,
@@ -388,7 +394,7 @@ export default function Employees() {
                 const tx = await db.addTransaction({
                     type: 'expense',
                     amount: stats.salaryDue,
-                    category: 'مرتبات وأجور',
+                    category: EXPENSE_CATEGORY.salaries,
                     description: `راتب شهر ${selectedMonth} - ${user.name} (أساسي: ${user.baseSalary || 0})${adjustmentsDesc}`,
                     date: today,
                     entityId: user.id,
@@ -434,7 +440,7 @@ export default function Employees() {
 
             setNewExpense({
                 amount: '',
-                category: 'شحن وتوصيل',
+                category: EXPENSE_CATEGORY.shipping,
                 description: '',
                 date: new Date().toISOString().split('T')[0]
             });
@@ -1092,14 +1098,12 @@ export default function Employees() {
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">نوع المصروف *</label>
                                 <select
                                     value={newExpense.category}
-                                    onChange={(e) => setNewExpense(prev => ({ ...prev, category: e.target.value }))}
+                                    onChange={(e) => setNewExpense(prev => ({ ...prev, category: normalizeExpenseCategory(e.target.value) }))}
                                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
                                 >
-                                    <option value="شحن وتوصيل">شحن وتوصيل</option>
-                                    <option value="انتقالات">انتقالات</option>
-                                    <option value="بوفيه وضيافة">بوفيه وضيافة</option>
-                                    <option value="أدوات ومهمات">أدوات ومهمات</option>
-                                    <option value="أخرى">أخرى</option>
+                                    {EMPLOYEE_EXPENSE_CATEGORIES.map(expenseCategory => (
+                                        <option key={expenseCategory} value={expenseCategory}>{expenseCategory}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div>

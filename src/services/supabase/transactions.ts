@@ -3,6 +3,16 @@ import type { DbTransaction, DbTransactionInsert, DbTransactionUpdate } from './
 import type { Transaction } from '../db';
 import { TransactionCreateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
+import { normalizeExpenseCategory } from '../../constants/expenseCategories';
+
+const NON_CATEGORY_TRANSACTION_CODES = new Set([
+    'collection', 'supplier_payment', 'designer_payment', 'bonus', 'deduction', 'commission',
+]);
+
+function canonicalTransactionCategory(type: Transaction['type'], category: string): string {
+    if (type !== 'expense' || NON_CATEGORY_TRANSACTION_CODES.has(category)) return category;
+    return normalizeExpenseCategory(category);
+}
 
 // Transform database record to application format
 function dbToTransaction(dbTx: DbTransaction): Transaction {
@@ -31,7 +41,7 @@ function transactionToDb(tx: Omit<Transaction, 'id'>): DbTransactionInsert {
     return {
         type: tx.type,
         amount: tx.amount,
-        category: tx.category,
+        category: canonicalTransactionCategory(tx.type, tx.category),
         date: tx.date,
         description: tx.description,
         entity_id: tx.entityId || null,
@@ -163,7 +173,11 @@ export async function updateTransaction(id: string, updates: Partial<Transaction
 
     if (updates.type !== undefined) dbUpdates.type = updates.type;
     if (updates.amount !== undefined) dbUpdates.amount = updates.amount;
-    if (updates.category !== undefined) dbUpdates.category = updates.category;
+    if (updates.category !== undefined) {
+        dbUpdates.category = NON_CATEGORY_TRANSACTION_CODES.has(updates.category)
+            ? updates.category
+            : normalizeExpenseCategory(updates.category);
+    }
     if (updates.date !== undefined) dbUpdates.date = updates.date;
     if (updates.description !== undefined) dbUpdates.description = updates.description;
     if (updates.entityId !== undefined) dbUpdates.entity_id = updates.entityId || null;

@@ -18,6 +18,7 @@ import {
     Award
 } from 'lucide-react';
 import clsx from 'clsx';
+import { EMPLOYEE_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory, type ExpenseCategory } from '../constants/expenseCategories';
 
 export default function EmployeeDetail() {
     const { id } = useParams<{ id: string }>();
@@ -65,9 +66,14 @@ export default function EmployeeDetail() {
 
     // Daily Expenses State (for representative daily expenses)
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
-    const [newExpense, setNewExpense] = useState({
+    const [newExpense, setNewExpense] = useState<{
+        amount: string;
+        category: ExpenseCategory;
+        description: string;
+        date: string;
+    }>({
         amount: '',
-        category: 'شحن وتوصيل',
+        category: EXPENSE_CATEGORY.shipping,
         description: '',
         date: new Date().toISOString().split('T')[0]
     });
@@ -184,7 +190,7 @@ export default function EmployeeDetail() {
             if (t.category === 'مرتبات وأجور') label = 'صرف راتب';
             else if (t.category === 'bonus') label = 'منحة / مكافأة';
             else if (t.category === 'deduction') label = 'خصم / جزاء';
-            else if (['شحن وتوصيل', 'انتقالات', 'بوفيه وضيافة', 'أدوات ومهمات', 'أخرى'].includes(t.category)) {
+            else if (EMPLOYEE_EXPENSE_CATEGORIES.some(expenseCategory => expenseCategory === t.category)) {
                 label = `مصروف (${t.category})`;
             } else if (t.category === 'commission') {
                 label = 'عمولة يدوية';
@@ -268,7 +274,7 @@ export default function EmployeeDetail() {
 
             setNewExpense({
                 amount: '',
-                category: 'شحن وتوصيل',
+                category: EXPENSE_CATEGORY.shipping,
                 description: '',
                 date: new Date().toISOString().split('T')[0]
             });
@@ -355,7 +361,7 @@ export default function EmployeeDetail() {
             const tx = await db.addTransaction({
                 type: 'expense',
                 amount: stats.salaryDue,
-                category: 'مرتبات وأجور',
+                category: EXPENSE_CATEGORY.salaries,
                 description: `راتب شهر ${selectedMonth} - ${employee.name} (أساسي: ${employee.baseSalary || 0} - عمولة: ${commissions.filter(c => c.period === selectedMonth).reduce((sum, c) => sum + c.amount, 0)} - منح: ${activeBonuses.reduce((sum, b) => sum + b.amount, 0)} - خصومات: ${activeDeductions.reduce((sum, d) => sum + d.amount, 0)})${adjustmentsDesc}`,
                 date: today,
                 entityId: employee.id,
@@ -372,7 +378,7 @@ export default function EmployeeDetail() {
                     await db.addTransaction({
                         type: 'expense',
                         amount: fee,
-                        category: 'transfer_fee',
+                        category: EXPENSE_CATEGORY.bankFees,
                         description: `مصاريف بنك/محفظة - راتب شهر ${selectedMonth} - ${employee.name}`.slice(0, 500),
                         date: today,
                         effectiveDate: selectedMonth + '-01',
@@ -1402,14 +1408,12 @@ export default function EmployeeDetail() {
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">نوع المصروف *</label>
                                 <select
                                     value={newExpense.category}
-                                    onChange={(e) => setNewExpense(prev => ({ ...prev, category: e.target.value }))}
+                                    onChange={(e) => setNewExpense(prev => ({ ...prev, category: normalizeExpenseCategory(e.target.value) }))}
                                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
                                 >
-                                    <option value="شحن وتوصيل">شحن وتوصيل</option>
-                                    <option value="انتقالات">انتقالات</option>
-                                    <option value="بوفيه وضيافة">بوفيه وضيافة</option>
-                                    <option value="أدوات ومهمات">أدوات ومهمات</option>
-                                    <option value="أخرى">أخرى</option>
+                                    {EMPLOYEE_EXPENSE_CATEGORIES.map(expenseCategory => (
+                                        <option key={expenseCategory} value={expenseCategory}>{expenseCategory}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div>

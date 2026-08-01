@@ -128,7 +128,7 @@ BEGIN
                 is_registered, is_approved, status, effective_date, cashbox_id,
                 linked_transaction_id, is_system_generated_fee
             ) VALUES (
-                'expense', v_transfer_fee, 'transfer_fee', p_settlement_date,
+                'expense', v_transfer_fee, 'عمولات ورسوم بنكية', p_settlement_date,
                 LEFT('مصاريف بنك/محفظة - تسوية مصاريف ' || v_employee_name, 500), 'general',
                 true, true, 'approved', p_effective_date, p_cashbox_id,
                 v_first_transaction_id, true
