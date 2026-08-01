@@ -246,6 +246,12 @@ test.describe('financial obligation amounts and due dates', () => {
     test('keeps obligations in shadow mode for tracking only', () => {
         expect(FINANCIAL_OBLIGATIONS_FLAGS.trackingEnabled).toBe(true);
         expect(FINANCIAL_OBLIGATIONS_FLAGS.reportingEnabled).toBe(false);
+        expect(FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled).toBe(false);
+    });
+
+    test('uses the database trigger as the only normal order-mutation financial boundary', () => {
+        expect(ordersSource).toContain('if (!FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled)');
+        expect(ordersSource).toContain('The database trigger is the authoritative financial boundary');
     });
 
     test('detects lab cost source metadata without recalculating payable amount', () => {

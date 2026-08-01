@@ -188,6 +188,14 @@ vi.mock('../../src/lib/supabase', () => {
                     }
                     return order;
                 });
+            } else if (name === 'soft_delete_order_atomic') {
+                const id = args.p_order_id;
+                mockDatabase['orders'] = mockDatabase['orders'].map(order => {
+                    if (order.id === id) {
+                        return { ...order, is_deleted: true };
+                    }
+                    return order;
+                });
             } else if (name === 'apply_order_rejection_atomic') {
                 const id = args.p_order_id;
                 mockDatabase['orders'] = mockDatabase['orders'].map(order => {
@@ -239,7 +247,7 @@ describe('Financial Obligations Integration Tests', () => {
         db.entity_billing_settings = [];
     });
 
-    it('Scenario 4b: should create a doctor receivable obligation when status changes from Ready to Delivered', async () => {
+    it('does not repeat the database obligation trigger after a Delivered update', async () => {
         const db = _mockDatabase as Record<string, any[]>;
 
         // 1. Seed order in "Ready" status (with valid v4 UUIDs)
@@ -268,18 +276,11 @@ describe('Financial Obligations Integration Tests', () => {
         expect(updatedOrder).toBeDefined();
         expect(updatedOrder?.status).toBe('Delivered');
 
-        // 3. Verify that a financial_obligation record was created
+        // The unit mock does not emulate PostgreSQL triggers. No client-side
+        // obligation write should occur after the atomic order update; the real
+        // trigger behavior is covered by the database integration suite.
         const obligations = db.financial_obligations;
-        expect(obligations).toHaveLength(1);
-        
-        const doctorObligation = obligations[0];
-        expect(doctorObligation.order_id).toBe(orderId);
-        expect(doctorObligation.entity_type).toBe(BILLING_ENTITY_TYPES.doctor);
-        expect(doctorObligation.entity_id).toBe(doctorId);
-        expect(doctorObligation.direction).toBe(OBLIGATION_DIRECTIONS.receivable);
-        expect(doctorObligation.gross_amount).toBe(1500);
-        expect(doctorObligation.status).toBe('unpaid');
-        expect(doctorObligation.voided_at).toBeUndefined();
+        expect(obligations).toHaveLength(0);
     });
 
     it('Scenario 4c: runFinancialCorrectionsAfterOrderUpdate should be idempotent', async () => {
@@ -394,7 +395,7 @@ describe('Financial Obligations Integration Tests', () => {
         expect(updated?.rejectedLabCost).toBeUndefined();
     });
 
-    it('Scenario: should void all obligations (including multiple lab rejections) on order deletion, even if one fails', async () => {
+    it('does not perform partial best-effort obligation cleanup in the client on deletion', async () => {
         const db = _mockDatabase as Record<string, any[]>;
         const orderId = '11111111-bbbb-4ccc-8ddd-eeeeeeeeeeee';
         const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -496,16 +497,13 @@ describe('Financial Obligations Integration Tests', () => {
         const updated = db.orders.find(o => o.id === orderId);
         expect(updated?.is_deleted).toBe(true);
 
-        // 3. Verify obligations status
+        // PostgreSQL performs the authoritative all-or-nothing cleanup. The
+        // client mock must not partially mutate any financial row afterward.
         const fetchObligation = (id: string) => db.financial_obligations.find(o => o.id === id);
-
-        // Doctor, Supplier Ready, Designer, Rejection 1 should be voided
-        expect(fetchObligation(docObligation.id)?.status).toBe('void');
-        expect(fetchObligation(supplierObligation.id)?.status).toBe('void');
-        expect(fetchObligation(rejectionObligation1.id)?.status).toBe('void');
-        expect(fetchObligation(designerObligation.id)?.status).toBe('void');
-
-        // Rejection 2 failed to void and should still be unpaid
+        expect(fetchObligation(docObligation.id)?.status).toBe('unpaid');
+        expect(fetchObligation(supplierObligation.id)?.status).toBe('unpaid');
+        expect(fetchObligation(rejectionObligation1.id)?.status).toBe('unpaid');
+        expect(fetchObligation(designerObligation.id)?.status).toBe('unpaid');
         expect(fetchObligation(rejectionObligation2.id)?.status).toBe('unpaid');
     });
 
@@ -553,7 +551,7 @@ describe('Financial Obligations Integration Tests', () => {
         expect(activeOb?.status).toBe('unpaid');
     });
 
-    it('Scenario: partially paid obligation reallocation on deletion does not drop payment', async () => {
+    it('leaves payment reallocation entirely to the database transaction on deletion', async () => {
         const db = _mockDatabase as Record<string, any[]>;
         const orderId = '33333333-bbbb-4ccc-8ddd-eeeeeeeeeeee';
         const doctorId = 'd1d1d1d1-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -599,13 +597,13 @@ describe('Financial Obligations Integration Tests', () => {
         // Delete order
         await deleteOrder(orderId);
 
-        // Verify obligation is voided
+        // No client-side financial mutation occurs; the database integration
+        // test verifies atomic void + credit creation against real triggers.
         const ob = db.financial_obligations.find(o => o.id === docObligation.id);
-        expect(ob?.status).toBe('void');
+        expect(ob?.status).toBe('partially_paid');
 
-        // Verify payment allocations are reversed
         const alloc = db.payment_allocations.find(a => a.id === 'alloc-1');
-        expect(alloc?.status).toBe('reversed');
+        expect(alloc?.status).toBe('active');
     });
 
     it('Scenario: should NOT void obligations if order is archived', async () => {

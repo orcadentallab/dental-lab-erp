@@ -13,7 +13,8 @@ Prerequisites:
 
 The suite covers atomic order corrections, Redo creation, On Hold retirement,
 automatic doctor/center collection FIFO with overpayment credit handling, and a
-role matrix for sensitive reporting tables and privileged RPCs.
+role matrix for sensitive reporting tables and privileged RPCs. It also verifies
+that workflow mutations preserve payments atomically through the database trigger.
 
 The SQL suite runs inside a transaction and finishes with `ROLLBACK`, so its
 fixture doctors, suppliers, users, orders, payments, allocations, and credits

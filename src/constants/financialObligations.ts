@@ -51,6 +51,10 @@ export type ObligationSource = typeof OBLIGATION_SOURCES[keyof typeof OBLIGATION
 export const FINANCIAL_OBLIGATIONS_FLAGS = {
     trackingEnabled: true,
     reportingEnabled: false,
+    // Order mutations are synchronized by sync_order_financial_obligations in
+    // the same database transaction. Legacy client-side re-sync is retained
+    // only as an explicit emergency fallback and must stay disabled normally.
+    clientSideMutationSyncEnabled: false,
 } as const;
 
 export const DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE =

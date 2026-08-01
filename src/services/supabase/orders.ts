@@ -2179,6 +2179,15 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
 
     const updatedOrder = await getOrder(id);
 
+    // The database trigger is the authoritative financial boundary. It has
+    // already synchronized obligations, allocations, and credits atomically
+    // with update_order_atomic. Do not repeat those writes from the client: a
+    // later network/RLS failure would otherwise report a failed operation after
+    // the order and its finances had actually committed.
+    if (!FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled) {
+        return updatedOrder;
+    }
+
     const shouldVoidDoctorReceivableForLifecycle = Boolean(
         updatedOrder
         && financialPartyCorrection
@@ -2411,7 +2420,13 @@ export async function deleteOrder(id: string): Promise<void> {
     }
 
     try {
-        await updateOrder(id, { isDeleted: true });
+        const { error } = await supabase.rpc('soft_delete_order_atomic', {
+            p_order_id: id,
+        });
+
+        if (error) {
+            throw error;
+        }
     } catch (e) {
         throw ErrorHandler.handle(e, 'deleteOrder');
     }
@@ -2698,6 +2713,13 @@ export async function updateOrderStatus(
                 } : {}),
             },
         });
+    }
+
+    // Non-rejection status updates are synchronized by the database trigger;
+    // rejection updates use apply_order_rejection_atomic. Both paths have
+    // completed their financial work before returning from the RPC.
+    if (!FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled) {
+        return updatedOrder;
     }
 
     if (

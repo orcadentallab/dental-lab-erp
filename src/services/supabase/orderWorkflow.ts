@@ -33,6 +33,7 @@ import {
 import { ORDER_EVENT_TYPES } from '../../constants/orderEvents';
 import type { ProductionStatus, IssueState } from '../../constants/workflow';
 import { getProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import { FINANCIAL_OBLIGATIONS_FLAGS } from '../../constants/financialObligations';
 import {
     isOrderEditReasonCode,
     reasonRequiresNote,
@@ -145,7 +146,11 @@ export async function repUpdateOrderWithAudit(
     
     const updatedOrder = await getOrder(orderId);
 
-    if (previousOrder && updatedOrder) {
+    if (
+        FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled
+        && previousOrder
+        && updatedOrder
+    ) {
         const { runFinancialCorrectionsAfterOrderUpdate } = await import('./orders');
         let callerUserId: string | null = null;
         try {
@@ -646,7 +651,12 @@ export async function adminReviewOrderEdit(
     }
 
     // If approved and we have the previous order state, run financial corrections
-    if (action === 'approve' && orderId && previousOrder) {
+    if (
+        FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled
+        && action === 'approve'
+        && orderId
+        && previousOrder
+    ) {
         const updatedOrder = await getOrder(orderId);
         if (updatedOrder) {
             let adminUserId: string | null = null;
