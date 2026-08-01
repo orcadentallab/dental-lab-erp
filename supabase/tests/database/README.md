@@ -11,6 +11,10 @@ Prerequisites:
    repository migration.
 4. Run `npm run test:db`.
 
+The suite covers atomic order corrections, Redo creation, On Hold retirement,
+automatic doctor/center collection FIFO with overpayment credit handling, and a
+role matrix for sensitive reporting tables and privileged RPCs.
+
 The SQL suite runs inside a transaction and finishes with `ROLLBACK`, so its
 fixture doctors, suppliers, users, orders, payments, allocations, and credits
 are never retained.

@@ -47,6 +47,7 @@ describe('doctor collection FIFO migration', () => {
         expect(migration).toContain('v_result_credit_amount <> 10370.00');
         expect(migration).toContain('historicalBackfill20260801');
         expect(migration).toContain('v_already_applied');
+        expect(migration).toContain('v_empty_database');
         expect(migration).toContain('doctor_statement_source_guard_20260801');
         expect(migration).toContain('Doctor statement source guard failed');
     });

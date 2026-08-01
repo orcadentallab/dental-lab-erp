@@ -625,6 +625,7 @@ DECLARE
     v_historical_credit_count INTEGER;
     v_historical_credit_amount NUMERIC(12, 2);
     v_already_applied BOOLEAN := FALSE;
+    v_empty_database BOOLEAN := FALSE;
 BEGIN
     WITH active_alloc AS (
         SELECT payment_transaction_id, SUM(allocated_amount) AS amount
@@ -692,6 +693,15 @@ BEGIN
        AND v_historical_credit_count = 7
        AND v_historical_credit_amount = 10370.00 THEN
         v_already_applied := TRUE;
+    ELSIF v_untracked_count = 0
+          AND v_untracked_amount = 0
+          AND v_credit_count = 0
+          AND v_credit_amount = 0
+          AND v_historical_allocation_count = 0
+          AND v_historical_credit_count = 0 THEN
+        -- Fresh local/test databases have no production history to backfill.
+        -- The functions and triggers above still install normally.
+        v_empty_database := TRUE;
     ELSIF v_untracked_count <> 87 OR v_untracked_amount <> 524730.00 THEN
         RAISE EXCEPTION
             'Doctor FIFO guard failed: expected 87 untracked collections / 524730.00, found % / %',
@@ -704,7 +714,7 @@ BEGIN
             v_credit_amount;
     END IF;
 
-    IF NOT v_already_applied THEN
+    IF NOT v_already_applied AND NOT v_empty_database THEN
         PERFORM set_config('orca.doctor_fifo_backfill', '1', TRUE);
 
         FOR v_account IN
@@ -805,7 +815,7 @@ BEGIN
             v_remaining_untracked_amount;
     END IF;
 
-    IF NOT v_already_applied THEN
+    IF NOT v_already_applied AND NOT v_empty_database THEN
         SELECT COUNT(*), COALESCE(SUM(remaining_amount), 0)
         INTO v_result_credit_count, v_result_credit_amount
         FROM public.account_credits
@@ -821,27 +831,29 @@ BEGIN
         END IF;
     END IF;
 
-    SELECT COUNT(*),
-           COALESCE(SUM(allocated_amount), 0),
-           COUNT(DISTINCT obligation_id)
-    INTO v_historical_allocation_count,
-         v_historical_allocation_amount,
-         v_historical_obligation_count
-    FROM public.payment_allocations
-    WHERE metadata->>'historicalBackfill20260801' = 'true';
+    IF NOT v_empty_database THEN
+        SELECT COUNT(*),
+               COALESCE(SUM(allocated_amount), 0),
+               COUNT(DISTINCT obligation_id)
+        INTO v_historical_allocation_count,
+             v_historical_allocation_amount,
+             v_historical_obligation_count
+        FROM public.payment_allocations
+        WHERE metadata->>'historicalBackfill20260801' = 'true';
 
-    SELECT COUNT(*), COALESCE(SUM(amount), 0)
-    INTO v_historical_credit_count, v_historical_credit_amount
-    FROM public.account_credits
-    WHERE metadata->>'historicalBackfill20260801' = 'true';
+        SELECT COUNT(*), COALESCE(SUM(amount), 0)
+        INTO v_historical_credit_count, v_historical_credit_amount
+        FROM public.account_credits
+        WHERE metadata->>'historicalBackfill20260801' = 'true';
 
-    IF v_historical_allocation_count <> 340
-       OR v_historical_allocation_amount <> 518560.00
-       OR v_historical_obligation_count <> 324
-       OR v_historical_credit_count <> 7
-       OR v_historical_credit_amount <> 10370.00 THEN
-        RAISE EXCEPTION
-            'Doctor FIFO historical marker verification failed';
+        IF v_historical_allocation_count <> 340
+           OR v_historical_allocation_amount <> 518560.00
+           OR v_historical_obligation_count <> 324
+           OR v_historical_credit_count <> 7
+           OR v_historical_credit_amount <> 10370.00 THEN
+            RAISE EXCEPTION
+                'Doctor FIFO historical marker verification failed';
+        END IF;
     END IF;
 
     SELECT
