@@ -2,7 +2,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(21);
+SELECT plan(24);
 
 INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password,
@@ -41,6 +41,9 @@ VALUES (
 INSERT INTO public.ai_insights (id, insight_type, content)
 VALUES ('71000000-0000-0000-0000-000000000001', 'on_demand', 'Sensitive AI report');
 
+INSERT INTO public.cashboxes (id, name, type, opening_balance)
+VALUES ('71000000-0000-0000-0000-000000000002', 'RLS finance box', 'cash', 0);
+
 SELECT ok(
     NOT has_function_privilege('anon', 'public.get_dashboard_data()', 'EXECUTE'),
     'anonymous callers cannot execute the dashboard RPC'
@@ -72,6 +75,14 @@ SELECT ok(
 SELECT ok(
     NOT has_function_privilege('anon', 'public.get_todays_follow_ups()', 'EXECUTE'),
     'anonymous callers cannot read follow-up reports'
+);
+SELECT ok(
+    NOT has_function_privilege(
+        'anon',
+        'public.create_finance_transaction_atomic(text,numeric,text,text,date,date,text,uuid,uuid,text,numeric,date)',
+        'EXECUTE'
+    ),
+    'anonymous callers cannot create atomic finance transactions'
 );
 
 SELECT set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000002', TRUE);
@@ -111,6 +122,16 @@ SELECT throws_like(
     '%admin role required%',
     'accountant cannot execute admin-only analytics'
 );
+SELECT lives_ok(
+    $$
+        SELECT public.create_finance_transaction_atomic(
+            'income', 75, 'إيراد عام', 'RLS accountant atomic income',
+            CURRENT_DATE, NULL, 'general', NULL,
+            '71000000-0000-0000-0000-000000000002', 'approved', 0, NULL
+        )
+    $$,
+    'accountant can create an authorized atomic finance transaction'
+);
 
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub', '91000000-0000-0000-0000-000000000004', TRUE);
@@ -119,6 +140,16 @@ SELECT throws_like(
     $$SELECT public.get_dashboard_data()$$,
     '%staff role required%',
     'doctor cannot execute the internal staff dashboard'
+);
+SELECT throws_like(
+    $$
+        SELECT public.create_finance_transaction_atomic(
+            'income', 75, 'إيراد عام', 'Unauthorized doctor income',
+            CURRENT_DATE, NULL, 'general', NULL, NULL, 'approved', 0, NULL
+        )
+    $$,
+    '%row-level security policy%',
+    'doctor cannot create finance transactions through the atomic RPC'
 );
 
 RESET ROLE;

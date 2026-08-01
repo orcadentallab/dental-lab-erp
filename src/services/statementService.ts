@@ -1,6 +1,11 @@
 import type { Order, Transaction } from './db';
 import type { Adjustment } from './financeService';
-import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
+import {
+    getDoctorOrderDisplayAmount,
+    getDoctorReceivableAmount,
+    getOfficialStatementDate,
+    isDoctorStatementIncluded,
+} from '../constants/orderLifecycle';
 
 export interface StatementItem {
     id: string;
@@ -31,16 +36,6 @@ export interface StatementResult {
     filteredDoctorName?: string;
 }
 
-const ZERO_VALUE_STATUSES = new Set(['doctor rejected', 'lab rejected', 'cancelled', 'rejected']);
-const getAllDoctorAmount = (order: Partial<Order>): number => {
-    const normalizedStatus = (order.status || '').trim().toLowerCase();
-    if (normalizedStatus === 'doctor rejected' || normalizedStatus === 'lab rejected' || normalizedStatus === 'rejected') {
-        return getDoctorReceivableAmount(order);
-    }
-    if (ZERO_VALUE_STATUSES.has(normalizedStatus)) return 0;
-    return order.totalPrice || 0;
-};
-
 export const statementService = {
     /**
      * Calculates the statement for a specific doctor over a date range.
@@ -68,6 +63,7 @@ export const statementService = {
         // Filter Orders for Opening Balance
         const pastOrders = allOrders.filter(o => {
             if (o.doctorId !== doctorId) return false;
+            if (o.isDeleted) return false;
             const sortDate = getOfficialStatementDate(o);
 
             // Check if before start date
@@ -77,7 +73,7 @@ export const statementService = {
         });
 
         openingDebit = pastOrders.reduce((sum, o) => {
-            const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+            const amount = showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
             return sum + amount;
         }, 0);
 
@@ -111,6 +107,7 @@ export const statementService = {
         // Current Period Orders
         const periodOrders = allOrders.filter(o => {
             if (o.doctorId !== doctorId) return false;
+            if (o.isDeleted) return false;
             const sortDate = getOfficialStatementDate(o);
 
             if (startDate && sortDate < startDate) return false;
@@ -135,7 +132,7 @@ export const statementService = {
                 description: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                 details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
-                amount: showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o),
+                amount: showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o),
                 status: o.status,
                 services,
                 count,

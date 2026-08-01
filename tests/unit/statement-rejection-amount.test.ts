@@ -48,4 +48,24 @@ describe('doctor statement rejection amounts', () => {
 
         expect(result.items[0]?.amount).toBe(2_000);
     });
+
+    it('excludes soft-deleted terminal orders from normal and show-all statements', () => {
+        const deleted = rejectedOrder({
+            isDeleted: true,
+            rejectionDoctorDecision: 'decide_later',
+            rejectedDoctorAmount: 2_000,
+        });
+
+        const normal = statementService.calculateDoctorStatement(
+            'doctor-1', [deleted], [], '2026-07-01', '2026-07-31', [], false
+        );
+        const showAll = statementService.calculateDoctorStatement(
+            'doctor-1', [deleted], [], '2026-07-01', '2026-07-31', [], true
+        );
+
+        expect(normal.items).toHaveLength(0);
+        expect(showAll.items).toHaveLength(0);
+        expect(normal.totals.balance).toBe(0);
+        expect(showAll.totals.balance).toBe(0);
+    });
 });

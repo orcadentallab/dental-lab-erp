@@ -1043,6 +1043,15 @@ class MockDB {
         return addTransaction(tx);
     }
 
+    async addTransactionWithTransferFee(
+        tx: Omit<Transaction, 'id'>,
+        transferFeeAmount: number,
+        transferFeeEffectiveDate?: string
+    ): Promise<Transaction> {
+        const { addTransactionWithTransferFee } = await import('./supabase/transactions');
+        return addTransactionWithTransferFee(tx, transferFeeAmount, transferFeeEffectiveDate);
+    }
+
     async updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | null> {
         const { updateTransaction } = await import('./supabase/transactions');
         return updateTransaction(id, updates);

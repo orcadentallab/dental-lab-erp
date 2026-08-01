@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type EntityBillingSettings } from '../services/db';
 import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
-import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
+import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
 import { getLabCostMetadata } from '../constants/financialObligations';
 import { BILLING_ENTITY_TYPES } from '../constants/billingSettings';
@@ -90,15 +90,8 @@ const isInRange = (dateStr: string, start: string, end: string) => {
 };
 
 const isVisible = (order: Partial<Order>, showAll: boolean = false) => {
+    if (order.isDeleted) return false;
     return isVisibleInAccountStatement(order) || showAll;
-};
-
-// For "all" time filter: get receivable amount for any order status
-// Rejected / Cancelled → 0, everything else → totalPrice
-const ZERO_VALUE_NORMALIZED = new Set(['doctor rejected', 'lab rejected', 'cancelled', 'rejected']);
-const getAllDoctorAmount = (order: Partial<Order>): number => {
-    if (ZERO_VALUE_NORMALIZED.has((order.status || '').trim().toLowerCase())) return 0;
-    return order.totalPrice || 0;
 };
 
 // Status badge config for "all" mode
@@ -276,7 +269,7 @@ export default function StatementsPage() {
                 // Otherwise: only statement-included statuses (delivered/completed)
                 if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
                 const pid = doctorParentById.get(o.doctorId) || o.doctorId;
-                const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                const amount = showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
                 workMap.set(pid, (workMap.get(pid) ?? 0) + amount);
                 countMap.set(pid, (countMap.get(pid) ?? 0) + 1);
             }
@@ -341,7 +334,7 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!(isDesignerPayable(o) || showAllOrders) || !o.designerId || o.workflowType !== 'split') continue;
+                if (o.isDeleted || !(isDesignerPayable(o) || showAllOrders) || !o.designerId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -400,7 +393,7 @@ export default function StatementsPage() {
                 // "all" filter -> showAllOrders: include every order (rejected/cancelled shown with 0)
                 // Other filters: only statement-included statuses
                 if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
-                const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                const amount = showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
                 // Sub-doctor name (if order is from a child clinic)
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
                 lines.push({
@@ -469,7 +462,7 @@ export default function StatementsPage() {
 
         if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (o.isDeleted || !(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
@@ -537,7 +530,7 @@ export default function StatementsPage() {
                 const statDate = getOfficialStatementDate(o);
                 if (statDate >= monthStart) continue;
                 if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
-                openingDebit += showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                openingDebit += showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
             }
             for (const t of transactions) {
                 if ((t.entityType !== 'doctor' && t.entityType) || t.type !== 'income') continue;
@@ -563,7 +556,7 @@ export default function StatementsPage() {
                 const statDate = getOfficialStatementDate(o);
                 if (statDate < monthStart || statDate > monthEnd) continue;
                 if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
-                const amount = showAllOrders ? getAllDoctorAmount(o) : getDoctorReceivableAmount(o);
+                const amount = showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
                 monthOrders.push({
                     id: o.id, date: statDate,
@@ -621,7 +614,7 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'designers') {
             for (const o of orders) {
-                if (!(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (o.isDeleted || !(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
                 const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;

@@ -76,6 +76,8 @@ type LifecycleOrder = Partial<Order> & {
     design_url?: string | null;
     issueState?: string | null;
     issue_state?: string | null;
+    isDeleted?: boolean | null;
+    is_deleted?: boolean | null;
 };
 
 type CashRevenueCandidate = Partial<Transaction> & {
@@ -226,6 +228,7 @@ export function isBillableToDoctor(order: LifecycleOrder): boolean {
 }
 
 export function isDoctorStatementIncluded(order: LifecycleOrder): boolean {
+    if (order.isDeleted || order.is_deleted) return false;
     return DOCTOR_STATEMENT_INCLUDED_STATUSES.includes(
         normalizeStatus(order.status) as typeof DOCTOR_STATEMENT_INCLUDED_STATUSES[number]
     );
@@ -239,6 +242,25 @@ export function getDoctorReceivableAmount(order: LifecycleOrder): number {
             : 0;
     }
     return isDeliveredForDoctorReceivable(order) ? order.totalPrice || 0 : 0;
+}
+
+/**
+ * Amount shown when the user explicitly asks to include unfinished orders.
+ * This is a projected order value for active work, but terminal issue states
+ * must keep their approved accounting amount instead of reverting to zero.
+ */
+export function getDoctorOrderDisplayAmount(order: LifecycleOrder): number {
+    const normalizedStatus = normalizeStatus(order.status);
+
+    if (['doctor rejected', 'rejected', 'lab rejected'].includes(normalizedStatus)) {
+        return getDoctorReceivableAmount(order);
+    }
+
+    if (['cancelled', 'returned for adjustments'].includes(normalizedStatus)) {
+        return 0;
+    }
+
+    return Math.max(0, order.totalPrice || 0);
 }
 
 const dateOnly = (date?: string | null): string => (date || '').split('T')[0];

@@ -168,6 +168,44 @@ export async function addTransaction(tx: Omit<Transaction, 'id'>): Promise<Trans
     return dbToTransaction(data);
 }
 
+export async function addTransactionWithTransferFee(
+    tx: Omit<Transaction, 'id'>,
+    transferFeeAmount: number,
+    transferFeeEffectiveDate?: string
+): Promise<Transaction> {
+    try {
+        TransactionCreateSchema.parse(tx);
+    } catch (error: unknown) {
+        throw new ValidationError(formatValidationError(error));
+    }
+
+    if (!Number.isFinite(transferFeeAmount) || transferFeeAmount < 0) {
+        throw new ValidationError('قيمة عمولة التحويل غير صحيحة');
+    }
+
+    const dbTx = transactionToDb(tx);
+    const { data, error } = await supabase.rpc('create_finance_transaction_atomic', {
+        p_type: dbTx.type,
+        p_amount: dbTx.amount,
+        p_category: dbTx.category,
+        p_description: dbTx.description,
+        p_date: dbTx.date,
+        p_effective_date: dbTx.effective_date,
+        p_entity_type: dbTx.entity_type,
+        p_entity_id: dbTx.entity_id,
+        p_cashbox_id: dbTx.cashbox_id,
+        p_status: dbTx.status,
+        p_transfer_fee_amount: transferFeeAmount,
+        p_transfer_fee_effective_date: transferFeeEffectiveDate || null,
+    });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'addTransactionWithTransferFee');
+    }
+
+    return dbToTransaction(data as unknown as DbTransaction);
+}
+
 export async function updateTransaction(id: string, updates: Partial<Transaction>): Promise<Transaction | null> {
     const dbUpdates: DbTransactionUpdate = {};
 

@@ -5,6 +5,7 @@ import {
     DELIVERY_ROUTES,
     canRecognizeCashRevenue,
     getDeliveryRoute,
+    getDoctorOrderDisplayAmount,
     getFinancialSummary,
     getOfficialStatementDate,
     getMainStatus,
@@ -15,6 +16,7 @@ import {
     isDeliveredForDoctorReceivable,
     isExternalLabPayableEligible,
     isFinalReady,
+    isDoctorStatementIncluded,
     isReadyForExternalLabPayable,
     isTryInOrder,
     isTryInReady,
@@ -153,6 +155,29 @@ test.describe('delivery route and phase 1 finance summary', () => {
 });
 
 test.describe('official statement dates', () => {
+    test('keeps approved Doctor Rejected responsibility in the all-orders display value', () => {
+        const rejected = order({
+            status: 'Doctor Rejected',
+            issueState: 'doctor_rejected',
+            rejectionDoctorDecision: 'custom_amount',
+            rejectedDoctorAmount: 650,
+        });
+
+        expect(getDoctorOrderDisplayAmount(rejected)).toBe(650);
+    });
+
+    test('excludes soft-deleted terminal orders but keeps archived orders in statements', () => {
+        expect(isDoctorStatementIncluded(order({
+            status: 'Delivered',
+            isDeleted: true,
+        }))).toBe(false);
+        expect(isDoctorStatementIncluded(order({
+            status: 'Delivered',
+            isArchived: true,
+            isDeleted: false,
+        }))).toBe(true);
+    });
+
     test('uses actualDeliveryDate over deliveryDate for Delivered and legacy Completed orders', () => {
         const deliveredOrder = order({
             productionStatus: 'final_delivered',

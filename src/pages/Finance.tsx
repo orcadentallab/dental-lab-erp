@@ -189,24 +189,6 @@ export default function Finance() {
         return true;
     };
 
-    const createTransferFeeIfNeeded = async (originalTransaction: Transaction, feeEffectiveDate?: string) => {
-        if (!selectedCashboxId || !selectedCashbox?.feeEnabled || transferFeeAmount <= 0) return;
-        await db.addTransaction({
-            type: 'expense',
-            amount: transferFeeAmount,
-            category: EXPENSE_CATEGORY.bankFees,
-            description: `عمولة سحب/تحويل - ${originalTransaction.description}`.slice(0, 500),
-            date: originalTransaction.date,
-            effectiveDate: feeEffectiveDate,
-            entityType: 'general',
-            cashboxId: selectedCashboxId,
-            linkedTransactionId: originalTransaction.id,
-            isSystemGeneratedFee: true,
-            isRegistered: true,
-            status: 'approved'
-        });
-    };
-
     const CashboxFields = ({ includeFee = false, tone = 'blue' }: { includeFee?: boolean; tone?: 'red' | 'green' | 'blue' | 'teal' | 'pink' }) => {
         if (isLegacyCashboxlessEdit) {
             return (
@@ -322,7 +304,7 @@ export default function Finance() {
                 if (!isLegacyCashboxlessEdit) updates.cashboxId = selectedCashboxId;
                 await db.updateTransaction(editingTransaction.id, updates);
             } else {
-                const tx = await db.addTransaction({
+                await db.addTransactionWithTransferFee({
                     type: 'expense',
                     amount,
                     category: category,
@@ -332,8 +314,7 @@ export default function Finance() {
                     entityType: 'general',
                     cashboxId: selectedCashboxId,
                     status: 'approved'
-                });
-                await createTransferFeeIfNeeded(tx, effectiveDate);
+                }, transferFeeAmount, effectiveDate);
             }
             toastSuccess(editingTransaction ? 'تم تعديل المصروف بنجاح' : 'تم تسجيل المصروف بنجاح');
             await handleTransactionUpdate();
@@ -437,7 +418,7 @@ export default function Finance() {
                     cashboxId: selectedCashboxId
                 });
             } else {
-                await db.addTransaction({
+                await db.addTransactionWithTransferFee({
                     type: 'expense',
                     amount,
                     category: 'supplier_payment',
@@ -447,7 +428,7 @@ export default function Finance() {
                     entityId: selectedId,
                     cashboxId: selectedCashboxId,
                     status: 'approved'
-                });
+                }, transferFeeAmount);
             }
             toastSuccess(editingTransaction ? 'تم تعديل السداد بنجاح' : 'تم تسجيل السداد بنجاح');
             await handleTransactionUpdate();
@@ -476,7 +457,7 @@ export default function Finance() {
                     cashboxId: selectedCashboxId
                 });
             } else {
-                await db.addTransaction({
+                await db.addTransactionWithTransferFee({
                     type: 'expense',
                     amount,
                     category: 'designer_payment',
@@ -486,7 +467,7 @@ export default function Finance() {
                     entityId: selectedId,
                     cashboxId: selectedCashboxId,
                     status: 'approved'
-                });
+                }, transferFeeAmount);
             }
             toastSuccess(editingTransaction ? 'تم تعديل السداد بنجاح' : 'تم تسجيل السداد بنجاح');
             await handleTransactionUpdate();
