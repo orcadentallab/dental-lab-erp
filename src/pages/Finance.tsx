@@ -21,7 +21,7 @@ import { useToast } from '../context/ToastContext';
 import { isDesignerUser } from '../lib/userRoles';
 import { useSearchParams } from 'react-router-dom';
 import CashboxPanel from '../components/finance/CashboxPanel';
-import { EXPENSE_CATEGORY } from '../constants/expenseCategories';
+import { ALL_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory } from '../constants/expenseCategories';
 
 export default function Finance() {
     const { user } = useAuth();
@@ -63,6 +63,7 @@ export default function Finance() {
     const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
     // Filters
     const [expenseFilter, setExpenseFilter] = useState<FilterType>('month');
+    const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
     const [revenueFilter, setRevenueFilter] = useState<FilterType>('month');
     const [doctorPaymentFilter, setDoctorPaymentFilter] = useState<FilterType>('month');
     const [supplierPaymentFilter, setSupplierPaymentFilter] = useState<FilterType>('month');
@@ -154,7 +155,11 @@ export default function Finance() {
     );
 
     // Filtered Lists
-    const filteredExpenses = useMemo(() => filterEntries(generalExpenses, expenseFilter), [generalExpenses, expenseFilter]);
+    const filteredExpenses = useMemo(() => {
+        const dateFiltered = filterEntries(generalExpenses, expenseFilter);
+        if (expenseCategoryFilter === 'all') return dateFiltered;
+        return dateFiltered.filter(transaction => normalizeExpenseCategory(transaction.category) === expenseCategoryFilter);
+    }, [generalExpenses, expenseFilter, expenseCategoryFilter]);
     const filteredIncome = useMemo(() => filterEntries(generalIncome, revenueFilter), [generalIncome, revenueFilter]);
     const filteredDoctorPayments = useMemo(() => filterEntries(doctorPayments, doctorPaymentFilter), [doctorPayments, doctorPaymentFilter]);
     const filteredSupplierPayments = useMemo(() => filterEntries(supplierPayments, supplierPaymentFilter), [supplierPayments, supplierPaymentFilter]);
@@ -162,6 +167,8 @@ export default function Finance() {
 
     const selectedCashbox = useMemo(() => cashboxes.find(c => c.id === selectedCashboxId), [cashboxes, selectedCashboxId]);
     const cashboxRequired = cashboxes.length > 0;
+    const isLegacyCashboxlessEdit = Boolean(editingTransaction && !editingTransaction.cashboxId);
+    const cashboxSelectionRequired = cashboxRequired && !isLegacyCashboxlessEdit;
     const isOutgoingCashboxFlow = ['expenses', 'suppliers', 'designers'].includes(activeTab);
 
     useEffect(() => {
@@ -175,7 +182,7 @@ export default function Finance() {
     const getCashboxName = (cashboxId?: string) => cashboxes.find(c => c.id === cashboxId)?.name || 'غير حدد';
 
     const ensureCashboxSelected = () => {
-        if (cashboxRequired && !selectedCashboxId) {
+        if (cashboxSelectionRequired && !selectedCashboxId) {
             toastError('يرجى تحديد الخزينة/الصندوق أولاً');
             return false;
         }
@@ -201,6 +208,14 @@ export default function Finance() {
     };
 
     const CashboxFields = ({ includeFee = false, tone = 'blue' }: { includeFee?: boolean; tone?: 'red' | 'green' | 'blue' | 'teal' | 'pink' }) => {
+        if (isLegacyCashboxlessEdit) {
+            return (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-700">
+                    سجل قديم بدون صندوق — سيظل بدون صندوق، ولن يؤثر هذا التعديل على أرصدة الخزائن.
+                </div>
+            );
+        }
+
         if (cashboxes.length === 0) {
             return (
                 <div className="rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-700">
@@ -222,7 +237,7 @@ export default function Finance() {
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">الصندوق</label>
                     <select
-                        required={cashboxRequired}
+                        required={cashboxSelectionRequired}
                         value={selectedCashboxId}
                         onChange={e => setSelectedCashboxId(e.target.value)}
                         className={`w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 ${ringColor} transition-all`}
@@ -297,14 +312,15 @@ export default function Finance() {
         setIsSubmitting(true);
         try {
             if (editingTransaction) {
-                await db.updateTransaction(editingTransaction.id, {
+                const updates: Partial<Transaction> = {
                     amount,
                     category: category,
                     description,
                     date: transactionDate,
-                    effectiveDate,
-                    cashboxId: selectedCashboxId
-                });
+                    effectiveDate
+                };
+                if (!isLegacyCashboxlessEdit) updates.cashboxId = selectedCashboxId;
+                await db.updateTransaction(editingTransaction.id, updates);
             } else {
                 const tx = await db.addTransaction({
                     type: 'expense',
@@ -590,8 +606,8 @@ export default function Finance() {
             {/* EXPENSES */}
             {activeTab === 'expenses' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-1">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 sticky top-4">
+                    <div className="lg:col-span-1 lg:self-start">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:overscroll-contain">
                             <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
                                 <span className="w-1 h-6 bg-red-500 rounded-full"></span>
                                 تسجيل مصروف
@@ -646,9 +662,22 @@ export default function Finance() {
                     </div>
                     <div className="lg:col-span-2 space-y-4">
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col xl:flex-row justify-between items-center gap-4">
                                 <h3 className="font-bold text-gray-800">سجل المصروفات العامة</h3>
-                                <DateFilter activeFilter={expenseFilter} onFilterChange={setExpenseFilter} />
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full xl:w-auto">
+                                    <select
+                                        aria-label="فلتر نوع المصروف"
+                                        value={expenseCategoryFilter}
+                                        onChange={event => setExpenseCategoryFilter(event.target.value)}
+                                        className="min-w-48 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
+                                    >
+                                        <option value="all">كل أنواع المصروفات</option>
+                                        {ALL_EXPENSE_CATEGORIES.map(expenseCategory => (
+                                            <option key={expenseCategory} value={expenseCategory}>{expenseCategory}</option>
+                                        ))}
+                                    </select>
+                                    <DateFilter activeFilter={expenseFilter} onFilterChange={setExpenseFilter} />
+                                </div>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-right">
