@@ -324,7 +324,8 @@ export async function changeProductionStatus(
 }
 
 /**
- * WF-2/WF-3: Change `issue_state` (returned/rejected/cancelled/on_hold/none).
+ * WF-2/WF-3: Change `issue_state` (returned/rejected/cancelled/redo/none).
+ * `on_hold` is retained only so historical rows can transition back to `none`.
  */
 export async function changeIssueState(
     orderId: string,
@@ -338,6 +339,9 @@ export async function changeIssueState(
     }
     if (!newIssueState) {
         throw new ValidationError('newIssueState is required');
+    }
+    if (newIssueState === 'on_hold') {
+        throw new ValidationError('حالة الإيقاف المؤقت متوقفة ولا يمكن تعيينها لحالات جديدة');
     }
 
     const { role: userRole, userId } = await getCallerRoleAndId();
@@ -376,8 +380,6 @@ export async function changeIssueState(
         targetProductionStatus = 'not_started';
     } else if (newIssueState === 'cancelled') {
         targetLegacyStatus = 'Cancelled';
-    } else if (newIssueState === 'on_hold') {
-        // Keep current status
     } else if (newIssueState === 'none') {
         if (currentIssueState !== 'none') {
             targetLegacyStatus = 'Under Production';

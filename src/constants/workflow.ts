@@ -31,6 +31,12 @@ export const ISSUE_STATES = [
 
 export type IssueState = typeof ISSUE_STATES[number];
 
+// `on_hold` remains in the persisted type for historical rows only. New
+// transitions to it are retired at both the application and database layers.
+export const ACTIVE_ISSUE_STATES = ISSUE_STATES.filter(
+    (state): state is Exclude<IssueState, 'on_hold'> => state !== 'on_hold'
+);
+
 // Arabic labels for the timeline / future UI. Kept colocated with the constant
 // so additions to the enum cannot drift out of sync.
 export const PRODUCTION_STATUS_LABELS_AR: Record<ProductionStatus, string> = {

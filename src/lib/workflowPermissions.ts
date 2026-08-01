@@ -275,12 +275,16 @@ export function canChangeIssueState(
     currentIssueState: IssueState,
     targetIssueState: IssueState
 ): boolean {
+    // on_hold is a retired historical value. Existing rows may leave it, but
+    // no role (including admin) may create or re-enter it.
+    if (targetIssueState === 'on_hold') return false;
+
     if (role === 'admin') return true;
     if (role !== 'lab') return false;
 
-    // Lab can only transition between none ↔ returned, none ↔ on_hold
+    // Lab can use none ↔ returned and can release a historical on_hold row.
     return (
-        (currentIssueState === 'none' && (targetIssueState === 'returned' || targetIssueState === 'on_hold')) ||
+        (currentIssueState === 'none' && targetIssueState === 'returned') ||
         ((currentIssueState === 'returned' || currentIssueState === 'on_hold') && targetIssueState === 'none')
     );
 }

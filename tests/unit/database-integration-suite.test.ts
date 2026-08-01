@@ -21,6 +21,10 @@ const atomicRedoMigration = readFileSync(
     resolve('supabase/migrations/20260801000000_create_redo_order_atomic.sql'),
     'utf8',
 );
+const onHoldRetirementMigration = readFileSync(
+    resolve('supabase/migrations/20260801010000_retire_on_hold_issue_state.sql'),
+    'utf8',
+);
 const redoModal = readFileSync(resolve('src/components/orders/RedoOrderModal.tsx'), 'utf8');
 
 describe('local database integration suite safety', () => {
@@ -29,6 +33,7 @@ describe('local database integration suite safety', () => {
         expect(packageJson.scripts['test:db']).not.toContain('--linked');
         expect(packageJson.scripts['test:db']).not.toContain('--db-url');
         expect(packageJson.scripts['test:db']).toContain('atomic_redo_order.test.sql');
+        expect(packageJson.scripts['test:db']).toContain('on_hold_retirement.test.sql');
     });
 
     test('fixtures are always wrapped in a rollback transaction', () => {
@@ -63,5 +68,12 @@ describe('local database integration suite safety', () => {
         expect(redoModal).not.toContain('db.updateOrderStatus');
         expect(redoModal).not.toContain('db.addOrder');
         expect(redoModal).not.toContain('generateNextCaseIdForDoctor');
+    });
+
+    test('on_hold retirement blocks new assignments without rewriting historical data', () => {
+        expect(onHoldRetirementMigration).toContain('BEFORE INSERT OR UPDATE OF issue_state');
+        expect(onHoldRetirementMigration).toContain("OLD.issue_state = 'on_hold'");
+        expect(onHoldRetirementMigration).not.toMatch(/UPDATE\s+public\.orders/i);
+        expect(onHoldRetirementMigration).not.toContain('financial_obligations');
     });
 });

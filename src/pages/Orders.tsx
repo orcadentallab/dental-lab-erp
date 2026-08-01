@@ -22,7 +22,7 @@ import { Input } from '../components/ui/Input';
 import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
-import { PRODUCTION_STATUSES, ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
+import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import RepEditModal from '../components/orders/RepEditModal';
@@ -868,7 +868,7 @@ export default function Orders() {
                                 </select>
                                 <select aria-label="حالة المشكلة" value={issueStateFilter} onChange={(e) => setIssueStateFilter(e.target.value)} className={mobileFilterControlClass}>
                                     <option value="">كل حالات المشكلة</option>
-                                    {ISSUE_STATES.filter(s => s !== 'none' && s !== 'on_hold').map(s => <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>)}
+                                    {ACTIVE_ISSUE_STATES.filter(s => s !== 'none').map(s => <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>)}
                                 </select>
 
                                 {canFilterByDoctorAndSupplier && (
@@ -1063,7 +1063,7 @@ export default function Orders() {
                                         className={filterSelectClass(Boolean(issueStateFilter), true)}
                                     >
                                         <option value="">حالة المشكلة</option>
-                                        {ISSUE_STATES.filter(s => s !== 'none' && s !== 'on_hold').map(s => (
+                                        {ACTIVE_ISSUE_STATES.filter(s => s !== 'none').map(s => (
                                             <option key={s} value={s}>{ISSUE_STATE_LABELS_AR[s]}</option>
                                         ))}
                                     </select>
