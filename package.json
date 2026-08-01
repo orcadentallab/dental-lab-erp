@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.config.ts",
+    "test:db": "supabase test db supabase/tests/database/financial_obligations_integration.test.sql supabase/tests/database/atomic_redo_order.test.sql --local",
     "test:e2e": "playwright test",
     "test:all": "npm run test:unit && npm run test:e2e"
   },

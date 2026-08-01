@@ -883,6 +883,22 @@ class MockDB {
         return addOrder(order, context);
     }
 
+    async createRedoOrderAtomic(input: {
+        originalOrderId: string;
+        reasonCode: string;
+        notes: string;
+        rejectedLabCost?: number | null;
+        rejectedDesignerCost?: number | null;
+    }): Promise<{
+        originalOrderId: string;
+        originalCaseId: string;
+        newOrderId: string;
+        newCaseId: string;
+    }> {
+        const { createRedoOrderAtomic } = await import('./supabase/orders');
+        return createRedoOrderAtomic(input);
+    }
+
     async updateOrder(id: string, updates: Partial<Order>, context?: {
         userId?: string;
         actorRole?: string;

@@ -140,10 +140,16 @@ DECLARE
     v_changed_by UUID;
 BEGIN
     SELECT *
-    INTO STRICT v_order
+    INTO v_order
     FROM public.orders
     WHERE case_id = '2005-260706-511'
     FOR UPDATE;
+
+    -- The repaired case belongs to the reviewed production dataset and is not
+    -- present when migrations bootstrap a fresh local/test database.
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
 
     SELECT *
     INTO STRICT v_obligation

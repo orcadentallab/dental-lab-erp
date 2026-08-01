@@ -166,6 +166,15 @@ BEGIN
     INTO v_count, v_total
     FROM approved_doctor_obligation_repair_20260729;
 
+    -- This repository migration must also bootstrap a genuinely fresh local
+    -- database. Preserve the production fail-closed guard whenever any orders
+    -- exist, but do not require the reviewed production-only repair batch on
+    -- an empty schema.
+    IF v_count = 0
+       AND NOT EXISTS (SELECT 1 FROM public.orders) THEN
+        RETURN;
+    END IF;
+
     IF v_count <> 41 OR v_total <> 39450 THEN
         RAISE EXCEPTION
             'Approved doctor repair guard failed: expected 41 / 39450, found % / %',

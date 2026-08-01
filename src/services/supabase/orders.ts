@@ -1775,6 +1775,43 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: 
     return getOrder(newOrderId) as Promise<Order>;
 }
 
+export interface CreateRedoOrderInput {
+    originalOrderId: string;
+    reasonCode: string;
+    notes: string;
+    rejectedLabCost?: number | null;
+    rejectedDesignerCost?: number | null;
+}
+
+export interface CreateRedoOrderResult {
+    originalOrderId: string;
+    originalCaseId: string;
+    newOrderId: string;
+    newCaseId: string;
+}
+
+export async function createRedoOrderAtomic(
+    input: CreateRedoOrderInput,
+): Promise<CreateRedoOrderResult> {
+    if (!input.originalOrderId || !input.notes.trim()) {
+        throw new ValidationError('بيانات إعادة الإنتاج غير مكتملة');
+    }
+
+    const { data, error } = await supabase.rpc('create_redo_order_atomic', {
+        p_original_order_id: input.originalOrderId,
+        p_reason_code: input.reasonCode,
+        p_notes: input.notes.trim(),
+        p_rejected_lab_cost: input.rejectedLabCost ?? null,
+        p_rejected_designer_cost: input.rejectedDesignerCost ?? null,
+    });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'createRedoOrderAtomic');
+    }
+
+    return data as CreateRedoOrderResult;
+}
+
 export async function updateOrder(id: string, updates: Partial<Order>, context: UpdateOrderContext = {}): Promise<Order | null> {
     // Validate UUID
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
