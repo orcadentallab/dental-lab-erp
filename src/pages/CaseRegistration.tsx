@@ -56,9 +56,6 @@ const REVIEW_BADGE_CLASSES: Record<AccountingReviewType, string> = {
     cancellation: 'bg-rose-500 text-white',
 };
 
-const formatAccountingDelta = (value: number) =>
-    `${value > 0 ? '+' : ''}${value.toLocaleString('en-EG')}`;
-
 export default function CaseRegistration() {
     const { t } = useTranslation();
     const { info, success, error: toastError } = useToast();
@@ -516,10 +513,6 @@ export default function CaseRegistration() {
                                     const oldSupplierName = oldSnapshot?.supplierId ? suppliers[oldSnapshot.supplierId] : 'داخلي';
                                     const statusKey = order.status.toLowerCase().replace(/ /g, '');
                                     const statusLabel = Object.entries(t.orders.status).find(([key]) => key === statusKey)?.[1] || order.status;
-                                    const financialComparisonRows: Array<[string, number, number, number]> = [
-                                        ['بيع', oldSnapshot?.saleAmount || 0, accounting.current.saleAmount, accounting.delta.saleAmount],
-                                        ['مورد', oldSnapshot?.labCost || 0, accounting.current.labCost, accounting.delta.labCost],
-                                    ];
                                     
                                     return (
                                         <motion.tr
@@ -609,38 +602,16 @@ export default function CaseRegistration() {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
-                                                {hasFinancialComparison ? (
-                                                    <div className={clsx('min-w-[190px] rounded-xl border p-2', isZeroImpact ? 'border-rose-200 bg-rose-50/60' : 'border-slate-100 bg-slate-50/50')}>
-                                                        <div className="grid grid-cols-[52px_1fr_1fr_1fr] gap-1 text-center text-[9px] font-bold text-slate-400">
-                                                            <span />
-                                                            <span>القديم</span>
-                                                            <span>الجديد</span>
-                                                            <span>الفرق</span>
-                                                        </div>
-                                                        {financialComparisonRows.map(([label, oldValue, newValue, delta]) => (
-                                                            <div key={label} className="mt-1 grid grid-cols-[52px_1fr_1fr_1fr] items-center gap-1 text-center text-[10px] font-black">
-                                                                <span className="text-right text-slate-500">{label}</span>
-                                                                <span className="text-slate-500">{oldValue.toLocaleString('en-EG')}</span>
-                                                                <span className={isZeroImpact ? 'text-rose-600' : 'text-slate-900'}>{newValue.toLocaleString('en-EG')}</span>
-                                                                <span className={delta < 0 ? 'text-rose-600' : delta > 0 ? 'text-emerald-600' : 'text-slate-400'}>{formatAccountingDelta(delta)}</span>
-                                                            </div>
-                                                        ))}
-                                                        {!oldSnapshot && (
-                                                            <p className="mt-1 text-[9px] font-bold text-amber-600">القيمة القديمة غير متاحة لتعديل سبق تفعيل المقارنة.</p>
-                                                        )}
+                                                <div className={clsx('min-w-[160px] rounded-xl border p-2 text-sm font-black', isZeroImpact ? 'border-rose-200 bg-rose-50/60' : 'border-slate-100 bg-slate-50/50')}>
+                                                    <div className="flex items-center justify-between gap-3 text-emerald-600">
+                                                        <span className="text-[10px] font-bold text-slate-400">سعر الطبيب:</span>
+                                                        <span className={isZeroImpact ? 'text-rose-600' : undefined}>{accounting.current.saleAmount.toLocaleString('en-EG')}</span>
                                                     </div>
-                                                ) : (
-                                                    <div className="flex flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50/50 p-2 text-sm font-black">
-                                                        <div className="flex items-center justify-between gap-3 text-emerald-600">
-                                                            <span className="text-[10px] font-bold text-slate-400">بيع:</span>
-                                                            <span>{accounting.current.saleAmount.toLocaleString('en-EG')}</span>
-                                                        </div>
-                                                        <div className="flex items-center justify-between gap-3 text-slate-700">
-                                                            <span className="text-[10px] font-bold text-slate-400">مورد:</span>
-                                                            <span>{accounting.current.labCost.toLocaleString('en-EG')}</span>
-                                                        </div>
+                                                    <div className="mt-1 flex items-center justify-between gap-3 text-slate-700">
+                                                        <span className="text-[10px] font-bold text-slate-400">سعر المورد:</span>
+                                                        <span className={isZeroImpact ? 'text-rose-600' : undefined}>{accounting.current.labCost.toLocaleString('en-EG')}</span>
                                                     </div>
-                                                )}
+                                                </div>
                                             </td>
                                             <td className="hidden px-4 py-4">
                                                 <div className="flex items-center gap-2 font-black text-slate-900 text-xs">

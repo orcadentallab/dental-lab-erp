@@ -221,7 +221,11 @@ export function isDeliveredForDoctorReceivable(order: LifecycleOrder): boolean {
 export function isBillableToDoctor(order: LifecycleOrder): boolean {
     if (isDeliveredForDoctorReceivable(order)) return true;
     const issue = getEffectiveIssueState(order);
-    if (issue === 'doctor_rejected' || issue === 'lab_rejected') {
+    // A redo closes the original case, but it can still carry an approved
+    // doctor responsibility (for example, when the doctor bears the full
+    // remake cost). Treat that settlement exactly like a rejected-case
+    // settlement; only the replacement order represents the new production.
+    if (issue === 'doctor_rejected' || issue === 'lab_rejected' || issue === 'redo') {
         return !!order.rejectionDoctorDecision && (order.rejectedDoctorAmount ?? 0) > 0;
     }
     return false;
@@ -236,7 +240,7 @@ export function isDoctorStatementIncluded(order: LifecycleOrder): boolean {
 
 export function getDoctorReceivableAmount(order: LifecycleOrder): number {
     const issue = getEffectiveIssueState(order);
-    if (issue === 'doctor_rejected' || issue === 'lab_rejected') {
+    if (issue === 'doctor_rejected' || issue === 'lab_rejected' || issue === 'redo') {
         return order.rejectionDoctorDecision
             ? Math.max(0, order.rejectedDoctorAmount ?? 0)
             : 0;

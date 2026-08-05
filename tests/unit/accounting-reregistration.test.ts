@@ -10,7 +10,7 @@ const remainingLegacyMigration = readFileSync(
     'utf8'
 );
 const tasneemCancellationRepair = readFileSync(
-    'supabase/migrations/20260805000000_reopen_tasneem_cancelled_accounting_entry.sql',
+    'supabase/migrations/20260805020000_reopen_tasneem_cancelled_accounting_entry.sql',
     'utf8'
 );
 const accountingSnapshotsMigration = readFileSync(

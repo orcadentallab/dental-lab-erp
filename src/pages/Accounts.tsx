@@ -40,6 +40,9 @@ interface StatementItem {
     isInformationalOnly?: boolean;
     branchName?: string;
     doctorName?: string;
+    redoGroup?: string;
+    redoStep?: number;
+    redoSortDate?: string;
 }
 
 // Time filter presets
@@ -801,6 +804,39 @@ export default function Accounts() {
 
         if (activeTab === 'doctors') {
             const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
+            const ordersById = new Map(relevantOrders.filter(o => o.id).map(o => [o.id!, o]));
+            const childByOriginalId = new Map<string, Partial<Order>>();
+            relevantOrders.forEach(order => {
+                if (order.originalOrderId) childByOriginalId.set(order.originalOrderId, order);
+            });
+            const getRedoDisplay = (order: Partial<Order>) => {
+                const base = `حالة #${order.caseId} - المريض: ${order.patientName}`;
+                const visited = new Set<string>();
+                let root = order;
+                let step = 0;
+                while (root.originalOrderId && !visited.has(root.originalOrderId)) {
+                    visited.add(root.id || '');
+                    const parent = ordersById.get(root.originalOrderId);
+                    if (!parent) break;
+                    root = parent;
+                    step += 1;
+                }
+                const child = order.id ? childByOriginalId.get(order.id) : undefined;
+                if (step === 0 && !child && order.issueState !== 'redo') {
+                    return { description: base, status: order.status };
+                }
+                const rootDate = getOfficialStatementDate(root);
+                if (step === 0) {
+                    return { description: `${base} — إعادة إنتاج → #${child?.caseId || '—'}`, status: 'redo', redoGroup: root.id, redoStep: 0, redoSortDate: rootDate };
+                }
+                return {
+                    description: `${base} — إعادة إنتاج رقم ${step} من #${root.caseId || '—'}${child ? ` → #${child.caseId || '—'}` : ''}`,
+                    status: child ? 'redo' : order.status,
+                    redoGroup: root.id,
+                    redoStep: step,
+                    redoSortDate: rootDate,
+                };
+            };
 
             const docOrders = relevantOrders.filter(o => {
                 if (o.isDeleted) return false;
@@ -826,17 +862,21 @@ export default function Accounts() {
                 // If center, find child doctor name
                 const childDoc = selectedIsCenter ? doctors.find(d => d.id === o.doctorId && d.parentId === selectedEntityId) : null;
                 const doctorSuffix = childDoc ? ` (د. ${childDoc.name})` : '';
+                const redoDisplay = getRedoDisplay(o);
                 return {
                     id: o.id || '',
                     date: getOfficialStatementDate(o),
-                    description: `حالة #${o.caseId} - المريض: ${o.patientName}${doctorSuffix}`,
+                    description: `${redoDisplay.description}${doctorSuffix}`,
                     cleanDescription: `حالة #${o.caseId} - المريض: ${o.patientName}`,
                     details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                     type: 'debit' as const,
                     amount: officialReceivableAmount,
                     displayAmount: displayOrderValue,
                     officialAmount: officialReceivableAmount,
-                    status: o.status,
+                    status: redoDisplay.status,
+                    redoGroup: redoDisplay.redoGroup,
+                    redoStep: redoDisplay.redoStep,
+                    redoSortDate: redoDisplay.redoSortDate,
                     services,
                     count,
                     isOrderValue: true,
@@ -979,7 +1019,12 @@ export default function Accounts() {
         if (dateRange.start) items = items.filter(i => i.date >= dateRange.start);
         if (dateRange.end) items = items.filter(i => i.date <= dateRange.end);
 
-        items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        items.sort((a, b) => {
+            const byGroupDate = (a.redoSortDate || a.date).localeCompare(b.redoSortDate || b.date);
+            if (byGroupDate !== 0) return byGroupDate;
+            if (a.redoGroup && a.redoGroup === b.redoGroup) return (a.redoStep ?? 0) - (b.redoStep ?? 0);
+            return a.date.localeCompare(b.date);
+        });
 
         const baseOpeningBalance = dateRange.start ? calculateOpeningBalance : 0;
         const hiddenBalanceEffect = items
@@ -2278,6 +2323,7 @@ export default function Accounts() {
                                                     {item.status && (() => {
                                                         const s = (item.status || '').trim().toLowerCase();
                                                         const BADGES: Record<string, { label: string; cls: string }> = {
+                                                            'redo':            { label: '↻ إعادة إنتاج', cls: 'bg-violet-100 text-violet-800' },
                                                             'doctor rejected': { label: '✖️ مرتجع طبيب', cls: 'bg-amber-100 text-amber-800' },
                                                             'rejected':        { label: '✖️ مرفوض',       cls: 'bg-red-100 text-red-700' },
                                                             'lab rejected':    { label: '✖️ رفض معمل',    cls: 'bg-red-100 text-red-700' },

@@ -1397,6 +1397,7 @@ export default function Orders() {
                 {redoOrder && (
                     <RedoOrderModal
                         order={redoOrder}
+                        userRole={user?.role}
                         isOpen={!!redoOrder}
                         onClose={() => setRedoOrder(null)}
                         onSuccess={refreshOrders}

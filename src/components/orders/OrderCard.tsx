@@ -17,6 +17,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { canAccessDesignerFeatures } from '../../lib/userRoles';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
@@ -35,7 +36,7 @@ interface OrderCardProps {
     users: Record<string, string>;
     designerFixedSalary?: Record<string, boolean>;
     originalOrderCaseId?: string;
-    redoOrderCaseIds?: string[];
+    redoOrders?: { id: string; caseId?: string }[];
     userRole?: string;
     onStatusChange: (id: string, status: Order['status'] | 'same', context?: RejectionFinancialContext) => void | Promise<void>;
     onUpdate?: () => void | Promise<void>;
@@ -64,7 +65,7 @@ function OrderCard({
     users,
     designerFixedSalary = {},
     originalOrderCaseId,
-    redoOrderCaseIds = [],
+    redoOrders = [],
     userRole,
     onStatusChange,
     onUpdate,
@@ -193,6 +194,9 @@ function OrderCard({
 
     const visibleComments = filterVisibleOrderComments(order.comments);
     const latestComment = getLatestVisibleOrderComment(order.comments);
+    const redoReason = order.comments
+        ?.find(comment => comment.text.startsWith('إعادة إنتاج من #'))
+        ?.text.match(/السبب:\s*([^—]+)/)?.[1]?.trim();
     const displayDate = getOrderCardDisplayDate(order);
     const hasManualLabCost = order.manualCost !== null && order.manualCost !== undefined;
     const displayedLabCost = order.manualCost ?? order.cost ?? 0;
@@ -202,6 +206,8 @@ function OrderCard({
     const usesRejectionCost = order.status === 'Doctor Rejected' || order.status === 'Rejected';
     const hasZeroEffectiveCost = order.status === 'Cancelled' || order.status === 'Lab Rejected';
     const isRejectedStatus = ['Doctor Rejected', 'Rejected', 'Lab Rejected'].includes(order.status);
+    const isFinancialIssue = isRejectedStatus || order.issueState === 'redo';
+    const isFinancialReviewPending = isFinancialIssue && order.rejectionFinancialReviewStatus !== 'resolved';
     const effectiveDoctorAmount = isRejectedStatus
         ? (order.rejectionDoctorDecision ? (order.rejectedDoctorAmount ?? 0) : 0)
         : (order.totalPrice || 0);
@@ -318,20 +324,22 @@ function OrderCard({
                                 #{order.caseId}
                             </span>
                             {order.originalOrderId && originalOrderCaseId && (
-                                <span className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-100 px-2 py-1 text-[10px] font-black text-violet-800 shadow-sm dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                                <Link to={`/orders?highlight=${order.originalOrderId}`} className="inline-flex items-center gap-1 rounded-md border border-violet-300 bg-violet-100 px-2 py-1 text-[10px] font-black text-violet-800 shadow-sm dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
                                     <RotateCcw size={11} strokeWidth={2.5} />
                                     إعادة من #{originalOrderCaseId}
-                                </span>
+                                </Link>
                             )}
-                            {redoOrderCaseIds.map(redoCaseId => (
-                                <span
-                                    key={redoCaseId}
+                            {redoOrders.map(redo => (
+                                <Link
+                                    key={redo.id}
+                                    to={`/orders?highlight=${redo.id}`}
                                     className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-[10px] font-black text-amber-800 shadow-sm dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
                                 >
                                     <RotateCcw size={11} strokeWidth={2.5} />
-                                    اتعادت في #{redoCaseId}
-                                </span>
+                                    اتعادت في #{redo.caseId || '—'}
+                                </Link>
                             ))}
+                            {redoReason && <span className="rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800">سبب الإعادة: {redoReason}</span>}
 
                             {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
                                 <span
@@ -692,16 +700,18 @@ function OrderCard({
                                     >
                                         <div className="mb-1.5 flex items-center justify-between gap-2 border-b border-red-200/70 pb-1.5 dark:border-red-800/60">
                                             <span className="text-[10px] font-black text-red-700 dark:text-red-300">
-                                                تعديل المراجعة المالية
+                                                {isFinancialReviewPending ? 'بانتظار المراجعة المالية' : 'تعديل المراجعة المالية'}
                                             </span>
                                             <Edit3 size={12} className="text-red-500 transition-transform group-hover:scale-110" />
                                         </div>
-                                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-red-700 dark:text-red-300">
-                                            <span>تحمل الطبيب</span>
-                                            <span>
-                                                {effectiveDoctorAmount.toLocaleString('en-EG')} ج.م
-                                            </span>
-                                        </div>
+                                        {isFinancialReviewPending ? (
+                                            <div className="text-[10px] font-bold text-amber-700">لم يُحدد تحمّل الطبيب أو استحقاق الأطراف بعد.</div>
+                                        ) : (
+                                            <div className="flex items-center justify-between gap-2 text-[10px] font-bold text-red-700 dark:text-red-300">
+                                                <span>تحمل الطبيب</span>
+                                                <span>{effectiveDoctorAmount.toLocaleString('en-EG')} ج.م</span>
+                                            </div>
+                                        )}
                                         {order.supplierId && (
                                             <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-bold text-red-700 dark:text-red-300">
                                                 <span>استحقاق المورد</span>

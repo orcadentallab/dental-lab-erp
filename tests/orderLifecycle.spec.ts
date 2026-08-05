@@ -166,6 +166,18 @@ test.describe('official statement dates', () => {
         expect(getDoctorOrderDisplayAmount(rejected)).toBe(650);
     });
 
+    test('keeps an approved doctor responsibility on the original redo case', () => {
+        const redo = order({
+            status: 'Doctor Rejected',
+            issueState: 'redo',
+            rejectionDoctorDecision: 'full_price',
+            rejectedDoctorAmount: 7600,
+        });
+
+        expect(isBillableToDoctor(redo)).toBe(true);
+        expect(getDoctorOrderDisplayAmount(redo)).toBe(7600);
+    });
+
     test('excludes soft-deleted terminal orders but keeps archived orders in statements', () => {
         expect(isDoctorStatementIncluded(order({
             status: 'Delivered',
@@ -266,5 +278,12 @@ test.describe('delivered date persistence hotfix', () => {
     test('statement filtering uses the official statement date helper', () => {
         expect(statementSource).toContain('getOfficialStatementDate(o)');
         expect(statementSource).not.toContain('const getOrderStatementDate');
+    });
+
+    test('finance-summary query includes redo links and approved doctor responsibility', () => {
+        expect(ordersSource).toContain('is_redo, original_order_id');
+        expect(ordersSource).toContain('rejection_doctor_decision, rejected_doctor_amount');
+        expect(ordersSource).toContain('originalOrderId: d.original_order_id || undefined');
+        expect(ordersSource).toContain('rejectedDoctorAmount: d.rejected_doctor_amount ?? undefined');
     });
 });

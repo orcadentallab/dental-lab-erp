@@ -23,6 +23,14 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
     CheckCircle, RotateCcw, XCircle, Ban, RefreshCw,
 };
 
+function isDoctorDecisionOption(value: string): value is RejectionDoctorDecision | 'half' {
+    return value === 'half'
+        || value === REJECTION_DOCTOR_DECISIONS.decideLater
+        || value === REJECTION_DOCTOR_DECISIONS.fullPrice
+        || value === REJECTION_DOCTOR_DECISIONS.zero
+        || value === REJECTION_DOCTOR_DECISIONS.customAmount;
+}
+
 const LEGACY_STATUS_LABELS_AR: Record<string, string> = {
     'New Case':                   'حالة جديدة',
     'Pending Review':             'قيد المراجعة',
@@ -74,7 +82,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const [showIssueMenu, setShowIssueMenu] = useState(false);
     const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
     const [rejectedDesignerCost, setRejectedDesignerCost] = useState<number | ''>('');
-    const [doctorDecision, setDoctorDecision] = useState<RejectionDoctorDecision>(
+    const [doctorDecision, setDoctorDecision] = useState<RejectionDoctorDecision | 'half'>(
         REJECTION_DOCTOR_DECISIONS.fullPrice
     );
     const [customDoctorAmount, setCustomDoctorAmount] = useState<number | ''>('');
@@ -96,7 +104,10 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         && !!onRedo
         && order.issueState !== 'cancelled'
         && order.issueState !== 'redo';
-    const hasIssueOptions = issueActions.length > 0 || canRedo;
+    const redoBlockedByReplacement = (userRole === 'admin' || userRole === 'representative')
+        && !!onRedo
+        && issueState === 'redo';
+    const hasIssueOptions = issueActions.length > 0 || canRedo || redoBlockedByReplacement;
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -142,9 +153,11 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         const isRejection = ['reject', 'lab_reject'].includes(confirmAction.id);
         if (isRejection) {
             const resolved = resolveRejectionDoctorDecision({
-                decision: doctorDecision,
+                decision: doctorDecision === 'half' ? REJECTION_DOCTOR_DECISIONS.customAmount : doctorDecision,
                 orderTotal: order.totalPrice || 0,
-                customAmount: customDoctorAmount === '' ? null : customDoctorAmount,
+                customAmount: doctorDecision === 'half'
+                    ? (order.totalPrice || 0) / 2
+                    : (customDoctorAmount === '' ? null : customDoctorAmount),
             });
             context.rejectionDoctorDecision = resolved.decision;
             context.rejectedDoctorAmount = resolved.doctorAmount;
@@ -275,6 +288,12 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                         </button>
                                     </>
                                 )}
+                                {redoBlockedByReplacement && (
+                                    <div className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-xs font-bold text-slate-400 sm:min-h-0" title="لا يمكن عمل إعادة من حالة تم استبدالها؛ افتح آخر حالة في السلسلة.">
+                                        <RefreshCw size={13} />
+                                        <span>الإعادة متاحة من آخر حالة في السلسلة فقط</span>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -380,6 +399,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                             {[
                                 { value: REJECTION_DOCTOR_DECISIONS.decideLater, label: 'يُحدد لاحقًا' },
                                 { value: REJECTION_DOCTOR_DECISIONS.fullPrice, label: 'كامل السعر' },
+                                { value: 'half', label: '50%' },
                                 { value: REJECTION_DOCTOR_DECISIONS.zero, label: 'صفر' },
                                 { value: REJECTION_DOCTOR_DECISIONS.customAmount, label: 'مبلغ مخصص' },
                             ].map(option => (
@@ -397,7 +417,11 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                         name="doctor-rejection-decision"
                                         value={option.value}
                                         checked={doctorDecision === option.value}
-                                        onChange={() => setDoctorDecision(option.value)}
+                                        onChange={() => {
+                                            if (!isDoctorDecisionOption(option.value)) return;
+                                            setDoctorDecision(option.value);
+                                            if (option.value === 'half') setCustomDoctorAmount((order.totalPrice || 0) / 2);
+                                        }}
                                     />
                                     {option.label}
                                 </label>

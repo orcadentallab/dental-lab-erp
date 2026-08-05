@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Package, Star } from 'lucide-react';
 import type { Order } from '../../services/db';
 import { db } from '../../services/db';
@@ -38,7 +38,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const [usersMap, setUsersMap] = useState<Record<string, string>>({});
     const [designerFixedSalaryMap, setDesignerFixedSalaryMap] = useState<Record<string, boolean>>({});
     const [originalCaseIds, setOriginalCaseIds] = useState<Record<string, string>>({});
-    const [redoCaseIdsByOriginalId, setRedoCaseIdsByOriginalId] = useState<Record<string, string[]>>({});
+    const [redoOrdersByOriginalId, setRedoOrdersByOriginalId] = useState<Record<string, { id: string; caseId?: string }[]>>({});
 
     useEffect(() => {
         const loadAuxData = async () => {
@@ -95,15 +95,15 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                     originalOrders.map(original => [original.id, original.caseId])
                 ));
 
-                const reverseLinks: Record<string, string[]> = {};
+                const reverseLinks: Record<string, { id: string; caseId?: string }[]> = {};
                 redoOrders.forEach(redo => {
                     if (!redo.originalOrderId) return;
                     reverseLinks[redo.originalOrderId] = [
                         ...(reverseLinks[redo.originalOrderId] || []),
-                        redo.caseId,
+                        { id: redo.id, caseId: redo.caseId },
                     ];
                 });
-                setRedoCaseIdsByOriginalId(reverseLinks);
+                setRedoOrdersByOriginalId(reverseLinks);
             } catch (error) {
                 console.error('Error loading redo order links:', error);
             }
@@ -115,7 +115,38 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         };
     }, [orders]);
 
-    const finalOrders = filteredOrders;
+    // Keep each original case and every replacement directly behind it. This
+    // preserves the surrounding board order while making a multi-redo chain
+    // readable as one sequence.
+    const finalOrders = useMemo(() => {
+        const byId = new Map(filteredOrders.map(order => [order.id, order]));
+        const originalIndexById = new Map(filteredOrders.map((order, index) => [order.id, index]));
+        const getChainPosition = (order: Order) => {
+            const visited = new Set<string>();
+            let root = order;
+            let step = 0;
+            while (root.originalOrderId && !visited.has(root.originalOrderId)) {
+                visited.add(root.id);
+                const parent = byId.get(root.originalOrderId);
+                if (!parent) break;
+                root = parent;
+                step += 1;
+            }
+            return {
+                group: root.id,
+                groupIndex: originalIndexById.get(root.id) ?? originalIndexById.get(order.id) ?? 0,
+                step,
+            };
+        };
+        return [...filteredOrders].sort((a, b) => {
+            const aPosition = getChainPosition(a);
+            const bPosition = getChainPosition(b);
+            const byGroupIndex = aPosition.groupIndex - bPosition.groupIndex;
+            if (byGroupIndex !== 0) return byGroupIndex;
+            if (aPosition.group === bPosition.group) return aPosition.step - bPosition.step;
+            return 0;
+        });
+    }, [filteredOrders]);
 
     const handleTechAction = useCallback(async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
@@ -193,7 +224,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         users={usersMap}
                         designerFixedSalary={designerFixedSalaryMap}
                         originalOrderCaseId={order.originalOrderId ? originalCaseIds[order.originalOrderId] : undefined}
-                        redoOrderCaseIds={redoCaseIdsByOriginalId[order.id] || []}
+                        redoOrders={redoOrdersByOriginalId[order.id] || []}
                         userRole={userRole}
                         onStatusChange={onStatusChange}
                         onUpdate={() => onStatusChange(order.id, 'same')}

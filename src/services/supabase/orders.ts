@@ -1477,6 +1477,10 @@ interface FinanceSummaryDbRow {
     is_deleted: boolean | null;
     rejected_lab_cost: number | null;
     rejected_designer_cost: number | null;
+    rejection_doctor_decision: Order['rejectionDoctorDecision'] | null;
+    rejected_doctor_amount: number | null;
+    is_redo: boolean | null;
+    original_order_id: string | null;
     production_status: string | null;
     issue_state: string | null;
     order_items: { product_type: string; teeth_numbers?: string[] | null }[] | null;
@@ -1491,7 +1495,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     while (hasMore) {
         const { data, error } = await supabase
             .from('orders')
-            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, production_status, issue_state, order_items(product_type, teeth_numbers)')
+            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, is_redo, original_order_id, production_status, issue_state, order_items(product_type, teeth_numbers)')
             .order('created_at', { ascending: false })
             .range(from, from + limit - 1);
 
@@ -1526,8 +1530,12 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         actualDeliveryDate: d.actual_delivery_date || undefined,
         isArchived: d.is_archived || undefined,
         isDeleted: d.is_deleted || undefined,
-        rejectedLabCost: d.rejected_lab_cost || undefined,
-        rejectedDesignerCost: d.rejected_designer_cost || undefined,
+        rejectedLabCost: d.rejected_lab_cost ?? undefined,
+        rejectedDesignerCost: d.rejected_designer_cost ?? undefined,
+        rejectionDoctorDecision: d.rejection_doctor_decision || undefined,
+        rejectedDoctorAmount: d.rejected_doctor_amount ?? undefined,
+        isRedo: d.is_redo || undefined,
+        originalOrderId: d.original_order_id || undefined,
         productionStatus: (d.production_status || undefined) as Order['productionStatus'],
         issueState: (d.issue_state || undefined) as Order['issueState'],
         items: d.order_items ? (d.order_items as unknown as RawOrderItem[]).map((i) => ({

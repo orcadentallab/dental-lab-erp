@@ -48,6 +48,9 @@ interface StatementLineItem {
     runningBalance: number;
     services?: string;
     status?: string;
+    redoGroup?: string;
+    redoStep?: number;
+    redoSortDate?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -96,6 +99,7 @@ const isVisible = (order: Partial<Order>, showAll: boolean = false) => {
 
 // Status badge config for "all" mode
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+    'redo':            { label: 'إعادة إنتاج', cls: 'bg-violet-100 text-violet-700' },
     'doctor rejected': { label: 'مرتجع طبيب', cls: 'bg-amber-100 text-amber-700' },
     'rejected':        { label: 'مرفوض',       cls: 'bg-amber-100 text-amber-700' },
     'lab rejected':    { label: 'رفض معمل',    cls: 'bg-red-100 text-red-600' },
@@ -240,6 +244,49 @@ export default function StatementsPage() {
 
     // Quick lookup: id → Doctor
     const doctorById = useMemo(() => new Map(allDoctors.map(d => [d.id, d])), [allDoctors]);
+
+    const redoChainByOrderId = useMemo(() => {
+        const byId = new Map(orders.map(order => [order.id, order]));
+        const childByOriginalId = new Map<string, Order>();
+        for (const order of orders) {
+            if (order.originalOrderId) childByOriginalId.set(order.originalOrderId, order);
+        }
+
+        const metadata = new Map<string, { rootId: string; rootCaseId: string; rootDate: string; step: number; childCaseId?: string }>();
+        for (const order of orders) {
+            const visited = new Set<string>();
+            let current = order;
+            let step = 0;
+            while (current.originalOrderId && !visited.has(current.originalOrderId)) {
+                visited.add(current.id);
+                const parent = byId.get(current.originalOrderId);
+                if (!parent) break;
+                current = parent;
+                step += 1;
+            }
+            const child = childByOriginalId.get(order.id);
+            if (step > 0 || child || order.issueState === 'redo') {
+                metadata.set(order.id, { rootId: current.id, rootCaseId: current.caseId || '—', rootDate: getOfficialStatementDate(current), step, childCaseId: child?.caseId });
+            }
+        }
+        return metadata;
+    }, [orders]);
+
+    const getDoctorStatementRedoDisplay = useCallback((order: Order) => {
+        const chain = redoChainByOrderId.get(order.id);
+        const base = `حالة #${order.caseId || '—'} — ${order.patientName || '—'}`;
+        if (!chain) return { description: base, status: order.status };
+        if (chain.step === 0) {
+            return { description: `${base} — إعادة إنتاج → #${chain.childCaseId || '—'}`, status: 'redo', redoGroup: chain.rootId, redoStep: 0, redoSortDate: chain.rootDate };
+        }
+        return {
+            description: `${base} — إعادة إنتاج رقم ${chain.step} من #${chain.rootCaseId}${chain.childCaseId ? ` → #${chain.childCaseId}` : ''}`,
+            status: chain.childCaseId ? 'redo' : order.status,
+            redoGroup: chain.rootId,
+            redoStep: chain.step,
+            redoSortDate: chain.rootDate,
+        };
+    }, [redoChainByOrderId]);
 
     // Primary doctors (no parent) sorted by name
     const primaryDoctors = useMemo(
@@ -396,16 +443,20 @@ export default function StatementsPage() {
                 const amount = showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
                 // Sub-doctor name (if order is from a child clinic)
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
+                const redoDisplay = getDoctorStatementRedoDisplay(o);
                 lines.push({
                     id: o.id, date: statDate,
-                    description: `حالة #${o.caseId || '—'} — ${o.patientName || '—'}`,
+                    description: redoDisplay.description,
                     subName: subDoc?.name,
                     type: 'debit', amount,
                     services: ((o.items || []) as any[]).map(i => {
                         const count = Array.isArray(i.teethNumbers) && i.teethNumbers.length > 0 ? i.teethNumbers.length : 1;
                         return `${i.serviceType || '-'}(${count})`;
                     }).filter(Boolean).join(' + '),
-                    status: o.status,
+                    status: redoDisplay.status,
+                    redoGroup: redoDisplay.redoGroup,
+                    redoStep: redoDisplay.redoStep,
+                    redoSortDate: redoDisplay.redoSortDate,
                 });
             }
             for (const t of transactions) {
@@ -496,13 +547,18 @@ export default function StatementsPage() {
             }
         }
 
-        lines.sort((a, b) => a.date.localeCompare(b.date));
+        lines.sort((a, b) => {
+            const byGroupDate = (a.redoSortDate || a.date).localeCompare(b.redoSortDate || b.date);
+            return byGroupDate !== 0 ? byGroupDate : (a.redoGroup && a.redoGroup === b.redoGroup
+                ? (a.redoStep ?? 0) - (b.redoStep ?? 0)
+                : a.date.localeCompare(b.date));
+        });
         let running = 0;
         return lines.map(l => {
             running += l.type === 'debit' ? l.amount : -l.amount;
             return { ...l, runningBalance: running };
         });
-    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, timeFilter, showAllOrders]);
+    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, timeFilter, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Invoice lines (فاتورة شهرية) ─────────────────────────────────────────
 
@@ -558,16 +614,20 @@ export default function StatementsPage() {
                 if (!showAllOrders && !isDoctorStatementIncluded(o)) continue;
                 const amount = showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o);
                 const subDoc = o.doctorId !== selectedId ? doctorById.get(o.doctorId || '') : null;
+                const redoDisplay = getDoctorStatementRedoDisplay(o);
                 monthOrders.push({
                     id: o.id, date: statDate,
-                    description: `حالة #${o.caseId || '—'} — ${o.patientName || '—'}`,
+                    description: redoDisplay.description,
                     subName: subDoc?.name,
                     type: 'debit', amount,
                     services: ((o.items || []) as any[]).map(i => {
                         const count = Array.isArray(i.teethNumbers) && i.teethNumbers.length > 0 ? i.teethNumbers.length : 1;
                         return `${i.serviceType || '-'}(${count})`;
                     }).filter(Boolean).join(' + '),
-                    status: o.status,
+                    status: redoDisplay.status,
+                    redoGroup: redoDisplay.redoGroup,
+                    redoStep: redoDisplay.redoStep,
+                    redoSortDate: redoDisplay.redoSortDate,
                 });
             }
         } else if (activeTab === 'suppliers') {
@@ -657,14 +717,19 @@ export default function StatementsPage() {
             }
         }
 
-        monthOrders.sort((a, b) => a.date.localeCompare(b.date));
+        monthOrders.sort((a, b) => {
+            const byGroupDate = (a.redoSortDate || a.date).localeCompare(b.redoSortDate || b.date);
+            return byGroupDate !== 0 ? byGroupDate : (a.redoGroup && a.redoGroup === b.redoGroup
+                ? (a.redoStep ?? 0) - (b.redoStep ?? 0)
+                : a.date.localeCompare(b.date));
+        });
 
         const monthTotal = monthOrders.reduce((s, l) => s + l.amount, 0);
         const openingBalance = openingDebit - openingCredit;
         const totalDue = openingBalance + monthTotal;
 
         return { openingBalance, monthOrders, monthTotal, totalDue, monthStart, monthEnd };
-    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders]);
+    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Selected entity info ───────────────────────────────────────────────────
 
