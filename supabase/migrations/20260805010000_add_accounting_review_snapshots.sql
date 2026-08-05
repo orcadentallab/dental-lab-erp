@@ -7,7 +7,6 @@ ALTER TABLE public.orders
     ADD COLUMN IF NOT EXISTS accounting_registered_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS accounting_reviewed_by UUID,
     ADD COLUMN IF NOT EXISTS accounting_last_review_type TEXT;
-
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -21,7 +20,6 @@ BEGIN
     END IF;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.build_order_accounting_snapshot(p_order public.orders)
 RETURNS JSONB
 LANGUAGE sql
@@ -52,7 +50,6 @@ AS $$
         'designerId', p_order.designer_id
     );
 $$;
-
 CREATE OR REPLACE FUNCTION public.reopen_registered_order_for_accounting()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -133,7 +130,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 -- Establish a baseline for orders already acknowledged by accounting. This
 -- does not alter any financial or workflow value.
 UPDATE public.orders AS o
@@ -145,7 +141,6 @@ SET accounting_snapshot = public.build_order_accounting_snapshot(o),
     )
 WHERE o.is_registered = TRUE
   AND o.accounting_snapshot IS NULL;
-
 -- Tasneem is currently pending a one-time removal. Preserve the mistakenly
 -- recorded 12,000 / 3,950 entry as the old snapshot so the UI can show the
 -- exact negative correction instead of pretending it was a new zero row.

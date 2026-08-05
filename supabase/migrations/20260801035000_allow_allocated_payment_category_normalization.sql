@@ -50,7 +50,5 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.guard_allocated_payable_payment_mutation()
 FROM PUBLIC, anon, authenticated;
-

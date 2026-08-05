@@ -21,15 +21,11 @@ BEGIN
         MESSAGE = 'issue_state on_hold is retired and cannot be assigned to new orders or transitions';
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_prevent_new_on_hold_issue_state ON public.orders;
-
 CREATE TRIGGER trigger_prevent_new_on_hold_issue_state
 BEFORE INSERT OR UPDATE OF issue_state ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.prevent_new_on_hold_issue_state();
-
 COMMENT ON FUNCTION public.prevent_new_on_hold_issue_state() IS
 'Blocks new on_hold assignments while preserving and allowing exit from historical on_hold rows.';
-
 REVOKE ALL ON FUNCTION public.prevent_new_on_hold_issue_state() FROM PUBLIC;

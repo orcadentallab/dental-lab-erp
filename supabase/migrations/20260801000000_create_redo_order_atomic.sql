@@ -268,14 +268,12 @@ BEGIN
     );
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.create_redo_order_atomic(
     UUID, TEXT, TEXT, NUMERIC, NUMERIC
 ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_redo_order_atomic(
     UUID, TEXT, TEXT, NUMERIC, NUMERIC
 ) TO authenticated;
-
 COMMENT ON FUNCTION public.create_redo_order_atomic(
     UUID, TEXT, TEXT, NUMERIC, NUMERIC
 ) IS 'Atomically closes the original as redo and creates the linked replacement order, items, comments, events, and financial settlements.';

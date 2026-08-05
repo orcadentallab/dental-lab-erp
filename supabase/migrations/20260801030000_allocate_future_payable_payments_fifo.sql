@@ -214,7 +214,6 @@ BEGIN
     );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.allocate_approved_payable_payment_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -240,7 +239,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.guard_allocated_payable_payment_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -259,6 +257,7 @@ BEGIN
         v_financial_fields_changed :=
             NEW.type IS DISTINCT FROM OLD.type
             OR NEW.amount IS DISTINCT FROM OLD.amount
+            OR NEW.category IS DISTINCT FROM OLD.category
             OR NEW.entity_id IS DISTINCT FROM OLD.entity_id
             OR NEW.entity_type IS DISTINCT FROM OLD.entity_type
             OR NEW.status IS DISTINCT FROM OLD.status
@@ -289,27 +288,23 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_allocate_approved_payable_payment ON public.transactions;
 CREATE TRIGGER trigger_allocate_approved_payable_payment
 AFTER INSERT OR UPDATE OF status, is_approved
 ON public.transactions
 FOR EACH ROW
 EXECUTE FUNCTION public.allocate_approved_payable_payment_trigger();
-
 DROP TRIGGER IF EXISTS trigger_guard_allocated_payable_payment_mutation ON public.transactions;
 CREATE TRIGGER trigger_guard_allocated_payable_payment_mutation
 BEFORE UPDATE OR DELETE
 ON public.transactions
 FOR EACH ROW
 EXECUTE FUNCTION public.guard_allocated_payable_payment_mutation();
-
 REVOKE ALL ON FUNCTION public.allocate_payable_transaction_fifo(UUID, UUID)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.allocate_approved_payable_payment_trigger()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.guard_allocated_payable_payment_mutation()
 FROM PUBLIC, anon, authenticated;
-
 COMMENT ON FUNCTION public.allocate_payable_transaction_fifo(UUID, UUID) IS
     'Atomically allocates an approved supplier/designer payment FIFO. Excess remains unallocated under explicit financial review.';

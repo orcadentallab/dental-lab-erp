@@ -2,7 +2,6 @@
 -- Date: 2026-07-06
 
 DROP FUNCTION IF EXISTS get_doctors_activity_analytics(UUID);
-
 CREATE OR REPLACE FUNCTION get_doctors_activity_analytics(
     p_representative_id UUID DEFAULT NULL
 )

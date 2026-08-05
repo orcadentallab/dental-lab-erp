@@ -56,6 +56,37 @@ const REVIEW_BADGE_CLASSES: Record<AccountingReviewType, string> = {
     cancellation: 'bg-rose-500 text-white',
 };
 
+// Keep the operational state readable here without exposing database enum values.
+// A redo is deliberately distinct from a doctor rejection even when its source
+// order was originally returned by the doctor.
+const getOrderStatusPresentation = (order: Order, fallbackLabel: string) => {
+    if (order.issueState === 'redo') {
+        return { label: 'إعادة إنتاج', className: 'bg-violet-50 text-violet-700 border-violet-200' };
+    }
+
+    if (order.status === 'Doctor Rejected' || order.status === 'Rejected') {
+        return { label: 'مرتجع طبيب', className: 'bg-amber-50 text-amber-700 border-amber-200' };
+    }
+
+    if (order.status === 'Lab Rejected') {
+        return { label: 'رفض معمل', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+    }
+
+    if (order.status === 'Delivered') {
+        return { label: 'تم التسليم', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    }
+
+    if (order.status === 'Cancelled') {
+        return { label: 'ملغي', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+    }
+
+    if (order.status === 'Returned for Adjustments') {
+        return { label: 'مرتجع للتعديل', className: 'bg-amber-50 text-amber-700 border-amber-200' };
+    }
+
+    return { label: fallbackLabel, className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+};
+
 export default function CaseRegistration() {
     const { t } = useTranslation();
     const { info, success, error: toastError } = useToast();
@@ -513,6 +544,7 @@ export default function CaseRegistration() {
                                     const oldSupplierName = oldSnapshot?.supplierId ? suppliers[oldSnapshot.supplierId] : 'داخلي';
                                     const statusKey = order.status.toLowerCase().replace(/ /g, '');
                                     const statusLabel = Object.entries(t.orders.status).find(([key]) => key === statusKey)?.[1] || order.status;
+                                    const statusPresentation = getOrderStatusPresentation(order, statusLabel);
                                     
                                     return (
                                         <motion.tr
@@ -554,7 +586,7 @@ export default function CaseRegistration() {
                                                     </div>
                                                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] font-black text-slate-600">
                                                         <span className="rounded bg-slate-100 px-1.5 py-0.5">{formattedDate}</span>
-                                                        <span className="rounded bg-cyan-50 px-1.5 py-0.5 text-cyan-700">{statusLabel}</span>
+                                                        <span className={clsx('rounded border px-1.5 py-0.5', statusPresentation.className)}>{statusPresentation.label}</span>
                                                     </div>
                                                 </div>
                                             </td>
@@ -627,14 +659,9 @@ export default function CaseRegistration() {
                                                 <div className="flex">
                                                     <span className={clsx(
                                                         "px-2.5 py-1 rounded-xl text-[9px] font-black border uppercase tracking-wider whitespace-nowrap inline-flex items-center justify-center",
-                                                        order.status === 'Delivered' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                                        (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                                        order.status === 'Lab Rejected' ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                                        order.status === 'Cancelled' ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                                        order.status === 'Returned for Adjustments' ? "bg-amber-50 text-amber-700 border-amber-200" :
-                                                        "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-sm shadow-cyan-100"
+                                                        statusPresentation.className
                                                     )}>
-                                                        {statusLabel}
+                                                        {statusPresentation.label}
                                                     </span>
                                                 </div>
                                             </td>

@@ -56,7 +56,6 @@ AS $$
         ELSE 'مصروفات أخرى'
     END
 $$;
-
 -- Preserve internal payroll components and payable-settlement movement codes;
 -- everything that represents an expense category is migrated to one name.
 UPDATE transactions
@@ -67,7 +66,6 @@ SET category = CASE
     ELSE canonical_expense_category(category)
 END
 WHERE type = 'expense';
-
 CREATE OR REPLACE FUNCTION enforce_canonical_transaction_category()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -91,12 +89,10 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trg_enforce_canonical_transaction_category ON transactions;
 CREATE TRIGGER trg_enforce_canonical_transaction_category
 BEFORE INSERT OR UPDATE OF type, category, entity_type ON transactions
 FOR EACH ROW EXECUTE FUNCTION enforce_canonical_transaction_category();
-
 ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_expense_category_check;
 ALTER TABLE transactions
 ADD CONSTRAINT transactions_expense_category_check CHECK (

@@ -36,17 +36,13 @@ CREATE TABLE IF NOT EXISTS public.financial_report_snapshots (
         (status = 'corrective' AND parent_snapshot_id IS NOT NULL)
     )
 );
-
 CREATE INDEX IF NOT EXISTS idx_financial_report_snapshots_period
 ON public.financial_report_snapshots(period_start, period_end);
-
 CREATE INDEX IF NOT EXISTS idx_financial_report_snapshots_status
 ON public.financial_report_snapshots(status, created_at DESC);
-
 CREATE UNIQUE INDEX IF NOT EXISTS uq_financial_report_approved_period
 ON public.financial_report_snapshots(period_start, period_end)
 WHERE status = 'approved';
-
 CREATE TABLE IF NOT EXISTS public.financial_report_snapshot_notes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     snapshot_id UUID NOT NULL
@@ -55,10 +51,8 @@ CREATE TABLE IF NOT EXISTS public.financial_report_snapshot_notes (
     created_by UUID NOT NULL REFERENCES public.users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
-
 CREATE INDEX IF NOT EXISTS idx_financial_report_snapshot_notes_snapshot
 ON public.financial_report_snapshot_notes(snapshot_id, created_at);
-
 CREATE OR REPLACE FUNCTION public.guard_approved_financial_report_snapshot()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -85,39 +79,32 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_guard_approved_financial_report_snapshot
 ON public.financial_report_snapshots;
-
 CREATE TRIGGER trigger_guard_approved_financial_report_snapshot
 BEFORE UPDATE OR DELETE ON public.financial_report_snapshots
 FOR EACH ROW
 EXECUTE FUNCTION public.guard_approved_financial_report_snapshot();
-
 ALTER TABLE public.financial_report_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.financial_report_snapshot_notes ENABLE ROW LEVEL SECURITY;
-
 DROP POLICY IF EXISTS "Finance reviewers view snapshots"
 ON public.financial_report_snapshots;
 CREATE POLICY "Finance reviewers view snapshots"
 ON public.financial_report_snapshots
 FOR SELECT TO authenticated
 USING (public.get_my_role() IN ('admin', 'accountant'));
-
 DROP POLICY IF EXISTS "Finance reviewers view snapshot notes"
 ON public.financial_report_snapshot_notes;
 CREATE POLICY "Finance reviewers view snapshot notes"
 ON public.financial_report_snapshot_notes
 FOR SELECT TO authenticated
 USING (public.get_my_role() IN ('admin', 'accountant'));
-
 REVOKE INSERT, UPDATE, DELETE ON public.financial_report_snapshots
 FROM authenticated;
 REVOKE INSERT, UPDATE, DELETE ON public.financial_report_snapshot_notes
 FROM authenticated;
 GRANT SELECT ON public.financial_report_snapshots TO authenticated;
 GRANT SELECT ON public.financial_report_snapshot_notes TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.create_financial_report_snapshot(
     p_period_start DATE,
     p_period_end DATE,
@@ -217,7 +204,6 @@ BEGIN
     RETURN v_snapshot;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.approve_financial_report_snapshot(
     p_snapshot_id UUID,
     p_reason TEXT DEFAULT NULL
@@ -271,7 +257,6 @@ BEGIN
     RETURN v_snapshot;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.create_corrective_financial_report_snapshot(
     p_parent_snapshot_id UUID,
     p_label TEXT,
@@ -371,7 +356,6 @@ BEGIN
     RETURN v_snapshot;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.add_financial_snapshot_note(
     p_snapshot_id UUID,
     p_note TEXT
@@ -415,7 +399,6 @@ BEGIN
     RETURN v_note;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.create_financial_report_snapshot(
     DATE, DATE, TEXT, JSONB, JSONB, INTEGER, INTEGER
 ) FROM PUBLIC, anon;
@@ -426,7 +409,6 @@ REVOKE ALL ON FUNCTION public.create_corrective_financial_report_snapshot(
 ) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.add_financial_snapshot_note(UUID, TEXT)
 FROM PUBLIC, anon;
-
 GRANT EXECUTE ON FUNCTION public.create_financial_report_snapshot(
     DATE, DATE, TEXT, JSONB, JSONB, INTEGER, INTEGER
 ) TO authenticated;
@@ -437,6 +419,5 @@ GRANT EXECUTE ON FUNCTION public.create_corrective_financial_report_snapshot(
 ) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.add_financial_snapshot_note(UUID, TEXT)
 TO authenticated;
-
 COMMENT ON TABLE public.financial_report_snapshots IS
     'Immutable approved monthly financial snapshots. Drafts are captured from canonical-v1 comparison reports.';

@@ -76,14 +76,12 @@ BEGIN
     RETURN to_jsonb(v_transaction);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.create_finance_transaction_atomic(
     TEXT, NUMERIC, TEXT, TEXT, DATE, DATE, TEXT, UUID, UUID, TEXT, NUMERIC, DATE
 ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_finance_transaction_atomic(
     TEXT, NUMERIC, TEXT, TEXT, DATE, DATE, TEXT, UUID, UUID, TEXT, NUMERIC, DATE
 ) TO authenticated;
-
 COMMENT ON FUNCTION public.create_finance_transaction_atomic(
     TEXT, NUMERIC, TEXT, TEXT, DATE, DATE, TEXT, UUID, UUID, TEXT, NUMERIC, DATE
 ) IS 'Creates a finance transaction and optional linked cashbox fee atomically.';

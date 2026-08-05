@@ -28,7 +28,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.soft_delete_order_atomic(p_order_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -75,14 +74,11 @@ BEGIN
     RETURN to_jsonb(v_order);
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.soft_delete_order_atomic(UUID)
 FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.soft_delete_order_atomic(UUID)
 TO authenticated;
-
 REVOKE ALL ON FUNCTION public.guard_financially_active_order_delete()
 FROM PUBLIC, anon, authenticated;
-
 COMMENT ON FUNCTION public.soft_delete_order_atomic(UUID) IS
     'Soft-deletes one order and lets the order financial trigger atomically void obligations, reverse allocations, and preserve payments as credits.';

@@ -30,7 +30,6 @@ BEGIN
     EXECUTE v_patched;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.guard_rejected_designer_cost_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -49,7 +48,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.apply_order_rejection_atomic(
     p_order_id UUID,
     p_target_status TEXT,
@@ -183,14 +181,12 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.apply_order_rejection_atomic(
     UUID, TEXT, TEXT, TEXT, NUMERIC, TEXT, TEXT
 ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.apply_order_rejection_atomic(
     UUID, TEXT, TEXT, TEXT, NUMERIC, TEXT, TEXT
 ) TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.admin_update_rejection_financials_atomic(
     p_order_id UUID,
     p_doctor_amount NUMERIC,
@@ -294,19 +290,16 @@ BEGIN
     RETURN v_result;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.admin_update_rejection_financials_atomic(
     UUID, NUMERIC, NUMERIC, TEXT, NUMERIC, TEXT, TEXT
 ) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_update_rejection_financials_atomic(
     UUID, NUMERIC, NUMERIC, TEXT, NUMERIC, TEXT, TEXT
 ) TO authenticated;
-
 -- Activate the financial synchronization only after every dependency and RPC
 -- above has been created successfully.
 DROP TRIGGER IF EXISTS trigger_sync_order_financial_obligations
 ON public.orders;
-
 CREATE TRIGGER trigger_sync_order_financial_obligations
 AFTER INSERT OR UPDATE OF
     status,
@@ -335,10 +328,8 @@ AFTER INSERT OR UPDATE OF
 ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.sync_order_financial_obligations();
-
 DROP TRIGGER IF EXISTS trigger_guard_financially_active_order_delete
 ON public.orders;
-
 CREATE TRIGGER trigger_guard_financially_active_order_delete
 BEFORE UPDATE OF is_deleted ON public.orders
 FOR EACH ROW

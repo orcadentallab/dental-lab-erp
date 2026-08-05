@@ -13,7 +13,6 @@
 -- already-recorded collections and must never be counted as extra payments.
 
 BEGIN;
-
 LOCK TABLE public.orders,
                   public.transactions,
                   public.adjustments,
@@ -21,7 +20,6 @@ LOCK TABLE public.orders,
                   public.payment_allocations,
                   public.account_credits
 IN SHARE ROW EXCLUSIVE MODE;
-
 CREATE OR REPLACE FUNCTION public.canonical_doctor_account_id(p_doctor_id UUID)
 RETURNS UUID
 LANGUAGE sql
@@ -38,7 +36,6 @@ AS $$
         p_doctor_id
     );
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_doctor_account_fifo(
     p_doctor_id UUID,
     p_changed_by UUID DEFAULT NULL
@@ -405,7 +402,6 @@ BEGIN
     );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_approved_doctor_collection_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -431,7 +427,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_open_doctor_obligation_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -459,7 +454,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_doctor_credit_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -481,7 +475,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 -- The existing mutation guard already protects allocated transactions. Extend
 -- it to protect doctor payments represented only by an active credit as well.
 CREATE OR REPLACE FUNCTION public.guard_allocated_payable_payment_mutation()
@@ -540,7 +533,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_reconcile_approved_doctor_collection
 ON public.transactions;
 CREATE TRIGGER trigger_reconcile_approved_doctor_collection
@@ -548,7 +540,6 @@ AFTER INSERT OR UPDATE OF status, is_approved
 ON public.transactions
 FOR EACH ROW
 EXECUTE FUNCTION public.reconcile_approved_doctor_collection_trigger();
-
 DROP TRIGGER IF EXISTS trigger_reconcile_open_doctor_obligation
 ON public.financial_obligations;
 CREATE TRIGGER trigger_reconcile_open_doctor_obligation
@@ -556,7 +547,6 @@ AFTER INSERT OR UPDATE OF entity_id, net_amount, status
 ON public.financial_obligations
 FOR EACH ROW
 EXECUTE FUNCTION public.reconcile_open_doctor_obligation_trigger();
-
 DROP TRIGGER IF EXISTS trigger_reconcile_doctor_credit
 ON public.account_credits;
 CREATE TRIGGER trigger_reconcile_doctor_credit
@@ -564,7 +554,6 @@ AFTER INSERT OR UPDATE OF entity_id, remaining_amount, status
 ON public.account_credits
 FOR EACH ROW
 EXECUTE FUNCTION public.reconcile_doctor_credit_trigger();
-
 REVOKE ALL ON FUNCTION public.canonical_doctor_account_id(UUID)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.reconcile_doctor_account_fifo(UUID, UUID)
@@ -575,7 +564,6 @@ REVOKE ALL ON FUNCTION public.reconcile_open_doctor_obligation_trigger()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.reconcile_doctor_credit_trigger()
 FROM PUBLIC, anon, authenticated;
-
 -- Snapshot every source table used by the current doctor statements. A hash
 -- mismatch after allocation means the visible statements could have changed,
 -- so the migration raises and the surrounding transaction rolls back.
@@ -595,13 +583,11 @@ SELECT
         SELECT md5(COALESCE(string_agg(md5(to_jsonb(row_data)::TEXT), '' ORDER BY row_data.id::TEXT), ''))
         FROM public.adjustments row_data
     ) AS adjustments_hash;
-
 CREATE TEMP TABLE existing_doctor_allocations_20260801
 ON COMMIT DROP
 AS
 SELECT allocation.id
 FROM public.payment_allocations allocation;
-
 DO $$
 DECLARE
     v_account RECORD;
@@ -625,7 +611,6 @@ DECLARE
     v_historical_credit_count INTEGER;
     v_historical_credit_amount NUMERIC(12, 2);
     v_already_applied BOOLEAN := FALSE;
-    v_empty_database BOOLEAN := FALSE;
 BEGIN
     WITH active_alloc AS (
         SELECT payment_transaction_id, SUM(allocated_amount) AS amount
@@ -693,15 +678,6 @@ BEGIN
        AND v_historical_credit_count = 7
        AND v_historical_credit_amount = 10370.00 THEN
         v_already_applied := TRUE;
-    ELSIF v_untracked_count = 0
-          AND v_untracked_amount = 0
-          AND v_credit_count = 0
-          AND v_credit_amount = 0
-          AND v_historical_allocation_count = 0
-          AND v_historical_credit_count = 0 THEN
-        -- Fresh local/test databases have no production history to backfill.
-        -- The functions and triggers above still install normally.
-        v_empty_database := TRUE;
     ELSIF v_untracked_count <> 87 OR v_untracked_amount <> 524730.00 THEN
         RAISE EXCEPTION
             'Doctor FIFO guard failed: expected 87 untracked collections / 524730.00, found % / %',
@@ -714,7 +690,7 @@ BEGIN
             v_credit_amount;
     END IF;
 
-    IF NOT v_already_applied AND NOT v_empty_database THEN
+    IF NOT v_already_applied THEN
         PERFORM set_config('orca.doctor_fifo_backfill', '1', TRUE);
 
         FOR v_account IN
@@ -815,7 +791,7 @@ BEGIN
             v_remaining_untracked_amount;
     END IF;
 
-    IF NOT v_already_applied AND NOT v_empty_database THEN
+    IF NOT v_already_applied THEN
         SELECT COUNT(*), COALESCE(SUM(remaining_amount), 0)
         INTO v_result_credit_count, v_result_credit_amount
         FROM public.account_credits
@@ -831,29 +807,27 @@ BEGIN
         END IF;
     END IF;
 
-    IF NOT v_empty_database THEN
-        SELECT COUNT(*),
-               COALESCE(SUM(allocated_amount), 0),
-               COUNT(DISTINCT obligation_id)
-        INTO v_historical_allocation_count,
-             v_historical_allocation_amount,
-             v_historical_obligation_count
-        FROM public.payment_allocations
-        WHERE metadata->>'historicalBackfill20260801' = 'true';
+    SELECT COUNT(*),
+           COALESCE(SUM(allocated_amount), 0),
+           COUNT(DISTINCT obligation_id)
+    INTO v_historical_allocation_count,
+         v_historical_allocation_amount,
+         v_historical_obligation_count
+    FROM public.payment_allocations
+    WHERE metadata->>'historicalBackfill20260801' = 'true';
 
-        SELECT COUNT(*), COALESCE(SUM(amount), 0)
-        INTO v_historical_credit_count, v_historical_credit_amount
-        FROM public.account_credits
-        WHERE metadata->>'historicalBackfill20260801' = 'true';
+    SELECT COUNT(*), COALESCE(SUM(amount), 0)
+    INTO v_historical_credit_count, v_historical_credit_amount
+    FROM public.account_credits
+    WHERE metadata->>'historicalBackfill20260801' = 'true';
 
-        IF v_historical_allocation_count <> 340
-           OR v_historical_allocation_amount <> 518560.00
-           OR v_historical_obligation_count <> 324
-           OR v_historical_credit_count <> 7
-           OR v_historical_credit_amount <> 10370.00 THEN
-            RAISE EXCEPTION
-                'Doctor FIFO historical marker verification failed';
-        END IF;
+    IF v_historical_allocation_count <> 340
+       OR v_historical_allocation_amount <> 518560.00
+       OR v_historical_obligation_count <> 324
+       OR v_historical_credit_count <> 7
+       OR v_historical_credit_amount <> 10370.00 THEN
+        RAISE EXCEPTION
+            'Doctor FIFO historical marker verification failed';
     END IF;
 
     SELECT
@@ -883,8 +857,6 @@ BEGIN
     END IF;
 END;
 $$;
-
 COMMENT ON FUNCTION public.reconcile_doctor_account_fifo(UUID, UUID) IS
     'Atomically allocates doctor collections and credits FIFO across a canonical doctor/center account. Excess collection becomes tracked credit without changing the official statement.';
-
 COMMIT;

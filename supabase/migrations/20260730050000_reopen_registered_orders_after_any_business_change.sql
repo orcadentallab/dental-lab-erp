@@ -3,7 +3,6 @@
 
 ALTER TABLE public.orders
 ADD COLUMN IF NOT EXISTS needs_accounting_reregistration BOOLEAN NOT NULL DEFAULT FALSE;
-
 CREATE OR REPLACE FUNCTION public.reopen_registered_order_for_accounting()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -56,7 +55,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 -- Run after the existing permission guards. The trigger changes registration
 -- state internally, so non-accountant update paths cannot bypass this rule.
 DROP TRIGGER IF EXISTS zz_reopen_registered_order_for_accounting ON public.orders;
@@ -64,7 +62,6 @@ CREATE TRIGGER zz_reopen_registered_order_for_accounting
 BEFORE UPDATE ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.reopen_registered_order_for_accounting();
-
 -- Repair currently registered rejected/returned/cancelled rows that were
 -- changed through the known bypass paths before this protection existed.
 UPDATE public.orders
@@ -78,4 +75,3 @@ WHERE is_registered = TRUE
       'Returned for Adjustments',
       'Cancelled'
   );
-

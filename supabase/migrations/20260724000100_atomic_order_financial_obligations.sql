@@ -11,7 +11,6 @@ ADD COLUMN IF NOT EXISTS rejected_doctor_amount NUMERIC(12, 2),
 ADD COLUMN IF NOT EXISTS rejection_financial_review_status TEXT,
 ADD COLUMN IF NOT EXISTS rejected_lab_cost_status TEXT,
 ADD COLUMN IF NOT EXISTS rejected_designer_cost_status TEXT;
-
 ALTER TABLE public.orders
 DROP CONSTRAINT IF EXISTS orders_rejection_doctor_decision_check,
 ADD CONSTRAINT orders_rejection_doctor_decision_check CHECK (
@@ -41,7 +40,6 @@ ADD CONSTRAINT orders_rejected_designer_cost_status_check CHECK (
     rejected_designer_cost_status IS NULL
     OR rejected_designer_cost_status IN ('pending', 'resolved', 'not_applicable')
 );
-
 DO $$
 DECLARE
     v_constraint_name TEXT;
@@ -64,7 +62,6 @@ BEGIN
         );
     END IF;
 END $$;
-
 ALTER TABLE public.financial_obligations
 ADD CONSTRAINT financial_obligations_trigger_type_check
 CHECK (trigger_type IN (
@@ -75,7 +72,6 @@ CHECK (trigger_type IN (
     'designer_issue_settlement',
     'manual_adjustment'
 ));
-
 CREATE OR REPLACE FUNCTION public.calculate_financial_obligation_due_date(
     p_entity_type TEXT,
     p_entity_id UUID,
@@ -115,7 +111,6 @@ BEGIN
     );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.apply_entity_credits_fifo(
     p_entity_type TEXT,
     p_entity_id UUID,
@@ -242,7 +237,6 @@ BEGIN
     END LOOP;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reallocate_voided_obligation_allocations(
     p_voided_obligation_id UUID,
     p_new_obligation_id UUID DEFAULT NULL,
@@ -455,7 +449,6 @@ BEGIN
     );
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.sync_single_order_obligation(
     p_order_id UUID,
     p_entity_type TEXT,
@@ -592,7 +585,6 @@ BEGIN
     END IF;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.sync_order_financial_obligations()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -840,7 +832,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.guard_financially_active_order_delete()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -863,7 +854,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.reallocate_voided_obligation_allocations(UUID, UUID, UUID)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.apply_entity_credits_fifo(TEXT, UUID, TEXT, UUID)
@@ -875,6 +865,5 @@ REVOKE ALL ON FUNCTION public.sync_order_financial_obligations()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.guard_financially_active_order_delete()
 FROM PUBLIC, anon, authenticated;
-
 COMMENT ON FUNCTION public.sync_order_financial_obligations() IS
     'Synchronizes order-driven obligations, allocation transfers, and credits in the same transaction as the order write.';

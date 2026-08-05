@@ -28,15 +28,12 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_guard_lab_rejected_cancelled_transition
 ON public.orders;
-
 CREATE TRIGGER trigger_guard_lab_rejected_cancelled_transition
 BEFORE UPDATE OF status ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.guard_lab_rejected_cancelled_transition();
-
 CREATE OR REPLACE FUNCTION public.normalize_zero_fields_for_lab_rejected_cancelled()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -64,10 +61,8 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS zz_before_normalize_zero_financial_fields
 ON public.orders;
-
 CREATE TRIGGER zz_before_normalize_zero_financial_fields
 BEFORE INSERT OR UPDATE OF
     status,
@@ -81,7 +76,6 @@ BEFORE INSERT OR UPDATE OF
 ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.normalize_zero_fields_for_lab_rejected_cancelled();
-
 CREATE OR REPLACE FUNCTION public.enforce_zero_order_financials_for_lab_rejected_cancelled()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -154,10 +148,8 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS zz_trigger_enforce_zero_order_financials
 ON public.orders;
-
 -- PostgreSQL executes same-event triggers alphabetically. The zz_ prefix
 -- ensures this final enforcement runs after trigger_sync_order_financial_obligations.
 CREATE TRIGGER zz_trigger_enforce_zero_order_financials
@@ -175,13 +167,11 @@ AFTER INSERT OR UPDATE OF
 ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.enforce_zero_order_financials_for_lab_rejected_cancelled();
-
 REVOKE ALL ON FUNCTION public.guard_lab_rejected_cancelled_transition()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.normalize_zero_fields_for_lab_rejected_cancelled()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.enforce_zero_order_financials_for_lab_rejected_cancelled()
 FROM PUBLIC, anon, authenticated;
-
 COMMENT ON FUNCTION public.enforce_zero_order_financials_for_lab_rejected_cancelled() IS
     'Final financial invariant: Lab Rejected and Cancelled orders have zero order-driven obligations.';

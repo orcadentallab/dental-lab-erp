@@ -8,7 +8,6 @@
 DROP TRIGGER IF EXISTS zzz_trigger_sync_full_external_lab_order_cost
 ON public.orders;
 DROP FUNCTION IF EXISTS public.sync_full_external_lab_order_cost();
-
 UPDATE public.orders
 SET rejected_lab_cost_status = 'resolved'
 WHERE COALESCE(is_deleted, FALSE) = FALSE
@@ -17,7 +16,6 @@ WHERE COALESCE(is_deleted, FALSE) = FALSE
   AND rejected_lab_cost IS NOT NULL
   AND rejected_lab_cost >= 0
   AND rejected_lab_cost_status IS DISTINCT FROM 'resolved';
-
 UPDATE public.orders
 SET rejected_designer_cost_status = 'resolved'
 WHERE COALESCE(is_deleted, FALSE) = FALSE
@@ -26,13 +24,11 @@ WHERE COALESCE(is_deleted, FALSE) = FALSE
   AND rejected_designer_cost IS NOT NULL
   AND rejected_designer_cost >= 0
   AND rejected_designer_cost_status IS DISTINCT FROM 'resolved';
-
 -- Re-run the canonical trigger after removing the temporary full-cost override.
 UPDATE public.orders
 SET status = status,
     cost = cost
 WHERE COALESCE(is_deleted, FALSE) = FALSE;
-
 DO $verify$
 BEGIN
     IF EXISTS (

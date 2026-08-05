@@ -8,7 +8,6 @@ WHERE t.type = 'expense'
   AND (t.entity_type = 'general' OR t.entity_type IS NULL)
   AND t.category NOT IN ('مرتبات وأجور', 'salaries')
   AND EXISTS (SELECT 1 FROM users u WHERE u.id = t.entity_id);
-
 CREATE OR REPLACE FUNCTION settle_employee_expenses(
     p_expense_ids UUID[],
     p_settled_amount NUMERIC,
@@ -128,7 +127,7 @@ BEGIN
                 is_registered, is_approved, status, effective_date, cashbox_id,
                 linked_transaction_id, is_system_generated_fee
             ) VALUES (
-                'expense', v_transfer_fee, 'عمولات ورسوم بنكية', p_settlement_date,
+                'expense', v_transfer_fee, 'transfer_fee', p_settlement_date,
                 LEFT('مصاريف بنك/محفظة - تسوية مصاريف ' || v_employee_name, 500), 'general',
                 true, true, 'approved', p_effective_date, p_cashbox_id,
                 v_first_transaction_id, true
@@ -151,10 +150,8 @@ BEGIN
     );
 END;
 $$;
-
 REVOKE ALL ON FUNCTION settle_employee_expenses(UUID[], NUMERIC, UUID, DATE, DATE) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION settle_employee_expenses(UUID[], NUMERIC, UUID, DATE, DATE) TO authenticated;
-
 -- This dashboard RPC predates transaction statuses. Exclude employee claims by
 -- their dedicated entity type while retaining all real manual ledger entries.
 CREATE OR REPLACE FUNCTION get_finance_dashboard()

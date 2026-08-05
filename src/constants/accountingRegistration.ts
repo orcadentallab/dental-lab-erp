@@ -20,7 +20,9 @@ export function getCurrentAccountingSnapshot(order: Order): AccountingOrderSnaps
 
     return {
         status: order.status,
-        saleAmount: zeroImpact ? 0 : (rejected ? (order.rejectedDoctorAmount ?? order.totalPrice) : order.totalPrice),
+        // A doctor rejection is zero unless an explicit financial decision
+        // recorded a doctor amount; never fall back to the order total.
+        saleAmount: zeroImpact ? 0 : (rejected ? (order.rejectedDoctorAmount ?? 0) : order.totalPrice),
         labCost: zeroImpact ? 0 : (rejected ? (order.rejectedLabCost ?? 0) : (order.manualCost ?? order.cost ?? 0)),
         designCost: zeroImpact ? 0 : (rejected ? (order.rejectedDesignerCost ?? 0) : (order.manualDesignPrice ?? order.designPrice ?? 0)),
         doctorId: order.doctorId || null,
@@ -67,6 +69,7 @@ export function isAccountingRegistrationCandidate(
     tab: 'pending' | 'history'
 ): boolean {
     if (order.isDeleted) return false;
+    if (order.excludeFromAccountingRegistration) return false;
 
     if (tab === 'pending') {
         if (order.isRegistered) return false;

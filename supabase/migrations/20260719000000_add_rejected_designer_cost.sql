@@ -1,7 +1,6 @@
 -- Keep designer rejection settlement separate from the external-lab settlement.
 ALTER TABLE public.orders
 ADD COLUMN IF NOT EXISTS rejected_designer_cost NUMERIC DEFAULT NULL;
-
 CREATE OR REPLACE FUNCTION guard_rejected_designer_cost_update()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -19,12 +18,10 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS guard_rejected_designer_cost_update ON public.orders;
 CREATE TRIGGER guard_rejected_designer_cost_update
 BEFORE UPDATE ON public.orders
 FOR EACH ROW EXECUTE FUNCTION guard_rejected_designer_cost_update();
-
 CREATE OR REPLACE FUNCTION update_order_atomic(
     p_order_id UUID,
     p_updates JSONB,

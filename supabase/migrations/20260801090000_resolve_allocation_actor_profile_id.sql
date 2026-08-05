@@ -27,7 +27,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_approved_doctor_collection_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -53,7 +52,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_open_doctor_obligation_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -81,7 +79,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reconcile_doctor_credit_trigger()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -103,7 +100,6 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 REVOKE ALL ON FUNCTION public.allocate_approved_payable_payment_trigger()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.reconcile_approved_doctor_collection_trigger()
@@ -112,4 +108,3 @@ REVOKE ALL ON FUNCTION public.reconcile_open_doctor_obligation_trigger()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.reconcile_doctor_credit_trigger()
 FROM PUBLIC, anon, authenticated;
-

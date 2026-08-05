@@ -234,6 +234,9 @@ export interface Order {
     representativeId?: string; // Linked Representative
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
     needsAccountingReregistration?: boolean;
+    // Historical zero-impact entries that must not appear in the accounting
+    // registration queue/history. The order itself remains fully available.
+    excludeFromAccountingRegistration?: boolean;
     accountingSnapshot?: AccountingOrderSnapshot | null;
     accountingPreviousSnapshot?: AccountingOrderSnapshot | null;
     accountingRegisteredAt?: string | null;

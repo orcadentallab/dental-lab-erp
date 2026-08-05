@@ -5,7 +5,6 @@
 -- 1. Cache columns in doctors table
 ALTER TABLE doctors ADD COLUMN IF NOT EXISTS last_follow_up_date TIMESTAMPTZ;
 ALTER TABLE doctors ADD COLUMN IF NOT EXISTS last_follow_up_notes TEXT;
-
 -- 2. Create Settings Table
 CREATE TABLE IF NOT EXISTS doctor_retention_settings (
     id INT PRIMARY KEY DEFAULT 1,
@@ -18,10 +17,8 @@ CREATE TABLE IF NOT EXISTS doctor_retention_settings (
     high_rejection_rate_pct NUMERIC(5,2) NOT NULL DEFAULT 20.00,
     CONSTRAINT check_single_row CHECK (id = 1)
 );
-
 -- Seed Default Row
 INSERT INTO doctor_retention_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
-
 -- 3. Create Follow-up Logs Table
 CREATE TABLE IF NOT EXISTS doctor_follow_ups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -33,20 +30,16 @@ CREATE TABLE IF NOT EXISTS doctor_follow_ups (
     next_follow_up_date DATE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 -- 4. Enable RLS on new tables
 ALTER TABLE doctor_retention_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE doctor_follow_ups ENABLE ROW LEVEL SECURITY;
-
 -- 5. RLS Policies for settings
 DROP POLICY IF EXISTS doctor_retention_settings_select ON doctor_retention_settings;
 CREATE POLICY doctor_retention_settings_select ON doctor_retention_settings 
     FOR SELECT TO authenticated USING (true);
-
 DROP POLICY IF EXISTS doctor_retention_settings_update ON doctor_retention_settings;
 CREATE POLICY doctor_retention_settings_update ON doctor_retention_settings 
     FOR UPDATE TO authenticated USING (get_my_role() = 'admin') WITH CHECK (get_my_role() = 'admin');
-
 -- 6. RLS Policies for follow-up logs
 DROP POLICY IF EXISTS doctor_follow_ups_select ON doctor_follow_ups;
 CREATE POLICY doctor_follow_ups_select ON doctor_follow_ups 
@@ -59,7 +52,6 @@ CREATE POLICY doctor_follow_ups_select ON doctor_follow_ups
               AND doctors.representative_id = get_my_user_id()
         ))
     );
-
 DROP POLICY IF EXISTS doctor_follow_ups_insert ON doctor_follow_ups;
 CREATE POLICY doctor_follow_ups_insert ON doctor_follow_ups 
     FOR INSERT TO authenticated
@@ -71,12 +63,10 @@ CREATE POLICY doctor_follow_ups_insert ON doctor_follow_ups
               AND doctors.representative_id = get_my_user_id()
         ))
     );
-
 -- 7. Composite Performance Index
 CREATE INDEX IF NOT EXISTS idx_orders_retention_lookup 
 ON orders(doctor_id, created_at, status) 
 WHERE is_deleted = false;
-
 -- 8. Analytics RPC function
 CREATE OR REPLACE FUNCTION get_doctors_activity_analytics(
     p_representative_id UUID DEFAULT NULL

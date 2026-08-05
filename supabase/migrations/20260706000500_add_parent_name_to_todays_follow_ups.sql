@@ -2,7 +2,6 @@
 -- Date: 2026-07-06
 
 DROP FUNCTION IF EXISTS get_todays_follow_ups();
-
 CREATE OR REPLACE FUNCTION get_todays_follow_ups()
 RETURNS TABLE (
     id UUID,

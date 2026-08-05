@@ -6,7 +6,6 @@
 -- 1. Add is_deleted column
 ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_orders_is_deleted ON public.orders(is_deleted);
-
 -- 2. Update update_order_atomic
 CREATE OR REPLACE FUNCTION update_order_atomic(
     p_order_id UUID,

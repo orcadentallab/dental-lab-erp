@@ -3,7 +3,6 @@
 
 DROP FUNCTION IF EXISTS get_doctors_activity_analytics(UUID);
 DROP FUNCTION IF EXISTS get_todays_follow_ups();
-
 -- 1. Recreate get_doctors_activity_analytics
 CREATE OR REPLACE FUNCTION get_doctors_activity_analytics(
     p_representative_id UUID DEFAULT NULL
@@ -242,7 +241,6 @@ BEGIN
     ORDER BY calculated_segment DESC, m.days_idle DESC NULLS LAST;
 END;
 $$;
-
 -- 2. Recreate get_todays_follow_ups
 CREATE OR REPLACE FUNCTION get_todays_follow_ups()
 RETURNS TABLE (

@@ -22,7 +22,6 @@ BEGIN
     EXECUTE v_patched;
 END;
 $$;
-
 -- Re-fire the financial synchronization for existing redo records that already
 -- have an approved doctor amount (including the cases created before this fix).
 UPDATE public.orders

@@ -133,5 +133,4 @@ BEGIN
     RETURN result;
 END;
 $$;
-
 GRANT EXECUTE ON FUNCTION get_analytics_summary(DATE, DATE) TO authenticated;

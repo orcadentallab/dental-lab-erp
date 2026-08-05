@@ -22,6 +22,7 @@ import {
     isTryInReady,
 } from '../src/constants/orderLifecycle';
 import { shouldVoidExternalLabReadyObligationForStatusChange } from '../src/constants/financialObligations';
+import { getCurrentAccountingSnapshot } from '../src/constants/accountingRegistration';
 
 const order = (overrides: Record<string, unknown>) => ({
     id: 'order-1',
@@ -164,6 +165,14 @@ test.describe('official statement dates', () => {
         });
 
         expect(getDoctorOrderDisplayAmount(rejected)).toBe(650);
+    });
+
+    test('does not infer a doctor charge for a rejection without an explicit amount', () => {
+        expect(getCurrentAccountingSnapshot(order({
+            status: 'Doctor Rejected',
+            totalPrice: 3000,
+            rejectedDoctorAmount: undefined,
+        }) as any).saleAmount).toBe(0);
     });
 
     test('keeps an approved doctor responsibility on the original redo case', () => {

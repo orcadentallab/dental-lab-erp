@@ -14,23 +14,18 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
     value TEXT NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
-
 -- Enable RLS on app_settings
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
-
 -- Allow read access to everyone (anon, authenticated, service_role)
 DROP POLICY IF EXISTS "Allow read access to everyone" ON public.app_settings;
 CREATE POLICY "Allow read access to everyone" ON public.app_settings
     FOR SELECT USING (true);
-
 -- Grant SELECT on public.app_settings to anon, authenticated, service_role
 GRANT SELECT ON public.app_settings TO anon, authenticated, service_role;
-
 -- Set the strict workflow flag for representatives to 'on' in app_settings
 INSERT INTO public.app_settings (key, value)
 VALUES ('workflow_strict_rep', 'on')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
-
 -- 2. Redefine orders_role_field_guard to query app_settings instead of GUC
 CREATE OR REPLACE FUNCTION orders_role_field_guard()
 RETURNS TRIGGER

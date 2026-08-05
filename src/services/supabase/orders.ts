@@ -46,6 +46,7 @@ interface DbOrderWithRelations extends DbOrder {
     order_items?: DbOrderItemRow[];
     order_comments?: DbOrderCommentRow[];
     needs_accounting_reregistration?: boolean | null;
+    exclude_from_accounting_registration?: boolean | null;
     accounting_snapshot?: AccountingOrderSnapshot | null;
     accounting_previous_snapshot?: AccountingOrderSnapshot | null;
     accounting_registered_at?: string | null;
@@ -981,6 +982,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         representativeId: dbOrder.representative_id || undefined,
         isRegistered: dbOrder.is_registered || undefined,
         needsAccountingReregistration: dbOrder.needs_accounting_reregistration || undefined,
+        excludeFromAccountingRegistration: dbOrder.exclude_from_accounting_registration || undefined,
         accountingSnapshot: dbOrder.accounting_snapshot || undefined,
         accountingPreviousSnapshot: dbOrder.accounting_previous_snapshot || undefined,
         accountingRegisteredAt: dbOrder.accounting_registered_at || undefined,

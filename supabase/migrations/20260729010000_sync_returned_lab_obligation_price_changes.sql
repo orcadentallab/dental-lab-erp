@@ -109,10 +109,8 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS trigger_sync_preserved_external_lab_price_change
 ON public.orders;
-
 CREATE TRIGGER trigger_sync_preserved_external_lab_price_change
 AFTER UPDATE OF
     cost,
@@ -124,10 +122,8 @@ AFTER UPDATE OF
 ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.sync_preserved_external_lab_price_change();
-
 REVOKE ALL ON FUNCTION public.sync_preserved_external_lab_price_change()
 FROM PUBLIC, anon, authenticated;
-
 -- Repair the known returned Harmony Lab order through the same atomic
 -- obligation replacement path. This voids the stale 740 payable, creates the
 -- corrected 850 payable, and transfers active allocations if any.
@@ -140,16 +136,10 @@ DECLARE
     v_changed_by UUID;
 BEGIN
     SELECT *
-    INTO v_order
+    INTO STRICT v_order
     FROM public.orders
     WHERE case_id = '2005-260706-511'
     FOR UPDATE;
-
-    -- The repaired case belongs to the reviewed production dataset and is not
-    -- present when migrations bootstrap a fresh local/test database.
-    IF NOT FOUND THEN
-        RETURN;
-    END IF;
 
     SELECT *
     INTO STRICT v_obligation
@@ -253,6 +243,5 @@ BEGIN
     END IF;
 END;
 $repair$;
-
 COMMENT ON FUNCTION public.sync_preserved_external_lab_price_change() IS
     'Reprices an existing external-lab payable when financial inputs change while the order is returned.';

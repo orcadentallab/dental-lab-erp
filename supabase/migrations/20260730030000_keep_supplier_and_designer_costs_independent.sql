@@ -84,10 +84,8 @@ BEGIN
     RETURN NEW;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS zzz_trigger_sync_full_external_lab_order_cost
 ON public.orders;
-
 CREATE TRIGGER zzz_trigger_sync_full_external_lab_order_cost
 AFTER INSERT OR UPDATE OF
     status,
@@ -102,15 +100,12 @@ AFTER INSERT OR UPDATE OF
 ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION public.sync_full_external_lab_order_cost();
-
 REVOKE ALL ON FUNCTION public.sync_full_external_lab_order_cost()
 FROM PUBLIC, anon, authenticated;
-
 -- Reprice existing normal supplier obligations under the corrected rule.
 UPDATE public.orders
 SET cost = cost
 WHERE COALESCE(is_deleted, FALSE) = FALSE;
-
 DO $verify$
 BEGIN
     IF EXISTS (
@@ -143,6 +138,5 @@ BEGIN
     END IF;
 END;
 $verify$;
-
 COMMENT ON FUNCTION public.sync_full_external_lab_order_cost() IS
     'Keeps external lab cost independent from designer cost for normal and preserved returned payables.';

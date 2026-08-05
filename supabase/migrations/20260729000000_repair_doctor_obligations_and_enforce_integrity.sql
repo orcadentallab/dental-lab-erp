@@ -51,7 +51,6 @@ BEGIN
     END IF;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.guard_delivered_doctor_obligation_from_order()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -63,7 +62,6 @@ BEGIN
     RETURN NULL;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.guard_delivered_doctor_obligation_from_obligation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -77,10 +75,8 @@ BEGIN
     RETURN NULL;
 END;
 $$;
-
 DROP TRIGGER IF EXISTS constraint_delivered_order_has_doctor_obligation
 ON public.orders;
-
 CREATE CONSTRAINT TRIGGER constraint_delivered_order_has_doctor_obligation
 AFTER INSERT OR UPDATE OF
     production_status,
@@ -92,24 +88,20 @@ ON public.orders
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW
 EXECUTE FUNCTION public.guard_delivered_doctor_obligation_from_order();
-
 DROP TRIGGER IF EXISTS constraint_doctor_obligation_matches_delivered_order
 ON public.financial_obligations;
-
 CREATE CONSTRAINT TRIGGER constraint_doctor_obligation_matches_delivered_order
 AFTER INSERT OR UPDATE OR DELETE
 ON public.financial_obligations
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW
 EXECUTE FUNCTION public.guard_delivered_doctor_obligation_from_obligation();
-
 REVOKE ALL ON FUNCTION public.assert_delivered_doctor_obligation_integrity(UUID)
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.guard_delivered_doctor_obligation_from_order()
 FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.guard_delivered_doctor_obligation_from_obligation()
 FROM PUBLIC, anon, authenticated;
-
 CREATE TEMP TABLE approved_doctor_obligation_repair_20260729
 ON COMMIT DROP
 AS
@@ -153,7 +145,6 @@ WHERE COALESCE(orders.is_deleted, FALSE) = FALSE
         AND obligation.status <> 'void'
         AND obligation.net_amount = orders.total_price
   );
-
 DO $$
 DECLARE
     v_count INTEGER;
@@ -165,15 +156,6 @@ BEGIN
     SELECT COUNT(*), COALESCE(SUM(amount), 0)
     INTO v_count, v_total
     FROM approved_doctor_obligation_repair_20260729;
-
-    -- This repository migration must also bootstrap a genuinely fresh local
-    -- database. Preserve the production fail-closed guard whenever any orders
-    -- exist, but do not require the reviewed production-only repair batch on
-    -- an empty schema.
-    IF v_count = 0
-       AND NOT EXISTS (SELECT 1 FROM public.orders) THEN
-        RETURN;
-    END IF;
 
     IF v_count <> 41 OR v_total <> 39450 THEN
         RAISE EXCEPTION
@@ -240,6 +222,5 @@ BEGIN
     END IF;
 END;
 $$;
-
 COMMENT ON FUNCTION public.assert_delivered_doctor_obligation_integrity(UUID) IS
     'Deferred fail-closed invariant: every normal final-delivered order must have a matching active doctor receivable.';

@@ -29,7 +29,6 @@ BEGIN
     EXECUTE v_patched;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.reopen_registered_order_for_accounting()
 RETURNS TRIGGER
 LANGUAGE plpgsql
