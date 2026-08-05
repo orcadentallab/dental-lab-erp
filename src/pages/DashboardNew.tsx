@@ -556,7 +556,6 @@ export default function DashboardNew() {
                 deliveryDate: data.deliveryDate,
                 designStatus: acceptingOrder.workflowType === 'split' ? 'pending' : undefined,
                 technicianStatus: 'Pending',
-                isRegistered: true,
             });
 
             // 2. Update status via the centralized updateOrderStatus
