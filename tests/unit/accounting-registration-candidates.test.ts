@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Order } from '../../src/services/db';
 import {
+    hasZeroAccountingImpact,
     isAccountingRegistrationCandidate,
 } from '../../src/constants/accountingRegistration';
 
@@ -22,8 +23,45 @@ const order = (overrides: Partial<Order> = {}): Order => ({
 });
 
 describe('accounting registration candidates', () => {
+    it('reports cancelled and lab-rejected orders as zero accounting impact', () => {
+        expect(hasZeroAccountingImpact(order({ status: 'Cancelled' }))).toBe(true);
+        expect(hasZeroAccountingImpact(order({ status: 'Lab Rejected' }))).toBe(true);
+        expect(hasZeroAccountingImpact(order({ status: 'Delivered' }))).toBe(false);
+    });
+
     it('keeps genuinely unregistered delivered orders in the pending queue', () => {
         expect(isAccountingRegistrationCandidate(order({ isRegistered: false }), 'pending')).toBe(true);
+    });
+
+    it('never sends a cancelled order that was never registered to accounting', () => {
+        const cancelled = order({
+            status: 'Cancelled',
+            isRegistered: false,
+            needsAccountingReregistration: false,
+        });
+
+        expect(isAccountingRegistrationCandidate(cancelled, 'pending')).toBe(false);
+        expect(isAccountingRegistrationCandidate(cancelled, 'history')).toBe(false);
+    });
+
+    it('sends a cancellation made after registration back for zero-value removal', () => {
+        const cancelledChange = order({
+            status: 'Cancelled',
+            isRegistered: false,
+            needsAccountingReregistration: true,
+        });
+
+        expect(isAccountingRegistrationCandidate(cancelledChange, 'pending')).toBe(true);
+    });
+
+    it('keeps an acknowledged cancelled entry in registration history', () => {
+        const acknowledgedCancellation = order({
+            status: 'Cancelled',
+            isRegistered: true,
+            needsAccountingReregistration: false,
+        });
+
+        expect(isAccountingRegistrationCandidate(acknowledgedCancellation, 'history')).toBe(true);
     });
 
     it('shows a newly changed archived order as a normal accounting change', () => {

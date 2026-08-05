@@ -26,6 +26,7 @@ import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../lib/us
 import { getLabCostMetadata } from '../constants/financialObligations';
 import {
     hasPostRegistrationChange,
+    hasZeroAccountingImpact,
     isAccountingRegistrationCandidate,
 } from '../constants/accountingRegistration';
 
@@ -116,10 +117,12 @@ export default function CaseRegistration() {
     }, [activeTab, fetchOrders]);
 
     const handleRegister = async (orderId: string) => {
+        const order = orders.find(candidate => candidate.id === orderId);
+        const isCancellation = order?.status === 'Cancelled';
         setProcessingId(orderId);
         try {
             await db.updateOrder(orderId, { isRegistered: true });
-            success(t.common.success);
+            success(isCancellation ? 'تم تأكيد إلغاء القيد المحاسبي' : t.common.success);
             setOrders(prev => prev.filter(o => o.id !== orderId));
             setSelectedIds(prev => prev.filter(id => id !== orderId));
         } catch (error) {
@@ -151,14 +154,16 @@ export default function CaseRegistration() {
     };
 
     const toggleSelectAll = () => {
-        if (selectedIds.length === filteredOrders.length) {
+        if (selectedIds.length === bulkSelectableOrders.length) {
             setSelectedIds([]);
         } else {
-            setSelectedIds(filteredOrders.map(o => o.id));
+            setSelectedIds(bulkSelectableOrders.map(o => o.id));
         }
     };
 
     const toggleSelect = (id: string) => {
+        const selectedOrder = orders.find(order => order.id === id);
+        if (activeTab === 'pending' && selectedOrder?.status === 'Cancelled') return;
         setSelectedIds(prev => 
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
         );
@@ -201,6 +206,7 @@ export default function CaseRegistration() {
                 const designer = designers.find(d => d.id === order.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 const labCost = getLabCostMetadata(order, isSalaried).cost;
+                const isZeroImpact = hasZeroAccountingImpact(order);
 
                 return {
                     'رقم الحالة': order.caseId,
@@ -208,8 +214,8 @@ export default function CaseRegistration() {
                     'المريض': order.patientName,
                     'الطبيب': getBillingDoctor(order.doctorId).name,
                     'الخدمات': order.items.map(i => `${i.serviceType} (x${i.teethNumbers.length})`).join(', '),
-                    'سعر البيع': order.totalPrice,
-                    'التكلفة': (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (order.rejectedLabCost || 0) : (order.status === 'Lab Rejected' ? 0 : labCost),
+                    'سعر البيع': isZeroImpact ? 0 : order.totalPrice,
+                    'التكلفة': isZeroImpact ? 0 : ((order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (order.rejectedLabCost || 0) : labCost),
                     'المعمل': (order.supplierId && suppliers[order.supplierId]) || 'داخلي',
                     'الحالة': (() => {
                         const statusMap: Record<string, string> = t.orders.status;
@@ -266,6 +272,9 @@ export default function CaseRegistration() {
 
         return matchesSearch && matchesDoctor && matchesSupplier && matchesDateFrom && matchesDateTo;
     });
+    const bulkSelectableOrders = filteredOrders.filter(order =>
+        !(activeTab === 'pending' && order.status === 'Cancelled')
+    );
     return (
         <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
             {/* Header */}
@@ -435,7 +444,8 @@ export default function CaseRegistration() {
                                                 type="checkbox"
                                                 title="تحديد الكل"
                                                 className="w-4 h-4 rounded border-slate-300 text-cyan-500 focus:ring-cyan-500"
-                                                checked={filteredOrders.length > 0 && selectedIds.length === filteredOrders.length}
+                                                checked={bulkSelectableOrders.length > 0 && selectedIds.length === bulkSelectableOrders.length}
+                                                disabled={bulkSelectableOrders.length === 0}
                                                 onChange={toggleSelectAll}
                                             />
                                         </div>
@@ -465,6 +475,7 @@ export default function CaseRegistration() {
                                     const designer = designers.find(d => d.id === order.designerId);
                                     const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                                     const labCost = getLabCostMetadata(order, isSalaried).cost;
+                                    const isZeroImpact = hasZeroAccountingImpact(order);
                                     
                                     return (
                                         <motion.tr
@@ -477,6 +488,7 @@ export default function CaseRegistration() {
                                                 selectedIds.includes(order.id) && "bg-cyan-50/60",
                                                 activeTab === 'pending' && isChangedAfterRegistration && "bg-cyan-50/20 border-r-4 border-r-cyan-500",
                                                 ['Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(order.status) && "bg-red-50/10",
+                                                order.status === 'Cancelled' && "bg-rose-50/20 border-r-4 border-r-rose-500",
                                                 order.status === 'Returned for Adjustments' && "bg-amber-50/10"
                                             )}
                                         >
@@ -484,9 +496,10 @@ export default function CaseRegistration() {
                                                 <div className="flex justify-center">
                                                     <input
                                                         type="checkbox"
-                                                        title="تحديد"
+                                                        title={activeTab === 'pending' && order.status === 'Cancelled' ? 'إلغاء القيد يحتاج تأكيدًا منفصلًا' : 'تحديد'}
                                                         className="w-4 h-4 rounded border-slate-300 text-cyan-500 focus:ring-cyan-500"
                                                         checked={selectedIds.includes(order.id)}
+                                                        disabled={activeTab === 'pending' && order.status === 'Cancelled'}
                                                         onChange={() => toggleSelect(order.id)}
                                                     />
                                                 </div>
@@ -509,8 +522,11 @@ export default function CaseRegistration() {
                                                     <div className="flex items-center gap-1 mt-0.5">
                                                         <span className="text-[9px] text-slate-300 font-mono">{order.id.split('-')[0]}</span>
                                                         {activeTab === 'pending' && isChangedAfterRegistration && (
-                                                            <span className="px-1.5 py-0.5 bg-cyan-500 text-white text-[8px] font-black rounded uppercase tracking-tighter animate-pulse">
-                                                                تعديل بعد التسجيل
+                                                            <span className={clsx(
+                                                                "px-1.5 py-0.5 text-white text-[8px] font-black rounded tracking-tighter animate-pulse",
+                                                                order.status === 'Cancelled' ? "bg-rose-500" : "bg-cyan-500 uppercase"
+                                                            )}>
+                                                                {order.status === 'Cancelled' ? 'إلغاء قيد مسجل بالخطأ' : 'تعديل بعد التسجيل'}
                                                             </span>
                                                         )}
                                                     </div>
@@ -554,7 +570,22 @@ export default function CaseRegistration() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1 bg-slate-50/50 p-2 rounded-xl border border-slate-100 w-fit">
-                                                    {(order.status === 'Doctor Rejected' || order.status === 'Rejected' || order.status === 'Lab Rejected') ? (
+                                                    {isZeroImpact ? (
+                                                        <>
+                                                            <div className="flex items-center justify-between gap-3 text-sm font-black text-slate-400 line-through opacity-60">
+                                                                <span className="text-[10px] font-bold">القيمة الأصلية:</span>
+                                                                <span>{order.totalPrice.toLocaleString()}</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between gap-3 text-sm font-black text-rose-600">
+                                                                <span className="text-[10px] font-bold">بيع:</span>
+                                                                <span className="rounded bg-rose-100 px-1.5">0</span>
+                                                            </div>
+                                                            <div className="flex items-center justify-between gap-3 text-sm font-black text-rose-600">
+                                                                <span className="text-[10px] font-bold">تكلفة:</span>
+                                                                <span className="rounded bg-rose-100 px-1.5">0</span>
+                                                            </div>
+                                                        </>
+                                                    ) : (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (
                                                         <>
                                                             <div className="flex items-center justify-between gap-3 font-black text-slate-400 text-sm line-through opacity-60">
                                                                 <span className="text-[10px] font-bold">بيع مقدر:</span>
@@ -563,7 +594,7 @@ export default function CaseRegistration() {
                                                             <div className="flex items-center justify-between gap-3 font-black text-rose-600 text-sm">
                                                                 <span className="text-[10px] font-bold">تكلفة رفض:</span>
                                                                 <span className="bg-rose-100 px-1.5 rounded">
-                                                                    {order.status === 'Lab Rejected' ? 0 : (order.rejectedLabCost?.toLocaleString() || 0)}
+                                                                    {order.rejectedLabCost?.toLocaleString() || 0}
                                                                 </span>
                                                             </div>
                                                         </>
@@ -598,6 +629,7 @@ export default function CaseRegistration() {
                                                         order.status === 'Delivered' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
                                                         (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                         order.status === 'Lab Rejected' ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                                        order.status === 'Cancelled' ? "bg-rose-50 text-rose-700 border-rose-200" :
                                                         order.status === 'Returned for Adjustments' ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                         "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-sm shadow-cyan-100"
                                                     )}>
@@ -615,10 +647,15 @@ export default function CaseRegistration() {
                                                         <button
                                                             onClick={() => handleRegister(order.id)}
                                                             disabled={processingId === order.id}
-                                                            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all shadow-lg shadow-emerald-200/50 hover:-translate-y-0.5 whitespace-nowrap"
+                                                            className={clsx(
+                                                                "flex items-center gap-2 px-5 py-2.5 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all hover:-translate-y-0.5 whitespace-nowrap",
+                                                                order.status === 'Cancelled'
+                                                                    ? "bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-200/50"
+                                                                    : "bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200/50"
+                                                            )}
                                                         >
                                                             {processingId === order.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                                                            {t.registration.markAsRegistered}
+                                                            {order.status === 'Cancelled' ? 'تأكيد إلغاء القيد' : t.registration.markAsRegistered}
                                                         </button>
                                                     ) : (
                                                         <button

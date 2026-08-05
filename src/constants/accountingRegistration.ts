@@ -10,6 +10,10 @@ export const ACCOUNTING_REGISTRABLE_STATUSES: Order['status'][] = [
     'Rejected',
 ];
 
+export function hasZeroAccountingImpact(order: Pick<Order, 'status'>): boolean {
+    return order.status === 'Cancelled' || order.status === 'Lab Rejected';
+}
+
 export function hasPostRegistrationChange(order: Order): boolean {
     return Boolean(
         order.needsAccountingReregistration
@@ -31,6 +35,10 @@ export function isAccountingRegistrationCandidate(
 
     return Boolean(
         order.isRegistered
-        && (order.isArchived || ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status))
+        && (
+            order.isArchived
+            || order.status === 'Cancelled'
+            || ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status)
+        )
     );
 }

@@ -9,6 +9,10 @@ const remainingLegacyMigration = readFileSync(
     'supabase/migrations/20260731002000_restore_remaining_legacy_accounting_registrations.sql',
     'utf8'
 );
+const tasneemCancellationRepair = readFileSync(
+    'supabase/migrations/20260805000000_reopen_tasneem_cancelled_accounting_entry.sql',
+    'utf8'
+);
 const registrationPage = readFileSync('src/pages/CaseRegistration.tsx', 'utf8');
 const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
 
@@ -48,5 +52,14 @@ describe('accounting re-registration protection', () => {
         expect(registrationPage).not.toContain('مؤرشفة بعد التسجيل');
         expect(sidebar).toContain("isAccountingRegistrationCandidate(order, 'pending')");
         expect(sidebar).toContain('getOrdersForAccountingRegistration');
+    });
+
+    test('reopens only Tasneem cancelled entry for one-time accounting removal', () => {
+        expect(tasneemCancellationRepair).toContain('4f0f9156-ac82-4c3b-a785-2e501dd2f71d');
+        expect(tasneemCancellationRepair).toContain("case_id = '1503-260507-511'");
+        expect(tasneemCancellationRepair).toContain("status = 'Cancelled'");
+        expect(tasneemCancellationRepair).toContain('is_registered = FALSE');
+        expect(tasneemCancellationRepair).toContain('needs_accounting_reregistration = TRUE');
+        expect(tasneemCancellationRepair).not.toMatch(/SET\s+(total_price|discount|cost|manual_cost|design_price)/i);
     });
 });
