@@ -31,6 +31,19 @@ export interface Service {
     sortOrder?: number; // Manual display order
 }
 
+export interface AccountingOrderSnapshot {
+    status: Order['status'];
+    saleAmount: number;
+    labCost: number;
+    designCost: number;
+    doctorId?: string | null;
+    supplierId?: string | null;
+    designerId?: string | null;
+    discount: number;
+}
+
+export type AccountingReviewType = 'new' | 'change' | 'cancellation';
+
 export interface Transaction {
     id: string;
     type: 'income' | 'expense';
@@ -221,6 +234,11 @@ export interface Order {
     representativeId?: string; // Linked Representative
     isRegistered?: boolean; // Flag for Accountant (Bibocad)
     needsAccountingReregistration?: boolean;
+    accountingSnapshot?: AccountingOrderSnapshot | null;
+    accountingPreviousSnapshot?: AccountingOrderSnapshot | null;
+    accountingRegisteredAt?: string | null;
+    accountingReviewedBy?: string | null;
+    accountingLastReviewType?: AccountingReviewType | null;
 
     // Split Workflow Fields
     workflowType?: 'full' | 'split';

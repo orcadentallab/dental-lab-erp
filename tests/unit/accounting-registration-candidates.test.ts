@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Order } from '../../src/services/db';
 import {
+    getAccountingComparison,
+    getAccountingReviewType,
     hasZeroAccountingImpact,
     isAccountingRegistrationCandidate,
 } from '../../src/constants/accountingRegistration';
@@ -27,6 +29,58 @@ describe('accounting registration candidates', () => {
         expect(hasZeroAccountingImpact(order({ status: 'Cancelled' }))).toBe(true);
         expect(hasZeroAccountingImpact(order({ status: 'Lab Rejected' }))).toBe(true);
         expect(hasZeroAccountingImpact(order({ status: 'Delivered' }))).toBe(false);
+    });
+
+    it('classifies new, changed, and cancellation reviews separately', () => {
+        expect(getAccountingReviewType(order())).toBe('new');
+        expect(getAccountingReviewType(order({ needsAccountingReregistration: true }))).toBe('change');
+        expect(getAccountingReviewType(order({ status: 'Cancelled', needsAccountingReregistration: true }))).toBe('cancellation');
+    });
+
+    it('calculates the negative correction for a registered order that is cancelled', () => {
+        const cancelled = order({
+            status: 'Cancelled',
+            needsAccountingReregistration: true,
+            accountingPreviousSnapshot: {
+                status: 'Delivered',
+                saleAmount: 12000,
+                labCost: 3950,
+                designCost: 0,
+                discount: 0,
+                doctorId: 'doctor-1',
+                supplierId: 'supplier-1',
+                designerId: null,
+            },
+        });
+
+        expect(getAccountingComparison(cancelled)).toMatchObject({
+            type: 'cancellation',
+            current: { saleAmount: 0, labCost: 0 },
+            delta: { saleAmount: -12000, labCost: -3950 },
+        });
+    });
+
+    it('calculates positive and negative deltas for a financial amendment', () => {
+        const changed = order({
+            totalPrice: 1500,
+            cost: 400,
+            needsAccountingReregistration: true,
+            accountingSnapshot: {
+                status: 'Delivered',
+                saleAmount: 1000,
+                labCost: 500,
+                designCost: 0,
+                discount: 0,
+                doctorId: 'doctor-1',
+                supplierId: null,
+                designerId: null,
+            },
+        });
+
+        expect(getAccountingComparison(changed).delta).toMatchObject({
+            saleAmount: 500,
+            labCost: -100,
+        });
     });
 
     it('keeps genuinely unregistered delivered orders in the pending queue', () => {

@@ -1,7 +1,11 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import GlobalSearch from '../components/GlobalSearch';
 
 export default function DashboardLayout() {
+    const { pathname } = useLocation();
+    const isDashboard = pathname === '/dashboard';
+
     return (
         <div className="flex h-screen bg-surface-50 dark:bg-surface-950 overflow-hidden font-sans selection:bg-primary-500/30 selection:text-primary-900">
             {/* Ambient Background */}
@@ -13,7 +17,12 @@ export default function DashboardLayout() {
             <div className="relative z-10 flex w-full h-full">
                 <Sidebar />
                 <div className="flex-1 flex flex-col overflow-hidden">
+                    {isDashboard && <header className="relative z-20 hidden shrink-0 border-b border-teal-100/70 bg-white/70 px-8 py-3 backdrop-blur lg:flex lg:justify-center print:hidden">
+                        <GlobalSearch />
+                    </header>}
+                    {!isDashboard && <GlobalSearch commandOnly />}
                     <main id="dashboard-main" className="flex-1 overflow-x-hidden overflow-y-auto overscroll-none p-4 lg:p-8 pt-20 lg:pt-8 scrollbar-thin scrollbar-thumb-surface-300 dark:scrollbar-thumb-surface-700">
+                        {isDashboard && <div className="mb-4 lg:hidden"><GlobalSearch /></div>}
                         <div className="max-w-7xl mx-auto space-y-6">
                             <Outlet />
                         </div>

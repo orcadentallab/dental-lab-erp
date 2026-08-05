@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../../lib/supabase';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
-import type { Order, OrderHistoryEntry, Transaction } from '../db';
+import type { AccountingOrderSnapshot, AccountingReviewType, Order, OrderHistoryEntry, Transaction } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 import { generateArabicSearchPattern } from '../../lib/searchUtils';
@@ -46,6 +46,11 @@ interface DbOrderWithRelations extends DbOrder {
     order_items?: DbOrderItemRow[];
     order_comments?: DbOrderCommentRow[];
     needs_accounting_reregistration?: boolean | null;
+    accounting_snapshot?: AccountingOrderSnapshot | null;
+    accounting_previous_snapshot?: AccountingOrderSnapshot | null;
+    accounting_registered_at?: string | null;
+    accounting_reviewed_by?: string | null;
+    accounting_last_review_type?: AccountingReviewType | null;
 }
 
 export interface OrderEventActorContext {
@@ -976,6 +981,11 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         representativeId: dbOrder.representative_id || undefined,
         isRegistered: dbOrder.is_registered || undefined,
         needsAccountingReregistration: dbOrder.needs_accounting_reregistration || undefined,
+        accountingSnapshot: dbOrder.accounting_snapshot || undefined,
+        accountingPreviousSnapshot: dbOrder.accounting_previous_snapshot || undefined,
+        accountingRegisteredAt: dbOrder.accounting_registered_at || undefined,
+        accountingReviewedBy: dbOrder.accounting_reviewed_by || undefined,
+        accountingLastReviewType: dbOrder.accounting_last_review_type || undefined,
         workflowType: dbOrder.workflow_type || undefined,
         designerId: dbOrder.designer_id || undefined,
         designUrl: dbOrder.design_url || undefined,

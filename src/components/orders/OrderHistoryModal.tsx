@@ -110,6 +110,15 @@ const FIELD_LABELS: Record<string, string> = {
     is_urgent: 'حالة عاجلة',
     issue_state: 'حالة المشكلة/الإرجاع',
     rejected_lab_cost: 'تكلفة الرفض على المعمل',
+    items: 'بنود الأوردر',
+    shade: 'اللون',
+    instructions: 'تعليمات الأوردر',
+    stl_url: 'ملف STL',
+    images_url: 'صور الأوردر',
+    representative_id: 'المندوب',
+    external_lab_status: 'حالة المعمل الخارجي',
+    external_lab_notes: 'ملاحظات المعمل الخارجي',
+    workflow_type: 'مسار العمل',
 };
 
 function formatDiffValue(
@@ -127,6 +136,10 @@ function formatDiffValue(
     }
     if (val === false || val === 'false') {
         return 'لا';
+    }
+
+    if (typeof val === 'object') {
+        return JSON.stringify(val);
     }
 
     const valStr = String(val);
@@ -219,6 +232,14 @@ const isRecord = (v: unknown): v is Record<string, unknown> => {
     return typeof v === 'object' && v !== null;
 };
 
+// Older database triggers created an UPDATE row even when only a technical
+// timestamp changed. Such a row cannot tell the user what happened, so it is
+// deliberately kept out of the display (the original data remains in DB).
+function isUsefulHistoryEntry(item: OrderHistoryEntry): boolean {
+    if (item.action_type !== 'UPDATE') return true;
+    return Boolean(item.changes && Object.keys(item.changes).length > 0);
+}
+
 export default function OrderHistoryModal({
     isOpen,
     onClose,
@@ -233,6 +254,7 @@ export default function OrderHistoryModal({
     users = {},
 }: OrderHistoryModalProps) {
     const [activeTab, setActiveTab] = useState<'events' | 'history'>(showBusinessTimeline ? 'events' : 'history');
+    const visibleHistory = history.filter(isUsefulHistoryEntry);
 
     if (!isOpen) return null;
 
@@ -335,13 +357,13 @@ export default function OrderHistoryModal({
                         <div className="flex justify-center py-8">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                         </div>
-                    ) : history.length === 0 ? (
+                    ) : visibleHistory.length === 0 ? (
                         <div className="text-center py-8 text-gray-400">
-                            <p>لا يوجد سجل نشاط لهذا الطلب بعد.</p>
+                            <p>لا توجد تعديلات موثقة لهذا الطلب بعد.</p>
                         </div>
                     ) : (
                         <div className="space-y-6 relative before:absolute before:inset-y-0 before:right-[19px] before:w-0.5 before:bg-gray-200">
-                            {history.map((item) => (
+                            {visibleHistory.map((item) => (
                                 <div key={item.id} className="relative flex gap-4 pr-10">
                                     {/* Timeline Dot */}
                                     <div className={`absolute right-0 top-1 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm z-10 ${item.action_type === 'CREATE' ? 'bg-green-100 text-green-600' :

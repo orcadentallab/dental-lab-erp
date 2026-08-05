@@ -27,8 +27,10 @@ import { getLabCostMetadata } from '../constants/financialObligations';
 import {
     hasPostRegistrationChange,
     hasZeroAccountingImpact,
+    getAccountingComparison,
     isAccountingRegistrationCandidate,
 } from '../constants/accountingRegistration';
+import type { AccountingReviewType } from '../services/db';
 
 const normalizeArabic = (text: string) => {
     if (!text) return '';
@@ -40,6 +42,22 @@ const normalizeArabic = (text: string) => {
         .trim()
         .toLowerCase();
 };
+
+const REVIEW_LABELS: Record<AccountingReviewType, string> = {
+    new: 'تسجيل جديد',
+    change: 'تعديل',
+    cancellation: 'إلغاء قيد',
+};
+const REVIEW_TYPES: AccountingReviewType[] = ['new', 'change', 'cancellation'];
+
+const REVIEW_BADGE_CLASSES: Record<AccountingReviewType, string> = {
+    new: 'bg-emerald-500 text-white',
+    change: 'bg-cyan-500 text-white',
+    cancellation: 'bg-rose-500 text-white',
+};
+
+const formatAccountingDelta = (value: number) =>
+    `${value > 0 ? '+' : ''}${value.toLocaleString('en-EG')}`;
 
 export default function CaseRegistration() {
     const { t } = useTranslation();
@@ -275,6 +293,11 @@ export default function CaseRegistration() {
     const bulkSelectableOrders = filteredOrders.filter(order =>
         !(activeTab === 'pending' && order.status === 'Cancelled')
     );
+    const reviewCounts = orders.reduce<Record<AccountingReviewType, number>>((counts, order) => {
+        const type = getAccountingComparison(order).type;
+        counts[type] += 1;
+        return counts;
+    }, { new: 0, change: 0, cancellation: 0 });
     return (
         <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
             {/* Header */}
@@ -289,6 +312,13 @@ export default function CaseRegistration() {
                     <p className="text-slate-500 mt-1 text-sm">
                         {activeTab === 'pending' ? 'مراجعة وتسجيل الحالات المستلمة والماليات' : 'سجل الحالات التي تم تسجيلها مسبقاً'}
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {REVIEW_TYPES.map(type => (
+                            <span key={type} className={clsx('rounded-full px-2.5 py-1 text-[10px] font-black', REVIEW_BADGE_CLASSES[type])}>
+                                {REVIEW_LABELS[type]}: {reviewCounts[type]}
+                            </span>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
@@ -344,6 +374,12 @@ export default function CaseRegistration() {
                     </div>
                 </div>
             </div>
+
+            {activeTab === 'pending' && reviewCounts.cancellation > 0 && (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-800 shadow-sm">
+                    يوجد {reviewCounts.cancellation} إلغاء قيد يحتاج مراجعة منفصلة. القيم الجديدة صفر، والفرق السالب هو المبلغ المطلوب حذفه من البرنامج المحاسبي.
+                </div>
+            )}
 
             {/* Filters & Search */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
@@ -434,8 +470,8 @@ export default function CaseRegistration() {
                         </div>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto overflow-y-auto max-h-[700px]">
-                        <table className="w-full text-right border-collapse">
+                    <div className="overflow-x-auto xl:overflow-x-hidden overflow-y-auto max-h-[700px]">
+                        <table className="w-full min-w-[720px] xl:min-w-0 table-fixed text-right border-collapse">
                             <thead>
                                 <tr className="bg-slate-50/80 border-b border-slate-100">
                                     <th className="px-4 py-5 w-10">
@@ -450,18 +486,18 @@ export default function CaseRegistration() {
                                             />
                                         </div>
                                     </th>
-                                    <th className="px-6 py-5 text-xs font-bold text-slate-400 uppercase tracking-widest leading-none">{t.registration.caseId}</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide min-w-[100px]" title="تاريخ التسليم هو تاريخ الاستلام النهائي للحالة، وفي حالة عدم وجوده يظهر تاريخ إنشاء الأوردر.">
+                                    <th className="w-[180px] px-4 py-5 text-xs font-bold text-slate-400 uppercase tracking-widest leading-none">{t.registration.caseId}</th>
+                                    <th className="hidden" title="تاريخ التسليم هو تاريخ الاستلام النهائي للحالة، وفي حالة عدم وجوده يظهر تاريخ إنشاء الأوردر.">
                                         تاريخ التسليم
                                         <div className="text-[10px] text-slate-400 font-normal mt-0.5">(تلقائي)</div>
                                     </th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide">{t.registration.patientName}</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide">الطبيب</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide min-w-[180px]">{t.registration.services}</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide min-w-[150px]">الأسعار (بيع/تكلفة)</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide min-w-[140px]">المعمل الخارجي</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide min-w-[140px]">{t.registration.status}</th>
-                                    <th className="px-6 py-5 text-sm font-extrabold text-slate-700 tracking-wide sticky left-0 bg-slate-50 z-10 text-center">{t.common.actions}</th>
+                                    <th className="w-[125px] px-4 py-5 text-sm font-extrabold text-slate-700 tracking-wide">{t.registration.patientName}</th>
+                                    <th className="w-[155px] px-4 py-5 text-sm font-extrabold text-slate-700 tracking-wide">الطبيب / المعمل</th>
+                                    <th className="w-[180px] px-4 py-5 text-sm font-extrabold text-slate-700 tracking-wide">{t.registration.services}</th>
+                                    <th className="w-[205px] px-4 py-5 text-sm font-extrabold text-slate-700 tracking-wide">الأسعار (بيع/تكلفة)</th>
+                                    <th className="hidden">المعمل الخارجي</th>
+                                    <th className="hidden">{t.registration.status}</th>
+                                    <th className="w-[155px] px-3 py-5 text-sm font-extrabold text-slate-700 tracking-wide sticky left-0 bg-slate-50 z-10 text-center">{t.common.actions}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
@@ -472,10 +508,18 @@ export default function CaseRegistration() {
                                     const visibleComments = filterVisibleOrderComments(order.comments);
                                     const latestComment = getLatestVisibleOrderComment(order.comments);
                                     const isChangedAfterRegistration = hasPostRegistrationChange(order);
-                                    const designer = designers.find(d => d.id === order.designerId);
-                                    const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                                    const labCost = getLabCostMetadata(order, isSalaried).cost;
                                     const isZeroImpact = hasZeroAccountingImpact(order);
+                                    const accounting = getAccountingComparison(order);
+                                    const hasFinancialComparison = accounting.type !== 'new';
+                                    const oldSnapshot = accounting.previous;
+                                    const oldDoctorName = oldSnapshot?.doctorId ? getBillingDoctor(oldSnapshot.doctorId).name : null;
+                                    const oldSupplierName = oldSnapshot?.supplierId ? suppliers[oldSnapshot.supplierId] : 'داخلي';
+                                    const statusKey = order.status.toLowerCase().replace(/ /g, '');
+                                    const statusLabel = Object.entries(t.orders.status).find(([key]) => key === statusKey)?.[1] || order.status;
+                                    const financialComparisonRows: Array<[string, number, number, number]> = [
+                                        ['بيع', oldSnapshot?.saleAmount || 0, accounting.current.saleAmount, accounting.delta.saleAmount],
+                                        ['مورد', oldSnapshot?.labCost || 0, accounting.current.labCost, accounting.delta.labCost],
+                                    ];
                                     
                                     return (
                                         <motion.tr
@@ -508,56 +552,52 @@ export default function CaseRegistration() {
                                                 <div className="flex flex-col">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-bold text-slate-400 text-[10px] group-hover:text-cyan-600 transition-colors tracking-tighter">#{order.caseId}</span>
-                                                        {(order.status === 'Doctor Rejected' || order.status === 'Rejected') && (
-                                                            <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[8px] font-black rounded shadow-sm whitespace-nowrap">
-                                                                مرتجع طبيب
-                                                            </span>
-                                                        )}
-                                                        {order.status === 'Lab Rejected' && (
-                                                            <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[8px] font-black rounded shadow-sm whitespace-nowrap">
-                                                                رفض معمل
-                                                            </span>
-                                                        )}
+                                                        <span className={clsx('rounded px-1.5 py-0.5 text-[8px] font-black', REVIEW_BADGE_CLASSES[accounting.type])}>
+                                                            {REVIEW_LABELS[accounting.type]}
+                                                        </span>
                                                     </div>
                                                     <div className="flex items-center gap-1 mt-0.5">
                                                         <span className="text-[9px] text-slate-300 font-mono">{order.id.split('-')[0]}</span>
-                                                        {activeTab === 'pending' && isChangedAfterRegistration && (
-                                                            <span className={clsx(
-                                                                "px-1.5 py-0.5 text-white text-[8px] font-black rounded tracking-tighter animate-pulse",
-                                                                order.status === 'Cancelled' ? "bg-rose-500" : "bg-cyan-500 uppercase"
-                                                            )}>
-                                                                {order.status === 'Cancelled' ? 'إلغاء قيد مسجل بالخطأ' : 'تعديل بعد التسجيل'}
-                                                            </span>
-                                                        )}
+                                                    </div>
+                                                    <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] font-black text-slate-600">
+                                                        <span className="rounded bg-slate-100 px-1.5 py-0.5">{formattedDate}</span>
+                                                        <span className="rounded bg-cyan-50 px-1.5 py-0.5 text-cyan-700">{statusLabel}</span>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="hidden px-4 py-4">
                                                 <div className="flex items-center gap-2 text-slate-900 font-black text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100 whitespace-nowrap">
                                                     <History size={13} className="text-slate-400" />
                                                     {formattedDate}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-4 py-4">
                                                 <div className="flex items-center gap-2">
                                                     <User size={15} className="text-cyan-500" />
                                                     <span className="font-black text-slate-900 text-[15px] leading-tight block">{order.patientName}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-4 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <span className="text-sm text-slate-700 font-black leading-tight">
-                                                        {billingDoctor.name}
-                                                    </span>
+                                                    <span className="text-sm text-slate-800 font-black leading-tight">{billingDoctor.name}</span>
                                                     {billingDoctor.code && (
                                                         <span className="text-[10px] bg-slate-800 text-white px-1.5 py-0.5 rounded shadow-sm font-mono font-bold w-fit">
                                                             #{billingDoctor.code}
                                                         </span>
                                                     )}
+                                                    <span className="mt-1 text-xs font-black text-slate-700 truncate">
+                                                        {(order.supplierId && suppliers[order.supplierId]) || 'داخلي'}
+                                                    </span>
+                                                    {hasFinancialComparison && oldDoctorName && oldSnapshot?.doctorId !== order.doctorId && (
+                                                        <span className="text-[10px] font-bold text-amber-600">الطبيب السابق: {oldDoctorName}</span>
+                                                    )}
+                                                    {hasFinancialComparison && oldSnapshot && oldSnapshot.supplierId !== (order.supplierId || null) && (
+                                                        <span className="text-[10px] font-bold text-amber-600">المعمل السابق: {oldSupplierName || oldSnapshot.supplierId}</span>
+                                                    )}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-wrap gap-1.5 max-w-[220px]">
+                                            <td className="px-4 py-4">
+                                                <div className="flex flex-wrap gap-1.5 max-w-[180px]">
                                                     {order.items.map((item, idx) => (
                                                         <span 
                                                             key={idx}
@@ -568,61 +608,51 @@ export default function CaseRegistration() {
                                                     ))}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col gap-1 bg-slate-50/50 p-2 rounded-xl border border-slate-100 w-fit">
-                                                    {isZeroImpact ? (
-                                                        <>
-                                                            <div className="flex items-center justify-between gap-3 text-sm font-black text-slate-400 line-through opacity-60">
-                                                                <span className="text-[10px] font-bold">القيمة الأصلية:</span>
-                                                                <span>{order.totalPrice.toLocaleString()}</span>
+                                            <td className="px-4 py-4">
+                                                {hasFinancialComparison ? (
+                                                    <div className={clsx('min-w-[190px] rounded-xl border p-2', isZeroImpact ? 'border-rose-200 bg-rose-50/60' : 'border-slate-100 bg-slate-50/50')}>
+                                                        <div className="grid grid-cols-[52px_1fr_1fr_1fr] gap-1 text-center text-[9px] font-bold text-slate-400">
+                                                            <span />
+                                                            <span>القديم</span>
+                                                            <span>الجديد</span>
+                                                            <span>الفرق</span>
+                                                        </div>
+                                                        {financialComparisonRows.map(([label, oldValue, newValue, delta]) => (
+                                                            <div key={label} className="mt-1 grid grid-cols-[52px_1fr_1fr_1fr] items-center gap-1 text-center text-[10px] font-black">
+                                                                <span className="text-right text-slate-500">{label}</span>
+                                                                <span className="text-slate-500">{oldValue.toLocaleString('en-EG')}</span>
+                                                                <span className={isZeroImpact ? 'text-rose-600' : 'text-slate-900'}>{newValue.toLocaleString('en-EG')}</span>
+                                                                <span className={delta < 0 ? 'text-rose-600' : delta > 0 ? 'text-emerald-600' : 'text-slate-400'}>{formatAccountingDelta(delta)}</span>
                                                             </div>
-                                                            <div className="flex items-center justify-between gap-3 text-sm font-black text-rose-600">
-                                                                <span className="text-[10px] font-bold">بيع:</span>
-                                                                <span className="rounded bg-rose-100 px-1.5">0</span>
-                                                            </div>
-                                                            <div className="flex items-center justify-between gap-3 text-sm font-black text-rose-600">
-                                                                <span className="text-[10px] font-bold">تكلفة:</span>
-                                                                <span className="rounded bg-rose-100 px-1.5">0</span>
-                                                            </div>
-                                                        </>
-                                                    ) : (order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (
-                                                        <>
-                                                            <div className="flex items-center justify-between gap-3 font-black text-slate-400 text-sm line-through opacity-60">
-                                                                <span className="text-[10px] font-bold">بيع مقدر:</span>
-                                                                <span>{order.totalPrice.toLocaleString()}</span>
-                                                            </div>
-                                                            <div className="flex items-center justify-between gap-3 font-black text-rose-600 text-sm">
-                                                                <span className="text-[10px] font-bold">تكلفة رفض:</span>
-                                                                <span className="bg-rose-100 px-1.5 rounded">
-                                                                    {order.rejectedLabCost?.toLocaleString() || 0}
-                                                                </span>
-                                                            </div>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <div className="flex items-center justify-between gap-3 font-black text-emerald-600 text-sm">
-                                                                <span className="text-[10px] text-slate-400 font-bold">بيع:</span>
-                                                                <span>{order.totalPrice.toLocaleString()}</span>
-                                                            </div>
-                                                            <div className="flex items-center justify-between gap-3 font-black text-slate-700 text-sm">
-                                                                <span className="text-[10px] text-slate-400 font-bold">تكلفة:</span>
-                                                                <span>{labCost.toLocaleString()}</span>
-                                                            </div>
-                                                            {order.discount > 0 && (
-                                                                <span className="text-[10px] text-red-500 font-black bg-red-50 px-1.5 py-0.5 rounded">خصم: {order.discount.toLocaleString()}</span>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </div>
+                                                        ))}
+                                                        {!oldSnapshot && (
+                                                            <p className="mt-1 text-[9px] font-bold text-amber-600">القيمة القديمة غير متاحة لتعديل سبق تفعيل المقارنة.</p>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50/50 p-2 text-sm font-black">
+                                                        <div className="flex items-center justify-between gap-3 text-emerald-600">
+                                                            <span className="text-[10px] font-bold text-slate-400">بيع:</span>
+                                                            <span>{accounting.current.saleAmount.toLocaleString('en-EG')}</span>
+                                                        </div>
+                                                        <div className="flex items-center justify-between gap-3 text-slate-700">
+                                                            <span className="text-[10px] font-bold text-slate-400">مورد:</span>
+                                                            <span>{accounting.current.labCost.toLocaleString('en-EG')}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="hidden px-4 py-4">
                                                 <div className="flex items-center gap-2 font-black text-slate-900 text-xs">
                                                     <span className="whitespace-nowrap max-w-[120px] truncate">
                                                         {(order.supplierId && suppliers[order.supplierId]) || (order.supplierId === 'internal' ? 'داخلي' : 'داخلي')}
                                                     </span>
                                                 </div>
+                                                {hasFinancialComparison && oldSnapshot && oldSnapshot.supplierId !== (order.supplierId || null) && (
+                                                    <span className="mt-1 block text-[10px] font-bold text-amber-600">كان: {oldSupplierName || oldSnapshot.supplierId}</span>
+                                                )}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="hidden px-4 py-4">
                                                 <div className="flex">
                                                     <span className={clsx(
                                                         "px-2.5 py-1 rounded-xl text-[9px] font-black border uppercase tracking-wider whitespace-nowrap inline-flex items-center justify-center",
@@ -633,22 +663,18 @@ export default function CaseRegistration() {
                                                         order.status === 'Returned for Adjustments' ? "bg-amber-50 text-amber-700 border-amber-200" :
                                                         "bg-cyan-50 text-cyan-700 border-cyan-200 shadow-sm shadow-cyan-100"
                                                     )}>
-                                                        {(() => {
-                                                            const statusMap: Record<string, string> = t.orders.status;
-                                                            const key = order.status.toLowerCase().replace(/ /g, '');
-                                                            return statusMap[key] || order.status;
-                                                        })()}
+                                                        {statusLabel}
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4 sticky left-0 bg-white group-hover:bg-cyan-50/40 z-10 transition-colors">
+                                            <td className="px-3 py-4 sticky left-0 bg-white group-hover:bg-cyan-50/40 z-10 transition-colors">
                                                 <div className="flex items-center justify-center gap-2">
                                                     {activeTab === 'pending' ? (
                                                         <button
                                                             onClick={() => handleRegister(order.id)}
                                                             disabled={processingId === order.id}
                                                             className={clsx(
-                                                                "flex items-center gap-2 px-5 py-2.5 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all hover:-translate-y-0.5 whitespace-nowrap",
+                                                                "flex items-center gap-1.5 px-3 py-2.5 2xl:px-5 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all hover:-translate-y-0.5 whitespace-nowrap",
                                                                 order.status === 'Cancelled'
                                                                     ? "bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-200/50"
                                                                     : "bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200/50"

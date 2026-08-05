@@ -13,8 +13,13 @@ const tasneemCancellationRepair = readFileSync(
     'supabase/migrations/20260805000000_reopen_tasneem_cancelled_accounting_entry.sql',
     'utf8'
 );
+const accountingSnapshotsMigration = readFileSync(
+    'supabase/migrations/20260805010000_add_accounting_review_snapshots.sql',
+    'utf8'
+);
 const registrationPage = readFileSync('src/pages/CaseRegistration.tsx', 'utf8');
 const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
+const dashboard = readFileSync('src/pages/DashboardNew.tsx', 'utf8');
 
 describe('accounting re-registration protection', () => {
     test('reopens a registered order for status, money, party, and item changes', () => {
@@ -48,7 +53,8 @@ describe('accounting re-registration protection', () => {
     test('shows changed orders regardless of their current workflow status', () => {
         expect(registrationPage).toContain('isAccountingRegistrationCandidate(order, activeTab)');
         expect(registrationPage).toContain('getOrdersForAccountingRegistration');
-        expect(registrationPage).toContain('تعديل بعد التسجيل');
+        expect(registrationPage).toContain("change: 'تعديل'");
+        expect(registrationPage).not.toContain('تعديل بعد التسجيل');
         expect(registrationPage).not.toContain('مؤرشفة بعد التسجيل');
         expect(sidebar).toContain("isAccountingRegistrationCandidate(order, 'pending')");
         expect(sidebar).toContain('getOrdersForAccountingRegistration');
@@ -61,5 +67,24 @@ describe('accounting re-registration protection', () => {
         expect(tasneemCancellationRepair).toContain('is_registered = FALSE');
         expect(tasneemCancellationRepair).toContain('needs_accounting_reregistration = TRUE');
         expect(tasneemCancellationRepair).not.toMatch(/SET\s+(total_price|discount|cost|manual_cost|design_price)/i);
+    });
+
+    test('stores a safe accounting baseline without changing order money', () => {
+        expect(accountingSnapshotsMigration).toContain('accounting_snapshot JSONB');
+        expect(accountingSnapshotsMigration).toContain('accounting_previous_snapshot JSONB');
+        expect(accountingSnapshotsMigration).toContain('public.build_order_accounting_snapshot');
+        expect(accountingSnapshotsMigration).toContain("THEN 'cancellation'");
+        expect(accountingSnapshotsMigration).toContain("THEN 'change'");
+        expect(accountingSnapshotsMigration).toContain("ELSE 'new'");
+        expect(accountingSnapshotsMigration).not.toMatch(/SET\s+(total_price|discount|cost|manual_cost|design_price)\s*=/i);
+    });
+
+    test('does not register accounting when a case is accepted', () => {
+        const acceptOrderBlock = dashboard.slice(
+            dashboard.indexOf('const handleAcceptOrder'),
+            dashboard.indexOf('const openDeliveryDateEditor')
+        );
+
+        expect(acceptOrderBlock).not.toContain('isRegistered: true');
     });
 });
