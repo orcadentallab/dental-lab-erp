@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db, type User, type EmployeeAdvance, type EmployeeCustody, type EmployeeCommission, type Transaction } from '../services/db';
 import { financeService, type Cashbox } from '../services/financeService';
 import { getEmployeeFinanceStats } from '../utils/employeeFinance';
@@ -25,6 +25,8 @@ export default function EmployeeDetail() {
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
     const { success: toastSuccess, error: toastError } = useToast();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const monthParam = searchParams.get('month');
 
     // Data State
     const [users, setUsers] = useState<User[]>([]);
@@ -36,7 +38,22 @@ export default function EmployeeDetail() {
     const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [selectedMonth, setSelectedMonth] = useState(monthParam || new Date().toISOString().slice(0, 7)); // YYYY-MM
+
+    useEffect(() => {
+        if (monthParam) {
+            setSelectedMonth(prev => (prev !== monthParam ? monthParam : prev));
+        }
+    }, [monthParam]);
+
+    const handleSetSelectedMonth = useCallback((month: string) => {
+        setSelectedMonth(month);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('month', month);
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
 
     // Form Modals
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
@@ -582,7 +599,7 @@ export default function EmployeeDetail() {
             {/* Header / Back */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <button
-                    onClick={() => navigate('/employees')}
+                    onClick={() => navigate(`/employees?month=${selectedMonth}`)}
                     className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-all font-semibold"
                 >
                     <ArrowRight className="h-4 w-4" />
@@ -593,7 +610,7 @@ export default function EmployeeDetail() {
                     <input
                         type="month"
                         value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        onChange={(e) => handleSetSelectedMonth(e.target.value)}
                         className="bg-white px-3 py-1.5 border rounded-lg shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
                     />
                 </div>

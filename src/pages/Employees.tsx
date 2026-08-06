@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { db, type User, type EmployeeAdvance, type EmployeeCustody, type EmployeeCommission, type Transaction } from '../services/db';
 import { financeService, type Cashbox } from '../services/financeService';
 import { getEmployeeFinanceStats, type EmployeeFinanceStats } from '../utils/employeeFinance';
@@ -27,6 +27,8 @@ export default function Employees() {
     const { user: currentUser } = useAuth();
     const { success: toastSuccess, error: toastError } = useToast();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    const monthParam = searchParams.get('month');
 
     // Data State
     const [users, setUsers] = useState<User[]>([]);
@@ -40,7 +42,16 @@ export default function Employees() {
     const [searchTerm, setSearchTerm] = useState('');
     const [typeFilter, setTypeFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('active');
-    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [selectedMonth, setSelectedMonth] = useState(monthParam || new Date().toISOString().slice(0, 7)); // YYYY-MM
+
+    const handleSetSelectedMonth = useCallback((month: string) => {
+        setSelectedMonth(month);
+        setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('month', month);
+            return next;
+        }, { replace: true });
+    }, [setSearchParams]);
 
     // Expense Registration State
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -158,15 +169,19 @@ export default function Employees() {
     // Auto-select Month Effect
     useEffect(() => {
         if (users.length > 0 && transactions.length > 0 && !hasSetDefaultMonth.current) {
-            const prevMonth = getPreviousMonthStr();
-            if (hasUnpaidSalariesInMonth(prevMonth, users, transactions)) {
-                setSelectedMonth(prevMonth);
+            if (monthParam) {
+                setSelectedMonth(monthParam);
             } else {
-                setSelectedMonth(getCurrentMonthStr());
+                const prevMonth = getPreviousMonthStr();
+                if (hasUnpaidSalariesInMonth(prevMonth, users, transactions)) {
+                    handleSetSelectedMonth(prevMonth);
+                } else {
+                    handleSetSelectedMonth(getCurrentMonthStr());
+                }
             }
             hasSetDefaultMonth.current = true;
         }
-    }, [users, transactions, getPreviousMonthStr, getCurrentMonthStr, hasUnpaidSalariesInMonth]);
+    }, [users, transactions, getPreviousMonthStr, getCurrentMonthStr, hasUnpaidSalariesInMonth, monthParam, handleSetSelectedMonth]);
 
     // Representative Expenses Review State
     const [expandedReps, setExpandedReps] = useState<Record<string, boolean>>({});
@@ -581,7 +596,7 @@ export default function Employees() {
                     {/* Month quick-select + picker */}
                     <div className="flex items-center gap-1.5 bg-white border rounded-lg shadow-sm px-1.5 py-1">
                         <button
-                            onClick={() => setSelectedMonth((() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })())}
+                            onClick={() => handleSetSelectedMonth((() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })())}
                             className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
                                 selectedMonth === (() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })()
                                     ? 'bg-amber-500 text-white shadow'
@@ -591,7 +606,7 @@ export default function Employees() {
                             الشهر السابق ({new Date(new Date().getFullYear(), new Date().getMonth() - 1).getMonth() + 1})
                         </button>
                         <button
-                            onClick={() => setSelectedMonth(new Date().toISOString().slice(0, 7))}
+                            onClick={() => handleSetSelectedMonth(new Date().toISOString().slice(0, 7))}
                             className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
                                 selectedMonth === new Date().toISOString().slice(0, 7)
                                     ? 'bg-brand-blue text-white shadow'
@@ -603,7 +618,7 @@ export default function Employees() {
                         <input
                             type="month"
                             value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            onChange={(e) => handleSetSelectedMonth(e.target.value)}
                             className="bg-transparent text-xs text-gray-400 border-r pr-1.5 focus:outline-none cursor-pointer"
                         />
                     </div>
@@ -755,7 +770,7 @@ export default function Employees() {
                                         <tr
                                             key={user.id}
                                             className="hover:bg-gray-50/80 transition-all cursor-pointer"
-                                            onClick={() => navigate(`/employees/${user.id}`)}
+                                            onClick={() => navigate(`/employees/${user.id}?month=${selectedMonth}`)}
                                         >
                                             <td className="p-4">
                                                 <div className="flex items-center gap-3">
@@ -812,7 +827,7 @@ export default function Employees() {
                                             <td className="p-4 text-center" onClick={(e) => e.stopPropagation()}>
                                                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                                     <button
-                                                        onClick={() => navigate(`/employees/${user.id}`)}
+                                                        onClick={() => navigate(`/employees/${user.id}?month=${selectedMonth}`)}
                                                         className="inline-flex items-center gap-1 text-brand-blue hover:text-brand-blue/80 font-medium text-xs bg-brand-blue/5 hover:bg-brand-blue/10 px-3 py-1.5 rounded-lg transition-all"
                                                     >
                                                         <span>عرض الملف</span>

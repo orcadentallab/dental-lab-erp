@@ -379,4 +379,27 @@ test.describe('Employee Management & Detail Flows', () => {
         await expect(page).toHaveURL(/\/dashboard/);
         await expect(page.locator('text=غير مصرح لك بعرض بيانات موظف آخر').first()).toBeVisible();
     });
+
+    test('Selected month context is preserved when navigating to profile and back', async ({ page }) => {
+        await loginAs(page, 'admin');
+        await page.goto('/employees');
+
+        // Change month picker to 2026-05
+        const monthInput = page.locator('input[type="month"]').first();
+        await monthInput.fill('2026-05');
+
+        // Click "عرض الملف"
+        await page.locator('tr:has-text("مندوب المبيعات أحمد")').locator('text=عرض الملف').click();
+        await expect(page).toHaveURL(/\/employees\/rep-uuid\?month=2026-05/);
+
+        // Check month input in profile is 2026-05
+        const profileMonthInput = page.locator('input[type="month"]');
+        await expect(profileMonthInput).toHaveValue('2026-05');
+
+        // Click "العودة لقائمة الموظفين"
+        await page.click('text=العودة لقائمة الموظفين');
+        await expect(page).toHaveURL(/\/employees\?month=2026-05/);
+        await expect(monthInput).toHaveValue('2026-05');
+    });
 });
+
