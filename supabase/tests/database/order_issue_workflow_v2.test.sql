@@ -1,12 +1,13 @@
 BEGIN;
 
 SET search_path TO public, extensions;
-SELECT plan(45);
+SELECT plan(49);
 
 SELECT has_column('public', 'orders', 'design_submitted_at', 'design submission has a dedicated timestamp');
 SELECT has_column('public', 'orders', 'first_delivered_at', 'first final delivery has a dedicated timestamp');
 SELECT has_table('public', 'order_transition_commands', 'transition idempotency commands exist');
 SELECT has_table('public', 'accounting_review_changes', 'accounting change trail exists');
+SELECT has_table('public', 'accounting_review_change_repair_archive', 'false accounting review repairs are recoverably archived');
 SELECT has_table('public', 'doctor_order_feedback', 'doctor feedback is isolated from internal orders rows');
 SELECT has_column('public', 'workflow_v2_backfill_dry_run', 'timing_review_reason', 'dry run reports unresolved lifecycle timing');
 SELECT has_column('public', 'orders', 'legacy_delivery_confirmed', 'legacy delivery can be confirmed without inventing a timestamp');
@@ -91,10 +92,23 @@ SELECT ok(
         LIKE '%NEW.supplier_id IS NOT DISTINCT FROM OLD.supplier_id%',
     'representative guard permits audited cost recalculation only with an assignment change'
 );
+SELECT ok(
+    pg_get_functiondef('public.capture_accounting_review_change_v2()'::regprocedure)
+        LIKE '%first_delivered_at%first_delivered_source%design_submitted_at%legacy_delivery_confirmed%',
+    'accounting audit ignores lifecycle evidence fields'
+);
 
 UPDATE public.app_settings
 SET value = 'on'
 WHERE key = 'workflow_issue_v2_write';
+
+-- Build the historical unresolved fixture under the same temporary cutover
+-- condition used by the reviewed legacy backfill.  The workflow is re-enabled
+-- before any RPC behaviour is exercised, so this test is independent of the
+-- flags left in the local database by earlier runs.
+UPDATE public.app_settings
+SET value = 'off'
+WHERE key = 'workflow_issue_v2_enforce';
 
 INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password,
@@ -167,6 +181,10 @@ INSERT INTO public.orders (
 UPDATE public.orders
 SET issue_state = 'doctor_rejected'
 WHERE id = '48000000-0000-0000-0000-000000000002';
+
+UPDATE public.app_settings
+SET value = 'on'
+WHERE key = 'workflow_issue_v2_enforce';
 
 SELECT set_config('request.jwt.claim.sub', '98000000-0000-0000-0000-000000000001', TRUE);
 SET LOCAL ROLE authenticated;
@@ -299,6 +317,63 @@ SELECT throws_like(
     'representative cannot use the admin-only direct technician rejection path'
 );
 RESET ROLE;
+
+UPDATE public.app_settings
+SET value = 'on'
+WHERE key = 'workflow_accounting_audit_v2';
+
+INSERT INTO public.orders (
+    id, case_id, doctor_id, patient_name, items, total_price, shade, status,
+    delivery_date, cost, technician_status, production_status, issue_state,
+    is_registered
+) VALUES (
+    '48000000-0000-0000-0000-000000000005', 'ISSUE-V2-ACCOUNTING-AUDIT',
+    '18000000-0000-0000-0000-000000000001', 'Accounting Audit Patient', '[]',
+    700, 'A1', 'Delivered', CURRENT_DATE, 200, 'Approved',
+    'final_delivered', 'none', TRUE
+);
+
+UPDATE public.orders orders
+SET accounting_snapshot = public.build_order_accounting_snapshot(orders),
+    accounting_registered_at = timezone('utc', now()),
+    accounting_last_review_type = 'new'
+WHERE id = '48000000-0000-0000-0000-000000000005';
+
+SELECT set_config('app.order_issue_operation', 'record_final_delivery', TRUE);
+UPDATE public.orders
+SET first_delivered_at = timezone('utc', now()),
+    first_delivered_source = 'direct_transition'
+WHERE id = '48000000-0000-0000-0000-000000000005';
+SELECT set_config('app.order_issue_operation', '', TRUE);
+
+SELECT ok(
+    (SELECT is_registered
+            AND NOT needs_accounting_reregistration
+            AND accounting_review_cycle_id IS NULL
+     FROM public.orders
+     WHERE id = '48000000-0000-0000-0000-000000000005'),
+    'lifecycle evidence changes do not reopen accounting registration'
+);
+
+SELECT set_config('request.jwt.claim.sub', '98000000-0000-0000-0000-000000000001', TRUE);
+UPDATE public.orders
+SET patient_name = 'Accounting Audit Patient Updated'
+WHERE id = '48000000-0000-0000-0000-000000000005';
+
+SELECT ok(
+    (SELECT NOT is_registered
+            AND needs_accounting_reregistration
+            AND accounting_review_cycle_id IS NOT NULL
+     FROM public.orders
+     WHERE id = '48000000-0000-0000-0000-000000000005')
+    AND (
+        SELECT count(*) = 1
+        FROM public.accounting_review_changes changes
+        WHERE changes.order_id = '48000000-0000-0000-0000-000000000005'
+          AND changes.changed_fields ? 'patient_name'
+    ),
+    'a real business change still opens exactly one accounting review cycle'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
