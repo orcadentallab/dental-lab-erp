@@ -3,11 +3,33 @@
 
 BEGIN;
 
+SET LOCAL statement_timeout = '15s';
+SET LOCAL lock_timeout = '3s';
+
 DO $$
 BEGIN
     IF NOT public.workflow_flag_enabled('workflow_issue_v2_enforce') THEN
         RAISE EXCEPTION
             'Set workflow_issue_v2_enforce=on only after frontend cutover and parity approval';
+    END IF;
+
+    IF NOT public.workflow_flag_enabled('workflow_issue_v2_write')
+       OR NOT public.workflow_flag_enabled('workflow_finance_v2')
+       OR NOT public.workflow_flag_enabled('workflow_accounting_audit_v2') THEN
+        RAISE EXCEPTION
+            'Workflow write, finance, and accounting audit flags must be enabled before client cutover';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM public.workflow_v2_backfill_effective_review
+        WHERE effective_timing_review_reason IS NOT NULL
+    ) OR EXISTS (
+        SELECT 1
+        FROM public.workflow_v2_backfill_dry_run
+        WHERE proposed_legacy_issue = 'unresolved_legacy_rejection'
+    ) THEN
+        RAISE EXCEPTION 'Workflow V2 backfill still contains unresolved rows';
     END IF;
 
     IF to_regprocedure('public.get_my_doctor_orders_v2()') IS NULL
