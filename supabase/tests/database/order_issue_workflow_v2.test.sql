@@ -1,7 +1,7 @@
 BEGIN;
 
 SET search_path TO public, extensions;
-SELECT plan(38);
+SELECT plan(41);
 
 SELECT has_column('public', 'orders', 'design_submitted_at', 'design submission has a dedicated timestamp');
 SELECT has_column('public', 'orders', 'first_delivered_at', 'first final delivery has a dedicated timestamp');
@@ -134,6 +134,17 @@ INSERT INTO public.orders (
     'final_ready', 'none'
 );
 
+INSERT INTO public.orders (
+    id, case_id, doctor_id, patient_name, items, total_price, shade, status,
+    delivery_date, cost, technician_status, designer_id, production_status,
+    issue_state, rejected_designer_cost
+) VALUES (
+    '48000000-0000-0000-0000-000000000003', 'ISSUE-V2-REP-CANCEL',
+    '18000000-0000-0000-0000-000000000001', 'Representative Cancel Patient', '[]',
+    500, 'A1', 'New Case', CURRENT_DATE, 100, 'Pending',
+    '38000000-0000-0000-0000-000000000003', 'not_started', 'none', 75
+);
+
 UPDATE public.orders
 SET issue_state = 'doctor_rejected'
 WHERE id = '48000000-0000-0000-0000-000000000002';
@@ -206,6 +217,31 @@ SELECT is(
 
 SELECT set_config('request.jwt.claim.sub', '98000000-0000-0000-0000-000000000002', TRUE);
 SET LOCAL ROLE authenticated;
+SELECT lives_ok(
+    $$SELECT public.apply_order_issue_transition_v2(
+        '48000000-0000-0000-0000-000000000003', 'cancel_order',
+        'Representative cancellation before delivery',
+        '88000000-0000-0000-0000-000000000003', 'zero', NULL,
+        'Issue V2 Representative'
+    )$$,
+    'representative cancellation can atomically zero a pre-existing designer rejection cost'
+);
+SELECT ok(
+    (SELECT issue_state = 'cancelled'
+            AND rejected_doctor_amount = 0
+            AND rejected_lab_cost = 0
+            AND rejected_designer_cost = 0
+     FROM public.orders WHERE id = '48000000-0000-0000-0000-000000000003'),
+    'representative cancellation zeroes all issue financial fields'
+);
+SELECT set_config('app.order_issue_operation', '', TRUE);
+SELECT throws_like(
+    $$UPDATE public.orders
+      SET rejected_designer_cost = 25
+      WHERE id = '48000000-0000-0000-0000-000000000003'$$,
+    '%Only admin can update rejected designer cost%',
+    'representative direct designer-cost edits remain blocked outside a workflow RPC'
+);
 SELECT throws_like(
     $$SELECT public.admin_reject_order_from_tech_status_v2(
         '48000000-0000-0000-0000-000000000001', 'Representative direct rejection',
