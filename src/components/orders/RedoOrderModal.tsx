@@ -26,13 +26,11 @@ function isDoctorLiabilityOption(value: string): value is DoctorLiabilityOption 
     return value === 'later' || value === 'full' || value === 'half' || value === 'zero' || value === 'custom';
 }
 
-export default function RedoOrderModal({ order, userRole, isOpen, onClose, onSuccess }: Props) {
+export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Props) {
     const titleId = useId();
     const dialogRef = useDialogBehavior(isOpen, onClose);
     const [reason, setReason] = useState('lab_error');
     const [notes, setNotes] = useState('');
-    const [rejectedLabCost, setRejectedLabCost] = useState<number | ''>('');
-    const [rejectedDesignerCost, setRejectedDesignerCost] = useState<number | ''>('');
     const [doctorLiabilityOption, setDoctorLiabilityOption] = useState<DoctorLiabilityOption>('full');
     const [customDoctorAmount, setCustomDoctorAmount] = useState<number | ''>('');
     const [errorMessage, setErrorMessage] = useState('');
@@ -40,9 +38,8 @@ export default function RedoOrderModal({ order, userRole, isOpen, onClose, onSuc
 
     if (!isOpen) return null;
 
-    const isAdmin = userRole === 'admin';
     const doctorAmount = doctorLiabilityOption === 'later'
-        ? null
+        ? (order.totalPrice || 0)
         : doctorLiabilityOption === 'full'
         ? (order.totalPrice || 0)
         : doctorLiabilityOption === 'half'
@@ -62,21 +59,18 @@ export default function RedoOrderModal({ order, userRole, isOpen, onClose, onSuc
                 originalOrderId: order.id,
                 reasonCode: reason,
                 notes: notes.trim(),
-                rejectedLabCost: rejectedLabCost === '' ? null : Number(rejectedLabCost),
-                rejectedDesignerCost: rejectedDesignerCost === ''
-                    ? null
-                    : Number(rejectedDesignerCost),
+                doctorDecision: doctorLiabilityOption === 'later'
+                    ? 'decide_later'
+                    : doctorLiabilityOption === 'full'
+                        ? 'full_price'
+                        : doctorLiabilityOption === 'zero'
+                            ? 'zero'
+                            : 'custom_amount',
+                customDoctorAmount: doctorLiabilityOption === 'half'
+                    ? (order.totalPrice || 0) / 2
+                    : doctorLiabilityOption === 'custom' ? doctorAmount : null,
             });
-            if (doctorAmount !== null) {
-                await db.updateRejectedOrderFinancials(result.originalOrderId, {
-                    doctorAmount,
-                    labCost: isAdmin && rejectedLabCost !== '' ? Number(rejectedLabCost) : null,
-                    labCostStatus: order.supplierId ? (isAdmin && rejectedLabCost !== '' ? 'resolved' : 'pending') : 'not_applicable',
-                    designerCost: isAdmin && rejectedDesignerCost !== '' ? Number(rejectedDesignerCost) : null,
-                    designerCostStatus: order.designerId ? (isAdmin && rejectedDesignerCost !== '' ? 'resolved' : 'pending') : 'not_applicable',
-                    reason: 'مراجعة مالية عند إنشاء إعادة الإنتاج',
-                });
-            }
+            void result;
             onSuccess();
             onClose();
         } catch (err) {
@@ -123,7 +117,7 @@ export default function RedoOrderModal({ order, userRole, isOpen, onClose, onSuc
                         </label>
                         <div className="grid grid-cols-2 gap-2">
                             {[
-                                { value: 'later', label: 'تحديد لاحقًا', amount: null },
+                                { value: 'later', label: 'تحديد لاحقًا (كامل مؤقتًا)', amount: order.totalPrice || 0 },
                                 { value: 'full', label: 'كامل', amount: order.totalPrice || 0 },
                                 { value: 'half', label: '50%', amount: (order.totalPrice || 0) / 2 },
                                 { value: 'zero', label: 'صفر', amount: 0 },
@@ -138,6 +132,11 @@ export default function RedoOrderModal({ order, userRole, isOpen, onClose, onSuc
                                 </label>
                             ))}
                         </div>
+                        {doctorLiabilityOption === 'later' && (
+                            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                                كامل قيمة الطلب مسؤولية مؤقتة على الطبيب لحماية رصيد المعمل، وتُعدّل عند حسم القرار.
+                            </p>
+                        )}
                         {doctorLiabilityOption === 'custom' && (
                             <div className="mt-3">
                                 <label className="mb-1 block text-xs font-bold text-violet-900">اكتب المبلغ المخصص</label>
@@ -156,34 +155,6 @@ export default function RedoOrderModal({ order, userRole, isOpen, onClose, onSuc
                             className="w-full px-3 py-2 border border-surface-200 rounded-lg text-base sm:text-sm resize-none"
                         />
                     </div>
-                    {isAdmin && order.supplierId && (
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">
-                                تكلفة استحقاق المعمل (اختياري)
-                            </label>
-                            <Input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={rejectedLabCost}
-                                onChange={(e) => setRejectedLabCost(e.target.value ? Number(e.target.value) : '')}
-                            />
-                        </div>
-                    )}
-                    {isAdmin && order.designerId && (
-                        <div>
-                            <label className="block text-sm font-bold text-gray-700 mb-1">
-                                تكلفة استحقاق المصمم (اختياري)
-                            </label>
-                            <Input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={rejectedDesignerCost}
-                                onChange={(e) => setRejectedDesignerCost(e.target.value ? Number(e.target.value) : '')}
-                            />
-                        </div>
-                    )}
                     {errorMessage && <p className="rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">{errorMessage}</p>}
                 </div>
 

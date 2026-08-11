@@ -146,17 +146,22 @@ test.describe('WF-4: getForwardActions', () => {
 });
 
 test.describe('WF-4: getIssueActions', () => {
-    test('normal state lab user sees return action only', () => {
-        const actions = getIssueActions('none', 'lab');
-        expect(actions.some(a => a.id === 'return')).toBe(true);
-        expect(actions.some(a => a.id === 'reject')).toBe(false);
+    test('lab user cannot apply issue transitions', () => {
+        const actions = getIssueActions('none', 'lab', { firstDeliveredAt: '2026-08-01T00:00:00Z' });
+        expect(actions).toEqual([]);
     });
 
-    test('admin sees return, reject, and cancel', () => {
-        const actions = getIssueActions('none', 'admin');
+    test('admin sees only cancellation before delivery', () => {
+        const actions = getIssueActions('none', 'admin', { firstDeliveredAt: null });
+        expect(actions.map(action => action.id)).toEqual(['cancel']);
+    });
+
+    test('admin sees return and doctor rejection after delivery', () => {
+        const actions = getIssueActions('none', 'admin', { firstDeliveredAt: '2026-08-01T00:00:00Z' });
         expect(actions.some(a => a.id === 'return')).toBe(true);
         expect(actions.some(a => a.id === 'reject')).toBe(true);
-        expect(actions.some(a => a.id === 'cancel')).toBe(true);
+        expect(actions.some(a => a.id === 'cancel')).toBe(false);
+        expect(actions.some(a => a.id === 'lab_reject')).toBe(false);
     });
 
     test('doctor_rejected/lab_rejected state shows no actions even for admin', () => {
@@ -165,7 +170,7 @@ test.describe('WF-4: getIssueActions', () => {
     });
 
     test('returned state does not show return again', () => {
-        const actions = getIssueActions('returned', 'admin');
+        const actions = getIssueActions('returned', 'admin', { firstDeliveredAt: '2026-08-01T00:00:00Z' });
         expect(actions.some(a => a.id === 'return')).toBe(false);
     });
 });

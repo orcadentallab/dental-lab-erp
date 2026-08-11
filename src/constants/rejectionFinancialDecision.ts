@@ -15,7 +15,7 @@ export interface RejectionFinancialContext {
     rejectedLabCost?: number;
     rejectedDesignerCost?: number;
     rejectionDoctorDecision?: RejectionDoctorDecision;
-    rejectedDoctorAmount?: number;
+    rejectedDoctorAmount?: number | null;
     rejectionFinancialReviewStatus?: RejectionFinancialReviewStatus;
     rejectedLabCostStatus?: RejectionPartyCostStatus;
     rejectedDesignerCostStatus?: RejectionPartyCostStatus;
@@ -30,7 +30,7 @@ export interface RejectionFinancialDecisionInput {
 
 export interface ResolvedRejectionDoctorDecision {
     decision: RejectionDoctorDecision;
-    doctorAmount: number;
+    doctorAmount: number | null;
     reviewStatus: RejectionFinancialReviewStatus;
 }
 
@@ -46,6 +46,8 @@ export function resolveRejectionDoctorDecision(
         case REJECTION_DOCTOR_DECISIONS.decideLater:
             return {
                 decision: input.decision,
+                // Keep the lab protected until the final decision: the doctor
+                // provisionally bears the full order total while review is pending.
                 doctorAmount: orderTotal,
                 reviewStatus: 'pending',
             };

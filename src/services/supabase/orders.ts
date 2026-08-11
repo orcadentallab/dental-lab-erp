@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { supabase } from '../../lib/supabase';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
-import type { AccountingOrderSnapshot, AccountingReviewType, Order, OrderHistoryEntry, Transaction } from '../db';
+import type { AccountingOrderSnapshot, AccountingReviewChange, AccountingReviewType, DoctorOrderSummary, Order, OrderHistoryEntry, OrderItem, Transaction } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 import { generateArabicSearchPattern } from '../../lib/searchUtils';
@@ -76,6 +76,17 @@ const DOCTOR_RECEIVABLE_PARTY_CORRECTION_FAILURE_MESSAGE =
     'Doctor was corrected, but shadow doctor receivable obligation could not be updated.';
 const EXTERNAL_LAB_PAYABLE_PARTY_CORRECTION_FAILURE_MESSAGE =
     'Supplier was corrected, but shadow external lab payable obligation could not be updated.';
+
+let workflowV2WriteCache: { enabled: boolean; expiresAt: number } | null = null;
+
+async function isWorkflowV2WriteEnabled(): Promise<boolean> {
+    if (workflowV2WriteCache && workflowV2WriteCache.expiresAt > Date.now()) return workflowV2WriteCache.enabled;
+    const { data, error } = await supabase.rpc('get_order_workflow_v2_capabilities');
+    if (error) return false; // Schema-first rollout: old deployments keep the legacy path.
+    const enabled = Boolean((data as { write?: boolean } | null)?.write);
+    workflowV2WriteCache = { enabled, expiresAt: Date.now() + 30_000 };
+    return enabled;
+}
 const DOCTOR_RECEIVABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
     'Doctor receivable amount was corrected, but shadow doctor receivable obligation could not be updated.';
 const EXTERNAL_LAB_PAYABLE_AMOUNT_CORRECTION_FAILURE_MESSAGE =
@@ -988,6 +999,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         accountingRegisteredAt: dbOrder.accounting_registered_at || undefined,
         accountingReviewedBy: dbOrder.accounting_reviewed_by || undefined,
         accountingLastReviewType: dbOrder.accounting_last_review_type || undefined,
+        accountingReviewCycleId: dbOrder.accounting_review_cycle_id || undefined,
         workflowType: dbOrder.workflow_type || undefined,
         designerId: dbOrder.designer_id || undefined,
         designUrl: dbOrder.design_url || undefined,
@@ -995,6 +1007,10 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         designPrice: dbOrder.design_price || undefined,
         manualDesignPrice: dbOrder.manual_design_price ?? undefined,
         actualDeliveryDate: dbOrder.actual_delivery_date || undefined,
+        designSubmittedAt: dbOrder.design_submitted_at || undefined,
+        firstDeliveredAt: dbOrder.first_delivered_at || undefined,
+        firstDeliveredSource: dbOrder.first_delivered_source || undefined,
+        legacyDeliveryConfirmed: dbOrder.legacy_delivery_confirmed || false,
         feedback: dbOrder.feedback || undefined,
         isRedo: dbOrder.is_redo || undefined,
         originalOrderId: dbOrder.original_order_id || undefined,
@@ -1799,8 +1815,9 @@ export interface CreateRedoOrderInput {
     originalOrderId: string;
     reasonCode: string;
     notes: string;
-    rejectedLabCost?: number | null;
-    rejectedDesignerCost?: number | null;
+    doctorDecision: import('../../constants/rejectionFinancialDecision').RejectionDoctorDecision;
+    customDoctorAmount?: number | null;
+    idempotencyKey?: string;
 }
 
 export interface CreateRedoOrderResult {
@@ -1817,12 +1834,40 @@ export async function createRedoOrderAtomic(
         throw new ValidationError('بيانات إعادة الإنتاج غير مكتملة');
     }
 
-    const { data, error } = await supabase.rpc('create_redo_order_atomic', {
+    if (!await isWorkflowV2WriteEnabled()) {
+        const { data, error } = await supabase.rpc('create_redo_order_atomic', {
+            p_original_order_id: input.originalOrderId,
+            p_reason_code: input.reasonCode,
+            p_notes: input.notes.trim(),
+            p_rejected_lab_cost: null,
+            p_rejected_designer_cost: null,
+        });
+        if (error) throw ErrorHandler.handle(error, 'createRedoOrderAtomicLegacy');
+        const result = data as CreateRedoOrderResult;
+        if (input.doctorDecision !== 'decide_later') {
+            const original = await getOrder(input.originalOrderId);
+            const doctorAmount = input.doctorDecision === 'full_price'
+                ? original?.totalPrice || 0
+                : input.doctorDecision === 'zero' ? 0 : input.customDoctorAmount ?? 0;
+            await updateRejectedOrderFinancials(result.originalOrderId, {
+                doctorAmount,
+                labCost: null,
+                labCostStatus: original?.supplierId ? 'pending' : 'not_applicable',
+                designerCost: null,
+                designerCostStatus: original?.designerId ? 'pending' : 'not_applicable',
+                reason: 'قرار إعادة إنتاج أثناء مرحلة التوافق',
+            });
+        }
+        return result;
+    }
+
+    const { data, error } = await supabase.rpc('create_redo_order_atomic_v2', {
         p_original_order_id: input.originalOrderId,
         p_reason_code: input.reasonCode,
         p_notes: input.notes.trim(),
-        p_rejected_lab_cost: input.rejectedLabCost ?? null,
-        p_rejected_designer_cost: input.rejectedDesignerCost ?? null,
+        p_doctor_decision: input.doctorDecision,
+        p_custom_doctor_amount: input.doctorDecision === 'custom_amount' ? input.customDoctorAmount ?? null : null,
+        p_idempotency_key: input.idempotencyKey || crypto.randomUUID(),
     });
 
     if (error) {
@@ -2519,11 +2564,12 @@ export interface StatusUpdateContext {
     rejectedLabCost?: number; // Cost to lab when rejected
     rejectedDesignerCost?: number; // Cost to per-piece designer when rejected
     rejectionDoctorDecision?: import('../../constants/rejectionFinancialDecision').RejectionDoctorDecision;
-    rejectedDoctorAmount?: number;
+    rejectedDoctorAmount?: number | null;
     rejectionFinancialReviewStatus?: import('../../constants/rejectionFinancialDecision').RejectionFinancialReviewStatus;
     rejectedLabCostStatus?: import('../../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     rejectedDesignerCostStatus?: import('../../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     issueState?: Order['issueState']; // Optional issueState to set atomically with status
+    idempotencyKey?: string;
 }
 
 /**
@@ -2569,6 +2615,60 @@ export async function updateOrderStatus(
         throw new ValidationError('الطلب غير موجود');
     }
 
+    const useWorkflowV2 = await isWorkflowV2WriteEnabled();
+    const idempotencyKey = context.idempotencyKey || crypto.randomUUID();
+    const issueOperation = newStatus === 'Cancelled'
+        ? 'cancel_order'
+        : newStatus === 'Returned for Adjustments'
+            ? 'return_for_adjustment'
+            : newStatus === 'Doctor Rejected'
+                ? 'doctor_reject_order'
+                : null;
+
+    if (useWorkflowV2 && newStatus === 'Lab Rejected') {
+        throw new ValidationError('رفض المعمل لا يتم من قائمة المشاكل؛ يجب مراجعة طلب رفض المصمم.');
+    }
+
+    if (useWorkflowV2 && issueOperation) {
+        if (!context.comment?.trim()) {
+            throw new ValidationError('سبب الإجراء مطلوب');
+        }
+        const decision = issueOperation === 'doctor_reject_order'
+            ? (context.rejectionDoctorDecision || 'decide_later')
+            : null;
+        const { error } = await supabase.rpc('apply_order_issue_transition_v2', {
+            p_order_id: orderId,
+            p_operation: issueOperation,
+            p_reason: context.comment.trim(),
+            p_idempotency_key: idempotencyKey,
+            p_doctor_decision: decision,
+            p_custom_doctor_amount: decision === 'custom_amount' ? context.rejectedDoctorAmount ?? null : null,
+            p_user_name: context.userName || null,
+        });
+        if (error) throw ErrorHandler.handle(error, 'applyOrderIssueTransitionV2');
+        return getOrder(orderId);
+    }
+
+    if (useWorkflowV2 && (newStatus === 'Delivered' || newStatus === 'Completed')) {
+        const { error } = await supabase.rpc('record_order_final_delivery_v2', {
+            p_order_id: orderId,
+            p_delivered_at: new Date().toISOString(),
+            p_idempotency_key: idempotencyKey,
+        });
+        if (error) throw ErrorHandler.handle(error, 'recordOrderFinalDeliveryV2');
+        return getOrder(orderId);
+    }
+
+    if (useWorkflowV2 && newStatus === 'Under Production' && context.designUrl) {
+        const { error } = await supabase.rpc('submit_order_design_v2', {
+            p_order_id: orderId,
+            p_design_url: context.designUrl,
+            p_idempotency_key: idempotencyKey,
+        });
+        if (error) throw ErrorHandler.handle(error, 'submitOrderDesignV2');
+        return getOrder(orderId);
+    }
+
     // Build updates object
     const updates: Partial<Order> = {
         status: newStatus,
@@ -2598,7 +2698,7 @@ export async function updateOrderStatus(
         updates.productionStatus = 'in_production';
     } else if (['Under Design', 'Waiting Dr Approval'].includes(newStatus)) {
         updates.productionStatus = 'designing';
-    } else if (['New Case', 'Pending', 'Pending Review', 'Cancelled', 'Lab Rejected', 'Doctor Rejected'].includes(newStatus)) {
+    } else if (['New Case', 'Pending', 'Pending Review'].includes(newStatus)) {
         updates.productionStatus = 'not_started';
     }
 
@@ -2889,6 +2989,164 @@ export async function updateOrderStatus(
     }
 
     return updatedOrder;
+}
+
+export async function requestDesignerRejection(
+    orderId: string,
+    reason: string,
+    idempotencyKey: string = crypto.randomUUID(),
+): Promise<void> {
+    if (!reason.trim()) throw new ValidationError('سبب رفض المصمم مطلوب');
+    if (!await isWorkflowV2WriteEnabled()) {
+        const order = await getOrder(orderId);
+        if (!order) throw new ValidationError('الطلب غير موجود');
+        await updateOrder(orderId, {
+            technicianStatus: 'Rejected',
+            designStatus: 'returned',
+            comments: [...(order.comments || []), {
+                id: crypto.randomUUID(), text: `[رفض المصمم]: ${reason.trim()}`,
+                userId: '', userName: 'المصمم', createdAt: new Date().toISOString(),
+            }],
+        });
+        return;
+    }
+    const { error } = await supabase.rpc('request_designer_rejection_v2', {
+        p_order_id: orderId,
+        p_reason: reason.trim(),
+        p_idempotency_key: idempotencyKey,
+    });
+    if (error) throw ErrorHandler.handle(error, 'requestDesignerRejectionV2');
+}
+
+export async function getMyDoctorOrders(): Promise<DoctorOrderSummary[]> {
+    const { data, error } = await supabase.rpc('get_my_doctor_orders_v2');
+    if (error) throw ErrorHandler.handle(error, 'getMyDoctorOrdersV2');
+    return ((data || []) as Array<Record<string, unknown>>).map(row => ({
+        id: String(row.id),
+        caseId: String(row.case_id),
+        patientName: String(row.patient_name),
+        deliveryDate: String(row.delivery_date || ''),
+        productionStatus: String(row.production_status || 'not_started') as DoctorOrderSummary['productionStatus'],
+        issueState: String(row.issue_state || 'none') as DoctorOrderSummary['issueState'],
+        totalPrice: Number(row.total_price || 0),
+        feedback: (row.feedback || undefined) as DoctorOrderSummary['feedback'],
+        createdAt: String(row.created_at),
+    }));
+}
+
+export async function getAccountingReviewChanges(orderId: string): Promise<AccountingReviewChange[]> {
+    const { data, error } = await supabase
+        .from('accounting_review_changes')
+        .select('id, order_id, review_cycle_id, sequence_no, event_type, changed_fields, created_at, reviewed_at')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: true });
+    if (error) throw ErrorHandler.handle(error, 'getAccountingReviewChanges');
+    return (data || []).map(row => ({
+        id: row.id,
+        orderId: row.order_id,
+        reviewCycleId: row.review_cycle_id,
+        sequenceNo: row.sequence_no,
+        eventType: row.event_type,
+        changedFields: row.changed_fields || {},
+        createdAt: row.created_at,
+        reviewedAt: row.reviewed_at,
+    }));
+}
+
+export async function submitMyOrderFeedback(orderId: string, rating: number, notes = ''): Promise<void> {
+    const { error } = await supabase.rpc('submit_my_order_feedback_v2', {
+        p_order_id: orderId,
+        p_rating: rating,
+        p_notes: notes.trim() || null,
+    });
+    if (error) throw ErrorHandler.handle(error, 'submitMyOrderFeedbackV2');
+}
+
+export async function createMyDoctorOrderRequest(input: {
+    patientName: string;
+    items: OrderItem[];
+    shade: string;
+    instructions?: string;
+    stlUrl?: string;
+    imagesUrl?: string;
+    deliveryDate: string;
+    totalPrice: number;
+}): Promise<string> {
+    const { data, error } = await supabase.rpc('create_my_order_request_v2', {
+        p_patient_name: input.patientName.trim(),
+        p_items: input.items,
+        p_shade: input.shade,
+        p_instructions: input.instructions || null,
+        p_stl_url: input.stlUrl || null,
+        p_images_url: input.imagesUrl || null,
+        p_delivery_date: input.deliveryDate,
+        p_total_price: input.totalPrice,
+    });
+    if (error) throw ErrorHandler.handle(error, 'createMyOrderRequestV2');
+    return String(data);
+}
+
+export async function reviewDesignerRejection(
+    orderId: string,
+    action: 'approve' | 'reject' | 'request_details',
+    notes = '',
+    idempotencyKey: string = crypto.randomUUID(),
+): Promise<void> {
+    if (action !== 'approve' && !notes.trim()) throw new ValidationError('ملاحظات قرار المراجعة مطلوبة');
+    if (!await isWorkflowV2WriteEnabled()) {
+        if (action === 'approve') {
+            await updateOrderStatus(orderId, 'Lab Rejected', {
+                comment: notes || 'اعتماد رفض المصمم',
+                rejectionDoctorDecision: 'zero',
+                rejectedDoctorAmount: 0,
+                rejectionFinancialReviewStatus: 'resolved',
+                rejectedLabCost: 0,
+                rejectedDesignerCost: 0,
+                rejectedLabCostStatus: 'resolved',
+                rejectedDesignerCostStatus: 'resolved',
+            });
+        } else {
+            await updateOrder(orderId, {
+                technicianStatus: action === 'reject' ? 'Approved' : 'NeedDetails',
+                ...(action === 'reject' ? { designStatus: 'in_progress', status: 'Under Design', productionStatus: 'designing' } : {}),
+            }, { allowStatusChange: action === 'reject' });
+        }
+        return;
+    }
+    const { error } = await supabase.rpc('review_designer_rejection_v2', {
+        p_order_id: orderId,
+        p_action: action,
+        p_notes: notes.trim() || null,
+        p_idempotency_key: idempotencyKey,
+    });
+    if (error) throw ErrorHandler.handle(error, 'reviewDesignerRejectionV2');
+}
+
+export async function rejectOrderFromTechStatus(
+    orderId: string,
+    reason: string,
+    idempotencyKey: string = crypto.randomUUID(),
+): Promise<void> {
+    if (!reason.trim()) throw new ValidationError('سبب رفض المعمل مطلوب');
+    if (!await isWorkflowV2WriteEnabled()) {
+        await updateOrderStatus(orderId, 'Lab Rejected', {
+            comment: reason.trim(),
+            rejectionDoctorDecision: 'zero',
+            rejectedDoctorAmount: 0,
+            rejectionFinancialReviewStatus: 'resolved',
+            rejectedLabCost: 0,
+            rejectedDesignerCost: 0,
+            rejectedLabCostStatus: 'resolved',
+            rejectedDesignerCostStatus: 'resolved',
+        });
+        return;
+    }
+    const { error } = await supabase.rpc('admin_reject_order_from_tech_status_v2', {
+        p_order_id: orderId,
+        p_reason: reason.trim(),
+        p_idempotency_key: idempotencyKey,
+    });
+    if (error) throw ErrorHandler.handle(error, 'adminRejectOrderFromTechStatusV2');
 }
 
 export async function updateRejectedOrderFinancials(

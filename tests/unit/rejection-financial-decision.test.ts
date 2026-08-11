@@ -5,7 +5,7 @@ import {
 } from '../../src/constants/rejectionFinancialDecision';
 
 describe('rejection doctor financial decision', () => {
-    it('keeps the full doctor amount but marks decide-later as pending', () => {
+    it('charges the full order total provisionally while decide-later is pending', () => {
         expect(resolveRejectionDoctorDecision({
             decision: REJECTION_DOCTOR_DECISIONS.decideLater,
             orderTotal: 2_000,

@@ -391,9 +391,17 @@ INSERT INTO public.orders (
     500, 'A1', 'New Case', CURRENT_DATE, 200,
     '20000000-0000-0000-0000-000000000006',
     '30000000-0000-0000-0000-000000000003', 'split',
-    'completed', 60, 'not_started', 'redo', TRUE,
-    70, 'resolved', 30, 'resolved'
+    'completed', 60, 'not_started', 'none', TRUE,
+    NULL, NULL, NULL, NULL
 );
+
+-- V2 invariant: every new row starts issue-free; historical/transition state
+-- is applied only after the row exists.
+UPDATE public.orders
+SET issue_state = 'redo',
+    rejected_lab_cost = 70, rejected_lab_cost_status = 'resolved',
+    rejected_designer_cost = 30, rejected_designer_cost_status = 'resolved'
+WHERE id = '40000000-0000-0000-0000-000000000007';
 
 SELECT is((SELECT gross_amount FROM public.financial_obligations
     WHERE order_id = '40000000-0000-0000-0000-000000000007'

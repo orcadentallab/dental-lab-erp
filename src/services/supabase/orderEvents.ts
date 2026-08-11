@@ -182,11 +182,12 @@ export async function createOrderEvent(input: OrderEventInput): Promise<OrderEve
     const supabase = await getSupabaseClient();
     const dbEvent = orderEventToDb(input);
 
-    const { data, error } = await supabase
-        .from('order_events')
-        .insert(dbEvent)
-        .select('*')
-        .single();
+    let { data, error } = await supabase.rpc('append_order_event_v2', { p_event: dbEvent });
+    if (error?.code === 'PGRST202' || error?.code === '42883') {
+        const legacyResult = await supabase.from('order_events').insert(dbEvent).select('*').single();
+        data = legacyResult.data;
+        error = legacyResult.error;
+    }
 
     if (error) {
         console.error('Failed to create order event:', error);

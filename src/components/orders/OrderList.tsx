@@ -150,11 +150,36 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     const handleTechAction = useCallback(async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
+            const order = orders.find(o => o.id === orderId);
+            const isReviewer = userRole === 'admin' || userRole === 'representative';
+            if (order?.technicianStatus === 'Rejected' && isReviewer && action !== 'PMMA_First') {
+                if (userRole === 'admin' && action === 'Approved') {
+                    const reason = window.prompt('سبب اعتماد رفض المعمل:') || '';
+                    if (!reason.trim()) return;
+                    await db.rejectOrderFromTechStatus(orderId, reason.trim());
+                    onStatusChange(orderId, 'same');
+                    return;
+                }
+                const reviewAction = action === 'Approved' ? 'approve' : action === 'NeedDetails' ? 'request_details' : 'reject';
+                const notes = reviewAction === 'approve'
+                    ? ''
+                    : window.prompt(reviewAction === 'request_details' ? 'ما التفاصيل المطلوبة من المصمم؟' : 'سبب رفض طلب المصمم وإعادته للتصميم:') || '';
+                if (reviewAction !== 'approve' && !notes.trim()) return;
+                await db.reviewDesignerRejection(orderId, reviewAction, notes);
+                onStatusChange(orderId, 'same');
+                return;
+            }
+            if (userRole === 'admin' && action === 'Rejected') {
+                const reason = window.prompt('سبب رفض المعمل:') || '';
+                if (!reason.trim()) return;
+                await db.rejectOrderFromTechStatus(orderId, reason.trim());
+                onStatusChange(orderId, 'same');
+                return;
+            }
             await db.updateOrder(orderId, { technicianStatus: action });
 
             // Auto-Status Logic: If Accepted and current status is 'New Case', move to 'Under Design'
             if (action === 'Approved') {
-                const order = orders.find(o => o.id === orderId);
                 if (order && order.status === 'New Case') {
                     await db.updateOrderStatus(orderId, 'Under Design', {
                         userId: currentUser?.id,

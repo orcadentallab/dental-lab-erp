@@ -242,6 +242,7 @@ export interface Order {
     accountingRegisteredAt?: string | null;
     accountingReviewedBy?: string | null;
     accountingLastReviewType?: AccountingReviewType | null;
+    accountingReviewCycleId?: string | null;
 
     // Split Workflow Fields
     workflowType?: 'full' | 'split';
@@ -254,6 +255,10 @@ export interface Order {
 
     // QA & Delivery Tracking
     actualDeliveryDate?: string; // When status becomes Delivered
+    designSubmittedAt?: string | null; // Internal designer -> lab handoff
+    firstDeliveredAt?: string | null; // First final delivery to the doctor
+    firstDeliveredSource?: 'direct_transition' | 'order_event' | 'status_history' | 'actual_delivery_date' | 'accounting_snapshot_inferred' | 'manual_review' | null;
+    legacyDeliveryConfirmed?: boolean; // Reviewed historical delivery with no trustworthy exact date
     feedback?: {
         rating: number; // 1-5
         issues: string[]; // ['Shade', 'Fitting', 'Bite', 'Material', 'Late', 'Other']
@@ -277,7 +282,7 @@ export interface Order {
     rejectedLabCost?: number;
     rejectedDesignerCost?: number;
     rejectionDoctorDecision?: import('../constants/rejectionFinancialDecision').RejectionDoctorDecision;
-    rejectedDoctorAmount?: number;
+    rejectedDoctorAmount?: number | null;
     rejectionFinancialReviewStatus?: import('../constants/rejectionFinancialDecision').RejectionFinancialReviewStatus;
     rejectedLabCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     rejectedDesignerCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
@@ -285,6 +290,29 @@ export interface Order {
     // existing call sites; finance helpers do not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+}
+
+export interface DoctorOrderSummary {
+    id: string;
+    caseId: string;
+    patientName: string;
+    deliveryDate: string;
+    productionStatus: NonNullable<Order['productionStatus']>;
+    issueState: NonNullable<Order['issueState']>;
+    totalPrice: number;
+    feedback?: Order['feedback'];
+    createdAt: string;
+}
+
+export interface AccountingReviewChange {
+    id: string;
+    orderId: string;
+    reviewCycleId: string;
+    sequenceNo: number;
+    eventType: string;
+    changedFields: Record<string, unknown>;
+    createdAt: string;
+    reviewedAt?: string | null;
 }
 
 export interface OrderHistoryEntry {
@@ -904,12 +932,42 @@ class MockDB {
         return addOrder(order, context);
     }
 
+    async getMyDoctorOrders(): Promise<DoctorOrderSummary[]> {
+        const { getMyDoctorOrders } = await import('./supabase/orders');
+        return getMyDoctorOrders();
+    }
+
+    async getAccountingReviewChanges(orderId: string): Promise<AccountingReviewChange[]> {
+        const { getAccountingReviewChanges } = await import('./supabase/orders');
+        return getAccountingReviewChanges(orderId);
+    }
+
+    async submitMyOrderFeedback(orderId: string, rating: number, notes?: string): Promise<void> {
+        const { submitMyOrderFeedback } = await import('./supabase/orders');
+        return submitMyOrderFeedback(orderId, rating, notes);
+    }
+
+    async createMyDoctorOrderRequest(input: {
+        patientName: string;
+        items: OrderItem[];
+        shade: string;
+        instructions?: string;
+        stlUrl?: string;
+        imagesUrl?: string;
+        deliveryDate: string;
+        totalPrice: number;
+    }): Promise<string> {
+        const { createMyDoctorOrderRequest } = await import('./supabase/orders');
+        return createMyDoctorOrderRequest(input);
+    }
+
     async createRedoOrderAtomic(input: {
         originalOrderId: string;
         reasonCode: string;
         notes: string;
-        rejectedLabCost?: number | null;
-        rejectedDesignerCost?: number | null;
+        doctorDecision: import('../constants/rejectionFinancialDecision').RejectionDoctorDecision;
+        customDoctorAmount?: number | null;
+        idempotencyKey?: string;
     }): Promise<{
         originalOrderId: string;
         originalCaseId: string;
@@ -977,15 +1035,40 @@ class MockDB {
             rejectedLabCost?: number;
             rejectedDesignerCost?: number;
             rejectionDoctorDecision?: import('../constants/rejectionFinancialDecision').RejectionDoctorDecision;
-            rejectedDoctorAmount?: number;
+            rejectedDoctorAmount?: number | null;
             rejectionFinancialReviewStatus?: import('../constants/rejectionFinancialDecision').RejectionFinancialReviewStatus;
             rejectedLabCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
             rejectedDesignerCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
             issueState?: Order['issueState'];
+            idempotencyKey?: string;
         }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');
         return updateOrderStatus(orderId, newStatus, context);
+    }
+
+    async requestDesignerRejection(orderId: string, reason: string, idempotencyKey?: string): Promise<void> {
+        const { requestDesignerRejection } = await import('./supabase/orders');
+        return requestDesignerRejection(orderId, reason, idempotencyKey);
+    }
+
+    async reviewDesignerRejection(
+        orderId: string,
+        action: 'approve' | 'reject' | 'request_details',
+        notes?: string,
+        idempotencyKey?: string,
+    ): Promise<void> {
+        const { reviewDesignerRejection } = await import('./supabase/orders');
+        return reviewDesignerRejection(orderId, action, notes, idempotencyKey);
+    }
+
+    async rejectOrderFromTechStatus(
+        orderId: string,
+        reason: string,
+        idempotencyKey?: string,
+    ): Promise<void> {
+        const { rejectOrderFromTechStatus } = await import('./supabase/orders');
+        return rejectOrderFromTechStatus(orderId, reason, idempotencyKey);
     }
 
     async updateRejectedOrderFinancials(

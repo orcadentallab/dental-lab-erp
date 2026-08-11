@@ -143,7 +143,14 @@ export function getForwardActions(
 
 export function getIssueActions(
     issueState: IssueState,
-    userRole?: string
+    userRole?: string,
+    orderContext: {
+        firstDeliveredAt?: string | null;
+        legacyDeliveryConfirmed?: boolean;
+        actualDeliveryDate?: string | null;
+        productionStatus?: string | null;
+        legacyStatus?: string | null;
+    } = {},
 ): WorkflowAction[] {
     if (
         issueState === 'doctor_rejected' ||
@@ -152,9 +159,19 @@ export function getIssueActions(
         issueState === 'redo'
     ) return [];
 
-    const actions: WorkflowAction[] = [];
+    if (userRole !== 'admin' && userRole !== 'representative') return [];
 
-    if (issueState !== 'returned') {
+    const actions: WorkflowAction[] = [];
+    const wasDelivered = Boolean(
+        orderContext.firstDeliveredAt
+        || orderContext.legacyDeliveryConfirmed
+        || orderContext.actualDeliveryDate
+        || orderContext.productionStatus === 'final_delivered'
+        || orderContext.legacyStatus === 'Delivered'
+        || orderContext.legacyStatus === 'Completed'
+    );
+
+    if (wasDelivered && issueState !== 'returned') {
         actions.push({
             id: 'return',
             label: 'إرجاع للتعديل',
@@ -168,7 +185,7 @@ export function getIssueActions(
         });
     }
 
-    if (userRole === 'admin' || userRole === 'representative') {
+    if (wasDelivered) {
         actions.push({
             id: 'reject',
             label: 'مرتجع طبيب',
@@ -179,20 +196,8 @@ export function getIssueActions(
             confirmMessage: 'هل أنت متأكد من رفض الأوردر (مرتجع طبيب)؟',
             requiresNote: true,
             notePlaceholder: 'سبب الرفض والاتفاق المالي مع الطبيب…',
-            adminOnly: true,
         });
-        actions.push({
-            id: 'lab_reject',
-            label: 'رفض المعمل',
-            targetLegacyStatus: 'Lab Rejected',
-            variant: 'danger',
-            icon: 'XCircle',
-            requiresConfirmation: true,
-            confirmMessage: 'هل أنت متأكد من رفض المعمل للأوردر؟',
-            requiresNote: true,
-            notePlaceholder: 'سبب رفض المعمل والقرار المالي…',
-            adminOnly: true,
-        });
+    } else {
         actions.push({
             id: 'cancel',
             label: 'إلغاء',
@@ -201,7 +206,8 @@ export function getIssueActions(
             icon: 'Ban',
             requiresConfirmation: true,
             confirmMessage: 'هل أنت متأكد من إلغاء الأوردر؟',
-            adminOnly: true,
+            requiresNote: true,
+            notePlaceholder: 'سبب الإلغاء…',
         });
     }
 

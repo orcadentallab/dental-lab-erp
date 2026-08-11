@@ -10,8 +10,22 @@ export const ACCOUNTING_REGISTRABLE_STATUSES: Order['status'][] = [
     'Rejected',
 ];
 
-export function hasZeroAccountingImpact(order: Pick<Order, 'status'>): boolean {
-    return order.status === 'Cancelled' || order.status === 'Lab Rejected';
+export function hasZeroAccountingImpact(order: Pick<Order, 'status' | 'issueState'>): boolean {
+    return order.issueState === 'cancelled' || order.issueState === 'lab_rejected'
+        || order.status === 'Cancelled' || order.status === 'Lab Rejected';
+}
+
+export function getMissingAccountingDecisions(order: Order): string[] {
+    if (order.issueState !== 'doctor_rejected' && order.issueState !== 'redo') return [];
+    const missing: string[] = [];
+    if (order.rejectionFinancialReviewStatus !== 'resolved') missing.push('قرار تحمّل الطبيب');
+    if (!['resolved', 'not_applicable'].includes(order.rejectedLabCostStatus || '')) missing.push('تكلفة المورد');
+    if (!['resolved', 'not_applicable'].includes(order.rejectedDesignerCostStatus || '')) missing.push('تكلفة المصمم');
+    return missing;
+}
+
+export function isAccountingFinanciallyReady(order: Order): boolean {
+    return getMissingAccountingDecisions(order).length === 0;
 }
 
 export function getCurrentAccountingSnapshot(order: Order): AccountingOrderSnapshot {
@@ -74,7 +88,11 @@ export function isAccountingRegistrationCandidate(
     if (tab === 'pending') {
         if (order.isRegistered) return false;
         if (hasPostRegistrationChange(order)) return true;
-        return !order.isArchived && ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status);
+        if (hasZeroAccountingImpact(order)) return false;
+        const hasDeliveryEvidence = Boolean(order.firstDeliveredAt || order.actualDeliveryDate)
+            || order.productionStatus === 'final_delivered'
+            || order.status === 'Delivered' || order.status === 'Completed';
+        return !order.isArchived && hasDeliveryEvidence && ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status);
     }
 
     return Boolean(

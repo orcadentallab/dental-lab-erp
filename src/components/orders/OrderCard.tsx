@@ -798,7 +798,8 @@ function OrderCard({
                             )}
 
                             {/* Tech Actions - Only for admin, designer, lab */}
-                            {onTechAction && canAccessDesignerFeatures(currentUser) && (
+                            {onTechAction && (canAccessDesignerFeatures(currentUser)
+                                || ((userRole === 'admin' || userRole === 'representative') && order.technicianStatus === 'Rejected')) && (
                                 <>
                                     <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
                                     <div className="flex bg-white rounded-lg border border-surface-200 p-0.5 shadow-sm">

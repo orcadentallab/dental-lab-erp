@@ -4,6 +4,8 @@ import {
     getAccountingComparison,
     getAccountingReviewType,
     hasZeroAccountingImpact,
+    getMissingAccountingDecisions,
+    isAccountingFinanciallyReady,
     isAccountingRegistrationCandidate,
 } from '../../src/constants/accountingRegistration';
 
@@ -85,6 +87,20 @@ describe('accounting registration candidates', () => {
 
     it('keeps genuinely unregistered delivered orders in the pending queue', () => {
         expect(isAccountingRegistrationCandidate(order({ isRegistered: false }), 'pending')).toBe(true);
+    });
+
+    it('blocks doctor rejection accounting until every party decision is resolved', () => {
+        const pending = order({
+            issueState: 'doctor_rejected',
+            rejectionDoctorDecision: 'decide_later',
+            rejectedDoctorAmount: 100,
+            rejectionFinancialReviewStatus: 'pending',
+            rejectedLabCostStatus: 'pending',
+            rejectedDesignerCostStatus: 'not_applicable',
+        });
+        expect(isAccountingFinanciallyReady(pending)).toBe(false);
+        expect(getAccountingComparison(pending).current.saleAmount).toBe(100);
+        expect(getMissingAccountingDecisions(pending)).toEqual(['قرار تحمّل الطبيب', 'تكلفة المورد']);
     });
 
     it('never sends a cancelled order that was never registered to accounting', () => {

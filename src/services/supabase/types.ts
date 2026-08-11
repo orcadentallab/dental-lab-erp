@@ -75,6 +75,11 @@ export interface DbOrder {
     design_price?: number | null;
     manual_design_price?: number | null;
     actual_delivery_date?: string | null;
+    design_submitted_at?: string | null;
+    first_delivered_at?: string | null;
+    first_delivered_source?: 'direct_transition' | 'order_event' | 'status_history' | 'actual_delivery_date' | 'accounting_snapshot_inferred' | 'manual_review' | null;
+    legacy_delivery_confirmed?: boolean;
+    accounting_review_cycle_id?: string | null;
     feedback?: DbOrderFeedback | null;
     is_redo: boolean;
     original_order_id?: string | null;

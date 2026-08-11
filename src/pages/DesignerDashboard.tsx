@@ -190,9 +190,16 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     ) => {
         try {
             const order = orders.find(o => o.id === orderId);
+            if (action === 'Rejected') {
+                if (!reason?.trim()) throw new Error('سبب الرفض مطلوب');
+                await db.requestDesignerRejection(orderId, reason.trim());
+                updateOrderInState(await db.getOrder(orderId));
+                setTechActionPending(null);
+                return;
+            }
             const updates: Partial<Order> = { technicianStatus: action };
             if (reason && reason.trim() && order) {
-                const label = action === 'Rejected' ? 'رفض المصمم' : 'طلب تفاصيل';
+                const label = action === 'NeedDetails' ? 'طلب تفاصيل' : 'قرار المصمم';
                 updates.comments = [
                     ...(order.comments || []),
                     {
@@ -237,12 +244,17 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     ) => {
         setDecisionLoading(true);
         try {
+            if (decision === 'returned') {
+                if (!notes?.trim()) throw new Error('سبب الرفض مطلوب');
+                await db.requestDesignerRejection(order.id, notes.trim());
+                updateOrderInState(await db.getOrder(order.id));
+                setDecisionOrder(null);
+                setDecisionNotes('');
+                return;
+            }
             const updates: Partial<Order> = { designStatus: decision };
             if (decision === 'waiting_approval') {
                 updates.technicianStatus = 'NeedDetails';
-            }
-            if (decision === 'returned') {
-                updates.technicianStatus = 'Rejected';
             }
             if (notes) {
                 updates.comments = [
@@ -264,7 +276,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             let targetStatus: Order['status'] | null = null;
             if (decision === 'accepted') targetStatus = 'Under Design';
             if (decision === 'waiting_approval') targetStatus = 'Waiting Dr Approval';
-            if (decision === 'returned') targetStatus = 'Under Design';
 
             let updatedOrder = null;
             if (targetStatus) {

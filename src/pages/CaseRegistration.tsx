@@ -20,7 +20,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 import clsx from 'clsx';
-import type { Order, Doctor, Supplier, User as DbUser } from '../services/db';
+import type { AccountingReviewChange, Order, Doctor, Supplier, User as DbUser } from '../services/db';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../lib/userRoles';
 import { getLabCostMetadata } from '../constants/financialObligations';
@@ -28,6 +28,8 @@ import {
     hasPostRegistrationChange,
     hasZeroAccountingImpact,
     getAccountingComparison,
+    getMissingAccountingDecisions,
+    isAccountingFinanciallyReady,
     isAccountingRegistrationCandidate,
 } from '../constants/accountingRegistration';
 import type { AccountingReviewType } from '../services/db';
@@ -110,6 +112,16 @@ export default function CaseRegistration() {
         text: ''
     });
     const [isExporting, setIsExporting] = useState(false);
+    const [auditTimeline, setAuditTimeline] = useState<{ orderId: string; rows: AccountingReviewChange[] } | null>(null);
+
+    const openAuditTimeline = async (orderId: string) => {
+        try {
+            setAuditTimeline({ orderId, rows: await db.getAccountingReviewChanges(orderId) });
+        } catch (error) {
+            console.error('Failed to load accounting audit timeline:', error);
+            toastError('تعذر تحميل سجل التعديلات المحاسبية');
+        }
+    };
 
     const fetchOrders = useCallback(async () => {
         setLoading(true);
@@ -164,6 +176,10 @@ export default function CaseRegistration() {
 
     const handleRegister = async (orderId: string) => {
         const order = orders.find(candidate => candidate.id === orderId);
+        if (order && !isAccountingFinanciallyReady(order)) {
+            toastError(`لا يمكن الاعتماد قبل حسم: ${getMissingAccountingDecisions(order).join('، ')}`);
+            return;
+        }
         const isCancellation = order?.status === 'Cancelled';
         setProcessingId(orderId);
         try {
@@ -186,6 +202,11 @@ export default function CaseRegistration() {
         try {
             // Note: For simplicity and using existing service layer, we process in parallel
             // In a real high-scale app, a single RPC call .in('id', selectedIds) would be better
+            const selectedOrders = orders.filter(order => selectedIds.includes(order.id));
+            const blocked = selectedOrders.filter(order => !isAccountingFinanciallyReady(order));
+            if (blocked.length > 0) {
+                throw new Error(`توجد ${blocked.length} حالات بقرارات مالية معلقة`);
+            }
             await Promise.all(selectedIds.map(id => db.updateOrder(id, { isRegistered: true })));
             
             success(`تم تسجيل ${selectedIds.length} حالة بنجاح`);
@@ -670,7 +691,10 @@ export default function CaseRegistration() {
                                                     {activeTab === 'pending' ? (
                                                         <button
                                                             onClick={() => handleRegister(order.id)}
-                                                            disabled={processingId === order.id}
+                                                            disabled={processingId === order.id || !isAccountingFinanciallyReady(order)}
+                                                            title={!isAccountingFinanciallyReady(order)
+                                                                ? `معلق: ${getMissingAccountingDecisions(order).join('، ')}`
+                                                                : undefined}
                                                             className={clsx(
                                                                 "flex items-center gap-1.5 px-3 py-2.5 2xl:px-5 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all hover:-translate-y-0.5 whitespace-nowrap",
                                                                 order.status === 'Cancelled'
@@ -723,6 +747,15 @@ export default function CaseRegistration() {
                                                             </div>
                                                         )}
                                                     </button>
+                                                    {order.accountingReviewCycleId && (
+                                                        <button
+                                                            onClick={() => openAuditTimeline(order.id)}
+                                                            className="p-3 text-violet-500 hover:bg-violet-50 rounded-2xl transition-all"
+                                                            title="سجل التعديلات المحاسبية"
+                                                        >
+                                                            <History size={20} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </motion.tr>
@@ -735,6 +768,35 @@ export default function CaseRegistration() {
             </div>
 
             {/* Comment Modal */}
+            <AnimatePresence>
+                {auditTimeline && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+                        <motion.div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setAuditTimeline(null)} />
+                        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="relative max-h-[80vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+                            <div className="mb-5 flex items-center justify-between">
+                                <h3 className="text-lg font-black text-slate-900">سجل التعديلات المحاسبية</h3>
+                                <button onClick={() => setAuditTimeline(null)} className="rounded-full p-2 hover:bg-slate-100" title="إغلاق"><X size={20} /></button>
+                            </div>
+                            {auditTimeline.rows.length === 0 ? (
+                                <p className="text-sm text-slate-500">لا توجد تعديلات مسجلة لهذه الدورة.</p>
+                            ) : (
+                                <ol className="space-y-3">
+                                    {auditTimeline.rows.map(row => (
+                                        <li key={row.id} className="rounded-2xl border border-slate-200 p-4">
+                                            <div className="flex items-center justify-between text-xs">
+                                                <strong>تعديل #{row.sequenceNo}</strong>
+                                                <time className="text-slate-500">{new Date(row.createdAt).toLocaleString('ar-EG')}</time>
+                                            </div>
+                                            <p className="mt-2 text-xs text-slate-600">الحقول: {Object.keys(row.changedFields).join('، ') || 'غير محددة'}</p>
+                                        </li>
+                                    ))}
+                                </ol>
+                            )}
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             <AnimatePresence>
                 {commentModal.isOpen && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

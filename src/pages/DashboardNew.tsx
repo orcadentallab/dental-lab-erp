@@ -646,18 +646,8 @@ export default function DashboardNew() {
 
     const handleReturnToDesigner = async (order: Order) => {
         try {
-            const nextComments = [...(order.comments || [])];
-            nextComments.push({
-                id: crypto.randomUUID(),
-                text: `[رد الإدارة]: تم حل المشكلة وإرجاع الحالة للمصمم`,
-                userId: user?.id || 'system',
-                userName: user?.name || 'System',
-                createdAt: new Date().toISOString()
-            });
-            const updatedOrder = await db.updateOrder(order.id, {
-                technicianStatus: 'Pending',
-                comments: nextComments
-            });
+            await db.reviewDesignerRejection(order.id, 'reject', 'تم رفض طلب الرفض وإرجاع الحالة للمصمم');
+            const updatedOrder = await db.getOrder(order.id);
             if (updatedOrder) {
                 setOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
                 toast.success('تم إرجاع الحالة للمصمم بنجاح');
@@ -687,23 +677,8 @@ export default function DashboardNew() {
             return;
         }
         try {
-            const nextComments = [...(order.comments || [])];
-            nextComments.push({
-                id: crypto.randomUUID(),
-                // Auto-include last designer comment as rejection reason
-                text: `[رفض المعمل النهائي]: ${rejectionReason}`,
-                userId: user?.id || 'system',
-                userName: user?.name || 'System',
-                createdAt: new Date().toISOString()
-            });
-
-            // Update comments first, then update status to Lab Rejected
-            await db.updateOrder(order.id, { comments: nextComments });
-            const updatedOrder = await db.updateOrderStatus(order.id, 'Lab Rejected', {
-                userId: user?.id,
-                userName: user?.name || user?.role || 'Admin',
-                actorRole: user?.role
-            });
+            await db.reviewDesignerRejection(order.id, 'approve', rejectionReason);
+            const updatedOrder = await db.getOrder(order.id);
 
             if (updatedOrder) {
                 setOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));

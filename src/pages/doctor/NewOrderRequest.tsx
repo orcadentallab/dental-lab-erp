@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, type Doctor, type Order, type Service, type OrderItem } from '../../services/db';
+import { db, type Doctor, type Service, type OrderItem } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../../components/ui/Input';
@@ -105,15 +105,9 @@ export default function NewOrderRequest() {
             const doctor = await db.getDoctor(user.entityId);
             if (!doctor) throw new Error('بيانات الطبيب غير موجودة');
 
-            // Generate temporary Case ID (will be finalized by Admin)
-            // Or use a "REQ-" prefix
-            const caseId = `REQ-${Date.now().toString().slice(-6)}`;
-
             const orderTotal = calculateTotal();
 
-            const orderData: Omit<Order, 'id'> = {
-                caseId,
-                doctorId: user.entityId,
+            await db.createMyDoctorOrderRequest({
                 patientName,
                 items: items.map(i => {
                     const service = services.find(s => s.name === i.serviceType);
@@ -127,19 +121,9 @@ export default function NewOrderRequest() {
                 instructions,
                 stlUrl: stlUrl || undefined,
                 imagesUrl: imagesUrl || undefined,
-                status: 'Pending Review',
-                technicianStatus: 'Pending',
                 deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 3 days
-                createdAt: new Date().toISOString(),
                 totalPrice: orderTotal,
-                cost: 0, // Costs calculated by lab
-                discount: 0,
-                priority: 'Normal',
-                comments: [],
-                workflowType: 'full', // Default
-            };
-
-            await db.addOrder(orderData);
+            });
             toastSuccess('تم إرسال الطلب بنجاح. سيتم مراجعته من قبل المعمل.');
             navigate('/doctor/my-orders');
         } catch (error) {

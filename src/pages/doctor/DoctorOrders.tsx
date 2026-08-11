@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, type Order } from '../../services/db';
+import { db, type DoctorOrderSummary } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
 import { Star } from 'lucide-react';
@@ -9,12 +9,12 @@ import { ResponsiveTable } from '../../components/ui/ResponsiveTable';
 
 export default function DoctorOrders() {
     const { user } = useAuth();
-    const [orders, setOrders] = useState<Order[]>([]);
+    const [orders, setOrders] = useState<DoctorOrderSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const { success } = useToast();
 
     // Rating Modal
-    const [ratingOrder, setRatingOrder] = useState<Order | null>(null);
+    const [ratingOrder, setRatingOrder] = useState<DoctorOrderSummary | null>(null);
     const [rating, setRating] = useState(0);
     const [feedbackNotes, setFeedbackNotes] = useState('');
 
@@ -26,9 +26,7 @@ export default function DoctorOrders() {
         if (!user?.entityId) return;
         setLoading(true);
         try {
-            // Using pagination endpoint but with filters
-            const { data } = await db.getOrders(1, 100, { doctorId: user.entityId });
-            setOrders(data);
+            setOrders(await db.getMyDoctorOrders());
         } catch (error) {
             console.error(error);
         } finally {
@@ -39,14 +37,7 @@ export default function DoctorOrders() {
     const handleRateSubmit = async () => {
         if (!ratingOrder) return;
         try {
-            await db.updateOrder(ratingOrder.id, {
-                feedback: {
-                    rating,
-                    issues: [], // Can implement issue selection if needed
-                    notes: feedbackNotes,
-                    createdAt: new Date().toISOString()
-                }
-            });
+            await db.submitMyOrderFeedback(ratingOrder.id, rating, feedbackNotes);
             success('تم إضافة التقييم بنجاح');
             setRatingOrder(null);
             loadOrders();
@@ -55,20 +46,25 @@ export default function DoctorOrders() {
         }
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'Pending Review': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            case 'Completed':
-            case 'Delivered': return 'bg-green-100 text-green-800 border-green-200';
-            case 'In Progress': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'Rejected': return 'bg-red-100 text-red-800 border-red-200';
+    const getStatusColor = (order: DoctorOrderSummary) => {
+        switch (order.issueState) {
+            case 'cancelled':
+            case 'doctor_rejected':
+            case 'lab_rejected': return 'bg-red-100 text-red-800 border-red-200';
+        }
+        switch (order.productionStatus) {
+            case 'final_delivered': return 'bg-green-100 text-green-800 border-green-200';
+            case 'designing':
+            case 'in_production': return 'bg-blue-100 text-blue-800 border-blue-200';
             default: return 'bg-gray-100 text-gray-800 border-gray-200';
         }
     };
 
-    const getStatusLabel = (status: string) => {
-        if (status === 'Pending Review') return 'قيد المراجعة';
-        return status;
+    const getStatusLabel = (order: DoctorOrderSummary) => {
+        const issueLabels: Record<string, string> = { cancelled: 'ملغي', doctor_rejected: 'مرتجع طبيب', lab_rejected: 'مرفوض من المعمل', redo: 'إعادة إنتاج', returned: 'مرتجع للتعديل' };
+        if (order.issueState !== 'none') return issueLabels[order.issueState] || order.issueState;
+        const productionLabels: Record<string, string> = { not_started: 'قيد المراجعة', designing: 'قيد التصميم', in_production: 'قيد التنفيذ', try_in_ready: 'البروفة', waiting_doctor: 'انتظار الطبيب', finalization: 'التجهيز النهائي', final_ready: 'جاهز', final_delivered: 'تم التسليم' };
+        return productionLabels[order.productionStatus] || order.productionStatus;
     };
 
     return (
@@ -115,8 +111,8 @@ export default function DoctorOrders() {
                                             {order.deliveryDate}
                                         </td>
                                         <td className="p-4">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-bold border ${getStatusColor(order.status)}`}>
-                                                {getStatusLabel(order.status)}
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold border ${getStatusColor(order)}`}>
+                                                {getStatusLabel(order)}
                                             </span>
                                         </td>
                                         <td className="p-4 font-bold text-gray-800">
@@ -129,7 +125,7 @@ export default function DoctorOrders() {
                                                         <Star key={i} size={14} fill={i < order.feedback!.rating ? "currentColor" : "none"} className={i < order.feedback!.rating ? "" : "text-gray-300"} />
                                                     ))}
                                                 </div>
-                                            ) : (order.status === 'Completed' || order.status === 'Delivered') ? (
+                                            ) : order.productionStatus === 'final_delivered' ? (
                                                 <button
                                                     onClick={() => { setRatingOrder(order); setRating(5); }}
                                                     className="text-xs bg-yellow-50 text-yellow-700 px-3 py-1 rounded-lg border border-yellow-200 hover:bg-yellow-100 transition-colors"
