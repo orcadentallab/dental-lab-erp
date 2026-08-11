@@ -1,7 +1,7 @@
 BEGIN;
 
 SET search_path TO public, extensions;
-SELECT plan(41);
+SELECT plan(45);
 
 SELECT has_column('public', 'orders', 'design_submitted_at', 'design submission has a dedicated timestamp');
 SELECT has_column('public', 'orders', 'first_delivered_at', 'first final delivery has a dedicated timestamp');
@@ -86,6 +86,11 @@ SELECT ok(
     )) LIKE '%NOT (rejected_doctor_amount IS DISTINCT FROM COALESCE(total_price, (0)::numeric))%pending%',
     'pending doctor decisions require full provisional liability and pending review'
 );
+SELECT ok(
+    pg_get_functiondef('public.orders_role_field_guard()'::regprocedure)
+        LIKE '%NEW.supplier_id IS NOT DISTINCT FROM OLD.supplier_id%',
+    'representative guard permits audited cost recalculation only with an assignment change'
+);
 
 UPDATE public.app_settings
 SET value = 'on'
@@ -113,6 +118,10 @@ VALUES (
     '18000000-0000-0000-0000-000000000001', 'Issue V2 Doctor',
     '01000000000', 'Test', 'ISSUE-V2', 'Issue V2 Rep'
 );
+
+INSERT INTO public.suppliers (id, name, phone) VALUES
+    ('28000000-0000-0000-0000-000000000001', 'Issue V2 Supplier One', '01000000001'),
+    ('28000000-0000-0000-0000-000000000002', 'Issue V2 Supplier Two', '01000000002');
 
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
@@ -143,6 +152,16 @@ INSERT INTO public.orders (
     '18000000-0000-0000-0000-000000000001', 'Representative Cancel Patient', '[]',
     500, 'A1', 'New Case', CURRENT_DATE, 100, 'Pending',
     '38000000-0000-0000-0000-000000000003', 'not_started', 'none', 75
+);
+
+INSERT INTO public.orders (
+    id, case_id, doctor_id, patient_name, items, total_price, shade, status,
+    delivery_date, cost, supplier_id, technician_status, production_status, issue_state
+) VALUES (
+    '48000000-0000-0000-0000-000000000004', 'ISSUE-V2-REP-SUPPLIER',
+    '18000000-0000-0000-0000-000000000001', 'Representative Supplier Patient', '[]',
+    450, 'A1', 'New Case', CURRENT_DATE, 100,
+    '28000000-0000-0000-0000-000000000001', 'Pending', 'designing', 'none'
 );
 
 UPDATE public.orders
@@ -217,6 +236,35 @@ SELECT is(
 
 SELECT set_config('request.jwt.claim.sub', '98000000-0000-0000-0000-000000000002', TRUE);
 SET LOCAL ROLE authenticated;
+SELECT lives_ok(
+    $$SELECT public.rep_update_order_fields_with_audit(
+        '48000000-0000-0000-0000-000000000004',
+        jsonb_build_object(
+            'supplier_id', '28000000-0000-0000-0000-000000000002',
+            'cost', 250
+        ),
+        'external_lab_reassigned',
+        'Reassign supplier and persist its automatically calculated cost'
+    )$$,
+    'representative can atomically reassign a supplier with its recalculated cost'
+);
+SELECT ok(
+    (SELECT supplier_id = '28000000-0000-0000-0000-000000000002'
+            AND cost = 250
+     FROM public.orders
+     WHERE id = '48000000-0000-0000-0000-000000000004'),
+    'audited supplier reassignment stores both supplier and calculated cost'
+);
+SELECT throws_like(
+    $$SELECT public.rep_update_order_fields_with_audit(
+        '48000000-0000-0000-0000-000000000004',
+        jsonb_build_object('cost', 999),
+        'internal_correction',
+        'Standalone cost edit must remain blocked'
+    )$$,
+    '%representative cannot change protected finance or identity fields%',
+    'representative cannot use the audited RPC to edit cost without a related assignment or item change'
+);
 SELECT lives_ok(
     $$SELECT public.apply_order_issue_transition_v2(
         '48000000-0000-0000-0000-000000000003', 'cancel_order',
