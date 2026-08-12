@@ -214,6 +214,17 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             }
             const updatedOrder = await db.updateOrder(orderId, updates);
             updateOrderInState(updatedOrder);
+
+            // Auto-advance: approving a brand-new case moves it into design,
+            // same as the equivalent action on the shared Orders list/board.
+            if (action === 'Approved' && order && order.status === 'New Case') {
+                const advancedOrder = await db.updateOrderStatus(orderId, 'Under Design', {
+                    userId: user?.id,
+                    userName: user?.name || user?.role || 'User',
+                    actorRole: user?.role,
+                });
+                updateOrderInState(advancedOrder);
+            }
             setTechActionPending(null);
         } catch (err) {
             console.error('Tech action error:', err);
