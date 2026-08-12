@@ -55,21 +55,21 @@ INSERT INTO anon_execute_allowlist (proname) VALUES
 --                          lives in the wrapper; reaching the inner function
 --                          directly would bypass it entirely)
 --
---   in_chain = false marks functions defined OUTSIDE supabase/migrations/
---   (temp_migrations/088 and manual/marketing_events.sql). They exist in
---   production but CANNOT exist in a database built from the migration chain,
---   so their absence is tolerated here rather than reported as a failure.
---   This divergence is the same root cause as the incident above and should be
---   closed by moving those files into the chain; once that happens, flip these
---   flags to true.
+--   in_chain marks functions reproducible from supabase/migrations/ alone.
+--   get_doctor_receivables_breakdown and get_marketing_summary were originally
+--   false here: they lived in temp_migrations/088 and manual/marketing_events.sql,
+--   so they existed in production but could not exist in a database built from
+--   the chain, and their absence had to be tolerated. 20260812090000 and
+--   20260812091000 adopted them into the chain, so every entry is now in_chain
+--   and existence is asserted for all of them.
 CREATE TEMP TABLE rpc_expectations (sig text, kind text, in_chain boolean)
     ON COMMIT DROP;
 INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     -- fixed by 20260812080000
-    ('public.get_doctor_receivables_breakdown()',                              'wrapper',    false),
-    ('public.get_marketing_summary(timestamptz,timestamptz)',                  'wrapper',    false),
-    ('public.get_doctor_receivables_breakdown_privileged_20260812()',          'privileged', false),
-    ('public.get_marketing_summary_privileged_20260812(timestamptz,timestamptz)', 'privileged', false),
+    ('public.get_doctor_receivables_breakdown()',                              'wrapper',    true),
+    ('public.get_marketing_summary(timestamptz,timestamptz)',                  'wrapper',    true),
+    ('public.get_doctor_receivables_breakdown_privileged_20260812()',          'privileged', true),
+    ('public.get_marketing_summary_privileged_20260812(timestamptz,timestamptz)', 'privileged', true),
     -- workflow_flag_enabled is evaluated inside CHECK constraints on
     -- public.orders (20260808004000). CHECK expressions run as the writing
     -- user, so losing the authenticated grant would make every order

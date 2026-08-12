@@ -1,35 +1,36 @@
--- SUPERSEDED -- DO NOT RUN THIS FILE.
+-- Migration: adopt get_doctor_receivables_breakdown into the tracked chain
 --
--- Adopted into the tracked migration chain on 2026-08-12 as
---   supabase/migrations/20260812091000_adopt_doctor_receivables_breakdown_into_chain.sql
--- Kept only for historical reference. Note this file had already drifted from
--- production: it computes oldest_order_date / newest_order_date, which the
--- deployed function does not (dead columns, selected nowhere).
+-- Root cause this closes:
+--   This RPC was only ever defined in supabase/temp_migrations/088, outside
+--   supabase/migrations/. It is live in production, but because it sat outside
+--   the chain it was invisible to the 20260801 security hardening pass -- which
+--   is precisely how it stayed anon-callable until 20260812080000, leaking
+--   every doctor's name, phone, balance and aging buckets to anyone holding the
+--   public anon key.
 --
--- !! SECURITY: running this file would RE-OPEN a fixed vulnerability. !!
--- It recreates get_doctor_receivables_breakdown as SECURITY DEFINER with no
--- admin check, so `CREATE OR REPLACE` would strip the admin gate added by
--- 20260812080000 and expose every doctor's name, phone and balance to anyone
--- holding the public anon key. Edit the migration above instead.
+-- The body below is production's CURRENT definition, captured verbatim via
+-- `supabase db dump --linked` on 2026-08-12, then wrapped in the hardened
+-- privileged + admin-gated pair from 20260812080000. Written directly in its
+-- final shape so a fresh database lands on the hardened state in one step;
+-- against production every statement is a CREATE OR REPLACE no-op.
 --
--- Migration 088: Doctor Receivables Breakdown RPC
--- Purpose:
---   Per-doctor breakdown of accounts receivable with aging.
---   READ-ONLY RPC. Does NOT alter any data, transactions, or balances.
---   Groups child doctors under their parent center for financial reporting.
---   A doctor with parent_id belongs to the center (parent); independent doctors report as themselves.
+-- NOTE -- production had already drifted from temp_migrations/088:
+--   088 computes `oldest_order_date` / `newest_order_date` in the doctor_sales
+--   CTE; production's deployed version does not. Those two columns were never
+--   selected downstream and are referenced nowhere in the application, i.e.
+--   dead code that production had already dropped. Production's (cleaner)
+--   version is what is codified here. This drift is itself an argument for the
+--   chain: nothing in the repo reflected the deployed truth.
 
-CREATE OR REPLACE FUNCTION get_doctor_receivables_breakdown()
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
+BEGIN;
+
+CREATE OR REPLACE FUNCTION "public"."get_doctor_receivables_breakdown_privileged_20260812"() RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
 DECLARE
     result jsonb;
 BEGIN
-    -- Map each doctor to their financial reporting entity:
-    -- child doctors -> parent center, independent doctors -> themselves
     WITH doctor_entities AS (
         SELECT 
             id AS doctor_id,
@@ -40,9 +41,7 @@ BEGIN
         SELECT
             de.financial_entity_id,
             SUM(o.total_price) AS total_billed,
-            COUNT(*) AS order_count,
-            MIN(COALESCE(o.delivery_date, o.created_at::date)) AS oldest_order_date,
-            MAX(COALESCE(o.delivery_date, o.created_at::date)) AS newest_order_date
+            COUNT(*) AS order_count
         FROM orders o
         JOIN doctor_entities de ON de.doctor_id = o.doctor_id
         WHERE o.status IN ('Delivered', 'Completed')
@@ -59,9 +58,6 @@ BEGIN
         WHERE t.type = 'income' AND t.entity_type = 'doctor'
         GROUP BY de.financial_entity_id
     ),
-    -- Per-order aging buckets: each delivered order contributes its full price
-    -- to an aging bucket based on its delivery_date. We then subtract total
-    -- payments proportionally starting from oldest (FIFO-style allocation).
     doctor_order_buckets AS (
         SELECT
             de.financial_entity_id,
@@ -75,7 +71,6 @@ BEGIN
           AND COALESCE(o.is_archived, false) = false
           AND o.doctor_id IS NOT NULL
     ),
-    -- FIFO allocate payments to oldest orders first
     doctor_order_with_running_sum AS (
         SELECT
             financial_entity_id,
@@ -99,14 +94,7 @@ BEGIN
             dob.days_old,
             dob.running_total,
             COALESCE(dp.total_paid, 0) AS entity_total_paid,
-            -- How much of this order remains after FIFO allocation
-            GREATEST(
-                0,
-                LEAST(
-                    dob.total_price,
-                    dob.running_total - COALESCE(dp.total_paid, 0)
-                )
-            ) AS remaining
+            GREATEST(0, LEAST(dob.total_price, dob.running_total - COALESCE(dp.total_paid, 0))) AS remaining
         FROM doctor_order_with_running_sum dob
         LEFT JOIN doctor_payments dp ON dp.financial_entity_id = dob.financial_entity_id
     ),
@@ -171,7 +159,24 @@ BEGIN
     RETURN COALESCE(result, '[]'::jsonb);
 END $$;
 
-GRANT EXECUTE ON FUNCTION get_doctor_receivables_breakdown() TO authenticated;
+REVOKE ALL ON FUNCTION public.get_doctor_receivables_breakdown_privileged_20260812()
+    FROM PUBLIC, anon, authenticated;
 
-COMMENT ON FUNCTION get_doctor_receivables_breakdown() IS
-    'Per-doctor breakdown of accounts receivable grouped by financial entity (centers include their child doctors).';
+CREATE OR REPLACE FUNCTION public.get_doctor_receivables_breakdown()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+AS $$
+BEGIN
+    IF public.get_my_role() IS DISTINCT FROM 'admin' THEN
+        RAISE EXCEPTION 'forbidden: admin role required' USING ERRCODE = '42501';
+    END IF;
+    RETURN public.get_doctor_receivables_breakdown_privileged_20260812();
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_doctor_receivables_breakdown() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_doctor_receivables_breakdown() TO authenticated;
+
+COMMIT;

@@ -1,6 +1,18 @@
 -- =====================================================
+-- SUPERSEDED -- DO NOT RUN THIS FILE.
+--
+-- Adopted into the tracked migration chain on 2026-08-12 as
+--   supabase/migrations/20260812090000_adopt_marketing_and_contact_schema_into_chain.sql
+-- Kept only for historical reference.
+--
+-- !! SECURITY: running this file would RE-OPEN a fixed vulnerability. !!
+-- The get_marketing_summary below is SECURITY DEFINER with no admin check and
+-- no REVOKE, so `CREATE OR REPLACE` would strip the admin gate added by
+-- 20260812080000 and make the RPC publicly callable with the anon key again.
+-- Edit the migration above instead; never this file.
+-- =====================================================
 -- Marketing Conversion Events Table
--- Run this in Supabase SQL Editor
+-- (historical: was run manually in the Supabase SQL Editor)
 -- =====================================================
 
 CREATE TABLE IF NOT EXISTS marketing_events (
