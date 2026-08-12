@@ -9,6 +9,16 @@ import StatementTab from '../components/finance/StatementTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../services/db';
 
+type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis';
+
+const ANALYTICS_TAB_STORAGE_KEY = 'analytics_active_tab';
+const ANALYTICS_TABS: AnalyticsTab[] = ['overview', 'financial', 'service_analysis', 'expense_analysis'];
+
+const getInitialAnalyticsTab = (): AnalyticsTab => {
+    const savedTab = sessionStorage.getItem(ANALYTICS_TAB_STORAGE_KEY);
+    return ANALYTICS_TABS.includes(savedTab as AnalyticsTab) ? savedTab as AnalyticsTab : 'overview';
+};
+
 // KPICard component defined outside of Analytics to avoid recreation on each render
 const KPICard = ({ title, value, subtext, icon: Icon, type, percentage, percentageLabel, isPercentage = true }: {
     title: string;
@@ -105,7 +115,11 @@ export default function Analytics() {
     const [topServices, setTopServices] = useState<{ name: string; count: number; revenue: number }[]>([]);
 
     // Tab state
-    const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'service_analysis' | 'expense_analysis'>('overview');
+    const [activeTab, setActiveTab] = useState<AnalyticsTab>(getInitialAnalyticsTab);
+
+    useEffect(() => {
+        sessionStorage.setItem(ANALYTICS_TAB_STORAGE_KEY, activeTab);
+    }, [activeTab]);
 
     // Analysis Reports State (Lazy Loaded) — also backs the receivables
     // drill-down modal's fallback, so it's loaded either by visiting the
