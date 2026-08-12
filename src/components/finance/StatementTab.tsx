@@ -20,7 +20,7 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate } from '../../constants/orderLifecycle';
 
 interface StatementTabProps {
     type: 'service' | 'expense';
@@ -119,7 +119,12 @@ export default function StatementTab({
             // never an in-progress status (Ready, Under Production, Try In,
             // etc.), which used to be silently counted as sold here.
             if (!isDoctorStatementIncluded(o)) return false;
-            const orderDate = o.deliveryDate || (o.createdAt || '').split('T')[0];
+            // Same date rule as the doctor statement page: for a
+            // final-delivered order, bucket it by when it was ACTUALLY
+            // delivered, not the originally scheduled delivery date — an
+            // order scheduled for one month but delivered the next must
+            // land in the month it really happened, matching the RPC.
+            const orderDate = getOfficialStatementDate(o);
             if (start && orderDate < start) return false;
             if (end && orderDate > end) return false;
             if (selectedDoctorId && o.doctorId !== selectedDoctorId) return false;
@@ -276,7 +281,7 @@ export default function StatementTab({
         if (!expandedService) return [];
         const items: any[] = [];
         filteredOrders.forEach(o => {
-            const orderDate = o.deliveryDate || (o.createdAt || '').split('T')[0];
+            const orderDate = getOfficialStatementDate(o);
             const orderDocExp = doctors.find(d => d.id === o.doctorId);
             const orderItems = o.items as any[];
             const orderTotalUnits = orderItems.reduce((s: number, it: any) =>

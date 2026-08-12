@@ -62,6 +62,7 @@ BEGIN
     INTO v_order_stats
     FROM orders
     WHERE (COALESCE(is_archived, false) = false)
+      AND (COALESCE(is_deleted, false) = false)
       AND (
         p_start_date IS NULL
         OR (CASE WHEN status IN ('Delivered', 'Completed')
