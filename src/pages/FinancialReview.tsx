@@ -371,6 +371,8 @@ export default function FinancialReview() {
                                                             <td className="px-3 py-2">
                                                                 {item.classification === 'missing_obligation'
                                                                     ? 'التزام ناقص'
+                                                                    : item.classification === 'date_range_mismatch'
+                                                                        ? 'اختلاف فلتر التاريخ'
                                                                     : item.classification === 'orphan_obligation'
                                                                         ? 'التزام دون قيمة رسمية'
                                                                         : 'اختلاف مبلغ'}

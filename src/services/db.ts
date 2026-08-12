@@ -604,7 +604,7 @@ export interface FinancialReconciliationPreviewRow {
         activeObligationAmount: number;
         voidObligationAmount: number;
         difference: number;
-        classification: 'missing_obligation' | 'orphan_obligation' | 'amount_mismatch';
+        classification: 'missing_obligation' | 'orphan_obligation' | 'amount_mismatch' | 'date_range_mismatch';
         triggerTypes: string[];
         triggerDates: string[];
         activeComponents: Array<{

@@ -58,7 +58,7 @@ export interface FinancialReconciliationOrderDifference {
     activeObligationAmount: number;
     voidObligationAmount: number;
     difference: number;
-    classification: 'missing_obligation' | 'orphan_obligation' | 'amount_mismatch';
+    classification: 'missing_obligation' | 'orphan_obligation' | 'amount_mismatch' | 'date_range_mismatch';
     triggerTypes: string[];
     triggerDates: string[];
     activeComponents: Array<{
@@ -649,7 +649,22 @@ export async function previewFinancialReconciliation(
                 const difference = activeObligationAmount - officialAmount;
                 const metadata = obligationMetadata.get(componentKey);
                 const order = orderMetadata.get(orderId);
-                const classification: FinancialReconciliationOrderDifference['classification'] = officialAmount > 0 && activeObligationAmount === 0
+                const lifecycleOrder = orderById.get(orderId);
+                const officialDate = lifecycleOrder
+                    ? (entityType === 'doctor'
+                        ? getOfficialStatementDate(lifecycleOrder)
+                        : getOperationalOrderDate(lifecycleOrder))
+                    : '';
+                const officialAmountExcludedByDateRange = Boolean(
+                    hasDateRange
+                    && lifecycleOrder
+                    && !isInRange(officialDate, params)
+                    && officialAmount === 0
+                    && activeObligationAmount > 0
+                );
+                const classification: FinancialReconciliationOrderDifference['classification'] = officialAmountExcludedByDateRange
+                    ? 'date_range_mismatch'
+                    : officialAmount > 0 && activeObligationAmount === 0
                     ? 'missing_obligation'
                     : officialAmount === 0 && activeObligationAmount > 0
                         ? 'orphan_obligation'

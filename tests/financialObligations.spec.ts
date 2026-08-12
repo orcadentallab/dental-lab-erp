@@ -1158,6 +1158,12 @@ test.describe('financial obligations service wiring', () => {
         expect(reconciliationSource).not.toContain(".from('financial_exception_reviews')");
     });
 
+    test('classifies obligations excluded from the official statement by the date filter separately', () => {
+        expect(reconciliationSource).toContain("'date_range_mismatch'");
+        expect(reconciliationSource).toContain('officialAmountExcludedByDateRange');
+        expect(reconciliationSource).toContain('!isInRange(officialDate, params)');
+    });
+
     test('financial reconciliation preview mirrors current official account sources', () => {
         expect(reconciliationSource).toContain('getDoctorReceivableAmount(order)');
         expect(reconciliationSource).toContain('getOfficialStatementDate(order)');
