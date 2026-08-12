@@ -13,6 +13,8 @@ type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_ana
 
 const ANALYTICS_TAB_STORAGE_KEY = 'analytics_active_tab';
 const ANALYTICS_TABS: AnalyticsTab[] = ['overview', 'financial', 'service_analysis', 'expense_analysis'];
+const EARLIEST_REPORT_DATE = '0001-01-01';
+const LATEST_REPORT_DATE = '9999-12-31';
 
 const getInitialAnalyticsTab = (): AnalyticsTab => {
     const savedTab = sessionStorage.getItem(ANALYTICS_TAB_STORAGE_KEY);
@@ -277,9 +279,18 @@ export default function Analytics() {
     const calculateStats = useCallback(async () => {
         setIsLoading(true);
         try {
-            // Date params — null means "all time" for the RPC
-            const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
-            const rpcEnd = dateRange === 'all' ? undefined : endDate || undefined;
+            // The reporting RPCs were originally written for either two
+            // bounds or no bounds. Use safe open-ended sentinels when the
+            // user supplies only one side of a custom range:
+            //   no start => everything up to the selected end
+            //   no end   => everything from the selected start onward
+            const hasAnyBoundary = Boolean(startDate || endDate);
+            const rpcStart = dateRange === 'all' || !hasAnyBoundary
+                ? undefined
+                : startDate || EARLIEST_REPORT_DATE;
+            const rpcEnd = dateRange === 'all' || !hasAnyBoundary
+                ? undefined
+                : endDate || LATEST_REPORT_DATE;
 
             // 4 lightweight RPC calls instead of 3 massive SELECTs
             const [summary, doctors, services, allServices, expenseCategories] = await Promise.all([
@@ -400,8 +411,8 @@ export default function Analytics() {
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- Data fetching requires setting state after async operations
-        if ((startDate && endDate) || dateRange === 'all') calculateStats();
-    }, [startDate, endDate, dateRange, calculateStats]);
+        calculateStats();
+    }, [calculateStats]);
 
     // Scroll position persistence across refreshes
     useEffect(() => {
@@ -435,6 +446,16 @@ export default function Analytics() {
         year: 'هذا العام',
         all: 'الكل'
     };
+
+    const activeDateRangeLabel = dateRange === 'custom'
+        ? startDate && endDate
+            ? `${startDate} → ${endDate}`
+            : startDate
+                ? `من ${startDate} حتى آخر السجلات`
+                : endDate
+                    ? `من أول السجلات حتى ${endDate}`
+                    : 'كل الأوقات'
+        : dateRangeLabels[dateRange];
 
     return (
         <div className="space-y-6">
@@ -492,27 +513,32 @@ export default function Analytics() {
 
                 {/* Custom Date Inputs */}
                 {dateRange === 'custom' && (
-                    <div className="mt-6 flex flex-wrap gap-4 animate-in fade-in slide-in-from-top-2 duration-300 relative z-10">
-                        <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
-                            <label className="text-xs text-slate-400">من</label>
-                            <input
-                                type="date"
-                                value={startDate}
-                                onChange={e => setCustomStartDate(e.target.value)}
-                                className="bg-transparent border-none text-white text-sm outline-none"
-                                aria-label="Start Date"
-                            />
+                    <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300 relative z-10">
+                        <div className="flex flex-wrap gap-4">
+                            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
+                                <label className="text-xs text-slate-400">من</label>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={e => setCustomStartDate(e.target.value)}
+                                    className="bg-transparent border-none text-white text-sm outline-none"
+                                    aria-label="Start Date"
+                                />
+                            </div>
+                            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
+                                <label className="text-xs text-slate-400">إلى</label>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={e => setCustomEndDate(e.target.value)}
+                                    className="bg-transparent border-none text-white text-sm outline-none"
+                                    aria-label="End Date"
+                                />
+                            </div>
                         </div>
-                        <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
-                            <label className="text-xs text-slate-400">إلى</label>
-                            <input
-                                type="date"
-                                value={endDate}
-                                onChange={e => setCustomEndDate(e.target.value)}
-                                className="bg-transparent border-none text-white text-sm outline-none"
-                                aria-label="End Date"
-                            />
-                        </div>
+                        <p className="mt-2 text-[11px] text-slate-400">
+                            اترك «من» فارغًا للبحث من أول السجلات، أو اترك «إلى» فارغًا للبحث حتى آخر السجلات.
+                        </p>
                     </div>
                 )}
             </div>
@@ -1399,7 +1425,7 @@ export default function Analytics() {
                     services={services}
                     externalStartDate={dateRange === 'all' ? '' : (startDate || '')}
                     externalEndDate={dateRange === 'all' ? '' : (endDate || '')}
-                    externalRangeLabel={dateRangeLabels[dateRange] || (dateRange === 'custom' ? `${startDate} → ${endDate}` : '')}
+                    externalRangeLabel={activeDateRangeLabel}
                 />
             )}
 
@@ -1414,7 +1440,7 @@ export default function Analytics() {
                     services={services}
                     externalStartDate={dateRange === 'all' ? '' : (startDate || '')}
                     externalEndDate={dateRange === 'all' ? '' : (endDate || '')}
-                    externalRangeLabel={dateRangeLabels[dateRange] || (dateRange === 'custom' ? `${startDate} → ${endDate}` : '')}
+                    externalRangeLabel={activeDateRangeLabel}
                 />
             )}
 

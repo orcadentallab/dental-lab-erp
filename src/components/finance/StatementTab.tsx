@@ -369,7 +369,16 @@ export default function StatementTab({
             if (selectedExpenseCategory && normalizeExpenseCategory(t.category) !== selectedExpenseCategory) return false;
             return true;
         }).forEach(t => {
-            items.push({ id: t.id, date: (t.date || '').split('T')[0], category: normalizeExpenseCategory(t.category), description: t.description || '', amount: t.amount || 0 });
+            const transactionDate = (t.date || '').split('T')[0];
+            const effectiveDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
+            items.push({
+                id: t.id,
+                date: effectiveDate,
+                transactionDate,
+                category: normalizeExpenseCategory(t.category),
+                description: t.description || '',
+                amount: t.amount || 0
+            });
             totalAmount += (t.amount || 0);
         });
         items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -884,7 +893,7 @@ export default function StatementTab({
                                                                         <table className="w-full text-xs text-right">
                                                                             <thead className="bg-slate-700 text-white">
                                                                                 <tr>
-                                                                                    <th className="px-3 py-2.5 font-semibold">التاريخ</th>
+                                                                                    <th className="px-3 py-2.5 font-semibold">تاريخ الاستحقاق</th>
                                                                                     <th className="px-3 py-2.5 font-semibold">رقم الحالة</th>
                                                                                     <th className="px-3 py-2.5 font-semibold">الطبيب</th>
                                                                                     <th className="px-3 py-2.5 font-semibold">المريض</th>
@@ -1211,7 +1220,14 @@ export default function StatementTab({
                                                                             <tbody className="divide-y divide-gray-100">
                                                                                 {cat.items.map((item: any) => (
                                                                                     <tr key={item.id} className="hover:bg-rose-50/20">
-                                                                                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{new Date(item.date).toLocaleDateString('ar-EG')}</td>
+                                                                                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
+                                                                                            <span className="block">{new Date(item.date).toLocaleDateString('ar-EG')}</span>
+                                                                                            {item.transactionDate && item.transactionDate !== item.date && (
+                                                                                                <span className="block text-[10px] text-gray-400 mt-0.5">
+                                                                                                    تاريخ الدفع: {new Date(item.transactionDate).toLocaleDateString('ar-EG')}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </td>
                                                                                         <td className="px-3 py-2.5 text-gray-700">{item.description || '—'}</td>
                                                                                         <td className="px-3 py-2.5 text-center font-black text-rose-600">{item.amount.toLocaleString()} ج.م</td>
                                                                                     </tr>
