@@ -7,7 +7,15 @@ BEGIN;
 DO $$
 BEGIN
     IF public.workflow_flag_enabled('workflow_issue_v2_enforce') THEN
-        RAISE EXCEPTION 'Disable V2 enforcement before timestamp backfill';
+        IF EXISTS (SELECT 1 FROM public.orders) THEN
+            RAISE EXCEPTION 'Disable V2 enforcement before timestamp backfill';
+        END IF;
+
+        -- Clean replays have no lifecycle rows to protect. Temporarily mirror
+        -- the reviewed production rollout state for this historical step.
+        UPDATE public.app_settings
+        SET value = 'off', updated_at = timezone('utc', now())
+        WHERE key = 'workflow_issue_v2_enforce';
     END IF;
     IF NOT public.workflow_flag_enabled('workflow_finance_v2') THEN
         RAISE EXCEPTION 'Finance V2 must be enabled before timestamp backfill';
@@ -90,5 +98,13 @@ BEGIN
     END IF;
 END;
 $$;
+
+-- Restore the current cutover state after a no-data bootstrap. Populated
+-- databases can reach this statement only when enforcement was disabled by an
+-- operator before running the reviewed backfill.
+UPDATE public.app_settings
+SET value = 'on', updated_at = timezone('utc', now())
+WHERE key = 'workflow_issue_v2_enforce'
+  AND NOT EXISTS (SELECT 1 FROM public.orders);
 
 COMMIT;

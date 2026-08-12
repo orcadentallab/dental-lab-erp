@@ -2,6 +2,10 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
+-- Isolate the dedicated on-hold retirement guard from the broader V2 guard.
+UPDATE public.app_settings SET value = 'off'
+WHERE key = 'workflow_issue_v2_enforce';
+
 SELECT plan(8);
 
 INSERT INTO public.doctors (

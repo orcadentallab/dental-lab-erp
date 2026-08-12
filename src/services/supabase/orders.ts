@@ -1289,25 +1289,34 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const dateLimit = sevenDaysAgo.toISOString();
 
-    // Optimized query: Filter at database level
-    const { data, error } = await supabase
-        .from('orders')
-        .select('*, order_items(*), order_comments(*)')  // Include relations
-        .or('is_deleted.eq.false,is_deleted.is.null')
-        // Fix: Use single OR to get (Active) OR (Recent)
-        // Previous chained .not().or() resulted in (Active) AND (Recent), hiding old active orders
-        .or(`status.not.in.("Delivered","Cancelled"),created_at.gte.${dateLimit}`)
-        // Fix: Exclude archived orders explicitly (keeping NULLs visible)
-        .or('is_archived.eq.false,is_archived.is.null')
-        .order('created_at', { ascending: false })
-        .range(0, 499); // Limit to 500 orders max for dashboard
+    const allData: DbOrderWithRelations[] = [];
+    const pageSize = 1000;
+    let from = 0;
 
-    if (error) {
-        throw ErrorHandler.handle(error, 'getDashboardActiveOrders');
+    while (true) {
+        // Filter at database level, but page until every matching order is loaded.
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .or('is_deleted.eq.false,is_deleted.is.null')
+            // Use one OR to get (Active) OR (Recent), so old active orders stay visible.
+            .or(`status.not.in.("Delivered","Completed","Cancelled"),created_at.gte.${dateLimit}`)
+            .or('is_archived.eq.false,is_archived.is.null')
+            .order('created_at', { ascending: false })
+            .range(from, from + pageSize - 1);
+
+        if (error) {
+            throw ErrorHandler.handle(error, 'getDashboardActiveOrders');
+        }
+
+        const page = (data || []) as unknown as DbOrderWithRelations[];
+        allData.push(...page);
+        if (page.length < pageSize) break;
+        from += pageSize;
     }
 
     // Map to Order objects (dbToOrder handles missing relations gracefully)
-    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+    return allData.map(d => dbToOrder(d));
 }
 
 /**
@@ -1316,22 +1325,32 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
  * Looks at recent orders (last 60 days) with comments in order_comments table.
  */
 export async function getOrdersWithComments(): Promise<Order[]> {
-    // We need to join with order_comments and filter those with content
-    const { data, error } = await supabase
-        .from('orders')
-        .select('*, order_items(*), order_comments(*)')
-        .or('is_deleted.eq.false,is_deleted.is.null')
-        .or('is_archived.eq.false,is_archived.is.null')
-        .order('created_at', { ascending: false })
-        .range(0, 999);
+    const allData: DbOrderWithRelations[] = [];
+    const pageSize = 1000;
+    let from = 0;
 
-    if (error) {
-        throw ErrorHandler.handle(error, 'getOrdersWithComments');
+    while (true) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .or('is_deleted.eq.false,is_deleted.is.null')
+            .or('is_archived.eq.false,is_archived.is.null')
+            .order('created_at', { ascending: false })
+            .range(from, from + pageSize - 1);
+
+        if (error) {
+            throw ErrorHandler.handle(error, 'getOrdersWithComments');
+        }
+
+        const page = (data || []) as unknown as DbOrderWithRelations[];
+        allData.push(...page);
+        if (page.length < pageSize) break;
+        from += pageSize;
     }
 
     // Filter in JS: only orders with at least one manual (non-auto-generated) comment
-    const ordersWithComments = (data || [])
-        .map(d => dbToOrder(d as unknown as DbOrderWithRelations))
+    const ordersWithComments = allData
+        .map(d => dbToOrder(d))
         .filter(order =>
             order.comments &&
             order.comments.length > 0 &&
@@ -1347,27 +1366,36 @@ export async function getOrdersWithComments(): Promise<Order[]> {
  * This avoids loading the entire orders table just to filter on the client.
  */
 export async function getDesignerDashboardOrders(designerId?: string): Promise<Order[]> {
-    let query = supabase
-        .from('orders')
-        .select('*, order_items(*), order_comments(*)')
-        .or('is_deleted.eq.false,is_deleted.is.null')
-        .eq('workflow_type', 'split')
-        .not('status', 'in', '("Delivered","Completed","Doctor Rejected","Lab Rejected","Cancelled")')
-        .or('is_archived.eq.false,is_archived.is.null')
-        .order('created_at', { ascending: false })
-        .range(0, 999);
+    const allData: DbOrderWithRelations[] = [];
+    const pageSize = 1000;
+    let from = 0;
 
-    if (designerId) {
-        query = query.eq('designer_id', designerId);
+    while (true) {
+        let query = supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .or('is_deleted.eq.false,is_deleted.is.null')
+            .eq('workflow_type', 'split')
+            .not('status', 'in', '("Delivered","Completed","Doctor Rejected","Lab Rejected","Cancelled")')
+            .or('is_archived.eq.false,is_archived.is.null')
+            .order('created_at', { ascending: false });
+
+        if (designerId) {
+            query = query.eq('designer_id', designerId);
+        }
+
+        const { data, error } = await query.range(from, from + pageSize - 1);
+        if (error) {
+            throw ErrorHandler.handle(error, 'getDesignerDashboardOrders');
+        }
+
+        const page = (data || []) as unknown as DbOrderWithRelations[];
+        allData.push(...page);
+        if (page.length < pageSize) break;
+        from += pageSize;
     }
 
-    const { data, error } = await query;
-
-    if (error) {
-        throw ErrorHandler.handle(error, 'getDesignerDashboardOrders');
-    }
-
-    return (data || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations));
+    return allData.map(d => dbToOrder(d));
 }
 
 /**
@@ -1589,46 +1617,63 @@ export async function fetchFullEntityStatement(
     }
 
     // 1. Fetch Orders for this Entity
-    let orderQuery = supabase
-        .from('orders')
-        .select('*, order_items(*), order_comments(*)')
-        .or('is_deleted.eq.false,is_deleted.is.null')
-        .order('created_at', { ascending: false });
+    const ordersData: DbOrderWithRelations[] = [];
+    const pageSize = 1000;
+    let orderFrom = 0;
 
-    if (entityType === 'doctor') {
-        if (entityIdsToFetch.length > 1) {
-            orderQuery = orderQuery.in('doctor_id', entityIdsToFetch);
+    while (true) {
+        let orderQuery = supabase
+            .from('orders')
+            .select('*, order_items(*), order_comments(*)')
+            .or('is_deleted.eq.false,is_deleted.is.null')
+            .order('created_at', { ascending: false });
+
+        if (entityType === 'doctor') {
+            orderQuery = entityIdsToFetch.length > 1
+                ? orderQuery.in('doctor_id', entityIdsToFetch)
+                : orderQuery.eq('doctor_id', entityId);
+        } else if (entityType === 'supplier') {
+            orderQuery = orderQuery.eq('supplier_id', entityId);
         } else {
-            orderQuery = orderQuery.eq('doctor_id', entityId);
+            orderQuery = orderQuery.eq('designer_id', entityId);
         }
-    } else if (entityType === 'supplier') orderQuery = orderQuery.eq('supplier_id', entityId);
-    else if (entityType === 'designer') orderQuery = orderQuery.eq('designer_id', entityId);
 
-    // Fetch up to 10,000 orders for a single entity (plenty)
-    const { data: ordersData, error: orderError } = await orderQuery.range(0, 9999);
-    if (orderError) throw ErrorHandler.handle(orderError, 'fetchFullEntityStatement_Orders');
+        const { data, error } = await orderQuery.range(orderFrom, orderFrom + pageSize - 1);
+        if (error) throw ErrorHandler.handle(error, 'fetchFullEntityStatement_Orders');
+
+        const page = (data || []) as unknown as DbOrderWithRelations[];
+        ordersData.push(...page);
+        if (page.length < pageSize) break;
+        orderFrom += pageSize;
+    }
 
     // 2. Fetch Transactions for this Entity
     // FIXED: Only filter by entity_id at DB level to catch all transactions
     // including legacy ones that might have null/different entity_type
-    let txQuery = supabase
-        .from('transactions')
-        .select('*')
-        .order('date', { ascending: false })
-        .range(0, 4999);
+    const txData: Record<string, unknown>[] = [];
+    let txFrom = 0;
 
-    if (entityType === 'doctor' && entityIdsToFetch.length > 1) {
-        txQuery = txQuery.in('entity_id', entityIdsToFetch);
-    } else {
-        txQuery = txQuery.eq('entity_id', entityId);
+    while (true) {
+        let txQuery = supabase
+            .from('transactions')
+            .select('*')
+            .order('date', { ascending: false });
+
+        txQuery = entityType === 'doctor' && entityIdsToFetch.length > 1
+            ? txQuery.in('entity_id', entityIdsToFetch)
+            : txQuery.eq('entity_id', entityId);
+
+        const { data, error } = await txQuery.range(txFrom, txFrom + pageSize - 1);
+        if (error) throw ErrorHandler.handle(error, 'fetchFullEntityStatement_Tx');
+
+        const page = (data || []) as unknown as Record<string, unknown>[];
+        txData.push(...page);
+        if (page.length < pageSize) break;
+        txFrom += pageSize;
     }
 
-    const { data: txData, error: txError } = await txQuery;
-
-    if (txError) throw ErrorHandler.handle(txError, 'fetchFullEntityStatement_Tx');
-
     // Filter transactions in JS to match expected entity_type OR handle nulls
-    const filteredTransactions = (txData || []).filter(t => {
+    const filteredTransactions = txData.filter(t => {
         const tx = t as unknown as { entity_type?: string | null, entity_id?: string | null };
         return tx.entity_type === entityType || tx.entity_type === null || tx.entity_type === undefined;
     });
@@ -1653,7 +1698,7 @@ export async function fetchFullEntityStatement(
     });
 
     return {
-        orders: (ordersData || []).map(d => dbToOrder(d as unknown as DbOrderWithRelations)),
+        orders: ordersData.map(d => dbToOrder(d)),
         transactions: mappedTransactions
     };
 }

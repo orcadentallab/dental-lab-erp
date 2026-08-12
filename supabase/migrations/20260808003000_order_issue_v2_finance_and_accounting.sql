@@ -7,7 +7,17 @@ BEGIN;
 DO $$
 BEGIN
     IF NOT public.workflow_flag_enabled('workflow_finance_v2') THEN
-        RAISE EXCEPTION 'Arm workflow_finance_v2=on only after reviewed reconciliation, then rerun this migration';
+        IF EXISTS (SELECT 1 FROM public.orders)
+           OR EXISTS (SELECT 1 FROM public.financial_obligations)
+           OR EXISTS (SELECT 1 FROM public.transactions) THEN
+            RAISE EXCEPTION 'Arm workflow_finance_v2=on only after reviewed reconciliation, then rerun this migration';
+        END IF;
+
+        -- A brand-new database has no historical ledger to reconcile, so it
+        -- can safely bootstrap Finance V2 before installing its sole writer.
+        UPDATE public.app_settings
+        SET value = 'on', updated_at = timezone('utc', now())
+        WHERE key = 'workflow_finance_v2';
     END IF;
 END;
 $$;

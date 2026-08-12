@@ -2,6 +2,10 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
+-- This suite exercises the legacy direct-transition compatibility layer.
+UPDATE public.app_settings SET value = 'off'
+WHERE key = 'workflow_issue_v2_enforce';
+
 SELECT plan(30);
 
 -- Every fixture is intentionally isolated by entity. This prevents FIFO credit

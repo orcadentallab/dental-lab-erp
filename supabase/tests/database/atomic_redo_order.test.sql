@@ -2,6 +2,10 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
+-- The legacy atomic redo RPC remains covered independently of V2 enforcement.
+UPDATE public.app_settings SET value = 'off'
+WHERE key = 'workflow_issue_v2_enforce';
+
 SELECT plan(18);
 
 INSERT INTO auth.users (

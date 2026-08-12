@@ -4,6 +4,12 @@ DO $$
 DECLARE
     v_updated_count integer;
 BEGIN
+    -- A fresh local database has no historical transactions to reclassify.
+    -- Keep the exact four-row assertion for every populated database.
+    IF NOT EXISTS (SELECT 1 FROM transactions) THEN
+        RETURN;
+    END IF;
+
     UPDATE transactions
     SET category = 'عمولات ورسوم بنكية'
     WHERE type = 'expense'

@@ -157,6 +157,13 @@ BEGIN
     INTO v_count, v_total
     FROM approved_doctor_obligation_repair_20260729;
 
+    -- A fresh local/test database has no reviewed production batch to repair.
+    -- Install the invariant functions and triggers, but skip the production-only guard.
+    IF v_count = 0
+       AND NOT EXISTS (SELECT 1 FROM public.orders) THEN
+        RETURN;
+    END IF;
+
     IF v_count <> 41 OR v_total <> 39450 THEN
         RAISE EXCEPTION
             'Approved doctor repair guard failed: expected 41 / 39450, found % / %',

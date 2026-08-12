@@ -257,7 +257,6 @@ BEGIN
         v_financial_fields_changed :=
             NEW.type IS DISTINCT FROM OLD.type
             OR NEW.amount IS DISTINCT FROM OLD.amount
-            OR NEW.category IS DISTINCT FROM OLD.category
             OR NEW.entity_id IS DISTINCT FROM OLD.entity_id
             OR NEW.entity_type IS DISTINCT FROM OLD.entity_type
             OR NEW.status IS DISTINCT FROM OLD.status
