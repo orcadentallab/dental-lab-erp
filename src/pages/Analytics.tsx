@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService } from '../services/supabase/analyticsService';
 import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award } from 'lucide-react';
@@ -7,8 +7,7 @@ import clsx from 'clsx';
 import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
-import { db, type Order, type Transaction, type Doctor, type Supplier, type User, type Service } from '../services/db';
-import { isDesignerUser } from '../lib/userRoles';
+import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../services/db';
 
 // KPICard component defined outside of Analytics to avoid recreation on each render
 const KPICard = ({ title, value, subtext, icon: Icon, type, percentage, percentageLabel, isPercentage = true }: {
@@ -108,35 +107,39 @@ export default function Analytics() {
     // Tab state
     const [activeTab, setActiveTab] = useState<'overview' | 'financial' | 'service_analysis' | 'expense_analysis'>('overview');
 
-    // Analysis Reports State (Lazy Loaded)
+    // Analysis Reports State (Lazy Loaded) — also backs the receivables
+    // drill-down modal's fallback, so it's loaded either by visiting the
+    // Service/Expense tabs OR by opening that modal from any tab (previously
+    // the modal could silently show empty data if opened before ever
+    // visiting those tabs).
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [designers, setDesigners] = useState<User[]>([]);
     const [services, setServices] = useState<Service[]>([]);
-    const [isAnalysisDataLoaded, setIsAnalysisDataLoaded] = useState(false);
+    const analysisDataRequested = useRef(false);
+
+    const loadAnalysisData = useCallback(() => {
+        if (analysisDataRequested.current) return;
+        analysisDataRequested.current = true;
+        Promise.all([
+            db.getAllOrdersUnpaginated(),
+            db.getTransactions(),
+            db.getDoctors(),
+            db.getSuppliers(),
+            db.getServices()
+        ]).then(([ordersData, txData, docs, sups, servs]) => {
+            setOrders(ordersData);
+            setTransactions(txData);
+            setDoctors(docs);
+            setSuppliers(sups);
+            setServices(servs);
+        }).catch(console.error);
+    }, []);
 
     useEffect(() => {
-        if (['service_analysis', 'expense_analysis'].includes(activeTab) && !isAnalysisDataLoaded) {
-            Promise.all([
-                db.getAllOrdersUnpaginated(),
-                db.getTransactions(),
-                db.getDoctors(),
-                db.getSuppliers(),
-                db.getUsers(),
-                db.getServices()
-            ]).then(([ordersData, txData, docs, sups, users, servs]) => {
-                setOrders(ordersData);
-                setTransactions(txData);
-                setDoctors(docs);
-                setSuppliers(sups);
-                setDesigners(users.filter(u => isDesignerUser(u)));
-                setServices(servs);
-                setIsAnalysisDataLoaded(true);
-            }).catch(console.error);
-        }
-    }, [activeTab, isAnalysisDataLoaded]);
+        if (['service_analysis', 'expense_analysis'].includes(activeTab)) loadAnalysisData();
+    }, [activeTab, loadAnalysisData]);
 
     // Financial Analysis State
     const [financialStats, setFinancialStats] = useState({
@@ -150,23 +153,25 @@ export default function Analytics() {
         // P&L
         salesRevenue: 0,
         cogs: 0,
-        productionCosts: 0,
-        designerCogs: 0,
+        cogsSuppliers: 0,
+        cogsDesigners: 0,
         grossProfit: 0,
         grossMargin: 0,
         operatingExpenses: 0,
         operatingIncome: 0,
         operatingMargin: 0,
-        breakEvenRevenue: 0,
+        breakEvenRevenue: 0 as number | null,
         // Receivables
         totalReceivables: 0,
         aging0to30: 0,
         aging30to60: 0,
         aging60to90: 0,
         aging90plus: 0,
-        dso: 0,
+        dso: 0 as number | null,
         // Payables
-        totalPayables: 0
+        totalPayables: 0,
+        payablesSuppliers: 0,
+        payablesDesigners: 0
     });
 
     const [isLoading, setIsLoading] = useState(true);
@@ -180,6 +185,14 @@ export default function Analytics() {
     // Doctor receivables detail modal
     const [receivablesModalOpen, setReceivablesModalOpen] = useState(false);
     const [receivablesModalBucket, setReceivablesModalBucket] = useState<'all' | '0_30' | '31_60' | '61_90' | '90_plus'>('all');
+
+    // The modal's fallback data (orders/transactions/doctors) is the same
+    // lazily-loaded set the Service/Expense tabs use — make sure it's
+    // requested as soon as the modal opens too, not just when those tabs
+    // are visited, so the fallback can never silently be empty.
+    useEffect(() => {
+        if (receivablesModalOpen) loadAnalysisData();
+    }, [receivablesModalOpen, loadAnalysisData]);
 
     const { startDate, endDate } = useMemo(() => {
         if (dateRange === 'custom') {
@@ -315,17 +328,26 @@ export default function Analytics() {
             const operatingMargin = salesRevenue > 0 ? (operatingIncome / salesRevenue) * 100 : 0;
 
             // DSO calculation — derive actual days in the chosen period
+            // DSO needs a real period to average daily revenue over — with no
+            // date range selected ("all time"), there's no principled number
+            // of days to divide by (the old code silently defaulted to 30,
+            // which divided all-time revenue by 30 days and wildly
+            // understated DSO). Show it only when an explicit range is set.
             const daysInPeriod = startDate && endDate
                 ? Math.max(1, Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)
-                : 30;
-            const avgDailyRevenue = salesRevenue / daysInPeriod;
-            const dso = avgDailyRevenue > 0 ? Math.round(summary.total_receivables / avgDailyRevenue) : 0;
+                : null;
+            const avgDailyRevenue = daysInPeriod ? salesRevenue / daysInPeriod : 0;
+            const dso = daysInPeriod && avgDailyRevenue > 0 ? Math.round(summary.total_receivables / avgDailyRevenue) : null;
 
-            // Break-even revenue = fixed opex / contribution margin ratio
+            // Break-even revenue = fixed opex / contribution margin ratio.
+            // When gross margin is zero or negative, break-even isn't a
+            // reachable number (dividing by a non-positive ratio), not "0" —
+            // treat it as undefined rather than silently reporting 0, which
+            // used to make the UI always claim break-even was exceeded.
             const contributionRatio = salesRevenue > 0 ? grossProfit / salesRevenue : 0;
             const breakEvenRevenue = contributionRatio > 0
                 ? summary.operating_expenses / contributionRatio
-                : 0;
+                : null;
 
             setFinancialStats({
                 totalCollections,
@@ -336,8 +358,8 @@ export default function Analytics() {
                 designerPayments: summary.designer_payments,
                 salesRevenue,
                 cogs,
-                productionCosts: summary.production_costs,
-                designerCogs: summary.designer_payments,
+                cogsSuppliers: summary.total_cost_of_goods_suppliers,
+                cogsDesigners: summary.total_cost_of_goods_designers,
                 grossProfit,
                 grossMargin,
                 operatingExpenses: summary.operating_expenses,
@@ -350,7 +372,9 @@ export default function Analytics() {
                 aging60to90: summary.aging_61_90,
                 aging90plus: summary.aging_90_plus,
                 dso,
-                totalPayables: summary.total_payables
+                totalPayables: summary.total_payables,
+                payablesSuppliers: summary.total_payables_suppliers,
+                payablesDesigners: summary.total_payables_designers
             });
 
         } catch (error) {
@@ -974,7 +998,7 @@ export default function Analytics() {
             {/* Financial Analysis Tab Content */}
 
             {activeTab === 'financial' && (
-                <div className="space-y-6">
+                <div className={clsx("space-y-6 transition-opacity duration-200", isLoading && "opacity-40 pointer-events-none")}>
                     {/* Cash Flow Section */}
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
@@ -1042,7 +1066,7 @@ export default function Analytics() {
                                 <p className={clsx(
                                     "text-2xl font-black",
                                     financialStats.netCashFlow >= 0 ? "text-blue-700" : "text-amber-700"
-                                )}>{financialStats.netCashFlow.toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                )}>{Math.round(financialStats.netCashFlow).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
                             </div>
                         </div>
                     </div>
@@ -1062,7 +1086,7 @@ export default function Analytics() {
                             {/* Revenue Row */}
                             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
                                 <span className="font-medium text-slate-700">إجمالي المبيعات</span>
-                                <span className="text-xl font-bold text-slate-800">{financialStats.salesRevenue.toLocaleString()} ج.م</span>
+                                <span className="text-xl font-bold text-slate-800">{Math.round(financialStats.salesRevenue).toLocaleString()} ج.م</span>
                             </div>
                             {/* COGS Row with breakdown */}
                             <div className="bg-rose-50 rounded-xl overflow-hidden">
@@ -1070,15 +1094,15 @@ export default function Analytics() {
                                     <span className="font-medium text-slate-700">تكلفة البضائع المباعة (COGS)</span>
                                     <span className="text-xl font-bold text-rose-600">({Math.round(financialStats.cogs).toLocaleString()}) ج.م</span>
                                 </div>
-                                {(financialStats.productionCosts > 0 || financialStats.designerCogs > 0) && (
+                                {(financialStats.cogsSuppliers > 0 || financialStats.cogsDesigners > 0) && (
                                     <div className="px-6 pb-3 space-y-1 border-t border-rose-100">
                                         <div className="flex items-center justify-between pt-2 text-sm">
-                                            <span className="text-slate-600">↳ مدفوعات الموردين (الإنتاج)</span>
-                                            <span className="font-medium text-rose-500">{Math.round(financialStats.productionCosts).toLocaleString()} ج.م</span>
+                                            <span className="text-slate-600">↳ تكلفة الموردين</span>
+                                            <span className="font-medium text-rose-500">{Math.round(financialStats.cogsSuppliers).toLocaleString()} ج.م</span>
                                         </div>
                                         <div className="flex items-center justify-between text-sm">
-                                            <span className="text-slate-600">↳ مدفوعات المصممين</span>
-                                            <span className="font-medium text-rose-500">{Math.round(financialStats.designerCogs).toLocaleString()} ج.م</span>
+                                            <span className="text-slate-600">↳ تكلفة المصممين</span>
+                                            <span className="font-medium text-rose-500">{Math.round(financialStats.cogsDesigners).toLocaleString()} ج.م</span>
                                         </div>
                                     </div>
                                 )}
@@ -1089,12 +1113,12 @@ export default function Analytics() {
                                     <span className="font-bold text-emerald-700">مجمل الربح</span>
                                     <span className="text-xs text-emerald-500 mr-2">(هامش: {financialStats.grossMargin.toFixed(1)}%)</span>
                                 </div>
-                                <span className="text-xl font-black text-emerald-700">{financialStats.grossProfit.toLocaleString()} ج.م</span>
+                                <span className="text-xl font-black text-emerald-700">{Math.round(financialStats.grossProfit).toLocaleString()} ج.م</span>
                             </div>
                             {/* Operating Expenses Row */}
                             <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl">
                                 <span className="font-medium text-slate-700">مصروفات التشغيل</span>
-                                <span className="text-xl font-bold text-amber-600">({financialStats.operatingExpenses.toLocaleString()}) ج.م</span>
+                                <span className="text-xl font-bold text-amber-600">({Math.round(financialStats.operatingExpenses).toLocaleString()}) ج.م</span>
                             </div>
                             {/* Operating Income Row */}
                             <div className={clsx(
@@ -1107,7 +1131,7 @@ export default function Analytics() {
                                     <span className={clsx("font-bold", financialStats.operatingIncome >= 0 ? "text-blue-700" : "text-rose-700")}>صافي الربح التشغيلي</span>
                                     <span className={clsx("text-xs mr-2", financialStats.operatingIncome >= 0 ? "text-blue-500" : "text-rose-500")}>(هامش: {financialStats.operatingMargin.toFixed(1)}%)</span>
                                 </div>
-                                <span className={clsx("text-xl font-black", financialStats.operatingIncome >= 0 ? "text-blue-700" : "text-rose-700")}>{financialStats.operatingIncome.toLocaleString()} ج.م</span>
+                                <span className={clsx("text-xl font-black", financialStats.operatingIncome >= 0 ? "text-blue-700" : "text-rose-700")}>{Math.round(financialStats.operatingIncome).toLocaleString()} ج.م</span>
                             </div>
                         </div>
                     </div>
@@ -1127,7 +1151,7 @@ export default function Analytics() {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-3xl font-black text-slate-800">{financialStats.totalReceivables.toLocaleString()}</p>
+                                    <p className="text-3xl font-black text-slate-800">{Math.round(financialStats.totalReceivables).toLocaleString()}</p>
                                     <p className="text-xs text-slate-400 font-medium mt-1" title="رصيد الذمم الحالي دلوقتي — مش بيتغيّر حسب فلتر التاريخ فوق">إجمالي المستحق على العملاء (رصيد حالي)</p>
                                     <button
                                         onClick={() => { setReceivablesModalBucket('all'); setReceivablesModalOpen(true); }}
@@ -1143,7 +1167,9 @@ export default function Analytics() {
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-end mb-1">
                                         <p className="text-sm font-bold text-slate-700">تحليل أعمار الديون</p>
-                                        <span className="text-xs text-slate-400 font-mono">DSO: {financialStats.dso} days</span>
+                                        <span className="text-xs text-slate-400 font-mono" title="محتاج فترة محددة (مش كل الفترات) عشان يتحسب صح">
+                                            DSO: {financialStats.dso !== null ? `${financialStats.dso} days` : '—'}
+                                        </span>
                                     </div>
 
                                     {/* Segmented Progress Bar */}
@@ -1211,8 +1237,19 @@ export default function Analytics() {
                                     </div>
                                 </div>
                                 <div className="text-right">
-                                    <p className="text-3xl font-black text-teal-700">{financialStats.totalPayables.toLocaleString()}</p>
-                                    <p className="text-xs text-slate-400 font-medium mt-1">المستحق للموردين</p>
+                                    <p className="text-3xl font-black text-teal-700">{Math.round(financialStats.totalPayables).toLocaleString()}</p>
+                                    <p className="text-xs text-slate-400 font-medium mt-1">المستحق للموردين والمصممين</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-sm bg-teal-50/50 rounded-xl px-4 py-3 mb-4">
+                                <div>
+                                    <span className="text-slate-600">↳ موردين</span>
+                                    <span className="font-medium text-teal-700 mr-2">{Math.round(financialStats.payablesSuppliers).toLocaleString()} ج.م</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-600">↳ مصممين</span>
+                                    <span className="font-medium text-teal-700 mr-2">{Math.round(financialStats.payablesDesigners).toLocaleString()} ج.م</span>
                                 </div>
                             </div>
 
@@ -1227,12 +1264,12 @@ export default function Analytics() {
                                     <div className="flex items-center gap-4 text-sm mb-4">
                                         <div className="flex-1">
                                             <p className="text-xs text-slate-400 mb-1">الذمم المدينة (+)</p>
-                                            <p className="font-bold text-slate-700">{financialStats.totalReceivables.toLocaleString()}</p>
+                                            <p className="font-bold text-slate-700">{Math.round(financialStats.totalReceivables).toLocaleString()}</p>
                                         </div>
                                         <div className="text-slate-300">-</div>
                                         <div className="flex-1 text-left">
                                             <p className="text-xs text-slate-400 mb-1">الذمم الدائنة (-)</p>
-                                            <p className="font-bold text-rose-600">{financialStats.totalPayables.toLocaleString()}</p>
+                                            <p className="font-bold text-rose-600">{Math.round(financialStats.totalPayables).toLocaleString()}</p>
                                         </div>
                                     </div>
 
@@ -1242,7 +1279,7 @@ export default function Analytics() {
                                             "text-xl font-black",
                                             (financialStats.totalReceivables - financialStats.totalPayables) >= 0 ? "text-emerald-600" : "text-rose-600"
                                         )}>
-                                            {(financialStats.totalReceivables - financialStats.totalPayables).toLocaleString()} ج.م
+                                            {Math.round(financialStats.totalReceivables - financialStats.totalPayables).toLocaleString()} ج.م
                                         </span>
                                     </div>
                                 </div>
@@ -1251,7 +1288,22 @@ export default function Analytics() {
                     </div>
 
                     {/* Break-even Analysis */}
-                    {financialStats.salesRevenue > 0 && (
+                    {financialStats.salesRevenue > 0 && financialStats.breakEvenRevenue === null && (
+                        <div className="p-6 rounded-2xl border shadow-sm bg-gradient-to-br from-slate-50 to-white border-slate-200">
+                            <div className="flex items-start gap-4">
+                                <div className="p-3 rounded-xl flex-shrink-0 bg-slate-100">
+                                    <Activity size={22} className="text-slate-500" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-lg text-slate-800 mb-1">نقطة التعادل (Break-even)</h3>
+                                    <p className="text-xs text-slate-500">
+                                        غير محتسبة — الهامش الإجمالي صفر أو سالب في هذه الفترة (تكلفة الإنتاج تساوي أو تتجاوز المبيعات)، فمفيش نقطة تعادل ممكن الوصول لها بزيادة المبيعات وحدها.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {financialStats.salesRevenue > 0 && financialStats.breakEvenRevenue !== null && (
                         <div className={clsx(
                             "p-6 rounded-2xl border shadow-sm",
                             financialStats.salesRevenue >= financialStats.breakEvenRevenue
@@ -1330,8 +1382,10 @@ export default function Analytics() {
                     transactions={transactions}
                     doctors={doctors}
                     suppliers={suppliers}
-                    designers={designers}
                     services={services}
+                    externalStartDate={dateRange === 'all' ? '' : (startDate || '')}
+                    externalEndDate={dateRange === 'all' ? '' : (endDate || '')}
+                    externalRangeLabel={dateRangeLabels[dateRange] || (dateRange === 'custom' ? `${startDate} → ${endDate}` : '')}
                 />
             )}
 
@@ -1343,7 +1397,6 @@ export default function Analytics() {
                     transactions={transactions}
                     doctors={doctors}
                     suppliers={suppliers}
-                    designers={designers}
                     services={services}
                     externalStartDate={dateRange === 'all' ? '' : (startDate || '')}
                     externalEndDate={dateRange === 'all' ? '' : (endDate || '')}

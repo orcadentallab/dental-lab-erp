@@ -13,13 +13,14 @@ import {
     TrendingUp,
     TrendingDown
 } from 'lucide-react';
-import { type Order, type Transaction, type Doctor, type Supplier, type User, type Service } from '../../services/db';
+import { type Order, type Transaction, type Doctor, type Supplier, type Service } from '../../services/db';
 import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount } from '../../constants/orderLifecycle';
 
 interface StatementTabProps {
     type: 'service' | 'expense';
@@ -27,7 +28,6 @@ interface StatementTabProps {
     transactions: Partial<Transaction>[];
     doctors: Doctor[];
     suppliers: Supplier[];
-    designers: User[];
     services: Service[];
     /** When provided, overrides the internal time filter and hides the dropdown */
     externalStartDate?: string;
@@ -57,8 +57,6 @@ interface ServiceStats {
 }
 
 const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
-
-const EXCLUDE_STATUSES = new Set(['New Case', 'In Progress', 'Pending', 'Wait', 'Cancelled']);
 
 export default function StatementTab({
     type: targetType,
@@ -116,8 +114,11 @@ export default function StatementTab({
         const { start, end } = resolvedDates;
         return orders.filter(o => {
             if (!o.items) return false;
-            const orderStatus = (o.status as string) || '';
-            if (EXCLUDE_STATUSES.has(orderStatus)) return false; // skip in-progress
+            // Same inclusion rule as the doctor statement page (Accounts.tsx):
+            // delivered/completed/cancelled/rejected/returned orders only —
+            // never an in-progress status (Ready, Under Production, Try In,
+            // etc.), which used to be silently counted as sold here.
+            if (!isDoctorStatementIncluded(o)) return false;
             const orderDate = o.deliveryDate || (o.createdAt || '').split('T')[0];
             if (start && orderDate < start) return false;
             if (end && orderDate > end) return false;
@@ -151,10 +152,16 @@ export default function StatementTab({
             const distinctServices = new Set(items.map((it: any) => it.serviceType as string));
             const isSingleService = distinctServices.size === 1;
 
-            const isRejected = (o.status as string) === 'Rejected';
-            // Rejected orders: revenue = 0 (sold for nothing);
-            // cost = rejectedLabCost (what was paid to lab) or fallback to order.cost
-            const effectiveTotalPrice = isRejected ? 0 : (o.totalPrice || 0);
+            // 'Rejected' alone is a legacy value no live order can have since
+            // migration 093 (renamed to 'Doctor Rejected' / 'Lab Rejected');
+            // checking only 'Rejected' meant this branch never fired for any
+            // current rejection.
+            const isRejected = ['Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(o.status as string);
+            // Revenue mirrors the doctor statement page exactly: full price
+            // for a normal delivered order, the settled rejection amount
+            // (once decided) for a rejected/redo order, 0 otherwise.
+            const effectiveTotalPrice = getDoctorReceivableAmount(o);
+            // Cost = rejectedLabCost (what was paid to lab) or fallback to order.cost
             const effectiveCost = isRejected
                 ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
                 : (o.cost || 0);
@@ -291,9 +298,11 @@ export default function StatementTab({
                 if (item.serviceType !== expandedService) return;
                 const count = Array.isArray(item.teethNumbers) ? item.teethNumbers.length : 1;
 
-                // Revenue from proportional distribution
+                // Revenue from proportional distribution (settlement-aware —
+                // same amount the doctor statement page would recognize)
+                const orderReceivable = getDoctorReceivableAmount(o);
                 const itemRevExp = expWeightTotal > 0
-                    ? ((o.totalPrice || 0) * expWeights[idx]) / expWeightTotal
+                    ? (orderReceivable * expWeights[idx]) / expWeightTotal
                     : 0;
                 const resolvedUnitPrice = count > 0 ? itemRevExp / count : 0;
 
@@ -317,7 +326,7 @@ export default function StatementTab({
                 }
 
                 items.push({
-                    id: `${o.caseId}-${item.serviceType}-${Math.random()}`,
+                    id: `${o.id}-${idx}`,
                     date: orderDate, caseId: o.caseId,
                     patientName: o.patientName,
                     doctorName: orderDocExp?.name || 'غير معروف',
@@ -365,15 +374,13 @@ export default function StatementTab({
     // Expense analytics: aggregate by category
     const expenseCategoryStats = useMemo(() => {
         if (targetType !== 'expense') return [];
-        const catMap = new Map<string, { total: number; count: number; items: any[]; monthlyMap: Map<string, number> }>();
+        const catMap = new Map<string, { total: number; count: number; items: any[] }>();
         expenseData.items.forEach((item: any) => {
-            if (!catMap.has(item.category)) catMap.set(item.category, { total: 0, count: 0, items: [], monthlyMap: new Map() });
+            if (!catMap.has(item.category)) catMap.set(item.category, { total: 0, count: 0, items: [] });
             const entry = catMap.get(item.category)!;
             entry.total += item.amount;
             entry.count++;
             entry.items.push(item);
-            const month = item.date.substring(0, 7); // YYYY-MM
-            entry.monthlyMap.set(month, (entry.monthlyMap.get(month) || 0) + item.amount);
         });
         const total = expenseData.totalAmount;
         return Array.from(catMap.entries())
@@ -382,13 +389,7 @@ export default function StatementTab({
                 total: d.total,
                 count: d.count,
                 share: total > 0 ? (d.total / total) * 100 : 0,
-                avgPerTx: d.count > 0 ? d.total / d.count : 0,
                 items: d.items,
-                peakMonth: Array.from(d.monthlyMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || '',
-                peakMonthAmount: Array.from(d.monthlyMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[1] || 0,
-                monthlyTrend: Array.from(d.monthlyMap.entries())
-                    .sort((a, b) => a[0].localeCompare(b[0]))
-                    .map(([month, amount]) => ({ month, amount })),
             }))
             .sort((a, b) => b.total - a.total);
     }, [expenseData, targetType]);
@@ -463,7 +464,7 @@ export default function StatementTab({
                 dRow.set(svc, (dRow.get(svc) || 0) + cnt);
                 serviceUnits.set(svc, (serviceUnits.get(svc) || 0) + cnt);
             });
-            doctorRevenue.set(dId, (doctorRevenue.get(dId) || 0) + (o.totalPrice || 0));
+            doctorRevenue.set(dId, (doctorRevenue.get(dId) || 0) + getDoctorReceivableAmount(o));
         });
 
         // Top 6 doctors by revenue
@@ -512,8 +513,6 @@ export default function StatementTab({
                 'إجمالي المصروف (ج.م)': Math.round(c.total),
                 '% من الإجمالي': c.share.toFixed(1) + '%',
                 'عدد الحركات': c.count,
-                'متوسط/حركة (ج.م)': Math.round(c.avgPerTx),
-                'أكثر شهر': c.peakMonth,
             })), `تحليل_المصروفات_${format(new Date(), 'yyyy-MM-dd')}`);
         }
     };
@@ -1059,65 +1058,61 @@ export default function StatementTab({
             {/* ===== EXPENSE TAB ===== */}
             {targetType === 'expense' && (
                 <>
-                    {/* KPI Cards */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-                            <div className="p-3 rounded-xl bg-rose-50 text-rose-600"><TrendingDown size={22} /></div>
-                            <div>
-                                <p className="text-xs text-gray-500 font-medium">إجمالي المصروفات</p>
-                                <h4 className="text-xl font-black">{Math.round(expenseData.totalAmount).toLocaleString()} <span className="text-xs font-normal text-gray-400">ج.م</span></h4>
+                    {/* KPI Cards — same gradient-card language as the Overview tab */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-gradient-to-br from-rose-50 to-white p-5 rounded-2xl border border-rose-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
+                            <div className="p-3 bg-rose-100 rounded-xl">
+                                <TrendingDown size={22} className="text-rose-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-rose-600 text-xs font-bold mb-1">إجمالي المصروفات</p>
+                                <p className="text-xl sm:text-2xl font-black text-rose-900 truncate">
+                                    {Math.round(expenseData.totalAmount).toLocaleString()}
+                                    <span className="text-xs font-normal text-rose-400 mr-1">ج.م</span>
+                                </p>
                             </div>
                         </div>
-                        {/* Expense to Revenue ratio */}
+
+                        {/* Expense vs. cash collections in the period */}
                         {(() => {
                             const ratio = totalIncomeForRatio > 0 ? (expenseData.totalAmount / totalIncomeForRatio) * 100 : 0;
                             const isHigh = ratio > 30;
                             return (
                                 <div className={clsx(
-                                    "bg-white p-5 rounded-2xl border shadow-sm flex items-center gap-3",
-                                    isHigh ? "border-rose-200" : ratio > 0 ? "border-emerald-100" : "border-gray-100"
-                                )}>
-                                    <div className={clsx(
-                                        "p-3 rounded-xl",
-                                        isHigh ? "bg-rose-50 text-rose-600" : ratio > 0 ? "bg-emerald-50 text-emerald-600" : "bg-gray-50 text-gray-400"
-                                    )}>
-                                        <BarChart3 size={22} />
+                                    "p-5 rounded-2xl border shadow-sm flex items-center gap-4 hover:shadow-md transition-all",
+                                    isHigh ? "bg-gradient-to-br from-rose-50 to-white border-rose-100" : "bg-gradient-to-br from-emerald-50 to-white border-emerald-100"
+                                )}
+                                    title="نسبة المصروفات إلى التحصيلات النقدية (مش المبيعات المحاسبية) خلال نفس الفترة">
+                                    <div className={clsx("p-3 rounded-xl", isHigh ? "bg-rose-100" : "bg-emerald-100")}>
+                                        <BarChart3 size={22} className={isHigh ? "text-rose-600" : "text-emerald-600"} />
                                     </div>
-                                    <div className="min-w-0">
-                                        <p className="text-xs text-gray-500 font-medium">% من الإيراد</p>
-                                        <h4 className="text-xl font-black">
+                                    <div className="flex-1 min-w-0">
+                                        <p className={clsx("text-xs font-bold mb-1", isHigh ? "text-rose-600" : "text-emerald-600")}>% من التحصيلات</p>
+                                        <p className={clsx("text-xl sm:text-2xl font-black truncate", isHigh ? "text-rose-900" : "text-emerald-900")}>
                                             {totalIncomeForRatio > 0 ? `${ratio.toFixed(1)}%` : '—'}
-                                            {totalIncomeForRatio > 0 && (
-                                                <span className={clsx("text-[10px] font-bold mr-1.5", isHigh ? "text-rose-500" : "text-emerald-500")}>
-                                                    {isHigh ? '↑ مرتفع' : '✓ مقبول'}
-                                                </span>
-                                            )}
-                                        </h4>
+                                        </p>
                                     </div>
                                 </div>
                             );
                         })()}
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-                            <div className="p-3 rounded-xl bg-slate-50 text-slate-600"><FileText size={22} /></div>
-                            <div>
-                                <p className="text-xs text-gray-500 font-medium">عدد الحركات</p>
-                                <h4 className="text-xl font-black">{expenseData.items.length}</h4>
+
+                        <div className="bg-gradient-to-br from-slate-50 to-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
+                            <div className="p-3 bg-slate-100 rounded-xl">
+                                <FileText size={22} className="text-slate-600" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-slate-600 text-xs font-bold mb-1">عدد الحركات</p>
+                                <p className="text-xl sm:text-2xl font-black text-slate-900">{expenseData.items.length}</p>
                             </div>
                         </div>
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-                            <div className="p-3 rounded-xl bg-amber-50 text-amber-600"><BarChart3 size={22} /></div>
-                            <div>
-                                <p className="text-xs text-gray-500 font-medium">عدد الفئات</p>
-                                <h4 className="text-xl font-black">{expenseCategoryStats.length}</h4>
+
+                        <div className="bg-gradient-to-br from-amber-50 to-white p-5 rounded-2xl border border-amber-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
+                            <div className="p-3 bg-amber-100 rounded-xl">
+                                <BarChart3 size={22} className="text-amber-600" />
                             </div>
-                        </div>
-                        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-3">
-                            <div className="p-3 rounded-xl bg-blue-50 text-blue-600"><DollarSign size={22} /></div>
-                            <div>
-                                <p className="text-xs text-gray-500 font-medium">متوسط/حركة</p>
-                                <h4 className="text-xl font-black">
-                                    {expenseData.items.length > 0 ? Math.round(expenseData.totalAmount / expenseData.items.length).toLocaleString() : '—'} <span className="text-xs font-normal text-gray-400">ج.م</span>
-                                </h4>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-amber-600 text-xs font-bold mb-1">عدد الفئات</p>
+                                <p className="text-xl sm:text-2xl font-black text-amber-900">{expenseCategoryStats.length}</p>
                             </div>
                         </div>
                     </div>
@@ -1150,8 +1145,6 @@ export default function StatementTab({
                                             <th className="p-3 font-semibold text-center">إجمالي المصروف</th>
                                             <th className="p-3 font-semibold text-center">% من الإجمالي</th>
                                             <th className="p-3 font-semibold text-center">عدد الحركات</th>
-                                            <th className="p-3 font-semibold text-center">متوسط/حركة</th>
-                                            <th className="p-3 font-semibold text-center">أكثر شهر إنفاقاً</th>
                                             <th className="p-3 font-semibold text-center">تفاصيل</th>
                                         </tr>
                                     </thead>
@@ -1183,41 +1176,6 @@ export default function StatementTab({
                                                             <span className="bg-slate-50 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-sm">{cat.count}</span>
                                                         </td>
                                                         <td className="p-3 text-center">
-                                                            <span className="bg-amber-50 text-amber-700 font-bold px-2 py-1 rounded-lg text-sm">
-                                                                {Math.round(cat.avgPerTx).toLocaleString()} ج.م
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-3 text-center">
-                                                            {cat.peakMonth ? (
-                                                                <div className="flex flex-col items-center gap-1.5">
-                                                                    <div>
-                                                                        <p className="font-bold text-slate-700 text-xs">{cat.peakMonth}</p>
-                                                                        <p className="text-[10px] text-gray-400">{Math.round(cat.peakMonthAmount).toLocaleString()} ج.م</p>
-                                                                    </div>
-                                                                    {/* Sparkline — last 6 months */}
-                                                                    {cat.monthlyTrend.length > 1 && (() => {
-                                                                        const last = cat.monthlyTrend.slice(-6);
-                                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                                        const maxAmt = Math.max(...last.map((x: any) => x.amount));
-                                                                        return (
-                                                                            <div className="flex items-end gap-0.5 h-6" title="تطور آخر 6 شهور">
-                                                                                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                                                                                {last.map((m: any, i: number) => {
-                                                                                    const h = maxAmt > 0 ? Math.max(8, Math.round((m.amount / maxAmt) * 100)) : 8;
-                                                                                    return (
-                                                                                        // eslint-disable-next-line
-                                                                                        <div key={i} className="w-1.5 bg-rose-300 rounded-sm hover:bg-rose-500 transition-all"
-                                                                                            style={{ height: `${h}%` }}
-                                                                                            title={`${m.month}: ${Math.round(m.amount).toLocaleString()} ج.م`} />
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        );
-                                                                    })()}
-                                                                </div>
-                                                            ) : <span className="text-gray-300">—</span>}
-                                                        </td>
-                                                        <td className="p-3 text-center">
                                                             <button onClick={() => setExpandedExpenseCategory(isExpanded ? null : cat.category)}
                                                                 className={clsx("px-3 py-1.5 rounded-xl text-xs font-bold transition-all border",
                                                                     isExpanded ? "bg-rose-600 text-white border-rose-600" : "bg-white border-gray-200 text-gray-600 hover:border-rose-300 hover:text-rose-600")}>
@@ -1229,7 +1187,7 @@ export default function StatementTab({
                                                     {/* Expanded detail rows for this category */}
                                                     {isExpanded && (
                                                         <tr key={`exp-${cat.category}`}>
-                                                            <td colSpan={8} className="bg-slate-50 border-t-2 border-rose-200 p-0">
+                                                            <td colSpan={6} className="bg-slate-50 border-t-2 border-rose-200 p-0">
                                                                 <div className="p-5">
                                                                     <p className="font-bold text-sm text-slate-700 mb-3 flex items-center gap-2">
                                                                         <FileText size={14} className="text-rose-500" />
@@ -1276,7 +1234,7 @@ export default function StatementTab({
                                             <td className="p-4 text-center font-black text-rose-300">{Math.round(expenseData.totalAmount).toLocaleString()} ج.م</td>
                                             <td className="p-4 text-center font-bold">100%</td>
                                             <td className="p-4 text-center font-bold text-slate-300">{expenseData.items.length} حركة</td>
-                                            <td colSpan={3} className="p-4"></td>
+                                            <td className="p-4"></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -1284,56 +1242,39 @@ export default function StatementTab({
                         </div>
                     )}
 
-                    {/* Insights */}
+                    {/* Biggest spending category */}
                     {expenseCategoryStats.length > 1 && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 flex items-start gap-4">
-                                <div className="p-2.5 bg-rose-100 rounded-xl flex-shrink-0"><TrendingDown size={20} className="text-rose-600" /></div>
-                                <div>
-                                    <p className="font-bold text-rose-800 text-sm mb-1">🔴 أكبر فئة إنفاق</p>
-                                    <p className="text-rose-900 font-black text-lg">{expenseCategoryStats[0].category}</p>
-                                    <p className="text-rose-700 text-sm">
-                                        {Math.round(expenseCategoryStats[0].total).toLocaleString()} ج.م
-                                        · {expenseCategoryStats[0].share.toFixed(1)}% من الإجمالي
-                                        · {expenseCategoryStats[0].count} حركة
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
-                                <div className="p-2.5 bg-amber-100 rounded-xl flex-shrink-0"><Star size={20} className="text-amber-600" /></div>
-                                <div>
-                                    <p className="font-bold text-amber-800 text-sm mb-1">📊 أعلى متوسط/حركة</p>
-                                    {(() => {
-                                        const highest = [...expenseCategoryStats].sort((a: any, b: any) => b.avgPerTx - a.avgPerTx)[0];
-                                        return highest ? (
-                                            <>
-                                                <p className="text-amber-900 font-black text-lg">{highest.category}</p>
-                                                <p className="text-amber-700 text-sm">متوسط {Math.round(highest.avgPerTx).toLocaleString()} ج.م/حركة</p>
-                                            </>
-                                        ) : null;
-                                    })()}
-                                </div>
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-5 flex items-start gap-4">
+                            <div className="p-2.5 bg-rose-100 rounded-xl flex-shrink-0"><TrendingDown size={20} className="text-rose-600" /></div>
+                            <div>
+                                <p className="font-bold text-rose-800 text-sm mb-1">أكبر فئة إنفاق</p>
+                                <p className="text-rose-900 font-black text-lg">{expenseCategoryStats[0].category}</p>
+                                <p className="text-rose-700 text-sm">
+                                    {Math.round(expenseCategoryStats[0].total).toLocaleString()} ج.م
+                                    · {expenseCategoryStats[0].share.toFixed(1)}% من الإجمالي
+                                    · {expenseCategoryStats[0].count} حركة
+                                </p>
                             </div>
                         </div>
                     )}
 
                     {/* Non-operational payments (Suppliers + Designers) */}
                     {(nonOperationalPayments.supplierTotal > 0 || nonOperationalPayments.designerTotal > 0) && (
-                        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
                             <div className="flex items-center gap-2 mb-3">
                                 <DollarSign size={18} className="text-slate-500" />
                                 <h4 className="font-bold text-slate-700">المدفوعات للموردين والمصممين</h4>
                                 <span className="text-xs text-slate-400">(غير تشغيلية — مستبعدة من الجدول أعلاه)</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                                <div className="bg-gradient-to-br from-slate-50 to-white p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                                     <div>
                                         <p className="text-xs text-slate-500 mb-1">مدفوعات الموردين</p>
                                         <p className="text-xl font-black text-slate-800">{Math.round(nonOperationalPayments.supplierTotal).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
                                     </div>
                                     <span className="bg-slate-100 text-slate-700 font-bold px-2.5 py-1 rounded-lg text-xs">{nonOperationalPayments.supplierCount} حركة</span>
                                 </div>
-                                <div className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                                <div className="bg-gradient-to-br from-slate-50 to-white p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                                     <div>
                                         <p className="text-xs text-slate-500 mb-1">مدفوعات المصممين</p>
                                         <p className="text-xl font-black text-slate-800">{Math.round(nonOperationalPayments.designerTotal).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>

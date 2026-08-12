@@ -22,6 +22,8 @@ export interface AnalyticsSummary {
     // Order metrics
     total_sales_value: number;
     total_cost_of_goods: number;
+    total_cost_of_goods_suppliers: number;
+    total_cost_of_goods_designers: number;
     completed_order_count: number;
     active_order_count: number;
     doctor_rejected_count: number;
@@ -51,6 +53,8 @@ export interface AnalyticsSummary {
 
     // Accounts payable
     total_payables: number;
+    total_payables_suppliers: number;
+    total_payables_designers: number;
 }
 
 export interface TopDoctor {
@@ -85,16 +89,6 @@ export interface DoctorReceivable {
     unpaidOrderCount: number;
     oldestUnpaidDate: string | null;
     maxDaysOverdue: number | null;
-}
-
-export interface FinanceDashboard {
-    total_income: number;
-    production_costs: number;
-    operating_expenses: number;
-    total_capital: number;
-    total_assets: number;
-    starting_balance: number;
-    current_balance: number;
 }
 
 // ─── SERVICE ─────────────────────────────────────────────────────
@@ -190,20 +184,5 @@ export const analyticsService = {
         }
 
         return (data || []) as unknown as DoctorReceivable[];
-    },
-
-    /**
-     * Fetches the Finance dashboard summary.
-     * Includes capital, assets, starting balance, current balance.
-     */
-    async getFinanceDashboard(): Promise<FinanceDashboard> {
-        const { data, error } = await supabase.rpc('get_finance_dashboard');
-
-        if (error) {
-            console.error('Error fetching finance dashboard:', error);
-            throw error;
-        }
-
-        return data as unknown as FinanceDashboard;
     },
 };

@@ -51,7 +51,7 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to determine current branch."
     }
-    Write-Info "Deploying from branch: $branch"
+    Write-Info "Deploying from local branch '$branch' -> will push to origin/master"
 
     # 1. Run Typecheck
     Write-Info "[1/5] Running typecheck..."
@@ -113,15 +113,17 @@ try {
         }
     }
 
-    # Git Push
-    Write-Info "Pushing to remote..."
-    git push origin HEAD
+    # Git Push — always lands on origin/master regardless of which local
+    # branch is currently checked out, since production deploys are wired to
+    # the master branch.
+    Write-Info "Pushing local HEAD to origin/master..."
+    git push origin HEAD:master
     if ($LASTEXITCODE -ne 0) {
-        throw "Push failed. Please check your internet connection or git credentials."
+        throw "Push to master failed. If this is a non-fast-forward rejection, pull/rebase onto the latest origin/master first."
     }
 
     Write-Success "Deployment completed successfully."
-    Write-Info "Changes are pushed to remote repo. Your online deployment should trigger automatically."
+    Write-Info "Changes are pushed to origin/master. Your online deployment should trigger automatically."
 }
 catch {
     Write-ErrorMsg "Deployment failed: $_"
