@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { resolveOpenDateRange } from '../../utils/dateRange';
 import {
     previewFinancialReconciliation,
     type FinancialReconciliationPreviewRow,
@@ -147,7 +148,7 @@ export function classifyFinancialSnapshotIssues(
 
 export async function getFullFinancialReconciliationPreview(
     periodStart: string | undefined,
-    periodEnd: string
+    periodEnd: string | undefined
 ): Promise<FinancialReconciliationPreviewResult> {
     const pageSize = 100;
     let page = 1;
@@ -185,21 +186,22 @@ export async function getFullFinancialReconciliationPreview(
 }
 
 export async function buildFinancialSnapshotPayload(
-    periodStart: string,
-    periodEnd: string
+    periodStart?: string,
+    periodEnd?: string
 ): Promise<{
     payload: FinancialSnapshotPayload;
     issues: FinancialSnapshotIssueSummary;
 }> {
+    const resolvedPeriod = resolveOpenDateRange({ start: periodStart, end: periodEnd });
     const [closingPreview, periodActivityPreview] = await Promise.all([
-        getFullFinancialReconciliationPreview(undefined, periodEnd),
-        getFullFinancialReconciliationPreview(periodStart, periodEnd),
+        getFullFinancialReconciliationPreview(undefined, resolvedPeriod.end),
+        getFullFinancialReconciliationPreview(resolvedPeriod.start, resolvedPeriod.end),
     ]);
     const payload: FinancialSnapshotPayload = {
         generatedAt: new Date().toISOString(),
         formulaVersion: 'canonical-v1',
-        periodStart,
-        periodEnd,
+        periodStart: resolvedPeriod.start,
+        periodEnd: resolvedPeriod.end,
         closing: {
             basis: 'cumulative-through-period-end',
             summary: closingPreview.summary,

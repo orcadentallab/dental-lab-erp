@@ -22,6 +22,7 @@ import * as XLSX from 'xlsx';
 import clsx from 'clsx';
 import type { AccountingReviewChange, Order, Doctor, Supplier, User as DbUser } from '../services/db';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment } from '../utils/orderDisplay';
+import { isDateInOpenRange } from '../utils/dateRange';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../lib/userRoles';
 import { getLabCostMetadata } from '../constants/financialObligations';
 import {
@@ -334,10 +335,9 @@ export default function CaseRegistration() {
             (supplierFilter === 'internal' ? !order.supplierId : order.supplierId === supplierFilter);
         
         const orderDate = order.deliveryDate || (order.createdAt ? order.createdAt.split('T')[0] : '');
-        const matchesDateFrom = !dateFrom || orderDate >= dateFrom;
-        const matchesDateTo = !dateTo || orderDate <= dateTo;
+        const matchesDate = isDateInOpenRange(orderDate, { start: dateFrom, end: dateTo });
 
-        return matchesSearch && matchesDoctor && matchesSupplier && matchesDateFrom && matchesDateTo;
+        return matchesSearch && matchesDoctor && matchesSupplier && matchesDate;
     });
     const bulkSelectableOrders = filteredOrders.filter(order =>
         !(activeTab === 'pending' && order.status === 'Cancelled')

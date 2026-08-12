@@ -19,6 +19,7 @@ import {
     Calendar, X, Receipt, ChevronLeft, ChevronRight, FileText
 } from 'lucide-react';
 import clsx from 'clsx';
+import { isDateInOpenRange } from '../utils/dateRange';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -82,14 +83,6 @@ const getDateRange = (filter: TimeFilter, custom: { start: string; end: string }
         default:
             return { start: '', end: '' };
     }
-};
-
-const isInRange = (dateStr: string, start: string, end: string) => {
-    const d = (dateStr || '').split('T')[0];
-    if (!d) return false;
-    if (start && d < start) return false;
-    if (end && d > end) return false;
-    return true;
 };
 
 const isVisible = (order: Partial<Order>, showAll: boolean = false) => {
@@ -301,7 +294,7 @@ export default function StatementsPage() {
     const summaries = useMemo((): EntitySummary[] => {
         if (loading) return [];
         const { start, end } = dateRange;
-        const inRange = (d: string) => isInRange(d, start, end);
+        const inRange = (d: string) => isDateInOpenRange(d, { start, end });
 
         if (activeTab === 'doctors') {
             const workMap = new Map<string, number>();
@@ -427,7 +420,7 @@ export default function StatementsPage() {
     const statementLines = useMemo((): StatementLineItem[] => {
         if (!selectedId || viewMode !== 'statement') return [];
         const { start, end } = dateRange;
-        const inRange = (d: string) => isInRange(d, start, end);
+        const inRange = (d: string) => isDateInOpenRange(d, { start, end });
         const lines: Omit<StatementLineItem, 'runningBalance'>[] = [];
 
         if (activeTab === 'doctors') {

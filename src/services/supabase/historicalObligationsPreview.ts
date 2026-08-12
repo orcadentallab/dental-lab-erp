@@ -16,6 +16,7 @@ import {
 import { BILLING_ENTITY_TYPES } from '../../constants/billingSettings';
 import { ErrorHandler } from '../../lib/errorHandler';
 import type { Order } from '../db';
+import { isDateInOpenRange } from '../../utils/dateRange';
 
 export type HistoricalObligationsPreviewEntityType = 'all' | 'doctor' | 'external_lab';
 export type HistoricalObligationsPreviewRowType = 'all' | 'missing_obligation' | 'missing_data_warning';
@@ -354,8 +355,7 @@ function filterPreviewRows(
     return rows.filter(row => {
         if (params.entityType && params.entityType !== 'all' && row.entityType !== params.entityType) return false;
         if (params.rowType && params.rowType !== 'all' && row.rowType !== params.rowType) return false;
-        if (params.dateFrom && row.date < params.dateFrom) return false;
-        if (params.dateTo && row.date > params.dateTo) return false;
+        if (!isDateInOpenRange(row.date, { start: params.dateFrom, end: params.dateTo })) return false;
         return true;
     });
 }

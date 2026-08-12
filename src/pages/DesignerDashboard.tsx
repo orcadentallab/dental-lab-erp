@@ -10,6 +10,7 @@ import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
+import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 
@@ -390,13 +391,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 order.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 order.caseId.toString().includes(searchQuery);
 
-            let matchesDate = true;
-            if (dateRange.start) {
-                matchesDate = matchesDate && new Date(order.createdAt) >= new Date(dateRange.start);
-            }
-            if (dateRange.end) {
-                matchesDate = matchesDate && new Date(order.createdAt) <= new Date(dateRange.end);
-            }
+            const matchesDate = isDateInOpenRange(order.createdAt, dateRange);
 
             return matchesStatus && matchesDesigner && matchesSearch && matchesDate;
         });

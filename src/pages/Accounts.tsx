@@ -20,6 +20,7 @@ import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { matchArabic } from '../lib/searchUtils';
+import { formatOpenDateRangeLabel, isDateInOpenRange } from '../utils/dateRange';
 
 interface StatementItem {
     id: string;
@@ -413,14 +414,11 @@ export default function Accounts() {
         const doctorParentById = new Map(doctors.map(d => [d.id, d.parentId || d.id]));
         const getDoctorSummaryId = (doctorId: string) => doctorParentById.get(doctorId) || doctorId;
         const isInSelectedRange = (date?: string) => {
-            const day = (date || '').split('T')[0];
-            if (!day) {
+            if (!(date || '').split('T')[0]) {
                 // No date on the order — include it only when no date range is active (all-dates mode)
                 return !dateRange.start && !dateRange.end;
             }
-            if (dateRange.start && day < dateRange.start) return false;
-            if (dateRange.end && day > dateRange.end) return false;
-            return true;
+            return isDateInOpenRange(date, dateRange);
         };
 
         // 1. Pre-aggregate Orders by Entity ID (O(Orders))
@@ -2123,12 +2121,10 @@ export default function Accounts() {
                         <img src="/orca-logo.png" alt="ORCA Dental Lab" className="h-14 mb-3" />
                         <h1 className="text-2xl font-black text-gray-900">كشف حساب تفصيلي</h1>
                         <p className="text-gray-500 text-sm mt-1">
-                            {dateRange.start && dateRange.end
-                                ? `الفترة من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} إلى ${new Date(dateRange.end).toLocaleDateString('ar-EG')} `
-                                : dateRange.start
-                                    ? `من ${new Date(dateRange.start).toLocaleDateString('ar-EG')} حتى الآن`
-                                    : 'جميع المعاملات'
-                            }
+                            {formatOpenDateRangeLabel(
+                                dateRange,
+                                value => new Date(value).toLocaleDateString('ar-EG')
+                            )}
                         </p>
                     </div>
                     <div className="text-left">

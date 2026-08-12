@@ -8,13 +8,12 @@ import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../services/db';
+import { formatOpenDateRangeLabel } from '../utils/dateRange';
 
 type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis';
 
 const ANALYTICS_TAB_STORAGE_KEY = 'analytics_active_tab';
 const ANALYTICS_TABS: AnalyticsTab[] = ['overview', 'financial', 'service_analysis', 'expense_analysis'];
-const EARLIEST_REPORT_DATE = '0001-01-01';
-const LATEST_REPORT_DATE = '9999-12-31';
 
 const getInitialAnalyticsTab = (): AnalyticsTab => {
     const savedTab = sessionStorage.getItem(ANALYTICS_TAB_STORAGE_KEY);
@@ -191,6 +190,10 @@ export default function Analytics() {
     });
 
     const [isLoading, setIsLoading] = useState(true);
+    // Date inputs can change quickly (open custom filter, then set one or
+    // both boundaries). Ignore slower responses from older ranges so an
+    // earlier "all time" request can never overwrite the latest filter.
+    const analyticsRequestId = useRef(0);
 
     // Date Range Logic - use useMemo instead of useEffect to derive dates
 
@@ -277,20 +280,13 @@ export default function Analytics() {
      * - Paginated order browsing uses getOrders(page, limit, filters)
      */
     const calculateStats = useCallback(async () => {
+        const requestId = ++analyticsRequestId.current;
         setIsLoading(true);
         try {
-            // The reporting RPCs were originally written for either two
-            // bounds or no bounds. Use safe open-ended sentinels when the
-            // user supplies only one side of a custom range:
-            //   no start => everything up to the selected end
-            //   no end   => everything from the selected start onward
-            const hasAnyBoundary = Boolean(startDate || endDate);
-            const rpcStart = dateRange === 'all' || !hasAnyBoundary
-                ? undefined
-                : startDate || EARLIEST_REPORT_DATE;
-            const rpcEnd = dateRange === 'all' || !hasAnyBoundary
-                ? undefined
-                : endDate || LATEST_REPORT_DATE;
+            // Each boundary is optional. The guarded reporting RPC wrappers
+            // normalize a missing side to an open-ended PostgreSQL date.
+            const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
+            const rpcEnd = dateRange === 'all' ? undefined : endDate || undefined;
 
             // 4 lightweight RPC calls instead of 3 massive SELECTs
             const [summary, doctors, services, allServices, expenseCategories] = await Promise.all([
@@ -300,6 +296,8 @@ export default function Analytics() {
                 analyticsService.getTopServices(rpcStart, rpcEnd, 5000), // Fetch all active services to compute true totals
                 analyticsService.getTopExpenseCategories(rpcStart, rpcEnd, 1) // Only need the top 1
             ]);
+
+            if (requestId !== analyticsRequestId.current) return;
 
             // Derive values from the compact JSON response
             const grossProfit = summary.total_sales_value - summary.total_cost_of_goods;
@@ -403,9 +401,13 @@ export default function Analytics() {
             });
 
         } catch (error) {
-            console.error('Error loading analytics:', error);
+            if (requestId === analyticsRequestId.current) {
+                console.error('Error loading analytics:', error);
+            }
         } finally {
-            setIsLoading(false);
+            if (requestId === analyticsRequestId.current) {
+                setIsLoading(false);
+            }
         }
     }, [startDate, endDate, dateRange]);
 
@@ -448,13 +450,7 @@ export default function Analytics() {
     };
 
     const activeDateRangeLabel = dateRange === 'custom'
-        ? startDate && endDate
-            ? `${startDate} → ${endDate}`
-            : startDate
-                ? `من ${startDate} حتى آخر السجلات`
-                : endDate
-                    ? `من أول السجلات حتى ${endDate}`
-                    : 'كل الأوقات'
+        ? formatOpenDateRangeLabel({ start: startDate, end: endDate })
         : dateRangeLabels[dateRange];
 
     return (

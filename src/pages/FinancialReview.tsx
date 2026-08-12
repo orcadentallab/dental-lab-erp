@@ -10,6 +10,12 @@ import {
     type FinancialSnapshotIssueSummary,
     type FinancialSnapshotPayload,
 } from '../services/supabase/financialSnapshots';
+import {
+    formatOpenDateRangeLabel,
+    isOpenDateRangeValid,
+    OPEN_DATE_RANGE_END,
+    OPEN_DATE_RANGE_START,
+} from '../utils/dateRange';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => {
@@ -35,6 +41,11 @@ const warningFlagLabel: Record<string, string> = {
     data_missing: 'بيانات مالية ناقصة',
     account_closing_or_dispute_settlement_needed: 'الحساب يحتاج إقفالًا أو تسوية نزاع',
 };
+
+const formatStoredRange = (start: string, end: string) => formatOpenDateRangeLabel({
+    start: start === OPEN_DATE_RANGE_START ? undefined : start,
+    end: end === OPEN_DATE_RANGE_END ? undefined : end,
+});
 
 export default function FinancialReview() {
     const { user } = useAuth();
@@ -81,8 +92,8 @@ export default function FinancialReview() {
         setMessage(null);
         try {
             await createFinancialSnapshot({
-                periodStart,
-                periodEnd,
+                periodStart: payload.periodStart,
+                periodEnd: payload.periodEnd,
                 label,
                 payload,
                 issues,
@@ -175,7 +186,7 @@ export default function FinancialReview() {
                     <button
                         type="button"
                         onClick={runPreview}
-                        disabled={loading || !periodStart || !periodEnd || periodStart > periodEnd}
+                        disabled={loading || !isOpenDateRangeValid({ start: periodStart, end: periodEnd })}
                         className="rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white disabled:opacity-50"
                     >
                         {loading ? 'جاري المراجعة...' : 'إنشاء مقارنة'}
@@ -190,6 +201,10 @@ export default function FinancialReview() {
                         </button>
                     )}
                 </div>
+
+                <p className="mt-2 text-xs text-gray-500">
+                    {formatOpenDateRangeLabel({ start: periodStart, end: periodEnd })}
+                </p>
 
                 {message && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
                 {error && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
@@ -253,7 +268,9 @@ export default function FinancialReview() {
                     </section>
 
                     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                        <h2 className="font-bold text-gray-900">الرصيد الختامي التراكمي حتى {periodEnd}</h2>
+                        <h2 className="font-bold text-gray-900">
+                            الرصيد الختامي التراكمي — {formatOpenDateRangeLabel({ end: periodEnd })}
+                        </h2>
                         <div className="mt-3 flex flex-wrap gap-2 text-sm">
                             <Badge>أطباء: {groupedCounts.doctors}</Badge>
                             <Badge>موردون: {groupedCounts.suppliers}</Badge>
@@ -386,7 +403,7 @@ export default function FinancialReview() {
                             <div>
                                 <p className="font-bold text-gray-900">{snapshot.label}</p>
                                 <p className="mt-1 text-xs text-gray-500">
-                                    {snapshot.periodStart} — {snapshot.periodEnd} · {snapshot.formulaVersion}
+                                    {formatStoredRange(snapshot.periodStart, snapshot.periodEnd)} · {snapshot.formulaVersion}
                                 </p>
                                 <div className="mt-2 flex gap-2 text-xs">
                                     <Badge danger={snapshot.criticalIssueCount > 0}>حرج: {snapshot.criticalIssueCount}</Badge>

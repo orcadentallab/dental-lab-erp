@@ -1,5 +1,6 @@
 import type { Order, Transaction } from './db';
 import type { Adjustment } from './financeService';
+import { isDateInOpenRange } from '../utils/dateRange';
 import {
     getDoctorOrderDisplayAmount,
     getDoctorReceivableAmount,
@@ -110,8 +111,7 @@ export const statementService = {
             if (o.isDeleted) return false;
             const sortDate = getOfficialStatementDate(o);
 
-            if (startDate && sortDate < startDate) return false;
-            if (endDate && sortDate > endDate) return false;
+            if (!isDateInOpenRange(sortDate, { start: startDate, end: endDate })) return false;
 
             // In detailed view, we often show Rejected for reference, but usually with 0 amount.
             // Accounts.tsx: "if (showAllOrders) return true; ... if (o.status === 'Rejected') return false;"
@@ -145,8 +145,7 @@ export const statementService = {
             (t.entityType === 'doctor' || !t.entityType) &&
             t.entityId === doctorId &&
             t.type === 'income' &&
-            (!startDate || t.date.split('T')[0] >= startDate) &&
-            (!endDate || t.date.split('T')[0] <= endDate)
+            isDateInOpenRange(t.date, { start: startDate, end: endDate })
         );
 
         items = items.concat(periodTransactions.map(t => ({
@@ -162,8 +161,7 @@ export const statementService = {
             const periodAdjs = allAdjustments.filter(a =>
                 a.entity_type === 'doctor' &&
                 a.entity_id === doctorId &&
-                (!startDate || a.date >= startDate) &&
-                (!endDate || a.date <= endDate)
+                isDateInOpenRange(a.date, { start: startDate, end: endDate })
             );
             items = items.concat(periodAdjs.map(a => ({
                 id: a.id,

@@ -21,6 +21,7 @@ import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
 import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate } from '../../constants/orderLifecycle';
+import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 interface StatementTabProps {
     type: 'service' | 'expense';
@@ -125,8 +126,7 @@ export default function StatementTab({
             // order scheduled for one month but delivered the next must
             // land in the month it really happened, matching the RPC.
             const orderDate = getOfficialStatementDate(o);
-            if (start && orderDate < start) return false;
-            if (end && orderDate > end) return false;
+            if (!isDateInOpenRange(orderDate, { start, end })) return false;
             if (selectedDoctorId && o.doctorId !== selectedDoctorId) return false;
             return true;
         });
@@ -364,8 +364,7 @@ export default function StatementTab({
             if ((t as any).status === 'rejected') return false;
             if ((t.category || '').startsWith('#')) return false;
             const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
-            if (start && txDate < start) return false;
-            if (end && txDate > end) return false;
+            if (!isDateInOpenRange(txDate, { start, end })) return false;
             if (selectedExpenseCategory && normalizeExpenseCategory(t.category) !== selectedExpenseCategory) return false;
             return true;
         }).forEach(t => {
@@ -422,8 +421,7 @@ export default function StatementTab({
             if ((t as any).status === 'rejected') return;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
-            if (start && txDate < start) return;
-            if (end && txDate > end) return;
+            if (!isDateInOpenRange(txDate, { start, end })) return;
             if (t.category === 'supplier_payment') { supplierTotal += t.amount; supplierCount++; }
             else if (t.category === 'designer_payment') { designerTotal += t.amount; designerCount++; }
         });
@@ -442,8 +440,7 @@ export default function StatementTab({
                 if ((t as any).status === 'rejected') return false;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
-                if (start && txDate < start) return false;
-                if (end && txDate > end) return false;
+                if (!isDateInOpenRange(txDate, { start, end })) return false;
                 return true;
             })
             .reduce((s, t) => s + (t.amount || 0), 0);
@@ -564,11 +561,10 @@ export default function StatementTab({
                         <BarChart3 size={14} className="text-blue-600" />
                         <span className="text-xs font-bold text-blue-700">الفترة الزمنية:</span>
                         <span className="text-xs font-bold text-blue-900">
-                            {externalRangeLabel || (
-                                externalStartDate && externalEndDate
-                                    ? `${externalStartDate} → ${externalEndDate}`
-                                    : 'كل الأوقات'
-                            )}
+                            {externalRangeLabel || formatOpenDateRangeLabel({
+                                start: externalStartDate,
+                                end: externalEndDate,
+                            })}
                         </span>
                         <span className="text-[10px] text-blue-500 mr-2">(من فلتر الصفحة الرئيسي)</span>
                     </div>
@@ -611,6 +607,9 @@ export default function StatementTab({
                                     onChange={e => setCustomDateRange(p => ({ ...p, end: e.target.value }))}
                                     className="w-full bg-white border border-gray-200 text-sm rounded-lg p-2.5" />
                             </div>
+                            <p className="mt-1 text-[11px] text-gray-400">
+                                يمكن ترك أي طرف فارغًا ليبقى النطاق مفتوحًا.
+                            </p>
                         </div>
                     )}
 

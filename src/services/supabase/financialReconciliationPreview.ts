@@ -4,6 +4,7 @@ import type { Adjustment } from '../financeService';
 import type { Order } from '../db';
 import { getLabCostMetadata } from '../../constants/financialObligations';
 import { isVisibleInAccountStatement as isVisibleInAccountStatementHelper, isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
+import { isDateInOpenRange } from '../../utils/dateRange';
 
 export type FinancialReconciliationEntityType = 'all' | 'doctor' | 'external_lab' | 'designer';
 
@@ -191,11 +192,7 @@ async function getSupabaseClient() {
 const dateOnly = (value?: string | null) => (value || '').split('T')[0];
 
 function isInRange(date: string, params: FinancialReconciliationPreviewParams): boolean {
-    const day = dateOnly(date);
-    if (!day) return false;
-    if (params.dateFrom && day < params.dateFrom) return false;
-    if (params.dateTo && day > params.dateTo) return false;
-    return true;
+    return isDateInOpenRange(date, { start: params.dateFrom, end: params.dateTo });
 }
 
 function addTo(map: Map<string, number>, key: string | null | undefined, amount: number): void {
