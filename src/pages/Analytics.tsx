@@ -90,8 +90,13 @@ export default function Analytics() {
         activeOrders: 0,
         totalUnits: 0,
         totalUnitsRevenue: 0,
-        returnCount: 0,
+        doctorRejectedCount: 0,
+        labRejectedCount: 0,
+        returnedCount: 0,
         redoCount: 0,
+        rejectedCount: 0,
+        otherIssuesCount: 0,
+        issueCount: 0,
         redoCost: 0,
         urgentCount: 0,
         topExpenseCategory: '',
@@ -275,13 +280,22 @@ export default function Analytics() {
                 netProfit,
                 operatingExpenses: summary.operating_expenses,
                 productionCosts: summary.production_costs,
-                pendingRevenue: summary.total_sales_value - summary.total_income,
+                pendingRevenue: summary.pending_revenue_period,
                 orderCount: summary.total_order_count, // Use total instead of just completed
                 activeOrders: summary.active_order_count,
                 totalUnits,
                 totalUnitsRevenue,
-                returnCount: summary.return_count,
+                doctorRejectedCount: summary.doctor_rejected_count,
+                labRejectedCount: summary.lab_rejected_count,
+                returnedCount: summary.returned_count,
                 redoCount: summary.redo_count,
+                // "رفض" = doctor-driven rejections only (Doctor Rejected + redo).
+                // Lab Rejected / Returned for Adjustments are lab-internal "issues",
+                // not rejections — kept separate per product definition.
+                rejectedCount: summary.doctor_rejected_count + summary.redo_count,
+                otherIssuesCount: summary.lab_rejected_count + summary.returned_count,
+                issueCount: summary.doctor_rejected_count + summary.redo_count
+                    + summary.lab_rejected_count + summary.returned_count,
                 redoCost: summary.redo_cost,
                 urgentCount: summary.urgent_count,
                 topExpenseCategory,
@@ -568,7 +582,7 @@ export default function Analytics() {
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         {/* Pending Revenue */}
                         <div className="bg-gradient-to-br from-amber-50 to-white p-5 rounded-2xl border border-amber-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
-                            title="إيراد الأعمال المسلّمة اللي فلوسها لسه ما اتحصّلتش = إجمالي المبيعات المسلّمة ناقص التحصيلات الفعلية">
+                            title="الرصيد اللي لسه ما اتحصّلش من قيمة الحالات المسلّمة في الفترة المختارة (بيُحتسب بترتيب الأقدم أولاً)">
                             <div className="p-3 bg-amber-100 rounded-xl">
                                 <CreditCard size={22} className="text-amber-600" />
                             </div>
@@ -578,17 +592,18 @@ export default function Analytics() {
                                     {Math.round(stats.pendingRevenue).toLocaleString()}
                                     <span className="text-xs font-normal text-amber-400 mr-1">ج.م</span>
                                 </p>
-                                <p className="text-[10px] text-amber-500 mt-0.5">مبيعات مسلّمة − تحصيلات فعلية</p>
+                                <p className="text-[10px] text-amber-500 mt-0.5">غير محصّل من مبيعات هذه الفترة</p>
                             </div>
                         </div>
 
-                        {/* Production Cost */}
-                        <div className="bg-gradient-to-br from-purple-50 to-white p-5 rounded-2xl border border-purple-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all">
+                        {/* Supplier & Designer Payments (period cashflow, not accrual production cost) */}
+                        <div className="bg-gradient-to-br from-purple-50 to-white p-5 rounded-2xl border border-purple-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
+                            title="التدفق النقدي الفعلي المدفوع للموردين والمصممين خلال الفترة — مش تكلفة إنتاج الحالات محاسبياً">
                             <div className="p-3 bg-purple-100 rounded-xl">
                                 <Package size={22} className="text-purple-600" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-purple-600 text-xs font-bold mb-1">تكلفة الإنتاج</p>
+                                <p className="text-purple-600 text-xs font-bold mb-1">مدفوعات الموردين والمصممين</p>
                                 <p className="text-xl sm:text-2xl font-black text-purple-900 truncate">
                                     {Math.round(stats.productionCosts).toLocaleString()}
                                     <span className="text-xs font-normal text-purple-400 mr-1">ج.م</span>
@@ -597,22 +612,22 @@ export default function Analytics() {
                             </div>
                         </div>
 
-                        {/* Problem Cases (Redos + Rejections) */}
+                        {/* Problem Cases: all issues (redo + doctor rejected + lab rejected + returned) */}
                         <div className="bg-gradient-to-br from-orange-50 to-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
-                            title="إجمالي الحالات اللي فيها مشاكل أو خسائر: إعادات (تصليح) + حالات مرفوضة بالكامل">
+                            title="إجمالي كل الحالات اللي فيها مشكلة: إعادات + رفض دكتور + مشاكل/إيشوز داخلية (رفض لاب أو مرتجع للتعديل)">
                             <div className="p-3 bg-orange-100 rounded-xl">
                                 <RefreshCcw size={22} className="text-orange-600" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-orange-600 text-xs font-bold mb-1">حالات بمشاكل</p>
                                 <p className="text-xl sm:text-2xl font-black text-orange-900">
-                                    {stats.redoCount + stats.returnCount}
+                                    {stats.issueCount}
                                     <span className="text-xs font-normal text-orange-500 mr-1">
-                                        ({stats.orderCount > 0 ? (((stats.redoCount + stats.returnCount) / stats.orderCount) * 100).toFixed(1) : 0}%)
+                                        ({stats.orderCount > 0 ? ((stats.issueCount / stats.orderCount) * 100).toFixed(1) : 0}%)
                                     </span>
                                 </p>
                                 <p className="text-[10px] text-orange-500 mt-0.5">
-                                    {stats.redoCount} إعادة + {stats.returnCount} رفض · خسائر {Math.round(stats.redoCost).toLocaleString()} ج.م
+                                    {stats.redoCount} إعادة · {stats.doctorRejectedCount} رفض · {stats.otherIssuesCount} مشاكل/إيشوز · خسائر {Math.round(stats.redoCost).toLocaleString()} ج.م
                                 </p>
                             </div>
                         </div>
@@ -642,11 +657,11 @@ export default function Analytics() {
                     {(() => {
                         const netMargin = stats.deliveredRevenue > 0 ? (stats.netProfit / stats.deliveredRevenue) * 100 : 0;
                         const collectionRate = stats.deliveredRevenue > 0 ? (stats.totalRevenue / stats.deliveredRevenue) * 100 : 0;
-                        const problemRate = stats.orderCount > 0 ? ((stats.redoCount + stats.returnCount) / stats.orderCount) * 100 : 0;
+                        const problemRate = stats.orderCount > 0 ? (stats.issueCount / stats.orderCount) * 100 : 0;
                         const overdueShare = financialStats.totalReceivables > 0 ? (financialStats.aging90plus / financialStats.totalReceivables) * 100 : 0;
 
                         const issues: { text: string; severity: 'high' | 'med' }[] = [];
-                        if (problemRate > 10) issues.push({ text: `حالات المشاكل مرتفعة (${problemRate.toFixed(1)}%: ${stats.redoCount} إعادة + ${stats.returnCount} رفض) — راجع جودة الإنتاج`, severity: 'high' });
+                        if (problemRate > 10) issues.push({ text: `حالات المشاكل مرتفعة (${problemRate.toFixed(1)}%: ${stats.redoCount} إعادة + ${stats.doctorRejectedCount} رفض + ${stats.otherIssuesCount} مشاكل/إيشوز) — راجع جودة الإنتاج`, severity: 'high' });
                         if (collectionRate > 0 && collectionRate < 70) issues.push({ text: `التحصيل ضعيف (${collectionRate.toFixed(1)}%) — تابع مع الأطباء المتأخرين`, severity: 'high' });
                         if (overdueShare > 20 && financialStats.aging90plus > 0) issues.push({ text: `${overdueShare.toFixed(1)}% من الذمم متأخرة +90 يوم (${Math.round(financialStats.aging90plus).toLocaleString()} ج.م) — تحتاج تحصيل عاجل`, severity: 'high' });
                         if (netMargin < 20 && stats.deliveredRevenue > 0) issues.push({ text: `هامش الربح منخفض (${netMargin.toFixed(1)}%) — راجع التسعير أو المصروفات`, severity: 'med' });
@@ -944,11 +959,11 @@ export default function Analytics() {
                             <div className="flex flex-col items-center">
                                 <p className="text-2xl font-black text-teal-900">
                                     {stats.orderCount > 0
-                                        ? ((stats.returnCount / stats.orderCount) * 100).toFixed(1)
+                                        ? ((stats.rejectedCount / stats.orderCount) * 100).toFixed(1)
                                         : 0}%
                                 </p>
                                 <span className="text-xs text-teal-600 font-medium bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full mt-1">
-                                    {stats.returnCount} حالة
+                                    {stats.rejectedCount} حالة
                                 </span>
                             </div>
                         </div>

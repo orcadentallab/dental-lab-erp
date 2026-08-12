@@ -24,7 +24,9 @@ export interface AnalyticsSummary {
     total_cost_of_goods: number;
     completed_order_count: number;
     active_order_count: number;
-    return_count: number;
+    doctor_rejected_count: number;
+    lab_rejected_count: number;
+    returned_count: number;
     redo_count: number;
     redo_cost: number;
     urgent_count: number;
@@ -45,6 +47,7 @@ export interface AnalyticsSummary {
     aging_31_60: number;
     aging_61_90: number;
     aging_90_plus: number;
+    pending_revenue_period: number;
 
     // Accounts payable
     total_payables: number;
