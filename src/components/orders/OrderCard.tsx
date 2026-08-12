@@ -817,13 +817,15 @@ function OrderCard({
                                         >
                                             <MessageCircle size={14} />
                                         </button>
-                                        <button
-                                            onClick={() => onTechAction(order.id, 'Rejected')}
-                                            className={`grid min-h-10 min-w-10 place-items-center rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${order.technicianStatus === 'Rejected' ? 'bg-red-100 text-red-700' : ''}`}
-                                            title="رفض"
-                                        >
-                                            <AlertTriangle size={14} />
-                                        </button>
+                                        {(userRole === 'admin' || (userRole === 'representative' && order.technicianStatus === 'Rejected')) && (
+                                            <button
+                                                onClick={() => onTechAction(order.id, 'Rejected')}
+                                                className={`grid min-h-10 min-w-10 place-items-center rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${order.technicianStatus === 'Rejected' ? 'bg-red-100 text-red-700' : ''}`}
+                                                title="رفض"
+                                            >
+                                                <AlertTriangle size={14} />
+                                            </button>
+                                        )}
                                     </div>
                                 </>
                             )}
