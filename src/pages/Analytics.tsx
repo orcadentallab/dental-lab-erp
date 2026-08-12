@@ -632,23 +632,21 @@ export default function Analytics() {
                             </div>
                         </div>
 
-                        {/* Overdue Receivables (90+ days) */}
-                        <div className="bg-gradient-to-br from-red-50 to-white p-5 rounded-2xl border border-red-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
-                            title="المبالغ المستحقة على الأطباء ولسه ما اتحصلتش لأكثر من 90 يوم — تحتاج إجراء تحصيل عاجل">
-                            <div className="p-3 bg-red-100 rounded-xl">
-                                <Zap size={22} className="text-red-600" />
+                        {/* Return rate (Doctor Rejected + redo only — lab-internal issues are
+                            excluded, see "حالات بمشاكل" for the full issue count) */}
+                        <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-2xl border border-teal-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
+                            title="نسبة الحالات المرفوضة من الطبيب أو المعادة (Doctor Rejected + إعادة) من إجمالي الحالات — رفض اللاب والمرتجع للتعديل مش داخلين هنا، دول جزء من كارت (حالات بمشاكل)">
+                            <div className="p-3 bg-teal-100 rounded-xl">
+                                <RefreshCcw size={22} className="text-teal-600" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-red-600 text-xs font-bold mb-1">ذمم متأخرة +90 يوم</p>
-                                <p className="text-xl sm:text-2xl font-black text-red-900 truncate">
-                                    {Math.round(financialStats.aging90plus).toLocaleString()}
-                                    <span className="text-xs font-normal text-red-400 mr-1">ج.م</span>
+                                <p className="text-teal-600 text-xs font-bold mb-1">نسبة الإرجاع</p>
+                                <p className="text-xl sm:text-2xl font-black text-teal-900 truncate">
+                                    {stats.orderCount > 0
+                                        ? ((stats.rejectedCount / stats.orderCount) * 100).toFixed(1)
+                                        : 0}%
                                 </p>
-                                <p className="text-[10px] text-red-500 mt-0.5">
-                                    {financialStats.totalReceivables > 0
-                                        ? `${((financialStats.aging90plus / financialStats.totalReceivables) * 100).toFixed(1)}% من إجمالي الذمم`
-                                        : 'تحتاج إجراء تحصيل عاجل'}
-                                </p>
+                                <p className="text-[10px] text-teal-500 mt-0.5">{stats.rejectedCount} حالة (رفض دكتور + إعادة)</p>
                             </div>
                         </div>
                     </div>
@@ -949,21 +947,23 @@ export default function Analytics() {
                             <p className="text-blue-600 text-xs font-bold uppercase mb-1">متوسط سعر الوحدة</p>
                             <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.deliveredRevenue / stats.totalUnits).toLocaleString() : 0}</p>
                         </div>
-                        <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-xl border border-teal-100 text-center hover:shadow-md transition-shadow cursor-pointer">
+                        <div className="bg-gradient-to-br from-red-50 to-white p-5 rounded-xl border border-red-100 text-center hover:shadow-md transition-shadow cursor-pointer"
+                            title="رصيد حالي — مش بيتأثر بفلتر التاريخ فوق">
                             <div className="flex justify-center mb-2">
-                                <div className="p-2 bg-teal-100 rounded-lg">
-                                    <RefreshCcw size={16} className="text-teal-600" />
+                                <div className="p-2 bg-red-100 rounded-lg">
+                                    <Zap size={16} className="text-red-600" />
                                 </div>
                             </div>
-                            <p className="text-teal-600 text-xs font-bold uppercase mb-1">نسبة الإرجاع</p>
+                            <p className="text-red-600 text-xs font-bold uppercase mb-1">ذمم متأخرة +90 يوم</p>
                             <div className="flex flex-col items-center">
-                                <p className="text-2xl font-black text-teal-900">
-                                    {stats.orderCount > 0
-                                        ? ((stats.rejectedCount / stats.orderCount) * 100).toFixed(1)
-                                        : 0}%
+                                <p className="text-2xl font-black text-red-900">
+                                    {Math.round(financialStats.aging90plus).toLocaleString()}
+                                    <span className="text-xs font-normal text-red-400 mr-1">ج.م</span>
                                 </p>
-                                <span className="text-xs text-teal-600 font-medium bg-teal-50 border border-teal-100 px-2 py-0.5 rounded-full mt-1">
-                                    {stats.rejectedCount} حالة
+                                <span className="text-xs text-red-600 font-medium bg-red-50 border border-red-100 px-2 py-0.5 rounded-full mt-1">
+                                    {financialStats.totalReceivables > 0
+                                        ? `${((financialStats.aging90plus / financialStats.totalReceivables) * 100).toFixed(1)}% من الذمم`
+                                        : 'رصيد حالي'}
                                 </span>
                             </div>
                         </div>
@@ -1128,7 +1128,7 @@ export default function Analytics() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-3xl font-black text-slate-800">{financialStats.totalReceivables.toLocaleString()}</p>
-                                    <p className="text-xs text-slate-400 font-medium mt-1">إجمالي المستحق على العملاء</p>
+                                    <p className="text-xs text-slate-400 font-medium mt-1" title="رصيد الذمم الحالي دلوقتي — مش بيتغيّر حسب فلتر التاريخ فوق">إجمالي المستحق على العملاء (رصيد حالي)</p>
                                     <button
                                         onClick={() => { setReceivablesModalBucket('all'); setReceivablesModalOpen(true); }}
                                         className="text-xs font-bold text-amber-600 hover:text-amber-700 mt-2 underline underline-offset-2"
