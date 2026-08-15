@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { db, type OrderIssue, type Doctor, type Supplier, type User, type OrderItem } from '../services/db';
 import { AlertTriangle, BarChart2, RefreshCw, XCircle, RotateCcw, Ban, UserX } from 'lucide-react';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
+import { ISSUE_CAUSE, responsibleStageLabel } from '../constants/issueCauses';
 
 // Issue type display config
 const ISSUE_TYPE_LABELS: Record<string, string> = {
@@ -12,14 +13,10 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
     redo:            'إعادة إنتاج',      // Redo — new case linked to original
 };
 
-const CAUSE_LABELS: Record<string, string> = {
-    lab: 'خطأ معمل',
-    doctor: 'طلب دكتور',
-    scan: 'سكان',
-    design: 'تصميم',
-    communication: 'تواصل',
-    other: 'أخرى',
-};
+// Replaced by the shared 14-code taxonomy (migration 20260816000000).
+// The old 6 buckets (lab/doctor/scan/design/communication/other) no longer
+// exist in the database — the CHECK constraint rejects them.
+const CAUSE_LABELS: Record<string, string> = ISSUE_CAUSE;
 
 const ISSUE_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
     returned:        RotateCcw,
@@ -312,6 +309,7 @@ export default function IssuesReport() {
                                     <th className="px-4 py-3">تكلفة المعمل</th>
                                     <th className="px-4 py-3">تكلفة الرفض</th>
                                     <th className="px-4 py-3">السبب</th>
+                                    <th className="px-4 py-3">المرحلة المسؤولة</th>
                                     <th className="px-4 py-3">ملاحظات المشكلة</th>
                                     <th className="px-4 py-3">التاريخ</th>
                                 </tr>
@@ -367,6 +365,11 @@ export default function IssuesReport() {
                                             <td className="px-4 py-3">
                                                 <span className="text-xs font-medium bg-surface-100 text-surface-700 px-2 py-1 rounded">
                                                     {CAUSE_LABELS[issue.causeCategory] || issue.causeCategory}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-xs text-surface-600">
+                                                    {responsibleStageLabel(issue.responsibleStage)}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-surface-500 max-w-[200px] truncate" title={issue.notes || ''}>

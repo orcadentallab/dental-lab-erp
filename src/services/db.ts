@@ -355,13 +355,26 @@ export interface OrderIssue {
     id: string;
     orderId: string;
     issueType: 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
-    causeCategory: 'lab' | 'doctor' | 'scan' | 'design' | 'communication' | 'other';
+    /**
+     * One of the 14 codes in src/constants/issueCauses.ts. The previous 6
+     * buckets (lab/doctor/scan/design/communication/other) were converted by
+     * migration 20260816000000 and are now rejected by a CHECK constraint.
+     */
+    causeCategory: string;
+    /** Production stage held responsible. Absent on rows logged before 20260816000000. */
+    responsibleStage?: string | null;
     notes?: string;
     reporterId?: string;
     reporterName?: string;
     resolvedAt?: string;
     resolutionNotes?: string;
     createdAt: string;
+    /** Cause before the last correction, or before the 14-code conversion. */
+    previousCauseCategory?: string | null;
+    correctedAt?: string | null;
+    correctionReason?: string | null;
+    /** Logged by mistake. Excluded from statistics; never hard-deleted. */
+    isVoided?: boolean;
     order?: Order;
 }
 
