@@ -155,6 +155,22 @@ export interface DoctorServiceProfitability {
     };
 }
 
+/**
+ * Volume and problem-rate facts for one doctor (billing group).
+ *
+ * `orders_with_issues` counts DISTINCT orders carrying at least one
+ * non-voided `order_issues` row — not issue rows — so a single order with
+ * several logged problems cannot push a remake rate above 100%.
+ */
+export interface DoctorSegmentationInput {
+    doctor_id: string;
+    doctor_name: string;
+    order_count: number;
+    orders_with_issues: number;
+    first_registered_at: string | null;
+    days_since_first_registered: number | null;
+}
+
 export const analyticsService = {
 
     /**
@@ -275,6 +291,26 @@ export const analyticsService = {
         }
 
         return data as unknown as DoctorServiceProfitability;
+    },
+
+    /**
+     * Fetches the order-volume and problem-rate inputs the A/B/C/D grading
+     * needs. Profit comes from getDoctorServiceProfitability and aging from
+     * getDoctorReceivablesBreakdown — all three key on the same billing
+     * doctor (COALESCE(parent_id, id)), so they join directly.
+     */
+    async getDoctorSegmentationInputs(startDate?: string, endDate?: string): Promise<DoctorSegmentationInput[]> {
+        const { data, error } = await supabase.rpc('get_doctor_segmentation_inputs', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+        });
+
+        if (error) {
+            console.error('Error fetching doctor segmentation inputs:', error);
+            throw error;
+        }
+
+        return (data || []) as unknown as DoctorSegmentationInput[];
     },
 
     /**

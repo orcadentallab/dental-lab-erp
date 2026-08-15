@@ -3,9 +3,17 @@ import {
     TrendingUp, Search, AlertTriangle, RefreshCw, Layers, Users, Grid3x3
 } from 'lucide-react';
 import clsx from 'clsx';
-import { analyticsService, type DoctorServiceProfitability, type DoctorServiceProfitabilityRow } from '../services/supabase/analyticsService';
+import {
+    analyticsService,
+    type DoctorServiceProfitability,
+    type DoctorServiceProfitabilityRow,
+    type DoctorSegmentationInput,
+    type DoctorReceivable,
+} from '../services/supabase/analyticsService';
 import { matchArabic } from '../lib/searchUtils';
+import DoctorSegmentationTab from '../components/reports/DoctorSegmentationTab';
 
+type TabType = 'profitability' | 'segmentation';
 type GroupMode = 'detail' | 'doctor' | 'service';
 type SortKey = 'gross_profit' | 'revenue' | 'cost' | 'margin_pct' | 'units' | 'redo_cost';
 
@@ -66,7 +74,10 @@ export default function DoctorServiceProfitabilityPage() {
     const [sortKey, setSortKey] = useState<SortKey>('gross_profit');
     const [sortAsc, setSortAsc] = useState(false);
 
+    const [activeTab, setActiveTab] = useState<TabType>('profitability');
     const [data, setData] = useState<DoctorServiceProfitability | null>(null);
+    const [segmentationInputs, setSegmentationInputs] = useState<DoctorSegmentationInput[]>([]);
+    const [receivables, setReceivables] = useState<DoctorReceivable[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -77,14 +88,27 @@ export default function DoctorServiceProfitabilityPage() {
             setLoading(true);
             setError(null);
             try {
-                const result = await analyticsService.getDoctorServiceProfitability(startDate, endDate);
-                if (isMounted) setData(result);
+                // All three together: the grading tab needs profit from the
+                // first, volume from the second and aging from the third, and
+                // a partial set would grade doctors on missing dimensions.
+                const [profitability, inputs, ar] = await Promise.all([
+                    analyticsService.getDoctorServiceProfitability(startDate, endDate),
+                    analyticsService.getDoctorSegmentationInputs(startDate, endDate),
+                    analyticsService.getDoctorReceivablesBreakdown(),
+                ]);
+                if (isMounted) {
+                    setData(profitability);
+                    setSegmentationInputs(inputs);
+                    setReceivables(ar);
+                }
             } catch (e) {
                 console.error('Failed to load profitability report:', e);
                 // Surfaced, never swallowed into an empty table — an empty
                 // table and a failed query look identical to the reader.
                 if (isMounted) {
                     setData(null);
+                    setSegmentationInputs([]);
+                    setReceivables([]);
                     setError(e instanceof Error ? e.message : 'تعذر تحميل تقرير الربحية');
                 }
             } finally {
@@ -192,6 +216,27 @@ export default function DoctorServiceProfitabilityPage() {
                 </div>
             </div>
 
+            {/* Tabs — profit analysis and the grade built on it stay together,
+                so a doctor's grade is always one click from the rows that
+                produced it. */}
+            <div className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm w-fit">
+                {([
+                    { tab: 'profitability' as const, label: 'الربحية' },
+                    { tab: 'segmentation' as const, label: 'تصنيف العملاء A/B/C/D' },
+                ]).map(option => (
+                    <button
+                        key={option.tab}
+                        onClick={() => setActiveTab(option.tab)}
+                        className={clsx(
+                            'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                            activeTab === option.tab ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
+                        )}
+                    >
+                        {option.label}
+                    </button>
+                ))}
+            </div>
+
             {error && (
                 <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
                     <AlertTriangle size={18} className="text-rose-600 shrink-0 mt-0.5" />
@@ -203,6 +248,8 @@ export default function DoctorServiceProfitabilityPage() {
                 </div>
             )}
 
+            {activeTab === 'profitability' && (
+            <>
             {/* KPI cards */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -282,6 +329,9 @@ export default function DoctorServiceProfitabilityPage() {
                 </div>
             )}
 
+            </>
+            )}
+
             {/* Controls */}
             <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                 <div className="relative">
@@ -295,7 +345,7 @@ export default function DoctorServiceProfitabilityPage() {
                     />
                 </div>
 
-                <div className="flex items-center gap-1.5 justify-start md:justify-end">
+                <div className={clsx('flex items-center gap-1.5 justify-start md:justify-end', activeTab !== 'profitability' && 'hidden')}>
                     {([
                         { mode: 'detail' as const, label: 'طبيب × خدمة', icon: Grid3x3 },
                         { mode: 'doctor' as const, label: 'حسب الطبيب', icon: Users },
@@ -316,7 +366,16 @@ export default function DoctorServiceProfitabilityPage() {
                 </div>
             </div>
 
-            {/* Table */}
+            {activeTab === 'segmentation' ? (
+                <DoctorSegmentationTab
+                    profitabilityRows={data?.rows ?? []}
+                    segmentationInputs={segmentationInputs}
+                    receivables={receivables}
+                    search={search}
+                    loading={loading}
+                />
+            ) : (
+            /* Table */
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500">
                     {loading ? 'جاري التحميل...' : `${visibleRows.length} صف`}
@@ -403,6 +462,7 @@ export default function DoctorServiceProfitabilityPage() {
                     )}
                 </div>
             </div>
+            )}
         </div>
     );
 }
