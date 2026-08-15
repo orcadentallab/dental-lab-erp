@@ -3,6 +3,7 @@ import { db, type OrderIssue, type Doctor, type Supplier, type User, type OrderI
 import { AlertTriangle, BarChart2, RefreshCw, XCircle, RotateCcw, Ban, UserX } from 'lucide-react';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 import { ISSUE_CAUSE, responsibleStageLabel } from '../constants/issueCauses';
+import { analyticsService, type SupplierIssuePerformance } from '../services/supabase/analyticsService';
 
 // Issue type display config
 const ISSUE_TYPE_LABELS: Record<string, string> = {
@@ -55,6 +56,10 @@ export default function IssuesReport() {
     const [supplierFilter, setSupplierFilter] = useState('all');
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
     const [hoveredType, setHoveredType] = useState<string | null>(null);
+
+    const [labPerf, setLabPerf] = useState<SupplierIssuePerformance | null>(null);
+    const [labPerfLoading, setLabPerfLoading] = useState(true);
+    const [labPerfError, setLabPerfError] = useState<string | null>(null);
 
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -109,6 +114,36 @@ export default function IssuesReport() {
             ignore = true;
         };
     }, [typeFilter, dateRange]);
+
+    // Lab performance is loaded separately from the issues list because it is
+    // measured on a different date axis (the order's statement date, for both
+    // sides of its ratio) and needs a denominator the issues list does not
+    // carry: every case the lab handled, not only the ones that went wrong.
+    useEffect(() => {
+        let ignore = false;
+
+        (async () => {
+            setLabPerfLoading(true);
+            setLabPerfError(null);
+            try {
+                const data = await analyticsService.getSupplierIssuePerformance(
+                    dateRange.start || undefined,
+                    dateRange.end || undefined,
+                );
+                if (ignore) return;
+                setLabPerf(data);
+            } catch (err) {
+                if (ignore) return;
+                console.error('Failed to load lab performance:', err);
+                setLabPerf(null);
+                setLabPerfError('تعذر تحميل أداء المعامل.');
+            } finally {
+                if (!ignore) setLabPerfLoading(false);
+            }
+        })();
+
+        return () => { ignore = true; };
+    }, [dateRange]);
 
     const filteredIssues = useMemo(() => {
         return issues.filter(issue => {
@@ -283,6 +318,88 @@ export default function IssuesReport() {
                         );
                     })}
                 </div>
+            </div>
+
+            {/* Lab performance — moved here from the retired Quality page and
+                rebuilt on order_issues, which the old version did not use. */}
+            <div className="bg-white rounded-xl border border-surface-200 overflow-hidden shadow-sm">
+                <div className="px-4 py-3 bg-surface-50 border-b border-surface-200">
+                    <h3 className="text-sm font-bold text-surface-800">أداء المعامل</h3>
+                    <p className="text-[11px] text-surface-500 mt-0.5">
+                        محور التاريخ هنا هو <strong>تاريخ الطلب</strong> للبسط والمقام — مش تاريخ تسجيل المشكلة زي الجدول تحت.
+                        الاتنين بيجاوبوا على سؤالين مختلفين. المؤرشف داخل، الملغي (`is_voided`) مستبعد.
+                    </p>
+                </div>
+
+                {labPerfLoading ? (
+                    <div className="p-8 text-center text-surface-400 text-xs">جاري التحميل...</div>
+                ) : labPerfError ? (
+                    <div className="p-6 text-center">
+                        <p className="text-rose-700 text-xs font-bold">{labPerfError}</p>
+                        <p className="text-surface-400 text-[11px] mt-1">الجدول ده مش معروض — مفيش أرقام جزئية.</p>
+                    </div>
+                ) : !labPerf?.rows.length ? (
+                    <div className="p-8 text-center">
+                        <p className="text-surface-800 font-bold mb-1 text-sm">مفيش حالات في الفترة دي</p>
+                        <p className="text-surface-500 text-xs">وسّع الفترة من فلتر التاريخ فوق.</p>
+                    </div>
+                ) : (
+                    <ResponsiveTable label="جدول أداء المعامل">
+                        <table className="w-full text-xs">
+                            <thead className="bg-surface-800 text-white">
+                                <tr>
+                                    <th className="text-right px-4 py-2.5 font-bold">المعمل</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">إجمالي الحالات</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">حالات عليها مشاكل</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">نسبة مشاكله</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">نسبته من كل المشاكل</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">توزيع الأنواع</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">تكلفة الرفض</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-surface-100">
+                                {labPerf.rows.map(row => (
+                                    <tr key={row.supplier_id ?? 'internal'} className="hover:bg-surface-50">
+                                        <td className="px-4 py-2.5 text-right font-bold text-surface-800">
+                                            {row.supplier_name}
+                                            {row.supplier_id === null && (
+                                                <span className="block text-[10px] text-surface-400 font-normal mt-0.5">
+                                                    طلبات من غير معمل خارجي محدد
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-surface-600">{row.total_orders}</td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-surface-700 font-bold">{row.orders_with_issues}</td>
+                                        <td className={`px-3 py-2.5 text-center font-mono font-bold ${
+                                            row.issue_rate_pct === null ? 'text-surface-300'
+                                                : row.issue_rate_pct > 12 ? 'text-rose-600'
+                                                    : row.issue_rate_pct > 7 ? 'text-amber-600' : 'text-emerald-600'
+                                        }`}>
+                                            {row.issue_rate_pct === null ? '—' : `${row.issue_rate_pct}%`}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-surface-600">
+                                            {row.share_of_all_issues_pct === null ? '—' : `${row.share_of_all_issues_pct}%`}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center">
+                                            <div className="flex flex-wrap gap-1 justify-center">
+                                                {Object.entries(row.by_type).length === 0 ? (
+                                                    <span className="text-surface-300">—</span>
+                                                ) : Object.entries(row.by_type).map(([type, count]) => (
+                                                    <span key={type} className="text-[9px] bg-surface-100 text-surface-700 px-1.5 py-0.5 rounded font-semibold">
+                                                        {ISSUE_TYPE_LABELS[type] || type}: {count}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-amber-700">
+                                            {row.rejection_cost > 0 ? row.rejection_cost.toLocaleString('en-US') : <span className="text-surface-300">—</span>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </ResponsiveTable>
+                )}
             </div>
 
             {/* Issues Table */}

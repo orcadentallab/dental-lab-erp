@@ -171,6 +171,36 @@ export interface DoctorSegmentationInput {
     days_since_first_registered: number | null;
 }
 
+/**
+ * One external lab (or the in-house/unassigned bucket) over the period.
+ *
+ * Sourced from `order_issues`, not `orders.status` — a lab that had problems
+ * and fixed them must still show them, which a status-derived count cannot do.
+ *
+ * `issue_rate_pct` is this lab's own problem rate; `share_of_all_issues_pct`
+ * is its slice of every problem-carrying case in the period. The two answer
+ * different questions and a small lab can be high on one and low on the other.
+ */
+export interface SupplierIssuePerformanceRow {
+    supplier_id: string | null;
+    supplier_name: string;
+    total_orders: number;
+    orders_with_issues: number;
+    issue_rate_pct: number | null;
+    share_of_all_issues_pct: number | null;
+    rejection_cost: number;
+    by_type: Record<string, number>;
+}
+
+export interface SupplierIssuePerformance {
+    /** Which date column the period filter was applied to. Show this in the UI. */
+    date_axis: string;
+    includes_archived: boolean;
+    total_orders: number;
+    total_orders_with_issues: number;
+    rows: SupplierIssuePerformanceRow[];
+}
+
 export const analyticsService = {
 
     /**
@@ -291,6 +321,27 @@ export const analyticsService = {
         }
 
         return data as unknown as DoctorServiceProfitability;
+    },
+
+    /**
+     * Fetches per-lab problem performance.
+     *
+     * Both the numerator and the denominator use the ORDER's statement date,
+     * unlike the issues list which filters on when the issue was logged.
+     * Show `date_axis` next to the table so the two are not read as one.
+     */
+    async getSupplierIssuePerformance(startDate?: string, endDate?: string): Promise<SupplierIssuePerformance> {
+        const { data, error } = await supabase.rpc('get_supplier_issue_performance', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+        });
+
+        if (error) {
+            console.error('Error fetching supplier issue performance:', error);
+            throw error;
+        }
+
+        return data as unknown as SupplierIssuePerformance;
     },
 
     /**

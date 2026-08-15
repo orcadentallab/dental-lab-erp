@@ -14,7 +14,7 @@ export default function TitleUpdater() {
             if (pathname === '/orders') return t.nav.orders;
             if (pathname === '/doctors') return t.nav.doctors;
             if (pathname === '/doctors/retention') return language === 'ar' ? 'متابعة وتنشيط الأطباء' : 'Doctor Retention';
-            if (pathname === '/quality') return t.nav.quality;
+            if (pathname === '/reports/profitability') return 'الربحية وتصنيف العملاء';
             if (pathname === '/accounts') return t.nav.accounts;
             if (pathname === '/settings') return t.nav.settings;
             if (pathname === '/employees') return t.nav.staff;

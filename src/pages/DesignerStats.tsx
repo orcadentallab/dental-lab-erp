@@ -17,6 +17,7 @@ export default function DesignerStats() {
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
     const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
+    const [activeTeamTab, setActiveTeamTab] = useState<'design' | 'production'>('design');
     const [users, setUsers] = useState<User[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [refreshKey, setRefreshKey] = useState(0);
@@ -294,13 +295,51 @@ export default function DesignerStats() {
                     <div>
                         <div className="flex items-center gap-2">
                             <BarChart3 size={22} className="text-teal-600 dark:text-teal-400" />
-                            <h1 className="text-xl font-bold text-gray-900 dark:text-white">إحصائيات المصممين</h1>
+                            <h1 className="text-xl font-bold text-gray-900 dark:text-white">إنتاجية الفريق</h1>
                         </div>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">متابعة زمن تنفيذ التصميم وروابط المراجعة الأخيرة</p>
                     </div>
                 </div>
             </div>
 
+            {/* Tabs. The production-stages tab is deliberately an empty state
+                rather than a hidden section: the work is not measurable yet,
+                and saying so is more useful than pretending the question does
+                not exist. */}
+            <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-fit">
+                {([
+                    { tab: 'design' as const, label: 'التصميم' },
+                    { tab: 'production' as const, label: 'مراحل الإنتاج' },
+                ]).map(option => (
+                    <button
+                        key={option.tab}
+                        onClick={() => setActiveTeamTab(option.tab)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                            activeTeamTab === option.tab
+                                ? 'bg-teal-600 text-white shadow-sm'
+                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                    >
+                        {option.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTeamTab === 'production' && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center">
+                    <p className="text-slate-800 dark:text-white font-bold mb-2">التحليل ده لسه مش متاح</p>
+                    <p className="text-slate-600 dark:text-gray-400 text-sm mb-1">
+                        محتاج تسجيل مراحل الإنتاج (دخول وخروج كل مرحلة: فرز، تشطيب، جلاز، مراجعة جودة).
+                        الشغل حالياً بيروح لمعامل خارجية، فمفيش مراحل داخلية تتقاس ومفيش موظف مربوط بيها.
+                    </p>
+                    <p className="text-slate-400 dark:text-gray-500 text-xs">
+                        هيتفعّل مع تشغيل المعمل الفعلي — خطة سيستم منفصلة، مش جزء من التقارير.
+                    </p>
+                </div>
+            )}
+
+            {activeTeamTab === 'design' && (
+            <>
             {/* Metrics cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl shadow-sm border border-amber-200 dark:border-amber-800">
@@ -378,6 +417,25 @@ export default function DesignerStats() {
                                     {group.rows.length} حالة / {getRowsUnitsCount(group.rows)} يونت
                                 </p>
                             </div>
+                            {(() => {
+                                // Units per 1000 EGP of salary — only meaningful for a
+                                // salaried designer. A per-unit designer has no fixed
+                                // cost to divide by, so the column stays absent rather
+                                // than showing a number that means nothing.
+                                const salary = users.find(u => u.id === group.designerId)?.baseSalary;
+                                if (!salary || salary <= 0) return null;
+                                const units = getRowsUnitsCount(group.rows);
+                                return (
+                                    <div className="text-left">
+                                        <p className="text-sm font-bold text-gray-700 dark:text-gray-200 font-mono">
+                                            {(units / (salary / 1000)).toFixed(1)}
+                                        </p>
+                                        <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                                            يونت لكل 1000 ج.م راتب
+                                        </p>
+                                    </div>
+                                );
+                            })()}
                         </div>
                         <div className="overflow-auto max-h-[420px]">
                             <table className="w-full text-right text-sm">
@@ -471,6 +529,8 @@ export default function DesignerStats() {
                     </div>
                 ))}
             </div>
+            </>
+            )}
         </div>
     );
 }

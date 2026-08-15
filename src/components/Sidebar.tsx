@@ -83,11 +83,12 @@ export default function Sidebar() {
             icon: BarChart3,
             defaultOpen: false,
             items: [
+                // One icon per destination — three of these used to share
+                // BarChart3, which made the group unscannable.
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
-                { name: 'ربحية الطبيب × الخدمة', href: '/reports/profitability', icon: TrendingUp, roles: ['admin'] },
+                { name: 'الربحية وتصنيف العملاء', href: '/reports/profitability', icon: TrendingUp, roles: ['admin'] },
                 { name: 'تقرير المشكلات', href: '/issues-report', icon: AlertTriangle, roles: ['admin'] },
-                { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
-                { name: 'إحصائيات المصممين', href: '/designer-stats', icon: BarChart3, roles: ['admin'] },
+                { name: 'إنتاجية الفريق', href: '/designer-stats', icon: Award, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
                 { name: 'تحليلات التسويق', href: '/marketing-analytics', icon: Megaphone, roles: ['admin'] },
             ]

@@ -19,7 +19,6 @@ const Accounts = lazy(() => import('./pages/Accounts'));
 const UsersPage = lazy(() => import('./pages/Users'));
 const Settings = lazy(() => import('./pages/Settings'));
 const ServicesPage = lazy(() => import('./pages/Services'));
-const QualityDashboard = lazy(() => import('./pages/Quality'));
 const AIAnalytics = lazy(() => import('./pages/AIAnalytics'));
 const CaseRegistration = lazy(() => import('./pages/CaseRegistration'));
 const Employees = lazy(() => import('./pages/Employees'));
@@ -65,9 +64,12 @@ function App() {
                           <Route path="/doctors" element={<Doctors />} />
                           <Route path="/doctors/retention" element={<DoctorRetention />} />
                         </Route>
-                        <Route element={<ProtectedRoute allowedRoles={['admin', 'representative', 'lab']} />}>
-                          <Route path="/quality" element={<QualityDashboard />} />
-                        </Route>
+                        {/* The quality dashboard was retired: its problem counts
+                            came from orders.status, which loses any problem that
+                            was later resolved. Its lab table now lives in
+                            /issues-report, rebuilt on order_issues. The route is
+                            kept as a redirect so old links and bookmarks work. */}
+                        <Route path="/quality" element={<Navigate to="/issues-report" replace />} />
                       </Route>
                     </Route>
                   </Route>
