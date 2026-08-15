@@ -8,6 +8,7 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, MousePointerClick, Smartphone, Monitor, RefreshCw, AlertTriangle, BarChart2, MessageSquare, PhoneCall } from 'lucide-react';
 import clsx from 'clsx';
 import { marketingService, type MarketingSummary, type DailyTrendPoint } from '../services/supabase/marketingService';
+import AcquisitionSection from '../components/reports/AcquisitionSection';
 import { contactService, type ContactInquiry } from '../services/contactService';
 
 // ─── Mini SVG Line Chart (no external deps) ─────────────────────
@@ -236,6 +237,11 @@ export default function MarketingAnalytics() {
                     {error}
                 </div>
             )}
+
+            {/* Acquisition and CAC. Placed above the traffic cards because it
+                answers the question the traffic is a means to, and it runs on
+                its own multi-month range rather than the live 1h/1d/7d one. */}
+            <AcquisitionSection />
 
             {/* Stat Cards */}
             {isLoading ? (

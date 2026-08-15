@@ -201,6 +201,22 @@ export interface SupplierIssuePerformance {
     rows: SupplierIssuePerformanceRow[];
 }
 
+/**
+ * Acquisition facts for the period.
+ *
+ * `expense_by_category` is intentionally UNFILTERED and keyed by the raw
+ * category string: the canonical mapping (aliases + Arabic normalization)
+ * lives in `normalizeExpenseCategory`, and duplicating it server-side would
+ * create a second classifier that drifts. Callers must normalize.
+ */
+export interface MarketingAcquisition {
+    new_doctors: number;
+    /** Of the new doctors, how many actually sent at least one order. */
+    activated_doctors: number;
+    first_90_day_revenue: number;
+    expense_by_category: { category: string; total: number }[];
+}
+
 export const analyticsService = {
 
     /**
@@ -321,6 +337,25 @@ export const analyticsService = {
         }
 
         return data as unknown as DoctorServiceProfitability;
+    },
+
+    /**
+     * Fetches acquisition inputs for CAC. Ad spend must be derived by the
+     * caller from `expense_by_category` via `normalizeExpenseCategory` — see
+     * the interface note for why the RPC does not pre-filter it.
+     */
+    async getMarketingAcquisition(startDate?: string, endDate?: string): Promise<MarketingAcquisition> {
+        const { data, error } = await supabase.rpc('get_marketing_acquisition', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+        });
+
+        if (error) {
+            console.error('Error fetching marketing acquisition:', error);
+            throw error;
+        }
+
+        return data as unknown as MarketingAcquisition;
     },
 
     /**

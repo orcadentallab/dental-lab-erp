@@ -387,6 +387,17 @@ export interface EntityBillingSettings {
     perOrderDueDays: number;
     paymentTermsNotes?: string | null;
     autoApplyCredit: boolean;
+    /**
+     * Credit ceiling in EGP. `null` means no ceiling.
+     *
+     * Display-only: nothing blocks order creation on this value, and nothing
+     * may start doing so without an explicit owner decision. Mirrors
+     * `EntityBillingSettings` in constants/billingSettings.ts — keep both in
+     * step.
+     */
+    creditLimit?: number | null;
+    /** Balance at which new work should stop. `null` means never stop. Display-only, same rule. */
+    stopWorkThreshold?: number | null;
     createdAt?: string;
     updatedAt?: string;
 }

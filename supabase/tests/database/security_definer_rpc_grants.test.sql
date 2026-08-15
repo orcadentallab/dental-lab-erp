@@ -86,6 +86,8 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     ('public.get_doctor_segmentation_inputs(date,date)',                       'wrapper',    true),
     -- added by 20260816006000 (per-lab problem performance, from order_issues)
     ('public.get_supplier_issue_performance(date,date)',                       'wrapper',    true),
+    -- added by 20260816007000 (CAC / acquisition inputs)
+    ('public.get_marketing_acquisition(date,date)',                            'wrapper',    true),
     -- hardened by 20260801080000
     ('public.get_analytics_summary(date,date)',                                'wrapper',    true),
     ('public.get_top_doctors(date,date,integer)',                              'wrapper',    true),

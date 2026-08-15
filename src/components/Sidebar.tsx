@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers, Receipt, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers, Receipt, Clock, TrendingUp, AlertTriangle, Wallet } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -87,6 +87,7 @@ export default function Sidebar() {
                 // BarChart3, which made the group unscannable.
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
                 { name: 'الربحية وتصنيف العملاء', href: '/reports/profitability', icon: TrendingUp, roles: ['admin'] },
+                { name: 'التدفق النقدي', href: '/reports/cashflow', icon: Wallet, roles: ['admin'] },
                 { name: 'تقرير المشكلات', href: '/issues-report', icon: AlertTriangle, roles: ['admin'] },
                 { name: 'إنتاجية الفريق', href: '/designer-stats', icon: Award, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },
