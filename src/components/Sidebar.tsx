@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../translations';
-import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers, Receipt, Clock } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory, FileText, Shield, Settings, BarChart3, Award, Briefcase, Brain, Plus, ChevronDown, Megaphone, Layers, Receipt, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
@@ -84,7 +84,8 @@ export default function Sidebar() {
             defaultOpen: false,
             items: [
                 { name: t.nav.analytics, href: '/analytics', icon: BarChart3, roles: ['admin'] },
-                { name: 'تقرير المشكلات', href: '/issues-report', icon: BarChart3, roles: ['admin'] },
+                { name: 'ربحية الطبيب × الخدمة', href: '/reports/profitability', icon: TrendingUp, roles: ['admin'] },
+                { name: 'تقرير المشكلات', href: '/issues-report', icon: AlertTriangle, roles: ['admin'] },
                 { name: t.nav.quality, href: '/quality', icon: Award, roles: ['admin', 'representative'] },
                 { name: 'إحصائيات المصممين', href: '/designer-stats', icon: BarChart3, roles: ['admin'] },
                 { name: 'التحليلات الذكية', href: '/ai-analytics', icon: Brain, roles: ['admin'] },

@@ -33,6 +33,7 @@ const FinancialReview = lazy(() => import('./pages/FinancialReview'));
 const Statements = lazy(() => import('./pages/Statements'));
 const AgingReport = lazy(() => import('./pages/AgingReport'));
 const DoctorRetention = lazy(() => import('./pages/DoctorRetention'));
+const DoctorServiceProfitability = lazy(() => import('./pages/DoctorServiceProfitability'));
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
@@ -117,6 +118,7 @@ function App() {
                       <Route path="/issues-report" element={<IssuesReport />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
                       <Route path="/designer-stats" element={<DesignerStats />} />
+                      <Route path="/reports/profitability" element={<DoctorServiceProfitability />} />
 
 
                     </Route>

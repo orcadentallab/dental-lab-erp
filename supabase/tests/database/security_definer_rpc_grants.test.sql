@@ -80,6 +80,8 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     -- added by 20260816002000 (audited correction / voiding of a logged issue)
     ('public.correct_order_issue_cause(uuid,text,text,text)',                  'wrapper',    true),
     ('public.void_order_issue(uuid,text)',                                     'wrapper',    true),
+    -- added by 20260816003000 (doctor x service profitability)
+    ('public.get_doctor_service_profitability(date,date)',                     'wrapper',    true),
     -- hardened by 20260801080000
     ('public.get_analytics_summary(date,date)',                                'wrapper',    true),
     ('public.get_top_doctors(date,date,integer)',                              'wrapper',    true),

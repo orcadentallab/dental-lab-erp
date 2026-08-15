@@ -112,6 +112,49 @@ export interface OrderIssuesSummary {
     by_cause: Record<string, number>;
 }
 
+/**
+ * One doctor x one service, over the selected period.
+ *
+ * `cost` is the ACTUAL settlement-aware order cost distributed across the
+ * order's items — not a catalog price-list model — so gross profit here is
+ * drawn from the same basis as `get_analytics_summary`.
+ *
+ * `is_catalog_service` is false when the free-text `order_items.product_type`
+ * has no match in the `services` catalog. Such rows are still real revenue;
+ * the flag marks a naming cleanup, not a row to discard.
+ */
+export interface DoctorServiceProfitabilityRow {
+    doctor_id: string;
+    doctor_name: string;
+    service_name: string;
+    is_catalog_service: boolean;
+    units: number;
+    revenue: number;
+    cost: number;
+    gross_profit: number;
+    /** null when revenue is zero — a margin on no revenue is undefined, not 0%. */
+    margin_pct: number | null;
+    /** Portion of `cost` that came from remake orders. A subset, never an addition. */
+    redo_cost: number;
+    redo_units: number;
+}
+
+export interface DoctorServiceProfitability {
+    /** Which date column the period filter was applied to. Show this in the UI. */
+    date_axis: string;
+    includes_archived: boolean;
+    rows: DoctorServiceProfitabilityRow[];
+    totals: {
+        units: number;
+        revenue: number;
+        cost: number;
+        gross_profit: number;
+        redo_cost: number;
+        uncatalogued_rows: number;
+        uncatalogued_revenue: number;
+    };
+}
+
 export const analyticsService = {
 
     /**
@@ -212,6 +255,26 @@ export const analyticsService = {
         }
 
         return (data || []) as unknown as TopExpenseCategory[];
+    },
+
+    /**
+     * Fetches doctor x service profitability for the period.
+     *
+     * Archived orders are included on purpose (rule 0-A): archiving closes a
+     * file, it does not undo revenue earned or cost paid.
+     */
+    async getDoctorServiceProfitability(startDate?: string, endDate?: string): Promise<DoctorServiceProfitability> {
+        const { data, error } = await supabase.rpc('get_doctor_service_profitability', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+        });
+
+        if (error) {
+            console.error('Error fetching doctor/service profitability:', error);
+            throw error;
+        }
+
+        return data as unknown as DoctorServiceProfitability;
     },
 
     /**
