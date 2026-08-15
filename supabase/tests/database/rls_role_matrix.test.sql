@@ -35,7 +35,7 @@ INSERT INTO public.order_issues (id, order_id, issue_type, cause_category, notes
 VALUES (
     '61000000-0000-0000-0000-000000000001',
     '41000000-0000-0000-0000-000000000001',
-    'returned', 'other', 'Sensitive issue note'
+    'returned', 'unknown', 'Sensitive issue note'
 );
 
 INSERT INTO public.ai_insights (id, insight_type, content)
