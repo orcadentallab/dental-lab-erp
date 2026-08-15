@@ -51,6 +51,8 @@ const ISSUE_TYPE_DESCRIPTIONS: Record<string, string> = {
 export default function IssuesReport() {
     const [issues, setIssues] = useState<OrderIssue[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [lookupError, setLookupError] = useState<string | null>(null);
+    const [reportError, setReportError] = useState<string | null>(null);
     const [typeFilter, setTypeFilter] = useState('all');
     const [designerFilter, setDesignerFilter] = useState('all');
     const [supplierFilter, setSupplierFilter] = useState('all');
@@ -65,6 +67,7 @@ export default function IssuesReport() {
 
     useEffect(() => {
         (async () => {
+            setLookupError(null);
             try {
                 const [docs, sups, usrs] = await Promise.all([
                     db.getDoctors(),
@@ -76,24 +79,38 @@ export default function IssuesReport() {
                 setUsers(usrs);
             } catch (err) {
                 console.error("Failed to load lookups:", err);
+                setLookupError('تعذر تحميل بيانات الفلاتر. تحقق من الاتصال وحاول مرة أخرى.');
             }
         })();
     }, []);
 
     useEffect(() => {
+        let ignore = false;
+
         (async () => {
             setIsLoading(true);
+            setReportError(null);
             try {
                 const data = await db.getOrderIssues({
                     issueType: typeFilter !== 'all' ? typeFilter : undefined,
                     startDate: dateRange.start || undefined,
                     endDate: dateRange.end ? `${dateRange.end}T23:59:59` : undefined,
                 });
+                if (ignore) return;
                 setIssues(data);
+            } catch (err) {
+                if (ignore) return;
+                console.error('Failed to load order issues:', err);
+                setIssues([]);
+                setReportError('تعذر تحميل تقرير المشكلات. تحقق من الاتصال وحاول مرة أخرى.');
             } finally {
-                setIsLoading(false);
+                if (!ignore) setIsLoading(false);
             }
         })();
+
+        return () => {
+            ignore = true;
+        };
     }, [typeFilter, dateRange]);
 
     const filteredIssues = useMemo(() => {
@@ -136,6 +153,13 @@ export default function IssuesReport() {
                 <BarChart2 size={24} className="text-surface-500" />
                 <h1 className="text-xl font-bold text-surface-900">تقرير المشكلات والجودة</h1>
             </div>
+
+            {[lookupError, reportError].filter((message): message is string => Boolean(message)).map(message => (
+                <div key={message} className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-4 flex items-start gap-2" role="alert">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                    <span className="text-sm font-medium">{message}</span>
+                </div>
+            ))}
 
             {/* Issue Type Guide */}
             <div className="bg-white border border-surface-200 rounded-xl p-4 shadow-sm">

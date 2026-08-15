@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect } from 'react';
 import MarketingLayout from './layout/MarketingLayout';
 import HeroSection from './components/HeroSection';
@@ -8,6 +7,7 @@ import PortfolioSection from './components/PortfolioSection';
 import PricingSection from './components/PricingSection';
 import ContactSection from './components/ContactSection';
 import { marketingService } from '../services/supabase/marketingService';
+import { getMarketingClickEvents } from './marketingClickTracking';
 
 export default function MarketingPage() {
     useEffect(() => {
@@ -36,29 +36,16 @@ export default function MarketingPage() {
 
         // Track WhatsApp clicks (all wa.me links on the page)
         const handleClick = (e: MouseEvent) => {
-            const anchor = (e.target as HTMLElement).closest('a[href*="wa.me"]');
-            if (anchor) {
+            const target = e.target as HTMLElement;
+            getMarketingClickEvents(target).forEach((eventName) => {
                 marketingService.logEvent({
-                    event_name: 'whatsapp_click',
-                    source: 'marketing_landing',
+                    event_name: eventName,
+                    source: eventName === 'pricing_cta_click' ? 'pricing_section' : 'marketing_landing',
                     page_type: 'marketing_landing',
                     device_type: deviceType,
                     session_id: sessionId,
                 });
-            }
-
-            // Track pricing CTA clicks
-            const pricingCta = (e.target as HTMLElement).closest('a[href="#contact"], button[type="submit"]');
-            const inPricing = (e.target as HTMLElement).closest('#pricing');
-            if (pricingCta && inPricing) {
-                marketingService.logEvent({
-                    event_name: 'pricing_cta_click',
-                    source: 'pricing_section',
-                    page_type: 'marketing_landing',
-                    device_type: deviceType,
-                    session_id: sessionId,
-                });
-            }
+            });
         };
         document.addEventListener('click', handleClick);
 

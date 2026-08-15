@@ -386,13 +386,6 @@ export default function MarketingAnalytics() {
                     </table>
                 </div>
             </div>
-
-            {/* Note */}
-            <div className="text-xs text-gray-400 bg-gray-50 rounded-xl p-4 border border-gray-100">
-                ⚙️ البيانات تأتي من Google Tag Manager عبر <code className="bg-white px-1 py-0.5 rounded text-gray-600">marketing_events</code> table.
-                لبدء التسجيل: نفّذ <code className="bg-white px-1 py-0.5 rounded text-gray-600">supabase/migrations/marketing_events.sql</code> في Supabase SQL Editor,
-                ثم استبدل <code className="bg-white px-1 py-0.5 rounded text-gray-600">GTM-XXXXXXX</code> بـ ID معمل ORCA.
-            </div>
         </div>
     );
 }
