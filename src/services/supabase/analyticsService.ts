@@ -93,6 +93,25 @@ export interface DoctorReceivable {
 
 // ─── SERVICE ─────────────────────────────────────────────────────
 
+/**
+ * Issue counts sourced from `order_issues` — the event log — NOT from
+ * orders.status, which only reflects an order's current state and therefore
+ * loses any problem that was later resolved.
+ *
+ * `distinct_orders_with_issues` counts ORDERS, so an order carrying more than
+ * one issue type is counted once. `total_issue_events` counts rows, so it can
+ * legitimately exceed it.
+ */
+export interface OrderIssuesSummary {
+    distinct_orders_with_issues: number;
+    total_issue_events: number;
+    /** Which date column the period filter was applied to. Show this in the UI. */
+    date_axis: string;
+    /** returned | doctor_rejected | lab_rejected | cancelled | redo */
+    by_type: Record<string, number>;
+    by_cause: Record<string, number>;
+}
+
 export const analyticsService = {
 
     /**
@@ -115,6 +134,30 @@ export const analyticsService = {
 
         // Supabase returns the JSONB directly as a parsed JS object
         return data as unknown as AnalyticsSummary;
+    },
+
+    /**
+     * Fetches issue counts from `order_issues`, the event log.
+     *
+     * Use this — not getSummary()'s status-derived counts — for anything that
+     * reports problems or remakes. Archived orders are deliberately included:
+     * archiving closes a file, it does not cancel the problem that happened.
+     *
+     * @param startDate  Optional ISO date string (YYYY-MM-DD)
+     * @param endDate    Optional ISO date string (YYYY-MM-DD)
+     */
+    async getIssuesSummary(startDate?: string, endDate?: string): Promise<OrderIssuesSummary> {
+        const { data, error } = await supabase.rpc('get_order_issues_summary', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+        });
+
+        if (error) {
+            console.error('Error fetching order issues summary:', error);
+            throw error;
+        }
+
+        return data as unknown as OrderIssuesSummary;
     },
 
     /**

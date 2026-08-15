@@ -47,11 +47,15 @@ export default function DesignerStats() {
         const loadData = async () => {
             setIsLoading(true);
             try {
+                // No per-call `.catch(() => [])` here on purpose: swallowing a
+                // failed fetch renders an empty page that looks like "no data"
+                // instead of "loading failed". Let it reject so the outer catch
+                // surfaces a real error to the user.
                 const [ordersData, designerOrdersData, usersData, doctorsData] = await Promise.all([
-                    db.getDashboardActiveOrders().catch((): Order[] => []),
-                    db.getDesignerDashboardOrders().catch((): Order[] => []),
-                    db.getUsers().catch((): User[] => []),
-                    db.getDoctors().catch((): Doctor[] => []),
+                    db.getDashboardActiveOrders(),
+                    db.getDesignerDashboardOrders(),
+                    db.getUsers(),
+                    db.getDoctors(),
                 ]);
 
                 setOrders(ordersData);

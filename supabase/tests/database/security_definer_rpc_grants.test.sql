@@ -75,6 +75,8 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     -- user, so losing the authenticated grant would make every order
     -- INSERT/UPDATE by a normal user fail.
     ('public.workflow_flag_enabled(text)',                                     'wrapper',    true),
+    -- added by 20260812110000 (issue counts from order_issues, the correct source)
+    ('public.get_order_issues_summary(date,date)',                             'wrapper',    true),
     -- hardened by 20260801080000
     ('public.get_analytics_summary(date,date)',                                'wrapper',    true),
     ('public.get_top_doctors(date,date,integer)',                              'wrapper',    true),

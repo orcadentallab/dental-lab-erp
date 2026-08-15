@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService } from '../services/supabase/analyticsService';
-import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award } from 'lucide-react';
+import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
@@ -107,6 +107,9 @@ export default function Analytics() {
         rejectedCount: 0,
         otherIssuesCount: 0,
         issueCount: 0,
+        cancelledCount: 0,
+        issueEvents: 0,
+        issueDateAxis: '',
         redoCost: 0,
         urgentCount: 0,
         topExpenseCategory: '',
@@ -114,6 +117,9 @@ export default function Analytics() {
     });
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
     const [topServices, setTopServices] = useState<{ name: string; count: number; revenue: number }[]>([]);
+    // Surfaces load failures. Without this the page silently keeps its previous
+    // (or zeroed) numbers, which reads as real data rather than a failed fetch.
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Tab state
     const [activeTab, setActiveTab] = useState<AnalyticsTab>(getInitialAnalyticsTab);
@@ -282,19 +288,23 @@ export default function Analytics() {
     const calculateStats = useCallback(async () => {
         const requestId = ++analyticsRequestId.current;
         setIsLoading(true);
+        setLoadError(null);
         try {
             // Each boundary is optional. The guarded reporting RPC wrappers
             // normalize a missing side to an open-ended PostgreSQL date.
             const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
             const rpcEnd = dateRange === 'all' ? undefined : endDate || undefined;
 
-            // 4 lightweight RPC calls instead of 3 massive SELECTs
-            const [summary, doctors, services, allServices, expenseCategories] = await Promise.all([
+            // Lightweight RPC calls instead of massive SELECTs.
+            // `issues` comes from order_issues (the event log) rather than
+            // orders.status, which loses any problem that was later resolved.
+            const [summary, doctors, services, allServices, expenseCategories, issues] = await Promise.all([
                 analyticsService.getSummary(rpcStart, rpcEnd),
                 analyticsService.getTopDoctors(rpcStart, rpcEnd),
                 analyticsService.getTopServices(rpcStart, rpcEnd, 5),
                 analyticsService.getTopServices(rpcStart, rpcEnd, 5000), // Fetch all active services to compute true totals
-                analyticsService.getTopExpenseCategories(rpcStart, rpcEnd, 1) // Only need the top 1
+                analyticsService.getTopExpenseCategories(rpcStart, rpcEnd, 1), // Only need the top 1
+                analyticsService.getIssuesSummary(rpcStart, rpcEnd)
             ]);
 
             if (requestId !== analyticsRequestId.current) return;
@@ -321,17 +331,29 @@ export default function Analytics() {
                 activeOrders: summary.active_order_count,
                 totalUnits,
                 totalUnitsRevenue,
-                doctorRejectedCount: summary.doctor_rejected_count,
-                labRejectedCount: summary.lab_rejected_count,
-                returnedCount: summary.returned_count,
-                redoCount: summary.redo_count,
-                // "رفض" = doctor-driven rejections only (Doctor Rejected + redo).
-                // Lab Rejected / Returned for Adjustments are lab-internal "issues",
-                // not rejections — kept separate per product definition.
-                rejectedCount: summary.doctor_rejected_count + summary.redo_count,
-                otherIssuesCount: summary.lab_rejected_count + summary.returned_count,
-                issueCount: summary.doctor_rejected_count + summary.redo_count
-                    + summary.lab_rejected_count + summary.returned_count,
+                // ── Issue counts: sourced from order_issues, NOT orders.status ──
+                // orders.status only holds an order's CURRENT state, so a problem
+                // that was resolved afterwards vanishes from it entirely. The
+                // 2026-08-12 reconciliation found the status-derived figure
+                // reported 2 where the event log held 8.
+                //
+                // issueCount counts DISTINCT ORDERS, so an order carrying two
+                // issue types is counted once. The previous code summed the four
+                // type counts, double-counting those orders, and omitted
+                // `cancelled` altogether.
+                doctorRejectedCount: issues.by_type?.doctor_rejected ?? 0,
+                labRejectedCount: issues.by_type?.lab_rejected ?? 0,
+                returnedCount: issues.by_type?.returned ?? 0,
+                redoCount: issues.by_type?.redo ?? 0,
+                cancelledCount: issues.by_type?.cancelled ?? 0,
+                // "رفض" = doctor-driven only. Lab Rejected / Returned for
+                // Adjustments are lab-internal issues, kept separate per product
+                // definition.
+                rejectedCount: (issues.by_type?.doctor_rejected ?? 0) + (issues.by_type?.redo ?? 0),
+                otherIssuesCount: (issues.by_type?.lab_rejected ?? 0) + (issues.by_type?.returned ?? 0),
+                issueCount: issues.distinct_orders_with_issues ?? 0,
+                issueEvents: issues.total_issue_events ?? 0,
+                issueDateAxis: issues.date_axis ?? '',
                 redoCost: summary.redo_cost,
                 urgentCount: summary.urgent_count,
                 topExpenseCategory,
@@ -403,6 +425,7 @@ export default function Analytics() {
         } catch (error) {
             if (requestId === analyticsRequestId.current) {
                 console.error('Error loading analytics:', error);
+                setLoadError('فشل تحميل بيانات التقارير. الأرقام المعروضة قد تكون غير محدّثة — جرّب تحديث الصفحة.');
             }
         } finally {
             if (requestId === analyticsRequestId.current) {
@@ -593,6 +616,21 @@ export default function Analytics() {
                 </div>
             </div>
 
+            {loadError && (
+                <div role="alert" className="mb-4 p-4 rounded-xl border border-rose-200 bg-rose-50 flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <p className="text-rose-800 text-sm font-bold">{loadError}</p>
+                    </div>
+                    <button
+                        onClick={() => void calculateStats()}
+                        className="text-rose-700 text-xs font-bold underline hover:no-underline shrink-0"
+                    >
+                        إعادة المحاولة
+                    </button>
+                </div>
+            )}
+
             {/* Overview Tab Content */}
             {activeTab === 'overview' && (
                 <>
@@ -672,9 +710,13 @@ export default function Analytics() {
                             </div>
                         </div>
 
-                        {/* Problem Cases: all issues (redo + doctor rejected + lab rejected + returned) */}
+                        {/* Problem Cases — distinct ORDERS carrying at least one logged
+                            issue. Sourced from order_issues (the event log), so problems
+                            that were later resolved still count. Archived orders are
+                            included on purpose: archiving closes a file, it does not
+                            cancel the problem that happened. */}
                         <div className="bg-gradient-to-br from-orange-50 to-white p-5 rounded-2xl border border-orange-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
-                            title="إجمالي كل الحالات اللي فيها مشكلة: إعادات + رفض دكتور + مشاكل/إيشوز داخلية (رفض لاب أو مرتجع للتعديل)">
+                            title="عدد الحالات اللي عليها مشكلة واحدة على الأقل مسجّلة في سجل المشكلات. الحالة اللي عليها أكتر من نوع بتتحسب مرة واحدة، فالتفصيل تحت ممكن يكون مجموعه أكبر. بيشمل الحالات المؤرشفة.">
                             <div className="p-3 bg-orange-100 rounded-xl">
                                 <RefreshCcw size={22} className="text-orange-600" />
                             </div>
@@ -687,15 +729,19 @@ export default function Analytics() {
                                     </span>
                                 </p>
                                 <p className="text-[10px] text-orange-500 mt-0.5">
-                                    {stats.redoCount} إعادة · {stats.doctorRejectedCount} رفض · {stats.otherIssuesCount} مشاكل/إيشوز · خسائر {Math.round(stats.redoCost).toLocaleString()} ج.م
+                                    {stats.redoCount} إعادة · {stats.doctorRejectedCount} رفض دكتور · {stats.otherIssuesCount} مشاكل داخلية · {stats.cancelledCount} ملغية · خسائر {Math.round(stats.redoCost).toLocaleString()} ج.م
+                                </p>
+                                <p className="text-[10px] text-orange-400 mt-0.5">
+                                    من سجل المشكلات · حسب تاريخ تسجيل المشكلة
                                 </p>
                             </div>
                         </div>
 
-                        {/* Return rate (Doctor Rejected + redo only — lab-internal issues are
-                            excluded, see "حالات بمشاكل" for the full issue count) */}
+                        {/* Return rate — doctor-driven issues only (doctor_rejected + redo).
+                            Lab-internal issues are excluded; see "حالات بمشاكل" for the
+                            full count. Also sourced from order_issues. */}
                         <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-2xl border border-teal-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all"
-                            title="نسبة الحالات المرفوضة من الطبيب أو المعادة (Doctor Rejected + إعادة) من إجمالي الحالات — رفض اللاب والمرتجع للتعديل مش داخلين هنا، دول جزء من كارت (حالات بمشاكل)">
+                            title="نسبة الحالات المرفوضة من الطبيب أو المعادة من إجمالي الحالات. رفض اللاب والمرتجع للتعديل مش داخلين هنا — دول جزء من كارت (حالات بمشاكل).">
                             <div className="p-3 bg-teal-100 rounded-xl">
                                 <RefreshCcw size={22} className="text-teal-600" />
                             </div>
@@ -707,6 +753,7 @@ export default function Analytics() {
                                         : 0}%
                                 </p>
                                 <p className="text-[10px] text-teal-500 mt-0.5">{stats.rejectedCount} حالة (رفض دكتور + إعادة)</p>
+                                <p className="text-[10px] text-teal-400 mt-0.5">من سجل المشكلات</p>
                             </div>
                         </div>
                     </div>
