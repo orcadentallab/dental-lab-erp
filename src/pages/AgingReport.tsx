@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type EntityBillingSettings, type AgingBuckets, type Doctor, type Supplier, type User, type Transaction } from '../services/db';
+import { db, type Order, type EntityBillingSettings, type AgingBuckets, type AgingBucketKey, type Doctor, type Supplier, type User, type Transaction } from '../services/db';
 import { matchArabic } from '../lib/searchUtils';
 import { calculateDueDate, BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
@@ -50,8 +50,38 @@ interface SummaryStats {
     totalCurrent: number;
     total1to30: number;
     total31to60: number;
-    totalOver60: number;
+    total61to90: number;
+    totalOver90: number;
     grandTotal: number;
+}
+
+/**
+ * Window used for the DSO denominator on this screen.
+ *
+ * Unlike /analytics, this report is an as-of snapshot with no period filter,
+ * so there is no user-chosen range to average revenue over. A fixed trailing
+ * window keeps the number defined and comparable between visits. It is stated
+ * in the UI so nobody reads it as an all-time figure.
+ */
+const DSO_WINDOW_DAYS = 90;
+
+const BUCKET_LABEL: Record<'all' | AgingBucketKey, string> = {
+    all: 'الكل',
+    current: 'حالي',
+    '1_30': '1-30 يوم',
+    '31_60': '31-60 يوم',
+    '61_90': '61-90 يوم',
+    over_90: '+90 يوم',
+};
+
+/**
+ * A doctor is over the ceiling only when a ceiling was actually set.
+ * `null` means "no limit" — never treat it as zero, which would flag every
+ * doctor with any balance at all.
+ */
+function isOverCreditLimit(row: { aging: AgingBuckets; settings: EntityBillingSettings }): boolean {
+    const limit = row.settings.creditLimit;
+    return limit != null && limit > 0 && row.aging.total > limit;
 }
 
 interface FIFOObligation {
@@ -63,7 +93,7 @@ interface FIFOObligation {
     dueDate: string;
     remainingAmount: number;
     daysPastDue: number;
-    bucket: 'current' | '1_30' | '31_60' | 'over_60';
+    bucket: AgingBucketKey;
     type: 'order' | 'adjustment';
     reason: string | null;
     itemsText?: string;
@@ -107,7 +137,7 @@ export default function AgingReport() {
     const [minAmount, setMinAmount] = useState<number>(0);
     const [asOfDate, setAsOfDate] = useState(todayDateString());
     const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [selectedBucketFilter, setSelectedBucketFilter] = useState<'all' | 'current' | '1_30' | '31_60' | 'over_60'>('all');
+    const [selectedBucketFilter, setSelectedBucketFilter] = useState<'all' | AgingBucketKey>('all');
 
     // ── Adjustment modal state
     const [adjModal, setAdjModal] = useState<{
@@ -225,7 +255,7 @@ export default function AgingReport() {
     const agingData = useMemo(() => {
         if (loading) {
             const emptyRows: FIFOEntityReport[] = [];
-            const initialSummary: SummaryStats = { totalEntities: 0, totalCurrent: 0, total1to30: 0, total31to60: 0, totalOver60: 0, grandTotal: 0 };
+            const initialSummary: SummaryStats = { totalEntities: 0, totalCurrent: 0, total1to30: 0, total31to60: 0, total61to90: 0, totalOver90: 0, grandTotal: 0 };
             return {
                 rows: emptyRows,
                 summary: initialSummary
@@ -256,7 +286,8 @@ export default function AgingReport() {
             totalCurrent: 0,
             total1to30: 0,
             total31to60: 0,
-            totalOver60: 0,
+            total61to90: 0,
+            totalOver90: 0,
             grandTotal: 0
         };
 
@@ -444,7 +475,7 @@ export default function AgingReport() {
             // Sort debits chronologically (oldest first)
             debits.sort((a, b) => a.triggerDate.localeCompare(b.triggerDate));
 
-            const aging: AgingBuckets = { current: 0, days1to30: 0, days31to60: 0, over60Days: 0, total: 0 };
+            const aging: AgingBuckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, over90Days: 0, total: 0 };
             const obligations: FIFOObligation[] = [];
 
             for (const deb of debits) {
@@ -471,11 +502,12 @@ export default function AgingReport() {
                     // Calculate Days Overdue
                     const daysPastDue = daysBetween(dueDate, asOfDate);
                     
-                    let bucket: 'current' | '1_30' | '31_60' | 'over_60' = 'current';
+                    let bucket: AgingBucketKey = 'current';
                     if (daysPastDue > 0) {
                         if (daysPastDue <= 30) bucket = '1_30';
                         else if (daysPastDue <= 60) bucket = '31_60';
-                        else bucket = 'over_60';
+                        else if (daysPastDue <= 90) bucket = '61_90';
+                        else bucket = 'over_90';
                     }
 
                     const itemsText = deb.order?.items?.map((i) => {
@@ -502,7 +534,8 @@ export default function AgingReport() {
                     if (bucket === 'current') aging.current += remainingUnpaid;
                     else if (bucket === '1_30') aging.days1to30 += remainingUnpaid;
                     else if (bucket === '31_60') aging.days31to60 += remainingUnpaid;
-                    else aging.over60Days += remainingUnpaid;
+                    else if (bucket === '61_90') aging.days61to90 += remainingUnpaid;
+                    else aging.over90Days += remainingUnpaid;
                 }
             }
 
@@ -511,7 +544,8 @@ export default function AgingReport() {
             aging.current = round2(aging.current);
             aging.days1to30 = round2(aging.days1to30);
             aging.days31to60 = round2(aging.days31to60);
-            aging.over60Days = round2(aging.over60Days);
+            aging.days61to90 = round2(aging.days61to90);
+            aging.over90Days = round2(aging.over90Days);
 
             // Add entity row if they have outstanding debt
             if (aging.total > minAmount + 0.005) {
@@ -529,7 +563,8 @@ export default function AgingReport() {
                 globalSummary.totalCurrent += aging.current;
                 globalSummary.total1to30 += aging.days1to30;
                 globalSummary.total31to60 += aging.days31to60;
-                globalSummary.totalOver60 += aging.over60Days;
+                globalSummary.total61to90 += aging.days61to90;
+                globalSummary.totalOver90 += aging.over90Days;
                 globalSummary.totalEntities += 1;
             }
         }
@@ -538,7 +573,8 @@ export default function AgingReport() {
         globalSummary.totalCurrent = round2(globalSummary.totalCurrent);
         globalSummary.total1to30 = round2(globalSummary.total1to30);
         globalSummary.total31to60 = round2(globalSummary.total31to60);
-        globalSummary.totalOver60 = round2(globalSummary.totalOver60);
+        globalSummary.total61to90 = round2(globalSummary.total61to90);
+        globalSummary.totalOver90 = round2(globalSummary.totalOver90);
 
         return { rows, summary: globalSummary };
     }, [loading, activeTab, orders, transactions, adjustments, doctors, suppliers, designers, billingSettingsMap, asOfDate, minAmount]);
@@ -555,7 +591,8 @@ export default function AgingReport() {
                 if (selectedBucketFilter === 'current' && r.aging.current <= 0) return false;
                 if (selectedBucketFilter === '1_30' && r.aging.days1to30 <= 0) return false;
                 if (selectedBucketFilter === '31_60' && r.aging.days31to60 <= 0) return false;
-                if (selectedBucketFilter === 'over_60' && r.aging.over60Days <= 0) return false;
+                if (selectedBucketFilter === '61_90' && r.aging.days61to90 <= 0) return false;
+                if (selectedBucketFilter === 'over_90' && r.aging.over90Days <= 0) return false;
             }
             return true;
         });
@@ -577,6 +614,46 @@ export default function AgingReport() {
             setSelectedId(null);
         }
     }, [summaries, selectedId]);
+
+    // ── Collection health: DSO, 90+ concentration, credit-limit breaches
+    // All three are read-only indicators derived from data already loaded on
+    // this screen — no extra query, no new RPC.
+    const collectionHealth = useMemo(() => {
+        const grandTotal = agingData.summary.grandTotal;
+        const over90Share = grandTotal > 0 ? agingData.summary.totalOver90 / grandTotal : 0;
+
+        const withLimit = activeTab === 'doctors'
+            ? agingData.rows.filter(r => r.settings.creditLimit != null && r.settings.creditLimit > 0)
+            : [];
+
+        // DSO denominator: what we actually billed doctors over the trailing
+        // window, on the same statement-date basis the receivable itself uses.
+        const windowStart = new Date(asOfDate);
+        windowStart.setDate(windowStart.getDate() - DSO_WINDOW_DAYS);
+        const windowStartString = windowStart.toISOString().split('T')[0];
+
+        let billedInWindow = 0;
+        if (activeTab === 'doctors') {
+            for (const order of orders) {
+                if (!isDoctorStatementIncluded(order)) continue;
+                const statementDate = getOfficialStatementDate(order);
+                if (!statementDate) continue;
+                const dateOnly = statementDate.split('T')[0];
+                if (dateOnly < windowStartString || dateOnly > asOfDate) continue;
+                billedInWindow += getDoctorReceivableAmount(order);
+            }
+        }
+
+        const avgDailyBilling = billedInWindow / DSO_WINDOW_DAYS;
+        const dso = avgDailyBilling > 0 ? Math.round(grandTotal / avgDailyBilling) : null;
+
+        return {
+            dso,
+            over90Share,
+            withLimitCount: withLimit.length,
+            overLimitCount: withLimit.filter(isOverCreditLimit).length,
+        };
+    }, [agingData, activeTab, orders, asOfDate]);
 
     const selectedEntityReport = useMemo(() => {
         if (!selectedId) return null;
@@ -668,7 +745,7 @@ export default function AgingReport() {
             </div>
 
             {/* Quick stats widgets (With Filter triggers) */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
                 {/* Total Outstanding Card (Clears filters) */}
                 <div 
                     onClick={() => setSelectedBucketFilter('all')}
@@ -737,22 +814,88 @@ export default function AgingReport() {
                     </div>
                 </div>
 
-                {/* +60 Days Card */}
-                <div 
-                    onClick={() => setSelectedBucketFilter('over_60')}
+                {/* 61-90 Days Card */}
+                <div
+                    onClick={() => setSelectedBucketFilter('61_90')}
+                    className={clsx(
+                        "p-4 rounded-2xl border cursor-pointer relative overflow-hidden transition-all hover:shadow-md",
+                        selectedBucketFilter === '61_90' ? "ring-2 ring-rose-500 border-transparent shadow-md bg-rose-50/20 scale-[1.01]" : "bg-white border-slate-200 shadow-sm"
+                    )}
+                >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-rose-50 rounded-full -mr-6 -mt-6 -z-10" />
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">متأخر (61 - 90 يوم)</span>
+                    <h3 className="text-lg md:text-xl font-extrabold text-rose-500 font-mono mt-1">{fmt(agingData.summary.total61to90)} ج.م</h3>
+                    <div className="flex items-center gap-1 mt-2 text-[10px] font-semibold text-rose-500">
+                        <AlertTriangle size={10} />
+                        {selectedBucketFilter === '61_90' ? 'تصفية مفعلة (انقر للإلغاء)' : 'انقر للتصفية'}
+                    </div>
+                </div>
+
+                {/* +90 Days Card */}
+                <div
+                    onClick={() => setSelectedBucketFilter('over_90')}
                     className={clsx(
                         "p-4 rounded-2xl border cursor-pointer relative overflow-hidden transition-all hover:shadow-md col-span-2 lg:col-span-1",
-                        selectedBucketFilter === 'over_60' ? "ring-2 ring-red-500 border-transparent shadow-md bg-red-50/20 scale-[1.01]" : "bg-white border-slate-200 shadow-sm"
+                        selectedBucketFilter === 'over_90' ? "ring-2 ring-red-600 border-transparent shadow-md bg-red-50/30 scale-[1.01]" : "bg-white border-slate-200 shadow-sm"
                     )}
                 >
                     <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-full -mr-6 -mt-6 -z-10" />
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">متأخر (+60 يوم)</span>
-                    <h3 className="text-lg md:text-xl font-extrabold text-red-600 font-mono mt-1">{fmt(agingData.summary.totalOver60)} ج.م</h3>
-                    <div className="flex items-center gap-1 mt-2 text-[10px] font-semibold text-red-500">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">متأخر (+90 يوم)</span>
+                    <h3 className="text-lg md:text-xl font-extrabold text-red-700 font-mono mt-1">{fmt(agingData.summary.totalOver90)} ج.م</h3>
+                    <div className="flex items-center gap-1 mt-2 text-[10px] font-semibold text-red-600">
                         <AlertTriangle size={10} />
-                        {selectedBucketFilter === 'over_60' ? 'تصفية مفعلة (انقر للإلغاء)' : 'انقر للتصفية'}
+                        {selectedBucketFilter === 'over_90' ? 'تصفية مفعلة (انقر للإلغاء)' : 'انقر للتصفية'}
                     </div>
                 </div>
+            </div>
+
+            {/* Collection-health strip — read-only indicators, no filtering */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">متوسط أيام التحصيل (DSO)</span>
+                    <h3 className="text-lg md:text-xl font-extrabold text-slate-800 font-mono mt-1">
+                        {collectionHealth.dso !== null ? `${collectionHealth.dso} يوم` : '—'}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-2">
+                        {collectionHealth.dso !== null
+                            ? `الرصيد ÷ متوسط الفوترة اليومية على آخر ${DSO_WINDOW_DAYS} يوم`
+                            : `مفيش فوترة مسجلة في آخر ${DSO_WINDOW_DAYS} يوم — المقام صفر`}
+                    </p>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">نسبة الرصيد +90 يوم</span>
+                    <h3 className={clsx(
+                        'text-lg md:text-xl font-extrabold font-mono mt-1',
+                        collectionHealth.over90Share > 0.3 ? 'text-red-700' : collectionHealth.over90Share > 0.1 ? 'text-amber-600' : 'text-emerald-600'
+                    )}>
+                        {agingData.summary.grandTotal > 0 ? `${(collectionHealth.over90Share * 100).toFixed(1)}%` : '—'}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 mt-2">من إجمالي الرصيد المستحق — شريحة خطر الإعدام</p>
+                </div>
+
+                {activeTab === 'doctors' ? (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">تجاوزوا حد الائتمان</span>
+                        <h3 className={clsx(
+                            'text-lg md:text-xl font-extrabold font-mono mt-1',
+                            collectionHealth.overLimitCount > 0 ? 'text-red-700' : 'text-slate-800'
+                        )}>
+                            {collectionHealth.withLimitCount === 0 ? '—' : `${collectionHealth.overLimitCount} من ${collectionHealth.withLimitCount}`}
+                        </h3>
+                        <p className="text-[10px] text-slate-400 mt-2">
+                            {collectionHealth.withLimitCount === 0
+                                ? 'مفيش طبيب متسجّل له حد ائتمان — الحد يتضبط من صفحة الأطباء'
+                                : 'عرض وتنبيه فقط — النظام لا يمنع إنشاء الطلبات'}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">حد الائتمان</span>
+                        <h3 className="text-lg md:text-xl font-extrabold text-slate-400 font-mono mt-1">—</h3>
+                        <p className="text-[10px] text-slate-400 mt-2">الحد الائتماني للأطباء فقط — دي ذمم دائنة علينا</p>
+                    </div>
+                )}
             </div>
 
             {/* Filter Bar */}
@@ -802,7 +945,7 @@ export default function AgingReport() {
                         <span>قائمة الأرصدة المستحقة ({summaries.length})</span>
                         {selectedBucketFilter !== 'all' && (
                             <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">
-                                مصفى: {selectedBucketFilter === 'current' ? 'حالي' : selectedBucketFilter === '1_30' ? '1-30 يوم' : selectedBucketFilter === '31_60' ? '31-60 يوم' : '+60 يوم'}
+                                مصفى: {BUCKET_LABEL[selectedBucketFilter]}
                             </span>
                         )}
                     </div>
@@ -830,7 +973,11 @@ export default function AgingReport() {
                                                 {entity.aging.current > 0 && <span className="text-[9px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded font-semibold">حالي</span>}
                                                 {entity.aging.days1to30 > 0 && <span className="text-[9px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-semibold">1-30</span>}
                                                 {entity.aging.days31to60 > 0 && <span className="text-[9px] bg-orange-50 text-orange-600 px-1.5 py-0.5 rounded font-semibold">31-60</span>}
-                                                {entity.aging.over60Days > 0 && <span className="text-[9px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded font-semibold">+60</span>}
+                                                {entity.aging.days61to90 > 0 && <span className="text-[9px] bg-rose-50 text-rose-600 px-1.5 py-0.5 rounded font-semibold">61-90</span>}
+                                                {entity.aging.over90Days > 0 && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold">+90</span>}
+                                                {isOverCreditLimit(entity) && (
+                                                    <span className="text-[9px] bg-red-600 text-white px-1.5 py-0.5 rounded font-bold">تجاوز الحد</span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className="text-left font-mono">
@@ -879,6 +1026,43 @@ export default function AgingReport() {
                                             <p className="text-base font-black text-slate-800">{fmt(selectedEntityReport.aging.total)} ج.م</p>
                                         </div>
                                     </div>
+
+                                    {activeTab === 'doctors' && (
+                                        <div className="border-t border-slate-100 pt-3">
+                                            {selectedEntityReport.settings.creditLimit == null ? (
+                                                <p className="text-[10px] text-slate-400">
+                                                    مفيش حد ائتمان متسجّل لـ{selectedEntityReport.entityName} — يتضبط من صفحة الأطباء ← إعدادات الفوترة.
+                                                </p>
+                                            ) : (() => {
+                                                const limit = selectedEntityReport.settings.creditLimit;
+                                                const used = limit > 0 ? Math.min(selectedEntityReport.aging.total / limit, 1) : 1;
+                                                const over = isOverCreditLimit(selectedEntityReport);
+                                                return (
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex items-center justify-between text-[10px] font-semibold">
+                                                            <span className="text-slate-500">
+                                                                حد الائتمان: <span className="font-mono text-slate-700">{fmt(limit)} ج.م</span>
+                                                            </span>
+                                                            <span className={clsx('font-mono', over ? 'text-red-700 font-bold' : 'text-slate-500')}>
+                                                                {over
+                                                                    ? `تجاوز بـ ${fmt(selectedEntityReport.aging.total - limit)} ج.م`
+                                                                    : `المتبقي ${fmt(limit - selectedEntityReport.aging.total)} ج.م`}
+                                                            </span>
+                                                        </div>
+                                                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                                            <div
+                                                                className={clsx('h-full transition-all', over ? 'bg-red-600' : used > 0.8 ? 'bg-amber-500' : 'bg-emerald-500')}
+                                                                style={{ width: `${used * 100}%` }}
+                                                            />
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400">
+                                                            مؤشر للمتابعة فقط — النظام لا يمنع استلام طلبات جديدة عند التجاوز.
+                                                        </p>
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Obligations Details Table */}
@@ -887,7 +1071,7 @@ export default function AgingReport() {
                                         <span>تفاصيل العمليات المستحقة الذمة</span>
                                         {selectedBucketFilter !== 'all' && (
                                             <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded">
-                                                عرض فئة: {selectedBucketFilter === 'current' ? 'حالي' : selectedBucketFilter === '1_30' ? '1-30 يوم' : selectedBucketFilter === '31_60' ? '31-60 يوم' : '+60 يوم'}
+                                                عرض فئة: {BUCKET_LABEL[selectedBucketFilter]}
                                             </span>
                                         )}
                                     </div>
@@ -967,7 +1151,7 @@ export default function AgingReport() {
                                 </div>
 
                                 {/* Suggested Actions Box */}
-                                {(selectedEntityReport.entityPhone || selectedEntityReport.aging.over60Days > 0) && (
+                                {(selectedEntityReport.entityPhone || selectedEntityReport.aging.days61to90 > 0 || selectedEntityReport.aging.over90Days > 0) && (
                                     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
                                         <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">إجراءات مقترحة</div>
                                         <div className="flex flex-wrap gap-3">
@@ -1054,11 +1238,18 @@ export default function AgingReport() {
                                                         title={`31-60 يوم: ${fmt(selectedEntityReport.aging.days31to60)} ج.م`}
                                                     />
                                                 )}
-                                                {selectedEntityReport.aging.over60Days > 0 && (
+                                                {selectedEntityReport.aging.days61to90 > 0 && (
                                                     <div
-                                                        className="bg-red-500 transition-all"
-                                                        style={{ width: `${(selectedEntityReport.aging.over60Days / selectedEntityReport.aging.total) * 100}%` }}
-                                                        title={`+60 يوم: ${fmt(selectedEntityReport.aging.over60Days)} ج.م`}
+                                                        className="bg-rose-500 transition-all"
+                                                        style={{ width: `${(selectedEntityReport.aging.days61to90 / selectedEntityReport.aging.total) * 100}%` }}
+                                                        title={`61-90 يوم: ${fmt(selectedEntityReport.aging.days61to90)} ج.م`}
+                                                    />
+                                                )}
+                                                {selectedEntityReport.aging.over90Days > 0 && (
+                                                    <div
+                                                        className="bg-red-700 transition-all"
+                                                        style={{ width: `${(selectedEntityReport.aging.over90Days / selectedEntityReport.aging.total) * 100}%` }}
+                                                        title={`+90 يوم: ${fmt(selectedEntityReport.aging.over90Days)} ج.م`}
                                                     />
                                                 )}
                                             </>
@@ -1068,7 +1259,7 @@ export default function AgingReport() {
                                     </div>
 
                                     {/* Legend indicator */}
-                                    <div className="grid grid-cols-4 gap-2 pt-1">
+                                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-1">
                                         <div className="flex items-center gap-1">
                                             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 block" />
                                             <span className="text-[10px] text-slate-500 font-mono">حالي ({fmt(selectedEntityReport.aging.current)})</span>
@@ -1082,8 +1273,12 @@ export default function AgingReport() {
                                             <span className="text-[10px] text-slate-500 font-mono">31-60 يوم ({fmt(selectedEntityReport.aging.days31to60)})</span>
                                         </div>
                                         <div className="flex items-center gap-1">
-                                            <span className="w-2.5 h-2.5 rounded-sm bg-red-500 block" />
-                                            <span className="text-[10px] text-slate-500 font-mono">+60 يوم ({fmt(selectedEntityReport.aging.over60Days)})</span>
+                                            <span className="w-2.5 h-2.5 rounded-sm bg-rose-500 block" />
+                                            <span className="text-[10px] text-slate-500 font-mono">61-90 يوم ({fmt(selectedEntityReport.aging.days61to90)})</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="w-2.5 h-2.5 rounded-sm bg-red-700 block" />
+                                            <span className="text-[10px] text-slate-500 font-mono">+90 يوم ({fmt(selectedEntityReport.aging.over90Days)})</span>
                                         </div>
                                     </div>
                                 </div>

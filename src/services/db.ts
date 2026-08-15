@@ -650,11 +650,14 @@ export interface FinancialReconciliationPreviewResult {
     pageSize: number;
 }
 
+export type AgingBucketKey = 'current' | '1_30' | '31_60' | '61_90' | 'over_90';
+
 export interface AgingBuckets {
     current: number;
     days1to30: number;
     days31to60: number;
-    over60Days: number;
+    days61to90: number;
+    over90Days: number;
     total: number;
 }
 
@@ -667,7 +670,7 @@ export interface AgingObligationDetail {
     dueDate: string;
     remainingAmount: number;
     daysPastDue: number;
-    bucket: 'current' | '1_30' | '31_60' | 'over_60';
+    bucket: AgingBucketKey;
 }
 
 export interface EntityAgingReport {
@@ -687,7 +690,8 @@ export interface AgingReportResult {
         totalCurrent: number;
         total1to30: number;
         total31to60: number;
-        totalOver60: number;
+        total61to90: number;
+        totalOver90: number;
         grandTotal: number;
     };
     asOfDate: string;

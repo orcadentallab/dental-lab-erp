@@ -22,6 +22,16 @@ export interface EntityBillingSettings {
     perOrderDueDays: number;
     paymentTermsNotes?: string | null;
     autoApplyCredit: boolean;
+    /**
+     * Credit ceiling in EGP. `null` means no ceiling.
+     *
+     * Display-only. Nothing in the codebase blocks order creation on this
+     * value, and nothing may start doing so without an explicit owner
+     * decision — that would be a workflow change, not a reporting one.
+     */
+    creditLimit?: number | null;
+    /** Balance at which new work should stop. `null` means never stop. Display-only, same rule as above. */
+    stopWorkThreshold?: number | null;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -83,6 +93,8 @@ export function getDefaultBillingSettings(entityType: BillingEntityType, entityI
         perOrderDueDays: 7,
         paymentTermsNotes: null,
         autoApplyCredit: true,
+        creditLimit: null,
+        stopWorkThreshold: null,
     };
 }
 
@@ -190,5 +202,15 @@ export function validateBillingSettings(settings: Partial<EntityBillingSettings>
         && (!Number.isInteger(settings.perOrderDueDays) || settings.perOrderDueDays < 0 || settings.perOrderDueDays > 365)
     ) {
         throw new Error('Invalid per-order due days');
+    }
+
+    assertNonNegativeMoney(settings.creditLimit, 'Invalid credit limit');
+    assertNonNegativeMoney(settings.stopWorkThreshold, 'Invalid stop-work threshold');
+}
+
+function assertNonNegativeMoney(value: number | null | undefined, message: string): void {
+    if (value === undefined || value === null) return;
+    if (!Number.isFinite(value) || value < 0) {
+        throw new Error(message);
     }
 }

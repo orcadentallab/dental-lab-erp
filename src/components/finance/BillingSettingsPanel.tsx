@@ -54,6 +54,8 @@ const defaultSettings = (entityType: BillingEntityType, entityId: string): Entit
     perOrderDueDays: 7,
     paymentTermsNotes: null,
     autoApplyCredit: true,
+    creditLimit: null,
+    stopWorkThreshold: null,
 });
 
 function validateSettings(settings: EntityBillingSettings): string | null {
@@ -66,11 +68,22 @@ function validateSettings(settings: EntityBillingSettings): string | null {
         return 'عدد أيام السماح يجب أن يكون من 0 إلى 365';
     }
 
+    if (settings.creditLimit != null && (!Number.isFinite(settings.creditLimit) || settings.creditLimit < 0)) {
+        return 'حد الائتمان يجب أن يكون رقمًا موجبًا، أو اتركه فارغًا لبلا حد';
+    }
+
+    if (settings.stopWorkThreshold != null && (!Number.isFinite(settings.stopWorkThreshold) || settings.stopWorkThreshold < 0)) {
+        return 'حد إيقاف الاستلام يجب أن يكون رقمًا موجبًا، أو اتركه فارغًا لبلا إيقاف';
+    }
+
     return null;
 }
 
 export default function BillingSettingsPanel({ entityType, entityId, title, canEdit }: BillingSettingsPanelProps) {
     const copy = COPY_BY_ENTITY[entityType];
+    // Credit ceilings only make sense against a receivable. Suppliers and
+    // designers are payables — we owe them, so there is nothing to cap.
+    const showsCreditControls = entityType === 'doctor';
     const [settings, setSettings] = useState<EntityBillingSettings>(() => defaultSettings(entityType, entityId));
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -135,6 +148,8 @@ export default function BillingSettingsPanel({ entityType, entityId, title, canE
                 perOrderDueDays: settings.perOrderDueDays,
                 paymentTermsNotes: settings.paymentTermsNotes || null,
                 autoApplyCredit: settings.autoApplyCredit,
+                creditLimit: showsCreditControls ? settings.creditLimit ?? null : null,
+                stopWorkThreshold: showsCreditControls ? settings.stopWorkThreshold ?? null : null,
             });
             setSettings(saved);
             setSuccess('تم حفظ إعدادات الفوترة بنجاح');
@@ -226,6 +241,43 @@ export default function BillingSettingsPanel({ entityType, entityId, title, canE
                             />
                         </div>
                     </div>
+
+                    {showsCreditControls && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">حد الائتمان (ج.م)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="100"
+                                        placeholder="بلا حد"
+                                        disabled={disabled}
+                                        value={settings.creditLimit ?? ''}
+                                        onChange={e => updateSettings({ creditLimit: e.target.value === '' ? null : Number(e.target.value) })}
+                                        className="w-full p-2 border border-gray-200 rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">حد إيقاف الاستلام (ج.م)</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="100"
+                                        placeholder="بلا إيقاف"
+                                        disabled={disabled}
+                                        value={settings.stopWorkThreshold ?? ''}
+                                        onChange={e => updateSettings({ stopWorkThreshold: e.target.value === '' ? null : Number(e.target.value) })}
+                                        className="w-full p-2 border border-gray-200 rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
+                                    />
+                                </div>
+                            </div>
+                            <p className="mt-2 text-xs text-amber-800">
+                                للعرض والتنبيه فقط في تقرير الذمم. النظام <strong>لا يمنع</strong> إنشاء أي طلب بسبب تجاوز الحد —
+                                المنع تغيير في سير العمل محتاج قرار منفصل. اتركهما فارغين لبلا حد ولا إيقاف.
+                            </p>
+                        </div>
+                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">{copy.paymentTermsNotes}</label>

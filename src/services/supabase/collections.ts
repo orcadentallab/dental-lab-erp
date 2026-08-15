@@ -14,11 +14,20 @@ export interface AgingBuckets {
     days1to30: number;
     /** 31-60 days past due */
     days31to60: number;
-    /** More than 60 days past due */
-    over60Days: number;
+    /** 61-90 days past due */
+    days61to90: number;
+    /** More than 90 days past due — the write-off risk band */
+    over90Days: number;
     /** Total outstanding */
     total: number;
 }
+
+/**
+ * The 61-90 / 90+ split replaced a single "over 60" bucket: collections
+ * behaviour diverges sharply at 90 days, and the segmentation scoring
+ * (phase 4.3) keys its override rule off the 90+ share specifically.
+ */
+export type AgingBucketKey = 'current' | '1_30' | '31_60' | '61_90' | 'over_90';
 
 export interface AgingObligationDetail {
     obligationId: string;
@@ -29,7 +38,7 @@ export interface AgingObligationDetail {
     dueDate: string;
     remainingAmount: number;
     daysPastDue: number;
-    bucket: 'current' | '1_30' | '31_60' | 'over_60';
+    bucket: AgingBucketKey;
 }
 
 export interface EntityAgingReport {
@@ -61,7 +70,8 @@ export interface AgingReportResult {
         totalCurrent: number;
         total1to30: number;
         total31to60: number;
-        totalOver60: number;
+        total61to90: number;
+        totalOver90: number;
         grandTotal: number;
     };
     asOfDate: string;
@@ -89,11 +99,12 @@ function daysBetween(from: string, to: string): number {
     return Math.floor((toMs - fromMs) / (1000 * 60 * 60 * 24));
 }
 
-function classifyBucket(daysPastDue: number): AgingObligationDetail['bucket'] {
+function classifyBucket(daysPastDue: number): AgingBucketKey {
     if (daysPastDue <= 0) return 'current';
     if (daysPastDue <= 30) return '1_30';
     if (daysPastDue <= 60) return '31_60';
-    return 'over_60';
+    if (daysPastDue <= 90) return '61_90';
+    return 'over_90';
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +145,8 @@ async function resolveEntityNames(
  *  - current    → due_date >= asOfDate
  *  - 1–30 days  → 1-30 days past due_date
  *  - 31–60 days → 31-60 days past due_date
- *  - > 60 days  → more than 60 days past due_date
+ *  - 61–90 days → 61-90 days past due_date
+ *  - > 90 days  → more than 90 days past due_date
  */
 export async function computeAgingReport(
     params: AgingReportParams = {}
@@ -201,7 +213,7 @@ export async function computeAgingReport(
     const nameMap = await resolveEntityNames(pageEntities);
 
     const rows: EntityAgingReport[] = pageEntities.map(entity => {
-        const aging: AgingBuckets = { current: 0, days1to30: 0, days31to60: 0, over60Days: 0, total: 0 };
+        const aging: AgingBuckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, over90Days: 0, total: 0 };
         const obligations: AgingObligationDetail[] = [];
 
         for (const ob of entity.obligations) {
@@ -225,7 +237,8 @@ export async function computeAgingReport(
             if (bucket === 'current') aging.current += remaining;
             else if (bucket === '1_30') aging.days1to30 += remaining;
             else if (bucket === '31_60') aging.days31to60 += remaining;
-            else aging.over60Days += remaining;
+            else if (bucket === '61_90') aging.days61to90 += remaining;
+            else aging.over90Days += remaining;
         }
 
         return {
@@ -245,7 +258,8 @@ export async function computeAgingReport(
         totalCurrent: 0,
         total1to30: 0,
         total31to60: 0,
-        totalOver60: 0,
+        total61to90: 0,
+        totalOver90: 0,
         grandTotal: 0,
     };
 
@@ -258,7 +272,8 @@ export async function computeAgingReport(
             if (bucket === 'current') summary.totalCurrent += remaining;
             else if (bucket === '1_30') summary.total1to30 += remaining;
             else if (bucket === '31_60') summary.total31to60 += remaining;
-            else summary.totalOver60 += remaining;
+            else if (bucket === '61_90') summary.total61to90 += remaining;
+            else summary.totalOver90 += remaining;
         }
     }
 
@@ -276,5 +291,5 @@ export async function getEntityAgingSummary(
     asOfDate?: string
 ): Promise<AgingBuckets> {
     const result = await computeAgingReport({ entityType, entityId, direction, asOfDate, pageSize: 1 });
-    return result.rows[0]?.aging ?? { current: 0, days1to30: 0, days31to60: 0, over60Days: 0, total: 0 };
+    return result.rows[0]?.aging ?? { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, over90Days: 0, total: 0 };
 }

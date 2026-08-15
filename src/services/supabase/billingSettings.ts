@@ -18,6 +18,8 @@ type EntityBillingSettingsRow = {
     per_order_due_days: number;
     payment_terms_notes: string | null;
     auto_apply_credit: boolean;
+    credit_limit: number | string | null;
+    stop_work_threshold: number | string | null;
     created_at: string;
     updated_at: string;
 };
@@ -27,6 +29,13 @@ export type UpsertEntityBillingSettingsInput = Omit<EntityBillingSettings, 'id' 
 async function getSupabaseClient() {
     const { supabase } = await import('../../lib/supabase');
     return supabase;
+}
+
+/** NUMERIC columns arrive from PostgREST as strings; keep null distinct from 0. */
+function toNullableNumber(value: number | string | null | undefined): number | null {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 function dbToBillingSettings(row: EntityBillingSettingsRow): EntityBillingSettings {
@@ -39,6 +48,8 @@ function dbToBillingSettings(row: EntityBillingSettingsRow): EntityBillingSettin
         perOrderDueDays: row.per_order_due_days,
         paymentTermsNotes: row.payment_terms_notes,
         autoApplyCredit: row.auto_apply_credit,
+        creditLimit: toNullableNumber(row.credit_limit),
+        stopWorkThreshold: toNullableNumber(row.stop_work_threshold),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
     };
@@ -53,6 +64,8 @@ function billingSettingsToDb(settings: UpsertEntityBillingSettingsInput) {
         per_order_due_days: settings.perOrderDueDays,
         payment_terms_notes: settings.paymentTermsNotes || null,
         auto_apply_credit: settings.autoApplyCredit,
+        credit_limit: settings.creditLimit ?? null,
+        stop_work_threshold: settings.stopWorkThreshold ?? null,
     };
 }
 
