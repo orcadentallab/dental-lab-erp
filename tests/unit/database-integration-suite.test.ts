@@ -51,8 +51,8 @@ describe('local database integration suite safety', () => {
     });
 
     test('production-only repair guards allow a fresh local schema', () => {
-        expect(doctorRepairMigration).toContain(
-            'v_count = 0\n       AND NOT EXISTS (SELECT 1 FROM public.orders)',
+        expect(doctorRepairMigration).toMatch(
+            /v_count = 0\r?\n\s+AND NOT EXISTS \(SELECT 1 FROM public\.orders\)/,
         );
         expect(returnedOrderRepairMigration).toMatch(
             /WHERE case_id = '2005-260706-511'[\s\S]*IF NOT FOUND THEN\s+RETURN;/,
