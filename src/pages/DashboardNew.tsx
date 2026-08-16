@@ -544,6 +544,8 @@ export default function DashboardNew() {
             await db.updateOrder(orderId, { isArchived: true });
             // Remove from local state immediately to hide from alerts
             setOrders(prev => prev.filter(o => o.id !== orderId));
+            // Invalidate cache so the archived case doesn't reappear on next dashboard load
+            sessionStorage.removeItem(DASHBOARD_CACHE_KEY);
         } catch (error) {
             console.error('Error archiving order:', error);
             alert('Failed to archive order');
