@@ -237,10 +237,13 @@ export default function DashboardNew() {
                         setIsFetchingMissing(true);
                         db.getOrdersByIds(Array.from(missingIds))
                             .then(missingOrders => {
-                                if (missingOrders.length > 0) {
+                                // Archived orders are intentionally excluded from the dashboard —
+                                // don't let this backfill undo an archive action.
+                                const activeMissingOrders = missingOrders.filter(mo => !mo.isArchived);
+                                if (activeMissingOrders.length > 0) {
                                     setOrders(prev => {
                                         const updated = [...prev];
-                                        for (const mo of missingOrders) {
+                                        for (const mo of activeMissingOrders) {
                                             if (!updated.some(o => o.id === mo.id)) {
                                                 updated.push(mo);
                                             }
