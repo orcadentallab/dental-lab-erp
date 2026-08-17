@@ -298,22 +298,37 @@ export default function IssuesReport() {
 
             {/* Lab performance — moved here from the retired Quality page and
                 rebuilt on order_issues, which the old version did not use.
-                Split by severity tier (owner, 2026-08-17): the "نسبة مشاكله"
-                column is driven ONLY by doctor_rejected + redo (a produced
-                piece genuinely lost) — cancelled/lab_rejected never fed a
-                rate, since we simply chose not to continue on those and
-                nothing was ever produced and lost. returned gets its own
-                column, counted on its own since it costs trust but not a
-                finished product. */}
+                Split by severity tier (owner, 2026-08-17): the rate column
+                is driven ONLY by doctor_rejected + redo (a produced piece
+                genuinely lost) — cancelled/lab_rejected never feed a rate,
+                since we simply chose not to continue on those and nothing
+                was ever produced and lost. returned gets its own column,
+                counted on its own since it costs trust but not a finished
+                product. */}
             <div className="bg-white rounded-xl border border-surface-200 overflow-hidden shadow-sm">
                 <div className="px-4 py-3 bg-surface-50 border-b border-surface-200">
                     <h3 className="text-sm font-bold text-surface-800">أداء المعامل</h3>
                     <p className="text-[11px] text-surface-500 mt-0.5">
-                        محور التاريخ هنا هو <strong>تاريخ الطلب</strong> للبسط والمقام — مش تاريخ تسجيل المشكلة زي الجدول تحت.
-                        «نسبة مشاكله» محسوبة من <strong className="text-rose-600">مرتجع طبيب</strong> و<strong className="text-orange-600">إعادة إنتاج</strong> بس
+                        «نسبة مرتجع+إعادة» محسوبة من <strong className="text-rose-600">مرتجع طبيب</strong> و<strong className="text-orange-600">إعادة إنتاج</strong> بس
                         (منتج اتعمل وضاع فعلاً). <strong className="text-blue-600">مرتجع للتعديل</strong> له عمود لوحده.
-                        <strong className="text-emerald-600"> ملغي ورفض معمل</strong> بيتعرضوا كعدد بس <strong>مش بيأثروا على النسبة</strong> —
+                        <strong className="text-emerald-600"> ملغى ومرفوض المعمل</strong> بيتعرضوا كعدد بس <strong>مش بيأثروا على النسبة</strong> —
                         دول قرار إننا منكملش، مش منتج ضاع. المؤرشف داخل، الملغي تسجيله (`is_voided`) مستبعد.
+                    </p>
+                </div>
+
+                {/* This is the single most common source of "الجدول ده غلط"
+                    reports on this page — flagged directly, not buried in a
+                    muted footnote, because the two counts can legitimately
+                    differ by a lot (an order delivered months ago can get its
+                    rejection logged this week). */}
+                <div className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                    <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-900 leading-relaxed">
+                        <strong>الجدول ده على محور تاريخ مختلف عن الكروت والجدول تحت.</strong> الكروت فوق بتعدّ المشاكل
+                        حسب <strong>امتى اتسجّلت</strong>؛ الجدول ده بيعدّها حسب <strong>امتى الطلب الأصلي اتسلّم</strong> —
+                        عشان النسبة تتحسب على نفس مجموعة الطلبات اللي المعمل شغلها فعلاً في الفترة دي، مش على مشاكل
+                        لطلبات قديمة. لو طبيب رفض حالة في أغسطس لطلب اتسلّم في يونيو، هتلاقيها في الكروت فوق كـ«مرتجع طبيب»
+                        لكن مش هنا — لأنها مش بتاعة معمل «أغسطس». الفرق ده <strong>طبيعي ومتوقع</strong>، مش خطأ.
                     </p>
                 </div>
 
@@ -336,11 +351,11 @@ export default function IssuesReport() {
                                 <tr>
                                     <th className="text-right px-4 py-2.5 font-bold">المعمل</th>
                                     <th className="px-3 py-2.5 text-center font-bold">إجمالي الحالات</th>
-                                    <th className="px-3 py-2.5 text-center font-bold">مشاكل حقيقية</th>
-                                    <th className="px-3 py-2.5 text-center font-bold">نسبة مشاكله</th>
-                                    <th className="px-3 py-2.5 text-center font-bold">نسبته من كل المشاكل الحقيقية</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">مرتجع + إعادة</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">نسبة مرتجع+إعادة</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">نسبته من كل مرتجع+إعادة</th>
                                     <th className="px-3 py-2.5 text-center font-bold">مرتجع للتعديل</th>
-                                    <th className="px-3 py-2.5 text-center font-bold">حالات ثانوية</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">ملغى + مرفوض</th>
                                     <th className="px-3 py-2.5 text-center font-bold">توزيع الأنواع</th>
                                     <th className="px-3 py-2.5 text-center font-bold">تكلفة الرفض</th>
                                 </tr>
