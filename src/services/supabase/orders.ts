@@ -3273,13 +3273,19 @@ export async function getOrderIssues(filters?: {
 }): Promise<import('../db').OrderIssue[]> {
     let query = supabase
         .from('order_issues')
+        // orders!inner turns the embed into an inner join so the is_deleted
+        // filter below can actually apply — a plain left-joined `orders`
+        // can't be filtered this way and every soft-deleted order's issue
+        // row would keep showing here forever (rule 0-A/5: is_deleted is the
+        // one thing that always excludes a case, unlike archiving).
         .select(`
             *,
-            orders (
+            orders!inner (
                 *,
                 order_items (*)
             )
         `)
+        .or('is_deleted.eq.false,is_deleted.is.null', { referencedTable: 'orders' })
         .order('created_at', { ascending: false });
 
     if (filters?.issueType) query = query.eq('issue_type', filters.issueType);
