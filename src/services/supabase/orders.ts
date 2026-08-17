@@ -3294,6 +3294,30 @@ export async function getOrderIssues(filters?: {
 
     const { data, error } = await query;
     if (error) throw error;
+
+    // For `redo` rows, order_issues.order_id points at the ORIGINAL order —
+    // the one the problem happened to (rule 0-C) — never at the replacement
+    // case redo produces. So the replacement's case number can't come from
+    // the embed above; it has to be looked up as "which order names this one
+    // as its original", the reverse direction of the same original_order_id
+    // link.
+    const redoOrderIds = Array.from(new Set(
+        (data || []).filter(r => r.issue_type === 'redo').map(r => r.order_id)
+    ));
+    const redoChildByParentId = new Map<string, { id: string; caseId: string | null; status: string }>();
+    if (redoOrderIds.length > 0) {
+        const { data: children, error: childrenError } = await supabase
+            .from('orders')
+            .select('id, case_id, status, original_order_id')
+            .in('original_order_id', redoOrderIds);
+        if (childrenError) throw childrenError;
+        for (const child of children || []) {
+            if (child.original_order_id) {
+                redoChildByParentId.set(child.original_order_id, { id: child.id, caseId: child.case_id, status: child.status });
+            }
+        }
+    }
+
     return (data || []).map((r) => {
         const dbOrder = r.orders ? (Array.isArray(r.orders) ? r.orders[0] : r.orders) : null;
         return {
@@ -3313,6 +3337,7 @@ export async function getOrderIssues(filters?: {
             resolutionNotes: r.resolution_notes,
             createdAt: r.created_at,
             order: dbOrder ? dbToOrder(dbOrder as unknown as DbOrderWithRelations) : undefined,
+            redoOrder: r.issue_type === 'redo' ? (redoChildByParentId.get(r.order_id) ?? null) : undefined,
         };
     });
 }

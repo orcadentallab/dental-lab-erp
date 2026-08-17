@@ -191,7 +191,10 @@ export default function IssuesReport() {
 
     const formatCurrency = (val?: number | null) => {
         if (val === undefined || val === null || val === 0) return '—';
-        return `${val.toLocaleString('ar-EG')} ج.م`;
+        // en-US, not ar-EG: ar-EG renders Eastern Arabic-Indic digits
+        // (١٢٣٤), inconsistent with every other number on this page and the
+        // rest of the reporting work, which all use Western digits.
+        return `${val.toLocaleString('en-US')} ج.م`;
     };
 
     return (
@@ -432,7 +435,7 @@ export default function IssuesReport() {
                                 <tr>
                                     <th className="px-4 py-3">نوع المشكلة</th>
                                     <th className="px-4 py-3">المريض / كود الحالة</th>
-                                    <th className="px-4 py-3">معرف الحالة الأصلية</th>
+                                    <th className="px-4 py-3">حالة الإعادة الجديدة</th>
                                     <th className="px-4 py-3">الطبيب</th>
                                     <th className="px-4 py-3">فريق العمل</th>
                                     <th className="px-4 py-3">التفاصيل</th>
@@ -472,9 +475,13 @@ export default function IssuesReport() {
                                                 <div className="text-[10px] text-surface-400 font-mono">#{order?.caseId || '—'}</div>
                                             </td>
                                             <td className="px-4 py-3 text-surface-400 text-xs">
-                                                {order?.originalOrderId && issue.issueType === 'redo' ? (
-                                                    <span className="text-emerald-600 font-mono">{order.originalOrderId.slice(0, 8)}...</span>
-                                                ) : '—'}
+                                                {issue.issueType !== 'redo' ? (
+                                                    <span title="بيظهر لصفوف إعادة الإنتاج بس">لا ينطبق</span>
+                                                ) : issue.redoOrder ? (
+                                                    <span className="text-emerald-600 font-mono font-bold">#{issue.redoOrder.caseId || issue.redoOrder.id.slice(0, 8)}</span>
+                                                ) : (
+                                                    <span className="text-amber-600">لسه ما اتعملتش حالة جديدة</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 font-medium text-surface-800">{doctorName}</td>
                                             <td className="px-4 py-3 text-xs">
@@ -508,7 +515,7 @@ export default function IssuesReport() {
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="text-xs font-bold text-surface-800" dir="ltr">
-                                                    {new Date(issue.createdAt).toLocaleDateString('ar-EG')}
+                                                    {new Date(issue.createdAt).toLocaleDateString('en-GB')}
                                                 </div>
                                                 <div className="text-[10px] text-surface-400">تاريخ المشكلة</div>
                                             </td>

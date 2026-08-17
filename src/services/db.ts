@@ -376,6 +376,13 @@ export interface OrderIssue {
     /** Logged by mistake. Excluded from statistics; never hard-deleted. */
     isVoided?: boolean;
     order?: Order;
+    /**
+     * For `issueType === 'redo'` only: the replacement case actually created
+     * from this rejection, if one exists yet. `order_issues.order_id` always
+     * points at the original order (rule 0-C), never at this replacement, so
+     * it can't be read off `order` above.
+     */
+    redoOrder?: { id: string; caseId: string | null; status: string } | null;
 }
 
 export interface EntityBillingSettings {
