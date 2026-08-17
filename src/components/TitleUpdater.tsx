@@ -31,7 +31,7 @@ export default function TitleUpdater() {
             if (pathname === '/services') return language === 'ar' ? 'الخدمات وأسعارها' : 'Services & Prices';
             if (pathname === '/issues-report') return language === 'ar' ? 'تقرير المشكلات' : 'Issues Report';
             if (pathname === '/marketing-analytics') return language === 'ar' ? 'تحليلات التسويق' : 'Marketing Analytics';
-            if (pathname === '/designer-stats') return language === 'ar' ? 'إحصائيات المصممين' : 'Designer Stats';
+            if (pathname === '/designer-stats') return language === 'ar' ? 'إنتاجية الفريق' : 'Team Productivity';
             
             // Doctor portal
             if (pathname === '/doctor/new-request') return language === 'ar' ? 'طلب جديد' : 'New Order';
