@@ -12,6 +12,8 @@ import {
 } from '../services/supabase/analyticsService';
 import { matchArabic } from '../lib/searchUtils';
 import DoctorSegmentationTab from '../components/reports/DoctorSegmentationTab';
+import { useReportDateRange } from '../hooks/useReportDateRange';
+import ReportDateRangeFilter from '../components/reports/ReportDateRangeFilter';
 
 type TabType = 'profitability' | 'segmentation';
 type GroupMode = 'detail' | 'doctor' | 'service';
@@ -19,15 +21,6 @@ type SortKey = 'gross_profit' | 'revenue' | 'cost' | 'margin_pct' | 'units' | 'r
 
 const fmt = (n: number) =>
     n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-
-function firstDayOfCurrentMonth(): string {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-}
-
-function todayDateString(): string {
-    return new Date().toISOString().split('T')[0];
-}
 
 /**
  * An aggregate row. `margin_pct` is recomputed from the summed revenue and
@@ -67,8 +60,8 @@ function toAggregate(key: string, label: string, sublabel: string | null, rows: 
 }
 
 export default function DoctorServiceProfitabilityPage() {
-    const [startDate, setStartDate] = useState(firstDayOfCurrentMonth());
-    const [endDate, setEndDate] = useState(todayDateString());
+    const dateRange = useReportDateRange('current_month');
+    const { startDate, endDate } = dateRange;
     const [groupMode, setGroupMode] = useState<GroupMode>('detail');
     const [search, setSearch] = useState('');
     const [sortKey, setSortKey] = useState<SortKey>('gross_profit');
@@ -199,21 +192,7 @@ export default function DoctorServiceProfitabilityPage() {
                     </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                    <input
-                        type="date"
-                        value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
-                        className="text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-300 font-mono"
-                    />
-                    <span className="text-xs text-slate-400">إلى</span>
-                    <input
-                        type="date"
-                        value={endDate}
-                        onChange={e => setEndDate(e.target.value)}
-                        className="text-xs px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-300 font-mono"
-                    />
-                </div>
+                <ReportDateRangeFilter state={dateRange} />
             </div>
 
             {/* Tabs — profit analysis and the grade built on it stay together,

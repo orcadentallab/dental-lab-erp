@@ -177,17 +177,29 @@ export interface DoctorSegmentationInput {
  * Sourced from `order_issues`, not `orders.status` — a lab that had problems
  * and fixed them must still show them, which a status-derived count cannot do.
  *
- * `issue_rate_pct` is this lab's own problem rate; `share_of_all_issues_pct`
- * is its slice of every problem-carrying case in the period. The two answer
- * different questions and a small lab can be high on one and low on the other.
+ * Split into severity tiers by owner decision (2026-08-17): not every
+ * issue_type costs the same. `doctor_rejected`/`redo` mean a produced piece
+ * was actually lost, and only THAT tier drives `severe_issue_rate_pct` — the
+ * number that should worry you about a lab. `returned` costs some doctor
+ * trust but no product was lost, so it is counted on its own
+ * (`returned_orders`/`returned_rate_pct`). `cancelled`/`lab_rejected` mean we
+ * simply chose not to continue — nothing was ever produced and lost — so
+ * `minor_issue_orders` is visible but never feeds a rate.
+ *
+ * `share_of_all_severe_issues_pct` is this lab's slice of every SEVERE case
+ * across all labs in the period, not of every issue — a lab can carry a lot
+ * of minor/returned volume without that inflating this figure.
  */
 export interface SupplierIssuePerformanceRow {
     supplier_id: string | null;
     supplier_name: string;
     total_orders: number;
-    orders_with_issues: number;
-    issue_rate_pct: number | null;
-    share_of_all_issues_pct: number | null;
+    severe_issue_orders: number;
+    severe_issue_rate_pct: number | null;
+    share_of_all_severe_issues_pct: number | null;
+    returned_orders: number;
+    returned_rate_pct: number | null;
+    minor_issue_orders: number;
     rejection_cost: number;
     by_type: Record<string, number>;
 }
@@ -197,7 +209,7 @@ export interface SupplierIssuePerformance {
     date_axis: string;
     includes_archived: boolean;
     total_orders: number;
-    total_orders_with_issues: number;
+    total_severe_issue_orders: number;
     rows: SupplierIssuePerformanceRow[];
 }
 

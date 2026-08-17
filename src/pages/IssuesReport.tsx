@@ -4,14 +4,21 @@ import { AlertTriangle, BarChart2, RefreshCw, XCircle, RotateCcw, Ban, UserX } f
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 import { ISSUE_CAUSE, responsibleStageLabel } from '../constants/issueCauses';
 import { analyticsService, type SupplierIssuePerformance } from '../services/supabase/analyticsService';
+import { useReportDateRange } from '../hooks/useReportDateRange';
+import ReportDateRangeFilter from '../components/reports/ReportDateRangeFilter';
 
-// Issue type display config
+// Issue type display config, ordered by business severity (owner,
+// 2026-08-17) rather than registration order — severe first, so the cards
+// and the type filter read worst-to-least-bad:
+//   severe   (doctor_rejected, redo)   — a produced piece is genuinely lost.
+//   returned                           — some doctor trust cost, no product lost.
+//   minor    (cancelled, lab_rejected) — we chose not to continue; nothing lost.
 const ISSUE_TYPE_LABELS: Record<string, string> = {
-    returned:        'مرتجع للتعديل',   // Returned for rework — linked to original order
     doctor_rejected: 'مرتجع طبيب',      // Doctor rejected — rejectedLabCost applies
-    lab_rejected:    'رفض معمل',         // Lab/designer internal rejection — zero financial impact
-    cancelled:       'ملغي',             // Cancelled — zero financial impact
     redo:            'إعادة إنتاج',      // Redo — new case linked to original
+    returned:        'مرتجع للتعديل',   // Returned for rework — linked to original order
+    cancelled:       'ملغي',             // Cancelled — zero financial impact
+    lab_rejected:    'رفض معمل',         // Lab/designer internal rejection — zero financial impact
 };
 
 // Replaced by the shared 14-code taxonomy (migration 20260816000000).
@@ -27,14 +34,18 @@ const ISSUE_ICONS: Record<string, React.ComponentType<{ size?: number; className
     redo:            RefreshCw,
 };
 
+// Colors follow business severity, not registration order (owner,
+// 2026-08-17): doctor_rejected + redo are real product loss — the piece is
+// gone whether or not the doctor continues — so both get alarming colors.
+// lab_rejected and cancelled never became a lost, delivered product (we
+// simply chose not to continue), so both read calm; returned sits between
+// the two and gets its own distinct, non-alarming color.
 const ISSUE_TYPE_STYLES: Record<string, { bg: string; text: string; border: string; iconBg: string }> = {
+    doctor_rejected: { bg: 'bg-rose-50/50',   text: 'text-rose-700',   border: 'border-rose-100',   iconBg: 'bg-rose-100/50' },
+    redo:            { bg: 'bg-orange-50/50', text: 'text-orange-700', border: 'border-orange-100', iconBg: 'bg-orange-100/50' },
     returned:        { bg: 'bg-blue-50/50',   text: 'text-blue-600',   border: 'border-blue-100',   iconBg: 'bg-blue-100/50' },
-    // Doctor rejected: amber (financial impact with rejectedLabCost)
-    doctor_rejected: { bg: 'bg-amber-50/50',  text: 'text-amber-700',  border: 'border-amber-100',  iconBg: 'bg-amber-100/50' },
-    // Lab rejected: rose (internal rejection, no financial impact)
-    lab_rejected:    { bg: 'bg-rose-50/50',   text: 'text-rose-600',   border: 'border-rose-100',   iconBg: 'bg-rose-100/50' },
-    cancelled:       { bg: 'bg-slate-50/50',  text: 'text-slate-600',  border: 'border-slate-100',  iconBg: 'bg-slate-100/50' },
-    redo:            { bg: 'bg-amber-50/50',  text: 'text-amber-600',  border: 'border-amber-100',  iconBg: 'bg-amber-100/50' },
+    cancelled:       { bg: 'bg-blue-50/50',   text: 'text-blue-600',   border: 'border-blue-100',   iconBg: 'bg-blue-100/50' },
+    lab_rejected:    { bg: 'bg-emerald-50/50', text: 'text-emerald-600', border: 'border-emerald-100', iconBg: 'bg-emerald-100/50' },
 };
 
 // Explanation for each issue type
@@ -54,7 +65,8 @@ export default function IssuesReport() {
     const [typeFilter, setTypeFilter] = useState('all');
     const [designerFilter, setDesignerFilter] = useState('all');
     const [supplierFilter, setSupplierFilter] = useState('all');
-    const [dateRange, setDateRange] = useState({ start: '', end: '' });
+    const dateRangeState = useReportDateRange('current_month');
+    const { startDate: rangeStart, endDate: rangeEnd } = dateRangeState;
     const [hoveredType, setHoveredType] = useState<string | null>(null);
 
     const [labPerf, setLabPerf] = useState<SupplierIssuePerformance | null>(null);
@@ -95,8 +107,11 @@ export default function IssuesReport() {
             try {
                 const data = await db.getOrderIssues({
                     issueType: typeFilter !== 'all' ? typeFilter : undefined,
-                    startDate: dateRange.start || undefined,
-                    endDate: dateRange.end ? `${dateRange.end}T23:59:59` : undefined,
+                    startDate: rangeStart || undefined,
+                    // order_issues.created_at is a timestamp; a date-only
+                    // upper bound would silently exclude issues logged later
+                    // in that final day, so it's pushed to the day's end.
+                    endDate: rangeEnd ? `${rangeEnd}T23:59:59` : undefined,
                 });
                 if (ignore) return;
                 setIssues(data);
@@ -113,7 +128,7 @@ export default function IssuesReport() {
         return () => {
             ignore = true;
         };
-    }, [typeFilter, dateRange]);
+    }, [typeFilter, rangeStart, rangeEnd]);
 
     // Lab performance is loaded separately from the issues list because it is
     // measured on a different date axis (the order's statement date, for both
@@ -127,8 +142,8 @@ export default function IssuesReport() {
             setLabPerfError(null);
             try {
                 const data = await analyticsService.getSupplierIssuePerformance(
-                    dateRange.start || undefined,
-                    dateRange.end || undefined,
+                    rangeStart || undefined,
+                    rangeEnd || undefined,
                 );
                 if (ignore) return;
                 setLabPerf(data);
@@ -143,7 +158,7 @@ export default function IssuesReport() {
         })();
 
         return () => { ignore = true; };
-    }, [dateRange]);
+    }, [rangeStart, rangeEnd]);
 
     const filteredIssues = useMemo(() => {
         return issues.filter(issue => {
@@ -181,9 +196,12 @@ export default function IssuesReport() {
 
     return (
         <div className="space-y-6 p-6">
-            <div className="flex items-center gap-3">
-                <BarChart2 size={24} className="text-surface-500" />
-                <h1 className="text-xl font-bold text-surface-900">تقرير المشكلات والجودة</h1>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <BarChart2 size={24} className="text-surface-500" />
+                    <h1 className="text-xl font-bold text-surface-900">تقرير المشكلات والجودة</h1>
+                </div>
+                <ReportDateRangeFilter state={dateRangeState} />
             </div>
 
             {[lookupError, reportError].filter((message): message is string => Boolean(message)).map(message => (
@@ -192,29 +210,6 @@ export default function IssuesReport() {
                     <span className="text-sm font-medium">{message}</span>
                 </div>
             ))}
-
-            {/* Issue Type Guide */}
-            <div className="bg-white border border-surface-200 rounded-xl p-4 shadow-sm">
-                <p className="text-xs font-bold text-surface-500 mb-3">دليل حالات المشكلات</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {Object.entries(ISSUE_TYPE_LABELS).map(([type, label]) => {
-                        const style = ISSUE_TYPE_STYLES[type] || { bg: 'bg-white', text: 'text-surface-900', border: 'border-surface-200', iconBg: 'bg-surface-100' };
-                        const Icon = ISSUE_ICONS[type];
-                        const description = ISSUE_TYPE_DESCRIPTIONS[type] || '';
-                        return (
-                            <div key={type} className={`flex items-start gap-2.5 p-3 rounded-lg border ${style.border} ${style.bg}`}>
-                                <div className={`p-1.5 rounded-lg ${style.iconBg} mt-0.5 flex-shrink-0`}>
-                                    {Icon && <Icon size={14} className={style.text} />}
-                                </div>
-                                <div>
-                                    <span className={`text-xs font-bold ${style.text}`}>{label}</span>
-                                    <p className="text-[10px] text-surface-500 mt-0.5 leading-relaxed">{description}</p>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
 
             {/* Filters */}
             <div className="flex flex-wrap gap-3 bg-white p-4 rounded-xl border border-surface-200">
@@ -250,25 +245,6 @@ export default function IssuesReport() {
                         <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                 </select>
-
-                <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-surface-500">من</span>
-                    <input
-                        type="date"
-                        value={dateRange.start}
-                        onChange={(e) => setDateRange(p => ({ ...p, start: e.target.value }))}
-                        className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
-                    />
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-surface-500">إلى</span>
-                    <input
-                        type="date"
-                        value={dateRange.end}
-                        onChange={(e) => setDateRange(p => ({ ...p, end: e.target.value }))}
-                        className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
-                    />
-                </div>
             </div>
 
             {/* Stats Cards — 5 types now */}
@@ -321,13 +297,23 @@ export default function IssuesReport() {
             </div>
 
             {/* Lab performance — moved here from the retired Quality page and
-                rebuilt on order_issues, which the old version did not use. */}
+                rebuilt on order_issues, which the old version did not use.
+                Split by severity tier (owner, 2026-08-17): the "نسبة مشاكله"
+                column is driven ONLY by doctor_rejected + redo (a produced
+                piece genuinely lost) — cancelled/lab_rejected never fed a
+                rate, since we simply chose not to continue on those and
+                nothing was ever produced and lost. returned gets its own
+                column, counted on its own since it costs trust but not a
+                finished product. */}
             <div className="bg-white rounded-xl border border-surface-200 overflow-hidden shadow-sm">
                 <div className="px-4 py-3 bg-surface-50 border-b border-surface-200">
                     <h3 className="text-sm font-bold text-surface-800">أداء المعامل</h3>
                     <p className="text-[11px] text-surface-500 mt-0.5">
                         محور التاريخ هنا هو <strong>تاريخ الطلب</strong> للبسط والمقام — مش تاريخ تسجيل المشكلة زي الجدول تحت.
-                        الاتنين بيجاوبوا على سؤالين مختلفين. المؤرشف داخل، الملغي (`is_voided`) مستبعد.
+                        «نسبة مشاكله» محسوبة من <strong className="text-rose-600">مرتجع طبيب</strong> و<strong className="text-orange-600">إعادة إنتاج</strong> بس
+                        (منتج اتعمل وضاع فعلاً). <strong className="text-blue-600">مرتجع للتعديل</strong> له عمود لوحده.
+                        <strong className="text-emerald-600"> ملغي ورفض معمل</strong> بيتعرضوا كعدد بس <strong>مش بيأثروا على النسبة</strong> —
+                        دول قرار إننا منكملش، مش منتج ضاع. المؤرشف داخل، الملغي تسجيله (`is_voided`) مستبعد.
                     </p>
                 </div>
 
@@ -350,9 +336,11 @@ export default function IssuesReport() {
                                 <tr>
                                     <th className="text-right px-4 py-2.5 font-bold">المعمل</th>
                                     <th className="px-3 py-2.5 text-center font-bold">إجمالي الحالات</th>
-                                    <th className="px-3 py-2.5 text-center font-bold">حالات عليها مشاكل</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">مشاكل حقيقية</th>
                                     <th className="px-3 py-2.5 text-center font-bold">نسبة مشاكله</th>
-                                    <th className="px-3 py-2.5 text-center font-bold">نسبته من كل المشاكل</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">نسبته من كل المشاكل الحقيقية</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">مرتجع للتعديل</th>
+                                    <th className="px-3 py-2.5 text-center font-bold">حالات ثانوية</th>
                                     <th className="px-3 py-2.5 text-center font-bold">توزيع الأنواع</th>
                                     <th className="px-3 py-2.5 text-center font-bold">تكلفة الرفض</th>
                                 </tr>
@@ -369,16 +357,27 @@ export default function IssuesReport() {
                                             )}
                                         </td>
                                         <td className="px-3 py-2.5 text-center font-mono text-surface-600">{row.total_orders}</td>
-                                        <td className="px-3 py-2.5 text-center font-mono text-surface-700 font-bold">{row.orders_with_issues}</td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-rose-700 font-bold">{row.severe_issue_orders}</td>
                                         <td className={`px-3 py-2.5 text-center font-mono font-bold ${
-                                            row.issue_rate_pct === null ? 'text-surface-300'
-                                                : row.issue_rate_pct > 12 ? 'text-rose-600'
-                                                    : row.issue_rate_pct > 7 ? 'text-amber-600' : 'text-emerald-600'
+                                            row.severe_issue_rate_pct === null ? 'text-surface-300'
+                                                : row.severe_issue_rate_pct > 12 ? 'text-rose-600'
+                                                    : row.severe_issue_rate_pct > 7 ? 'text-amber-600' : 'text-emerald-600'
                                         }`}>
-                                            {row.issue_rate_pct === null ? '—' : `${row.issue_rate_pct}%`}
+                                            {row.severe_issue_rate_pct === null ? '—' : `${row.severe_issue_rate_pct}%`}
                                         </td>
                                         <td className="px-3 py-2.5 text-center font-mono text-surface-600">
-                                            {row.share_of_all_issues_pct === null ? '—' : `${row.share_of_all_issues_pct}%`}
+                                            {row.share_of_all_severe_issues_pct === null ? '—' : `${row.share_of_all_severe_issues_pct}%`}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-blue-600">
+                                            {row.returned_orders > 0 ? (
+                                                <>
+                                                    {row.returned_orders}
+                                                    <span className="text-surface-400"> ({row.returned_rate_pct}%)</span>
+                                                </>
+                                            ) : <span className="text-surface-300">—</span>}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-surface-400">
+                                            {row.minor_issue_orders > 0 ? row.minor_issue_orders : <span className="text-surface-300">—</span>}
                                         </td>
                                         <td className="px-3 py-2.5 text-center">
                                             <div className="flex flex-wrap gap-1 justify-center">
