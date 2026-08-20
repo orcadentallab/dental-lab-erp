@@ -177,10 +177,6 @@ export default function CaseRegistration() {
 
     const handleRegister = async (orderId: string) => {
         const order = orders.find(candidate => candidate.id === orderId);
-        if (order && !isAccountingFinanciallyReady(order)) {
-            toastError(`لا يمكن الاعتماد قبل حسم: ${getMissingAccountingDecisions(order).join('، ')}`);
-            return;
-        }
         const isCancellation = order?.status === 'Cancelled';
         setProcessingId(orderId);
         try {
@@ -203,11 +199,6 @@ export default function CaseRegistration() {
         try {
             // Note: For simplicity and using existing service layer, we process in parallel
             // In a real high-scale app, a single RPC call .in('id', selectedIds) would be better
-            const selectedOrders = orders.filter(order => selectedIds.includes(order.id));
-            const blocked = selectedOrders.filter(order => !isAccountingFinanciallyReady(order));
-            if (blocked.length > 0) {
-                throw new Error(`توجد ${blocked.length} حالات بقرارات مالية معلقة`);
-            }
             await Promise.all(selectedIds.map(id => db.updateOrder(id, { isRegistered: true })));
             
             success(`تم تسجيل ${selectedIds.length} حالة بنجاح`);
@@ -691,9 +682,9 @@ export default function CaseRegistration() {
                                                     {activeTab === 'pending' ? (
                                                         <button
                                                             onClick={() => handleRegister(order.id)}
-                                                            disabled={processingId === order.id || !isAccountingFinanciallyReady(order)}
+                                                            disabled={processingId === order.id}
                                                             title={!isAccountingFinanciallyReady(order)
-                                                                ? `معلق: ${getMissingAccountingDecisions(order).join('، ')}`
+                                                                ? `تسجيل الوضع الحالي رغم وجود قرارات معلقة: ${getMissingAccountingDecisions(order).join('، ')} — ستظهر الحالة هنا تانى للتعديل بعد حسم القرار`
                                                                 : undefined}
                                                             className={clsx(
                                                                 "flex items-center gap-1.5 px-3 py-2.5 2xl:px-5 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all hover:-translate-y-0.5 whitespace-nowrap",

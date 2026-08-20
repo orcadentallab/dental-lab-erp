@@ -89,6 +89,15 @@ describe('accounting registration candidates', () => {
         expect(isAccountingRegistrationCandidate(order({ isRegistered: false }), 'pending')).toBe(true);
     });
 
+    it('keeps an archived-but-never-registered order in the pending queue', () => {
+        const archivedBeforeRegistration = order({
+            isArchived: true,
+            isRegistered: false,
+        });
+
+        expect(isAccountingRegistrationCandidate(archivedBeforeRegistration, 'pending')).toBe(true);
+    });
+
     it('blocks doctor rejection accounting until every party decision is resolved', () => {
         const pending = order({
             issueState: 'doctor_rejected',

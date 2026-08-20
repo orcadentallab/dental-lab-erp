@@ -92,7 +92,7 @@ export function isAccountingRegistrationCandidate(
         const hasDeliveryEvidence = Boolean(order.firstDeliveredAt || order.actualDeliveryDate)
             || order.productionStatus === 'final_delivered'
             || order.status === 'Delivered' || order.status === 'Completed';
-        return !order.isArchived && hasDeliveryEvidence && ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status);
+        return hasDeliveryEvidence && ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status);
     }
 
     return Boolean(
