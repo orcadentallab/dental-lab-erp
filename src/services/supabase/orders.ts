@@ -1863,6 +1863,13 @@ export interface CreateRedoOrderInput {
     doctorDecision: import('../../constants/rejectionFinancialDecision').RejectionDoctorDecision;
     customDoctorAmount?: number | null;
     idempotencyKey?: string;
+    /**
+     * Explicit defect cause/stage (20260820020000), independent from
+     * reasonCode/REDO_REASONS (financial/audit vocabulary, untouched). See
+     * src/constants/issueCauses.ts POST_DELIVERY_CAUSES.
+     */
+    causeCategory?: string | null;
+    responsibleStage?: string | null;
 }
 
 export interface CreateRedoOrderResult {
@@ -1913,6 +1920,8 @@ export async function createRedoOrderAtomic(
         p_doctor_decision: input.doctorDecision,
         p_custom_doctor_amount: input.doctorDecision === 'custom_amount' ? input.customDoctorAmount ?? null : null,
         p_idempotency_key: input.idempotencyKey || crypto.randomUUID(),
+        p_cause_category: input.causeCategory || null,
+        p_responsible_stage: input.responsibleStage || null,
     });
 
     if (error) {
@@ -2615,6 +2624,15 @@ export interface StatusUpdateContext {
     rejectedDesignerCostStatus?: import('../../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     issueState?: Order['issueState']; // Optional issueState to set atomically with status
     idempotencyKey?: string;
+    /**
+     * Explicit issue cause/stage (20260820020000), for cancel_order /
+     * return_for_adjustment / doctor_reject_order transitions only. Passed
+     * through to apply_order_issue_transition_v2 so order_issues records the
+     * cause the user actually picked, instead of the trigger's comment-guess
+     * fallback. See src/constants/issueCauses.ts.
+     */
+    causeCategory?: string | null;
+    responsibleStage?: string | null;
 }
 
 /**
@@ -2689,6 +2707,8 @@ export async function updateOrderStatus(
             p_doctor_decision: decision,
             p_custom_doctor_amount: decision === 'custom_amount' ? context.rejectedDoctorAmount ?? null : null,
             p_user_name: context.userName || null,
+            p_cause_category: context.causeCategory || null,
+            p_responsible_stage: context.responsibleStage || null,
         });
         if (error) throw ErrorHandler.handle(error, 'applyOrderIssueTransitionV2');
         return getOrder(orderId);

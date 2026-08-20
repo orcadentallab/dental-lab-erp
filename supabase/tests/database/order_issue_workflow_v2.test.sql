@@ -54,10 +54,10 @@ SELECT ok(
     NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'public.orders'::regclass AND tgname = 'zz_trigger_enforce_zero_order_financials'),
     'the duplicate zero-finance writer is removed'
 );
-SELECT has_function('public', 'apply_order_issue_transition_v2', ARRAY['uuid','text','text','uuid','text','numeric','text'], 'issue transition RPC exists');
+SELECT has_function('public', 'apply_order_issue_transition_v2', ARRAY['uuid','text','text','uuid','text','numeric','text','text','text'], 'issue transition RPC exists');
 SELECT has_function('public', 'request_designer_rejection_v2', ARRAY['uuid','text','uuid'], 'designer rejection request RPC exists');
-SELECT has_function('public', 'review_designer_rejection_v2', ARRAY['uuid','text','text','uuid'], 'designer rejection review RPC exists');
-SELECT has_function('public', 'admin_reject_order_from_tech_status_v2', ARRAY['uuid','text','uuid'], 'admin technician-status lab rejection RPC exists');
+SELECT has_function('public', 'review_designer_rejection_v2', ARRAY['uuid','text','text','uuid','text','text'], 'designer rejection review RPC exists');
+SELECT has_function('public', 'admin_reject_order_from_tech_status_v2', ARRAY['uuid','text','uuid','text','text'], 'admin technician-status lab rejection RPC exists');
 SELECT ok(
     pg_get_functiondef('public.apply_workflow_v2_backfill(text)'::regprocedure)
         LIKE '%Unresolved lifecycle timing rows must be reviewed before backfill%',
@@ -65,12 +65,12 @@ SELECT ok(
 );
 
 SELECT ok(
-    pg_get_functiondef('public.apply_order_issue_transition_v2(uuid,text,text,uuid,text,numeric,text)'::regprocedure)
+    pg_get_functiondef('public.apply_order_issue_transition_v2(uuid,text,text,uuid,text,numeric,text,text,text)'::regprocedure)
         LIKE '%WHEN ''decide_later'' THEN COALESCE(v_order.total_price, 0)%',
     'doctor rejection uses the full order total as the pending provisional amount'
 );
 SELECT ok(
-    pg_get_functiondef('public.create_redo_order_atomic_v2(uuid,text,text,text,numeric,uuid)'::regprocedure)
+    pg_get_functiondef('public.create_redo_order_atomic_v2(uuid,text,text,text,numeric,uuid,text,text)'::regprocedure)
         LIKE '%WHEN ''decide_later'' THEN COALESCE(v_original.total_price, 0)%',
     'redo uses the full original order total as the pending provisional amount'
 );

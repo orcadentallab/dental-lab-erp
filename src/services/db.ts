@@ -1003,6 +1003,8 @@ class MockDB {
         doctorDecision: import('../constants/rejectionFinancialDecision').RejectionDoctorDecision;
         customDoctorAmount?: number | null;
         idempotencyKey?: string;
+        causeCategory?: string | null;
+        responsibleStage?: string | null;
     }): Promise<{
         originalOrderId: string;
         originalCaseId: string;
@@ -1076,6 +1078,8 @@ class MockDB {
             rejectedDesignerCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
             issueState?: Order['issueState'];
             idempotencyKey?: string;
+            causeCategory?: string | null;
+            responsibleStage?: string | null;
         }
     ): Promise<Order | null> {
         const { updateOrderStatus } = await import('./supabase/orders');

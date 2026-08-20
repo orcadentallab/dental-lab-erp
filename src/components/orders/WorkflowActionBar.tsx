@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Input } from '../ui/Input';
+import IssueCauseFields from './IssueCauseFields';
 import type { Order } from '../../services/db';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { getForwardActions, getIssueActions, type WorkflowAction } from '../../constants/workflowTransitions';
@@ -16,7 +17,15 @@ import {
     type RejectionFinancialReviewStatus,
     type RejectionPartyCostStatus,
 } from '../../constants/rejectionFinancialDecision';
+import { issueCauseLabel, getStageForCause, type IssueContext } from '../../constants/issueCauses';
 import clsx from 'clsx';
+
+/** Actions whose "reason" is now an explicit cause pick, not free text. */
+const CAUSE_SELECT_ACTION_CONTEXT: Record<string, IssueContext> = {
+    reject: 'post_delivery',
+    return: 'post_delivery',
+    cancel: 'cancellation',
+};
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
     Play, PenTool, ArrowRight, Package, PackageCheck, Truck,
@@ -70,6 +79,8 @@ interface Props {
         rejectedLabCostStatus?: RejectionPartyCostStatus;
         rejectedDesignerCostStatus?: RejectionPartyCostStatus;
         comment?: string;
+        causeCategory?: string | null;
+        responsibleStage?: string | null;
     }) => void;
     showRejectedDesignerCost?: boolean;
     onRedo?: (order: Order) => void;
@@ -85,6 +96,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     );
     const [customDoctorAmount, setCustomDoctorAmount] = useState<number | ''>('');
     const [noteText, setNoteText] = useState('');
+    const [causeCategory, setCauseCategory] = useState('');
+    const [responsibleStage, setResponsibleStage] = useState('');
     const issueMenuRef = useRef<HTMLDivElement>(null);
 
     const productionStatus = getEffectiveProductionStatus(order);
@@ -138,6 +151,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             setDoctorDecision(REJECTION_DOCTOR_DECISIONS.fullPrice);
             setCustomDoctorAmount('');
             setNoteText('');
+            setCauseCategory('');
+            setResponsibleStage('');
         } else {
             if (isValidOrderStatus(action.targetLegacyStatus)) {
                 onStatusChange(order.id, action.targetLegacyStatus);
@@ -145,9 +160,15 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         }
     };
 
+    const causeContext = confirmAction ? CAUSE_SELECT_ACTION_CONTEXT[confirmAction.id] : undefined;
+
     const handleConfirm = () => {
         if (!confirmAction) return;
-        if (confirmAction.requiresNote && !noteText.trim()) return;
+        if (causeContext) {
+            if (!causeCategory) return;
+        } else if (confirmAction.requiresNote && !noteText.trim()) {
+            return;
+        }
         const context: {
             rejectedLabCost?: number;
             rejectedDesignerCost?: number;
@@ -157,6 +178,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             rejectedLabCostStatus?: RejectionPartyCostStatus;
             rejectedDesignerCostStatus?: RejectionPartyCostStatus;
             comment?: string;
+            causeCategory?: string | null;
+            responsibleStage?: string | null;
         } = {};
         const isRejection = confirmAction.id === 'reject';
         if (isRejection) {
@@ -173,7 +196,13 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             context.rejectedLabCostStatus = order.supplierId ? 'pending' : 'not_applicable';
             context.rejectedDesignerCostStatus = order.designerId ? 'pending' : 'not_applicable';
         }
-        if (noteText.trim()) {
+        if (causeContext) {
+            context.causeCategory = causeCategory;
+            context.responsibleStage = responsibleStage || getStageForCause(causeContext, causeCategory);
+            // p_reason is required by the RPC; fall back to the cause label
+            // when the optional notes field was left empty.
+            context.comment = noteText.trim() || issueCauseLabel(causeCategory);
+        } else if (noteText.trim()) {
             context.comment = noteText.trim();
         }
         if (isValidOrderStatus(confirmAction.targetLegacyStatus)) {
@@ -183,6 +212,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         setDoctorDecision(REJECTION_DOCTOR_DECISIONS.fullPrice);
         setCustomDoctorAmount('');
         setNoteText('');
+        setCauseCategory('');
+        setResponsibleStage('');
     };
 
     const getButtonClass = (variant: string) => {
@@ -352,7 +383,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 cancelLabel="تراجع"
                 onConfirm={handleConfirm}
                 confirmDisabled={
-                    (confirmAction?.requiresNote && !noteText.trim())
+                    (causeContext ? !causeCategory : (confirmAction?.requiresNote && !noteText.trim()))
                     || (
                         confirmAction?.id === 'reject'
                         && doctorDecision === REJECTION_DOCTOR_DECISIONS.customAmount
@@ -368,9 +399,22 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     setDoctorDecision(REJECTION_DOCTOR_DECISIONS.fullPrice);
                     setCustomDoctorAmount('');
                     setNoteText('');
+                    setCauseCategory('');
+                    setResponsibleStage('');
                 }}
             >
-                {confirmAction?.requiresNote && (
+                {causeContext ? (
+                    <IssueCauseFields
+                        issueContext={causeContext}
+                        causeCategory={causeCategory}
+                        onCauseCategoryChange={setCauseCategory}
+                        responsibleStage={responsibleStage}
+                        onResponsibleStageChange={setResponsibleStage}
+                        notes={noteText}
+                        onNotesChange={setNoteText}
+                        notesPlaceholder={confirmAction?.notePlaceholder}
+                    />
+                ) : confirmAction?.requiresNote && (
                     <div className="text-right">
                         <label className="block text-sm font-medium text-surface-700 mb-1">
                             السبب <span className="text-red-500">*</span>
@@ -386,22 +430,22 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     </div>
                 )}
                 {confirmAction?.id === 'reject' && (
-                    <div className="space-y-3 text-right">
-                        <label className="block text-sm font-bold text-surface-800">
+                    <div className="space-y-2 text-right">
+                        <label className="block text-xs font-bold text-surface-800">
                             المبلغ الذي يتحمله الطبيب
                         </label>
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                             {[
-                                { value: REJECTION_DOCTOR_DECISIONS.decideLater, label: 'يُحدد لاحقًا (كامل مؤقتًا)' },
+                                { value: REJECTION_DOCTOR_DECISIONS.decideLater, label: 'لاحقًا' },
                                 { value: REJECTION_DOCTOR_DECISIONS.fullPrice, label: 'كامل السعر' },
                                 { value: 'half', label: '50%' },
                                 { value: REJECTION_DOCTOR_DECISIONS.zero, label: 'صفر' },
-                                { value: REJECTION_DOCTOR_DECISIONS.customAmount, label: 'مبلغ مخصص' },
+                                { value: REJECTION_DOCTOR_DECISIONS.customAmount, label: 'مخصص' },
                             ].map(option => (
                                 <label
                                     key={option.value}
                                     className={clsx(
-                                        'flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm font-medium',
+                                        'flex cursor-pointer items-center justify-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium',
                                         doctorDecision === option.value
                                             ? 'border-primary-500 bg-primary-50 text-primary-800'
                                             : 'border-surface-200 bg-white text-surface-700'
@@ -423,13 +467,13 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                             ))}
                         </div>
                         {doctorDecision === REJECTION_DOCTOR_DECISIONS.decideLater && (
-                            <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                            <p className="rounded-md border border-amber-200 bg-amber-50 p-1.5 text-[11px] text-amber-800">
                                 سيُحمّل الطبيب كامل قيمة الطلب مؤقتًا لحماية رصيد المعمل، ويظل القرار المالي معلقًا حتى يحدده الأدمن.
                             </p>
                         )}
                         {doctorDecision === REJECTION_DOCTOR_DECISIONS.customAmount && (
                             <div>
-                                <label className="mb-1 block text-sm font-medium text-surface-700">
+                                <label className="mb-1 block text-xs font-medium text-surface-700">
                                     المبلغ المتفق أن يتحمله الطبيب
                                 </label>
                                 <Input
@@ -440,12 +484,12 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                     onChange={(e) => setCustomDoctorAmount(e.target.value === '' ? '' : Number(e.target.value))}
                                     placeholder="0"
                                 />
-                                <p className="mt-1 text-xs text-surface-500">
+                                <p className="mt-1 text-[11px] text-surface-500">
                                     الحد الأقصى: {(order.totalPrice || 0).toLocaleString('en-EG')} ج.م
                                 </p>
                             </div>
                         )}
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-1.5 text-[11px] text-amber-800">
                             استحقاق المورد والمصمم يظل معلقًا ويحدده الـAdmin لاحقًا من المراجعة المالية.
                         </div>
                     </div>

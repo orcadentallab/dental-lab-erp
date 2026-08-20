@@ -2,6 +2,8 @@ import { useId, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { db, type Order } from '../../services/db';
 import { Input } from '../ui/Input';
+import IssueCauseFields from './IssueCauseFields';
+import { getIssueCauseOptions } from '../../constants/issueCauses';
 import { useDialogBehavior } from '../../hooks/useDialogBehavior';
 
 interface Props {
@@ -30,7 +32,9 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
     const titleId = useId();
     const dialogRef = useDialogBehavior(isOpen, onClose);
     const [reason, setReason] = useState('lab_error');
-    const [notes, setNotes] = useState('');
+    const [causeCategory, setCauseCategory] = useState('');
+    const [responsibleStage, setResponsibleStage] = useState('');
+    const [causeNotes, setCauseNotes] = useState('');
     const [doctorLiabilityOption, setDoctorLiabilityOption] = useState<DoctorLiabilityOption>('full');
     const [customDoctorAmount, setCustomDoctorAmount] = useState<number | ''>('');
     const [errorMessage, setErrorMessage] = useState('');
@@ -50,15 +54,18 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
     const isDoctorAmountValid = doctorLiabilityOption === 'later'
         || (doctorAmount !== null && doctorAmount >= 0 && doctorAmount <= (order.totalPrice || 0));
 
+    const causeLabel = getIssueCauseOptions('post_delivery').find(o => o.code === causeCategory)?.label || causeCategory;
+    const finalNotes = causeNotes.trim() || causeLabel;
+
     const handleSubmit = async () => {
-        if (!notes.trim() || !isDoctorAmountValid) return;
+        if (!isDoctorAmountValid || !causeCategory) return;
         setErrorMessage('');
         setIsLoading(true);
         try {
             const result = await db.createRedoOrderAtomic({
                 originalOrderId: order.id,
                 reasonCode: reason,
-                notes: notes.trim(),
+                notes: finalNotes,
                 doctorDecision: doctorLiabilityOption === 'later'
                     ? 'decide_later'
                     : doctorLiabilityOption === 'full'
@@ -69,6 +76,8 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                 customDoctorAmount: doctorLiabilityOption === 'half'
                     ? (order.totalPrice || 0) / 2
                     : doctorLiabilityOption === 'custom' ? doctorAmount : null,
+                causeCategory,
+                responsibleStage: responsibleStage || null,
             });
             void result;
             onSuccess();
@@ -110,6 +119,21 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                                 <option key={r.value} value={r.value}>{r.label}</option>
                             ))}
                         </select>
+                        <p className="mt-1 text-xs text-surface-500">
+                            هذا التصنيف للمراجعة المالية/التدقيقية فقط. حدد سبب العيب الفعلي بالأسفل.
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-surface-200 bg-surface-50 p-3">
+                        <IssueCauseFields
+                            issueContext="post_delivery"
+                            causeCategory={causeCategory}
+                            onCauseCategoryChange={setCauseCategory}
+                            responsibleStage={responsibleStage}
+                            onResponsibleStageChange={setResponsibleStage}
+                            notes={causeNotes}
+                            onNotesChange={setCauseNotes}
+                            notesPlaceholder="اشرح المشكلة بالتفاصيل (اختياري)…"
+                        />
                     </div>
                     <div className="rounded-xl border border-violet-200 bg-violet-50 p-3">
                         <label className="block text-sm font-bold text-violet-900 mb-1">
@@ -145,16 +169,6 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                         )}
                         <p className="mt-2 text-xs text-violet-700">الحد الأقصى: {(order.totalPrice || 0).toLocaleString('en-EG')} ج.م</p>
                     </div>
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">تفاصيل المشكلة <span className="text-red-500">*</span></label>
-                        <textarea
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            rows={3}
-                            placeholder="اشرح المشكلة بالتفاصيل..."
-                            className="w-full px-3 py-2 border border-surface-200 rounded-lg text-base sm:text-sm resize-none"
-                        />
-                    </div>
                     {errorMessage && <p className="rounded-lg bg-red-50 p-3 text-sm font-medium text-red-700">{errorMessage}</p>}
                 </div>
 
@@ -167,7 +181,7 @@ export default function RedoOrderModal({ order, isOpen, onClose, onSuccess }: Pr
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={isLoading || !notes.trim() || !isDoctorAmountValid}
+                        disabled={isLoading || !isDoctorAmountValid || !causeCategory}
                         className="px-5 py-2.5 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         <RefreshCw size={15} />
