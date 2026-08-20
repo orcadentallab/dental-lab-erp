@@ -646,12 +646,12 @@ export default function CaseRegistration() {
                                                 </div>
                                             </td>
                                             <td className="px-4 py-4">
-                                                <div className={clsx('min-w-[160px] rounded-xl border p-2 text-sm font-black', isZeroImpact ? 'border-rose-200 bg-rose-50/60' : 'border-slate-100 bg-slate-50/50')}>
-                                                    <div className="flex items-center justify-between gap-3 text-emerald-600">
+                                                <div className={clsx('w-fit rounded-xl border p-2 text-sm font-black', isZeroImpact ? 'border-rose-200 bg-rose-50/60' : 'border-slate-100 bg-slate-50/50')}>
+                                                    <div className="flex items-center gap-1.5 text-emerald-600">
                                                         <span className="text-[10px] font-bold text-slate-400">سعر الطبيب:</span>
                                                         <span className={isZeroImpact ? 'text-rose-600' : undefined}>{accounting.current.saleAmount.toLocaleString('en-EG')}</span>
                                                     </div>
-                                                    <div className="mt-1 flex items-center justify-between gap-3 text-slate-700">
+                                                    <div className="mt-1 flex items-center gap-1.5 text-slate-700">
                                                         <span className="text-[10px] font-bold text-slate-400">سعر المورد:</span>
                                                         <span className={isZeroImpact ? 'text-rose-600' : undefined}>{accounting.current.labCost.toLocaleString('en-EG')}</span>
                                                     </div>
