@@ -89,9 +89,14 @@ export function isAccountingRegistrationCandidate(
         if (order.isRegistered) return false;
         if (hasPostRegistrationChange(order)) return true;
         if (hasZeroAccountingImpact(order)) return false;
+        // A doctor rejection can only happen on a case the doctor actually saw,
+        // so the status itself is delivery evidence even when a pre-V2 order's
+        // delivery timestamps were wiped by the old issue-logging workflow
+        // (see docs on the legacy doctor_rejected/production_status gap).
         const hasDeliveryEvidence = Boolean(order.firstDeliveredAt || order.actualDeliveryDate)
             || order.productionStatus === 'final_delivered'
-            || order.status === 'Delivered' || order.status === 'Completed';
+            || order.status === 'Delivered' || order.status === 'Completed'
+            || order.status === 'Doctor Rejected' || order.status === 'Rejected';
         return hasDeliveryEvidence && ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status);
     }
 

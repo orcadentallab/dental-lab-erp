@@ -98,6 +98,18 @@ describe('accounting registration candidates', () => {
         expect(isAccountingRegistrationCandidate(archivedBeforeRegistration, 'pending')).toBe(true);
     });
 
+    it('treats a doctor-rejected legacy order with no delivery timestamp as still delivered', () => {
+        const legacyRejection = order({
+            status: 'Doctor Rejected',
+            isRegistered: false,
+            firstDeliveredAt: undefined,
+            actualDeliveryDate: undefined,
+            productionStatus: 'not_started',
+        });
+
+        expect(isAccountingRegistrationCandidate(legacyRejection, 'pending')).toBe(true);
+    });
+
     it('blocks doctor rejection accounting until every party decision is resolved', () => {
         const pending = order({
             issueState: 'doctor_rejected',
