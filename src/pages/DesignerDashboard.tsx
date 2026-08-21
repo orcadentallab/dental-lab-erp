@@ -13,6 +13,7 @@ import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
+import IssueCauseFields from '../components/orders/IssueCauseFields';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
@@ -76,10 +77,17 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
     const [decisionOrder, setDecisionOrder] = useState<Order | null>(null);
     const [decisionNotes, setDecisionNotes] = useState('');
+    // Explicit lab-rejection cause/stage, captured at the moment the designer
+    // rejects a case (issueContext="lab_rejection") -- required only for the
+    // 'returned' decision, which is what drives requestDesignerRejection.
+    const [decisionRejectCause, setDecisionRejectCause] = useState('');
+    const [decisionRejectStage, setDecisionRejectStage] = useState('');
     const [techActionPending, setTechActionPending] = useState<{
         orderId: string;
         action: 'Rejected' | 'NeedDetails';
         reason: string;
+        causeCategory: string;
+        responsibleStage: string;
     } | null>(null);
     const [decisionLoading, setDecisionLoading] = useState(false);
     const [nowMs, setNowMs] = useState(() => Date.now());
@@ -187,13 +195,16 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const handleTechAction = useCallback(async (
         orderId: string,
         action: 'Approved' | 'Rejected' | 'NeedDetails',
-        reason?: string
+        reason?: string,
+        causeCategory?: string,
+        responsibleStage?: string,
     ) => {
         try {
             const order = orders.find(o => o.id === orderId);
             if (action === 'Rejected') {
                 if (!reason?.trim()) throw new Error('سبب الرفض مطلوب');
-                await db.requestDesignerRejection(orderId, reason.trim());
+                if (!causeCategory) throw new Error('سبب رفض المعمل مطلوب');
+                await db.requestDesignerRejection(orderId, reason.trim(), undefined, causeCategory, responsibleStage);
                 updateOrderInState(await db.getOrder(orderId));
                 setTechActionPending(null);
                 return;
@@ -258,10 +269,13 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         try {
             if (decision === 'returned') {
                 if (!notes?.trim()) throw new Error('سبب الرفض مطلوب');
-                await db.requestDesignerRejection(order.id, notes.trim());
+                if (!decisionRejectCause) throw new Error('سبب رفض المعمل مطلوب');
+                await db.requestDesignerRejection(order.id, notes.trim(), undefined, decisionRejectCause, decisionRejectStage);
                 updateOrderInState(await db.getOrder(order.id));
                 setDecisionOrder(null);
                 setDecisionNotes('');
+                setDecisionRejectCause('');
+                setDecisionRejectStage('');
                 return;
             }
             const updates: Partial<Order> = { designStatus: decision };
@@ -600,12 +614,17 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                 </div>
                                 {decisionOrder?.id === order.id ? (
                                     <div className="w-full space-y-2 mt-2">
-                                        <textarea
-                                            value={decisionNotes}
-                                            onChange={(e) => setDecisionNotes(e.target.value)}
-                                            placeholder="اكتب ملاحظة (مطلوب عند رفض أو طلب تفاصيل)..."
-                                            rows={2}
-                                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs resize-none"
+                                        {/* Cause/stage only apply to the "رفض" decision below (requestDesignerRejection);
+                                            the shared notes field also covers "محتاج تفاصيل"/"قبول". */}
+                                        <IssueCauseFields
+                                            issueContext="lab_rejection"
+                                            causeCategory={decisionRejectCause}
+                                            onCauseCategoryChange={setDecisionRejectCause}
+                                            responsibleStage={decisionRejectStage}
+                                            onResponsibleStageChange={setDecisionRejectStage}
+                                            notes={decisionNotes}
+                                            onNotesChange={setDecisionNotes}
+                                            notesPlaceholder="اكتب ملاحظة (مطلوب عند رفض أو طلب تفاصيل)..."
                                         />
                                         <div className="flex gap-2 flex-wrap">
                                             <button
@@ -628,15 +647,15 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                             <button
                                                 type="button"
                                                 onClick={() => handleDesignerDecision(order, 'returned', decisionNotes)}
-                                                disabled={decisionLoading || !decisionNotes.trim()}
+                                                disabled={decisionLoading || !decisionNotes.trim() || !decisionRejectCause}
                                                 className="px-4 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
-                                                title="اكتب سبب الرفض أولاً"
+                                                title="اكتب سبب الرفض واختر السبب أولاً"
                                             >
                                                 رفض (ينتظر Admin)
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => { setDecisionOrder(null); setDecisionNotes(''); }}
+                                                onClick={() => { setDecisionOrder(null); setDecisionNotes(''); setDecisionRejectCause(''); setDecisionRejectStage(''); }}
                                                 className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
                                             >
                                                 إلغاء
@@ -646,7 +665,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                 ) : (
                                     <button
                                         type="button"
-                                        onClick={() => { setDecisionOrder(order); setDecisionNotes(''); }}
+                                        onClick={() => { setDecisionOrder(order); setDecisionNotes(''); setDecisionRejectCause(''); setDecisionRejectStage(''); }}
                                         className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
                                     >
                                         اتخذ قرار
@@ -762,7 +781,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             ✓ قبول
                                                         </button>
                                                         <button type="button"
-                                                            onClick={() => setTechActionPending({ orderId: order.id, action: 'NeedDetails', reason: '' })}
+                                                            onClick={() => setTechActionPending({ orderId: order.id, action: 'NeedDetails', reason: '', causeCategory: '', responsibleStage: '' })}
                                                             className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
                                                                 order.technicianStatus === 'NeedDetails'
                                                                     ? 'bg-orange-400 text-white border-orange-400 shadow-sm'
@@ -771,7 +790,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             ? تفاصيل
                                                         </button>
                                                         <button type="button"
-                                                            onClick={() => setTechActionPending({ orderId: order.id, action: 'Rejected', reason: '' })}
+                                                            onClick={() => setTechActionPending({ orderId: order.id, action: 'Rejected', reason: '', causeCategory: '', responsibleStage: '' })}
                                                             className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
                                                                 order.technicianStatus === 'Rejected'
                                                                     ? 'bg-red-500 text-white border-red-500 shadow-sm'
@@ -782,19 +801,34 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     </div>
                                                     {techActionPending?.orderId === order.id && (
                                                         <div className="flex flex-col gap-1.5 pt-2 border-t border-gray-100 mt-1">
-                                                            <p className="text-[11px] font-semibold text-gray-500">
-                                                                {techActionPending.action === 'Rejected' ? 'سبب الرفض *' : 'التفاصيل المطلوبة *'}
-                                                            </p>
-                                                            <textarea autoFocus rows={3}
-                                                                placeholder={techActionPending.action === 'Rejected' ? 'اكتب سبب الرفض…' : 'اكتب التفاصيل المطلوبة…'}
-                                                                value={techActionPending.reason}
-                                                                onChange={(e) => setTechActionPending(prev => prev ? { ...prev, reason: e.target.value } : null)}
-                                                                className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300 text-right bg-gray-50"
-                                                            />
+                                                            {techActionPending.action === 'Rejected' ? (
+                                                                <IssueCauseFields
+                                                                    issueContext="lab_rejection"
+                                                                    causeCategory={techActionPending.causeCategory}
+                                                                    onCauseCategoryChange={(code) => setTechActionPending(prev => prev ? { ...prev, causeCategory: code } : null)}
+                                                                    responsibleStage={techActionPending.responsibleStage}
+                                                                    onResponsibleStageChange={(stage) => setTechActionPending(prev => prev ? { ...prev, responsibleStage: stage } : null)}
+                                                                    notes={techActionPending.reason}
+                                                                    onNotesChange={(notes) => setTechActionPending(prev => prev ? { ...prev, reason: notes } : null)}
+                                                                    notesPlaceholder="اكتب سبب الرفض…"
+                                                                />
+                                                            ) : (
+                                                                <>
+                                                                    <p className="text-[11px] font-semibold text-gray-500">
+                                                                        التفاصيل المطلوبة *
+                                                                    </p>
+                                                                    <textarea autoFocus rows={3}
+                                                                        placeholder="اكتب التفاصيل المطلوبة…"
+                                                                        value={techActionPending.reason}
+                                                                        onChange={(e) => setTechActionPending(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                                                                        className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary-300 text-right bg-gray-50"
+                                                                    />
+                                                                </>
+                                                            )}
                                                             <div className="flex gap-1.5">
                                                                 <button type="button"
-                                                                    disabled={!techActionPending.reason.trim()}
-                                                                    onClick={() => handleTechAction(order.id, techActionPending.action, techActionPending.reason)}
+                                                                    disabled={!techActionPending.reason.trim() || (techActionPending.action === 'Rejected' && !techActionPending.causeCategory)}
+                                                                    onClick={() => handleTechAction(order.id, techActionPending.action, techActionPending.reason, techActionPending.causeCategory, techActionPending.responsibleStage)}
                                                                     className="flex-1 py-1.5 text-xs font-bold bg-primary-600 text-white rounded-lg disabled:opacity-40 hover:bg-primary-700 transition-colors"
                                                                 >تأكيد</button>
                                                                 <button type="button"

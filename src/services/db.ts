@@ -1086,9 +1086,22 @@ class MockDB {
         return updateOrderStatus(orderId, newStatus, context);
     }
 
-    async requestDesignerRejection(orderId: string, reason: string, idempotencyKey?: string): Promise<void> {
+    async requestDesignerRejection(
+        orderId: string,
+        reason: string,
+        idempotencyKey?: string,
+        causeCategory?: string,
+        responsibleStage?: string,
+    ): Promise<void> {
         const { requestDesignerRejection } = await import('./supabase/orders');
-        return requestDesignerRejection(orderId, reason, idempotencyKey);
+        return requestDesignerRejection(orderId, reason, idempotencyKey, causeCategory, responsibleStage);
+    }
+
+    async getPendingDesignerRejectionCause(
+        orderId: string,
+    ): Promise<{ causeCategory: string | null; responsibleStage: string | null } | null> {
+        const { getPendingDesignerRejectionCause } = await import('./supabase/orders');
+        return getPendingDesignerRejectionCause(orderId);
     }
 
     async reviewDesignerRejection(
@@ -1096,18 +1109,22 @@ class MockDB {
         action: 'approve' | 'reject' | 'request_details',
         notes?: string,
         idempotencyKey?: string,
+        causeCategory?: string,
+        responsibleStage?: string,
     ): Promise<void> {
         const { reviewDesignerRejection } = await import('./supabase/orders');
-        return reviewDesignerRejection(orderId, action, notes, idempotencyKey);
+        return reviewDesignerRejection(orderId, action, notes, idempotencyKey, causeCategory, responsibleStage);
     }
 
     async rejectOrderFromTechStatus(
         orderId: string,
         reason: string,
         idempotencyKey?: string,
+        causeCategory?: string,
+        responsibleStage?: string,
     ): Promise<void> {
         const { rejectOrderFromTechStatus } = await import('./supabase/orders');
-        return rejectOrderFromTechStatus(orderId, reason, idempotencyKey);
+        return rejectOrderFromTechStatus(orderId, reason, idempotencyKey, causeCategory, responsibleStage);
     }
 
     async updateRejectedOrderFinancials(

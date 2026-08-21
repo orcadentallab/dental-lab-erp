@@ -13,6 +13,9 @@ import OrderListModal from '../components/dashboard/OrderListModal';
 import OrderListItem from '../components/dashboard/OrderListItem';
 import DailySummaryPrint from '../components/dashboard/DailySummaryPrint';
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import IssueCauseFields from '../components/orders/IssueCauseFields';
+import { issueCauseLabel, getStageForCause } from '../constants/issueCauses';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import DesignerDashboard from './DesignerDashboard';
@@ -107,6 +110,15 @@ export default function DashboardNew() {
     const [editingDeliveryOrder, setEditingDeliveryOrder] = useState<Order | null>(null);
     const [editingDeliveryDate, setEditingDeliveryDate] = useState('');
     const [isSavingDeliveryDate, setIsSavingDeliveryDate] = useState(false);
+    // Lab rejection cause modal — approving a designer's rejection request
+    // logs an order_issues row (issue_state = 'lab_rejected'). The designer's
+    // comment is shown as context, but the recorded cause/stage is always the
+    // explicit dropdown pick, never guessed from that comment text.
+    const [designerRejectOrder, setDesignerRejectOrder] = useState<{ order: Order; designerReason: string } | null>(null);
+    const [designerRejectCause, setDesignerRejectCause] = useState('');
+    const [designerRejectStage, setDesignerRejectStage] = useState('');
+    const [designerRejectNotes, setDesignerRejectNotes] = useState('');
+    const [designerRejectSubmitting, setDesignerRejectSubmitting] = useState(false);
     const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [reviewTab, setReviewTab] = useState<'comments' | 'edits'>('comments');
@@ -678,23 +690,61 @@ export default function DashboardNew() {
         }
     };
 
-    const handleRejectDesignerCase = async (order: Order) => {
-        // Extract last designer comment as auto-reason for rejection
+    const handleRejectDesignerCase = (order: Order) => {
+        // Extract last designer comment to show as context only -- the
+        // recorded cause/stage now always comes from the explicit dropdown
+        // in the modal below, never guessed from this comment text.
         const designerComments = (order.comments || []).filter(c =>
             c.userId !== (user?.id) || (c.text.includes('[رفض المصمم]') || c.text.includes('[طلب تفاصيل]'))
         );
         const lastDesignerComment = [...designerComments].sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )[0];
-        const rejectionReason = lastDesignerComment?.text
+        const designerReason = lastDesignerComment?.text
             ? lastDesignerComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '')
             : 'رفض من قبل المصمم';
 
-        if (!confirm(`هل أنت متأكد من رفض الحالة نهائياً؟\nسبب الرفض: "${rejectionReason}"\nسيتم تغيير الحالة إلى "رفض معمل" (بدون تأثير مالي).`)) {
-            return;
-        }
+        setDesignerRejectOrder({ order, designerReason });
+        setDesignerRejectCause('');
+        setDesignerRejectStage('');
+        setDesignerRejectNotes('');
+
+        // Prefill from what the designer picked when they requested this
+        // rejection (request_designer_rejection_v2), editable, never locked.
+        // Pending requests from before this feature existed carry no stored
+        // cause -- resolves to null and the fields stay empty, same as
+        // before (the confirm button is disabled until a cause is chosen).
+        void (async () => {
+            try {
+                const pending = await db.getPendingDesignerRejectionCause(order.id);
+                if (pending?.causeCategory) {
+                    setDesignerRejectCause(pending.causeCategory);
+                    setDesignerRejectStage(pending.responsibleStage || getStageForCause('lab_rejection', pending.causeCategory));
+                }
+            } catch (error) {
+                console.error('Error loading pending designer rejection cause:', error);
+            }
+        })();
+    };
+
+    const resetDesignerRejectModal = () => {
+        setDesignerRejectOrder(null);
+        setDesignerRejectCause('');
+        setDesignerRejectStage('');
+        setDesignerRejectNotes('');
+        setDesignerRejectSubmitting(false);
+    };
+
+    const handleConfirmDesignerReject = async () => {
+        if (!designerRejectOrder || !designerRejectCause) return;
+        const { order } = designerRejectOrder;
+        setDesignerRejectSubmitting(true);
         try {
-            await db.reviewDesignerRejection(order.id, 'approve', rejectionReason);
+            // p_notes is required by the RPC; fall back to the cause label
+            // when the optional notes field was left empty.
+            const reason = designerRejectNotes.trim() || issueCauseLabel(designerRejectCause);
+            const stage = designerRejectStage || getStageForCause('lab_rejection', designerRejectCause);
+            await db.reviewDesignerRejection(order.id, 'approve', reason, undefined, designerRejectCause, stage);
             const updatedOrder = await db.getOrder(order.id);
 
             if (updatedOrder) {
@@ -704,9 +754,11 @@ export default function DashboardNew() {
                     setActiveModal(null);
                 }
             }
+            resetDesignerRejectModal();
         } catch (error) {
             console.error('Error rejecting designer case:', error);
             toast.error('حدث خطأ أثناء رفض الحالة');
+            setDesignerRejectSubmitting(false);
         }
     };
 
@@ -2009,6 +2061,37 @@ export default function DashboardNew() {
                     </div>
                 </div>
             )}
+
+            {/* Lab Rejection Cause Modal (approve designer's rejection request) */}
+            <ConfirmDialog
+                isOpen={!!designerRejectOrder}
+                title="رفض الحالة نهائياً (رفض معمل)"
+                message={`سيتم تغيير حالة #${designerRejectOrder?.order.caseId ?? ''} إلى "رفض معمل" (بدون تأثير مالي). اختر سبب الرفض والمرحلة المسؤولة.`}
+                variant="danger"
+                confirmLabel="تأكيد الرفض"
+                cancelLabel="إلغاء"
+                isLoading={designerRejectSubmitting}
+                confirmDisabled={!designerRejectCause}
+                onConfirm={handleConfirmDesignerReject}
+                onCancel={resetDesignerRejectModal}
+            >
+                {designerRejectOrder && (
+                    <div className="mb-3 bg-orange-50 dark:bg-orange-900/20 p-2 rounded text-sm text-orange-800 dark:text-orange-200 border border-orange-100 dark:border-orange-800/50 text-right">
+                        <span className="font-bold">سبب المصمم (للسياق فقط): </span>
+                        <span>{designerRejectOrder.designerReason}</span>
+                    </div>
+                )}
+                <IssueCauseFields
+                    issueContext="lab_rejection"
+                    causeCategory={designerRejectCause}
+                    onCauseCategoryChange={setDesignerRejectCause}
+                    responsibleStage={designerRejectStage}
+                    onResponsibleStageChange={setDesignerRejectStage}
+                    notes={designerRejectNotes}
+                    onNotesChange={setDesignerRejectNotes}
+                    notesPlaceholder="تفاصيل إضافية (اختياري)…"
+                />
+            </ConfirmDialog>
             </div>
     );
 }

@@ -3060,6 +3060,8 @@ export async function requestDesignerRejection(
     orderId: string,
     reason: string,
     idempotencyKey: string = crypto.randomUUID(),
+    causeCategory?: string,
+    responsibleStage?: string,
 ): Promise<void> {
     if (!reason.trim()) throw new ValidationError('سبب رفض المصمم مطلوب');
     if (!await isWorkflowV2WriteEnabled()) {
@@ -3079,8 +3081,39 @@ export async function requestDesignerRejection(
         p_order_id: orderId,
         p_reason: reason.trim(),
         p_idempotency_key: idempotencyKey,
+        p_cause_category: causeCategory || null,
+        p_responsible_stage: responsibleStage || null,
     });
     if (error) throw ErrorHandler.handle(error, 'requestDesignerRejectionV2');
+}
+
+/**
+ * The cause/stage the designer selected when they requested a lab
+ * rejection (request_designer_rejection_v2), read back from the still-
+ * pending order_events row so admin/representative approval can prefill it
+ * -- editable, never locked. Returns null when there is no pending request
+ * at all, or when it predates this feature and carries no stored cause
+ * (20260820030000); either way the caller falls back to an empty picker.
+ */
+export async function getPendingDesignerRejectionCause(
+    orderId: string,
+): Promise<{ causeCategory: string | null; responsibleStage: string | null } | null> {
+    const { data, error } = await supabase
+        .from('order_events')
+        .select('metadata')
+        .eq('order_id', orderId)
+        .eq('event_type', 'designer_rejection_requested')
+        .eq('approval_status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    if (error) throw ErrorHandler.handle(error, 'getPendingDesignerRejectionCause');
+    if (!data) return null;
+    const metadata = (data.metadata || {}) as Record<string, unknown>;
+    return {
+        causeCategory: (metadata.causeCategory as string) || null,
+        responsibleStage: (metadata.responsibleStage as string) || null,
+    };
 }
 
 export async function getMyDoctorOrders(): Promise<DoctorOrderSummary[]> {
@@ -3156,6 +3189,8 @@ export async function reviewDesignerRejection(
     action: 'approve' | 'reject' | 'request_details',
     notes = '',
     idempotencyKey: string = crypto.randomUUID(),
+    causeCategory?: string,
+    responsibleStage?: string,
 ): Promise<void> {
     if (action !== 'approve' && !notes.trim()) throw new ValidationError('ملاحظات قرار المراجعة مطلوبة');
     if (!await isWorkflowV2WriteEnabled()) {
@@ -3183,6 +3218,8 @@ export async function reviewDesignerRejection(
         p_action: action,
         p_notes: notes.trim() || null,
         p_idempotency_key: idempotencyKey,
+        p_cause_category: causeCategory || null,
+        p_responsible_stage: responsibleStage || null,
     });
     if (error) throw ErrorHandler.handle(error, 'reviewDesignerRejectionV2');
 }
@@ -3191,6 +3228,8 @@ export async function rejectOrderFromTechStatus(
     orderId: string,
     reason: string,
     idempotencyKey: string = crypto.randomUUID(),
+    causeCategory?: string,
+    responsibleStage?: string,
 ): Promise<void> {
     if (!reason.trim()) throw new ValidationError('سبب رفض المعمل مطلوب');
     if (!await isWorkflowV2WriteEnabled()) {
@@ -3210,6 +3249,8 @@ export async function rejectOrderFromTechStatus(
         p_order_id: orderId,
         p_reason: reason.trim(),
         p_idempotency_key: idempotencyKey,
+        p_cause_category: causeCategory || null,
+        p_responsible_stage: responsibleStage || null,
     });
     if (error) throw ErrorHandler.handle(error, 'adminRejectOrderFromTechStatusV2');
 }

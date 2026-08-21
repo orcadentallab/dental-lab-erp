@@ -5,6 +5,9 @@ import type { Order } from '../../services/db';
 import { db } from '../../services/db';
 import clsx from 'clsx';
 import OrderCard from './OrderCard';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import IssueCauseFields from './IssueCauseFields';
+import { issueCauseLabel, getStageForCause } from '../../constants/issueCauses';
 
 interface OrderListProps {
     orders: Order[];
@@ -30,6 +33,28 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     // Feedback Modal State
     const [feedbackOrder, setFeedbackOrder] = useState<Order | null>(null);
     const [feedbackData, setFeedbackData] = useState<{ rating: number; issues: string[]; notes: string; rootCause: 'Lab' | 'Doctor' | 'Scan' | 'Communication' }>({ rating: 5, issues: [], notes: '', rootCause: 'Lab' });
+
+    // Lab Rejection Modal State — replaces window.prompt for every path that
+    // logs an order_issues row with issue_state = 'lab_rejected'
+    // (admin_reject_order_from_tech_status_v2 for the admin-direct-reject and
+    // admin-approves-override paths, review_designer_rejection_v2's approve
+    // branch for the representative-approves path). See IssueCauseFields.tsx.
+    const [labRejectModal, setLabRejectModal] = useState<{
+        orderId: string;
+        mode: 'admin_reject' | 'representative_approve';
+    } | null>(null);
+    const [labRejectCause, setLabRejectCause] = useState('');
+    const [labRejectStage, setLabRejectStage] = useState('');
+    const [labRejectNotes, setLabRejectNotes] = useState('');
+    const [labRejectSubmitting, setLabRejectSubmitting] = useState(false);
+
+    const resetLabRejectModal = useCallback(() => {
+        setLabRejectModal(null);
+        setLabRejectCause('');
+        setLabRejectStage('');
+        setLabRejectNotes('');
+        setLabRejectSubmitting(false);
+    }, []);
 
     // Filter/Privacy Logic
     const hideSensitiveInfo = userRole === 'lab' || userRole === 'designer';
@@ -148,32 +173,48 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         });
     }, [filteredOrders]);
 
+    // Prefill the lab-rejection cause/stage from what the designer picked
+    // when they requested this rejection (request_designer_rejection_v2),
+    // editable, never locked. Pending requests from before this feature
+    // existed carry no stored cause -- resolves to null and the fields stay
+    // empty, same as before (the confirm button is disabled until a cause is
+    // chosen either way).
+    const prefillLabRejectCause = useCallback(async (orderId: string) => {
+        try {
+            const pending = await db.getPendingDesignerRejectionCause(orderId);
+            if (pending?.causeCategory) {
+                setLabRejectCause(pending.causeCategory);
+                setLabRejectStage(pending.responsibleStage || getStageForCause('lab_rejection', pending.causeCategory));
+            }
+        } catch (error) {
+            console.error('Error loading pending designer rejection cause:', error);
+        }
+    }, []);
+
     const handleTechAction = useCallback(async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
             const order = orders.find(o => o.id === orderId);
             const isReviewer = userRole === 'admin' || userRole === 'representative';
             if (order?.technicianStatus === 'Rejected' && isReviewer && action !== 'PMMA_First') {
                 if (userRole === 'admin' && action === 'Approved') {
-                    const reason = window.prompt('سبب اعتماد رفض المعمل:') || '';
-                    if (!reason.trim()) return;
-                    await db.rejectOrderFromTechStatus(orderId, reason.trim());
-                    onStatusChange(orderId, 'same');
+                    setLabRejectModal({ orderId, mode: 'admin_reject' });
+                    void prefillLabRejectCause(orderId);
                     return;
                 }
                 const reviewAction = action === 'Approved' ? 'approve' : action === 'NeedDetails' ? 'request_details' : 'reject';
-                const notes = reviewAction === 'approve'
-                    ? ''
-                    : window.prompt(reviewAction === 'request_details' ? 'ما التفاصيل المطلوبة من المصمم؟' : 'سبب رفض طلب المصمم وإعادته للتصميم:') || '';
-                if (reviewAction !== 'approve' && !notes.trim()) return;
+                if (reviewAction === 'approve') {
+                    setLabRejectModal({ orderId, mode: 'representative_approve' });
+                    void prefillLabRejectCause(orderId);
+                    return;
+                }
+                const notes = window.prompt(reviewAction === 'request_details' ? 'ما التفاصيل المطلوبة من المصمم؟' : 'سبب رفض طلب المصمم وإعادته للتصميم:') || '';
+                if (!notes.trim()) return;
                 await db.reviewDesignerRejection(orderId, reviewAction, notes);
                 onStatusChange(orderId, 'same');
                 return;
             }
             if (userRole === 'admin' && action === 'Rejected') {
-                const reason = window.prompt('سبب رفض المعمل:') || '';
-                if (!reason.trim()) return;
-                await db.rejectOrderFromTechStatus(orderId, reason.trim());
-                onStatusChange(orderId, 'same');
+                setLabRejectModal({ orderId, mode: 'admin_reject' });
                 return;
             }
             await db.updateOrder(orderId, { technicianStatus: action });
@@ -195,7 +236,28 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         } catch (error) {
             console.error('Error updating technician status:', error);
         }
-    }, [orders, onStatusChange, currentUser, userRole]);
+    }, [orders, onStatusChange, currentUser, userRole, prefillLabRejectCause]);
+
+    const handleConfirmLabReject = useCallback(async () => {
+        if (!labRejectModal || !labRejectCause) return;
+        setLabRejectSubmitting(true);
+        try {
+            // p_reason is required by the RPC; fall back to the cause label
+            // when the optional notes field was left empty.
+            const reason = labRejectNotes.trim() || issueCauseLabel(labRejectCause);
+            const stage = labRejectStage || getStageForCause('lab_rejection', labRejectCause);
+            if (labRejectModal.mode === 'admin_reject') {
+                await db.rejectOrderFromTechStatus(labRejectModal.orderId, reason, undefined, labRejectCause, stage);
+            } else {
+                await db.reviewDesignerRejection(labRejectModal.orderId, 'approve', reason, undefined, labRejectCause, stage);
+            }
+            onStatusChange(labRejectModal.orderId, 'same');
+            resetLabRejectModal();
+        } catch (error) {
+            console.error('Error rejecting order from tech status:', error);
+            setLabRejectSubmitting(false);
+        }
+    }, [labRejectModal, labRejectCause, labRejectStage, labRejectNotes, onStatusChange, resetLabRejectModal]);
 
     const handleSubmitFeedback = async () => {
         if (!feedbackOrder) return;
@@ -352,6 +414,31 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                     </div>
                 </div>
             )}
+
+            {/* Lab Rejection Cause Modal */}
+            <ConfirmDialog
+                isOpen={!!labRejectModal}
+                title={labRejectModal?.mode === 'admin_reject' ? 'رفض معمل' : 'اعتماد رفض الحالة نهائياً (رفض معمل)'}
+                message="اختر سبب رفض المعمل والمرحلة المسؤولة قبل التأكيد."
+                variant="danger"
+                confirmLabel="تأكيد الرفض"
+                cancelLabel="إلغاء"
+                isLoading={labRejectSubmitting}
+                confirmDisabled={!labRejectCause}
+                onConfirm={handleConfirmLabReject}
+                onCancel={resetLabRejectModal}
+            >
+                <IssueCauseFields
+                    issueContext="lab_rejection"
+                    causeCategory={labRejectCause}
+                    onCauseCategoryChange={setLabRejectCause}
+                    responsibleStage={labRejectStage}
+                    onResponsibleStageChange={setLabRejectStage}
+                    notes={labRejectNotes}
+                    onNotesChange={setLabRejectNotes}
+                    notesPlaceholder="تفاصيل إضافية عن سبب رفض المعمل…"
+                />
+            </ConfirmDialog>
         </div>
     );
 }

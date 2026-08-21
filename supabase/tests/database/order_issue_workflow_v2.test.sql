@@ -55,7 +55,7 @@ SELECT ok(
     'the duplicate zero-finance writer is removed'
 );
 SELECT has_function('public', 'apply_order_issue_transition_v2', ARRAY['uuid','text','text','uuid','text','numeric','text','text','text'], 'issue transition RPC exists');
-SELECT has_function('public', 'request_designer_rejection_v2', ARRAY['uuid','text','uuid'], 'designer rejection request RPC exists');
+SELECT has_function('public', 'request_designer_rejection_v2', ARRAY['uuid','text','uuid','text','text'], 'designer rejection request RPC exists');
 SELECT has_function('public', 'review_designer_rejection_v2', ARRAY['uuid','text','text','uuid','text','text'], 'designer rejection review RPC exists');
 SELECT has_function('public', 'admin_reject_order_from_tech_status_v2', ARRAY['uuid','text','uuid','text','text'], 'admin technician-status lab rejection RPC exists');
 SELECT ok(
