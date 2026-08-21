@@ -40,6 +40,8 @@ restore-errors.log
 prod-*.sql
 *-prod-dump.sql
 *.dump
+backup_*.sql
+backup_*.dump
 drilldown*.md
 *.utf8.md
 delivery-obligation-trace*.md
