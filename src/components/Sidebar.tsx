@@ -63,6 +63,22 @@ export default function Sidebar() {
             ]
         },
         {
+            // The production floor. Kept to five items on purpose: the sidebar
+            // was already crowded, and capacity/bottleneck reports belong under
+            // Reports rather than here.
+            id: 'production',
+            label: 'الإنتاج',
+            icon: Factory,
+            defaultOpen: true,
+            items: [
+                { name: 'مهامي', href: '/production/my-tasks', icon: Layers, roles: ['admin', 'lab', 'technician', 'designer'] },
+                { name: 'لوحة الإنتاج', href: '/production/board', icon: Factory, roles: ['admin', 'lab'] },
+                { name: 'الشغل الخارجي', href: '/production/external', icon: Briefcase, roles: ['admin', 'lab', 'accountant'] },
+                { name: 'خرائط الإنتاج', href: '/production/routes', icon: Layers, roles: ['admin'] },
+                { name: 'مواعيد العمل', href: '/settings/work-calendar', icon: Clock, roles: ['admin'] },
+            ]
+        },
+        {
             id: 'accounts',
             label: 'الحسابات',
             icon: DollarSign,

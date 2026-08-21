@@ -34,6 +34,11 @@ const AgingReport = lazy(() => import('./pages/AgingReport'));
 const DoctorRetention = lazy(() => import('./pages/DoctorRetention'));
 const DoctorServiceProfitability = lazy(() => import('./pages/DoctorServiceProfitability'));
 const CashFlow = lazy(() => import('./pages/CashFlow'));
+const ProductionBoard = lazy(() => import('./pages/production/ProductionBoard'));
+const MyTasks = lazy(() => import('./pages/production/MyTasks'));
+const RouteEditor = lazy(() => import('./pages/production/RouteEditor'));
+const ExternalWorkOrders = lazy(() => import('./pages/production/ExternalWorkOrders'));
+const WorkCalendarSettings = lazy(() => import('./pages/settings/WorkCalendarSettings'));
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
@@ -72,6 +77,34 @@ function App() {
                             kept as a redirect so old links and bookmarks work. */}
                         <Route path="/quality" element={<Navigate to="/issues-report" replace />} />
                       </Route>
+                    </Route>
+                  </Route>
+
+                  {/* Production floor. The technician role exists only here:
+                      everything else in the app stays closed to it. */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'designer']} />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/production/my-tasks" element={<MyTasks />} />
+                    </Route>
+                  </Route>
+
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab']} />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/production/board" element={<ProductionBoard />} />
+                    </Route>
+                  </Route>
+
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'accountant']} />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/production/external" element={<ExternalWorkOrders />} />
+                    </Route>
+                  </Route>
+
+                  {/* Editing a route changes how every future case is built. */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/production/routes" element={<RouteEditor />} />
+                      <Route path="/settings/work-calendar" element={<WorkCalendarSettings />} />
                     </Route>
                   </Route>
 
