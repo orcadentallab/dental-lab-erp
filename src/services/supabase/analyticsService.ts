@@ -43,6 +43,17 @@ export interface AnalyticsSummary {
     supplier_payments: number;
     designer_payments: number;
 
+    // Cash-basis transaction metrics — dated by `date` (when the money
+    // actually moved), net of system transfer fees and employee claims, so
+    // they agree with the treasury page. The accrual fields above stay the
+    // source for the P&L.
+    cash_total_income: number;
+    cash_doctor_collections: number;
+    cash_total_expenses: number;
+    cash_supplier_payments: number;
+    cash_designer_payments: number;
+    cash_other_expenses: number;
+
     // Accounts receivable
     total_receivables: number;
     aging_0_30: number;

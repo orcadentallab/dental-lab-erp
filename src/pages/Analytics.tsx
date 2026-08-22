@@ -165,12 +165,13 @@ export default function Analytics() {
     // Financial Analysis State
     const [financialStats, setFinancialStats] = useState({
         // Cash Flow
-        totalCollections: 0,
-        totalPayments: 0,
-        netCashFlow: 0,
-        doctorCollections: 0,
-        supplierPayments: 0,
-        designerPayments: 0,
+        cashCollections: 0,
+        cashPayments: 0,
+        cashNetFlow: 0,
+        cashDoctorCollections: 0,
+        cashSupplierPayments: 0,
+        cashDesignerPayments: 0,
+        cashOtherExpenses: 0,
         // P&L
         salesRevenue: 0,
         cogs: 0,
@@ -364,8 +365,13 @@ export default function Analytics() {
             setTopServices(services);
 
             // ========== FINANCIAL ANALYSIS (all from same RPC response) ==========
-            const totalCollections = summary.total_income;
-            const totalPayments = summary.total_expenses;
+            // Cash flow is reported on a CASH basis (summary.cash_*): dated by
+            // when the money actually moved and net of transfer fees and
+            // employee claims, matching the treasury page. The P&L below stays
+            // on the ACCRUAL fields — the two answer different questions and
+            // are labelled as such in the UI.
+            const cashCollections = summary.cash_total_income;
+            const cashPayments = summary.cash_total_expenses;
             const salesRevenue = summary.total_sales_value;
             const cogs = summary.total_cost_of_goods;
             const grossMargin = salesRevenue > 0 ? (grossProfit / salesRevenue) * 100 : 0;
@@ -395,12 +401,13 @@ export default function Analytics() {
                 : null;
 
             setFinancialStats({
-                totalCollections,
-                totalPayments,
-                netCashFlow: totalCollections - totalPayments,
-                doctorCollections: summary.doctor_collections,
-                supplierPayments: summary.supplier_payments,
-                designerPayments: summary.designer_payments,
+                cashCollections,
+                cashPayments,
+                cashNetFlow: cashCollections - cashPayments,
+                cashDoctorCollections: summary.cash_doctor_collections,
+                cashSupplierPayments: summary.cash_supplier_payments,
+                cashDesignerPayments: summary.cash_designer_payments,
+                cashOtherExpenses: summary.cash_other_expenses,
                 salesRevenue,
                 cogs,
                 cogsSuppliers: summary.total_cost_of_goods_suppliers,
@@ -1090,7 +1097,7 @@ export default function Analytics() {
                             </div>
                             <div>
                                 <h3 className="font-bold text-lg text-slate-800">التدفقات النقدية</h3>
-                                <p className="text-slate-400 text-xs">Cash Flow Analysis</p>
+                                <p className="text-slate-400 text-xs">أساس نقدي — بتاريخ حركة الفلوس فعلياً (نفس أرقام صفحة الخزينة)</p>
                             </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1100,16 +1107,16 @@ export default function Analytics() {
                                     <ArrowUpRight size={18} className="text-emerald-600" />
                                     <span className="text-sm font-medium text-slate-600">المقبوضات</span>
                                 </div>
-                                <p className="text-2xl font-black text-emerald-700 mb-2">{Math.round(financialStats.totalCollections).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                <p className="text-2xl font-black text-emerald-700 mb-2">{Math.round(financialStats.cashCollections).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
                                 <div className="mt-3 pt-3 border-t border-emerald-100/50 space-y-1">
                                     <div className="flex justify-between text-xs">
                                         <span className="text-slate-500">↳ تحصيلات الأطباء</span>
-                                        <span className="font-bold text-emerald-700">{Math.round(financialStats.doctorCollections).toLocaleString()} ج.م</span>
+                                        <span className="font-bold text-emerald-700">{Math.round(financialStats.cashDoctorCollections).toLocaleString()} ج.م</span>
                                     </div>
-                                    {financialStats.totalCollections - financialStats.doctorCollections > 0 && (
+                                    {financialStats.cashCollections - financialStats.cashDoctorCollections > 0 && (
                                         <div className="flex justify-between text-xs">
                                             <span className="text-slate-500">↳ مقبوضات أخرى</span>
-                                            <span className="font-bold text-emerald-600">{Math.round(financialStats.totalCollections - financialStats.doctorCollections).toLocaleString()} ج.م</span>
+                                            <span className="font-bold text-emerald-600">{Math.round(financialStats.cashCollections - financialStats.cashDoctorCollections).toLocaleString()} ج.م</span>
                                         </div>
                                     )}
                                 </div>
@@ -1120,36 +1127,36 @@ export default function Analytics() {
                                     <TrendingDown size={18} className="text-rose-600" />
                                     <span className="text-sm font-medium text-slate-600">المدفوعات</span>
                                 </div>
-                                <p className="text-2xl font-black text-rose-700 mb-2">{Math.round(financialStats.totalPayments).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                <p className="text-2xl font-black text-rose-700 mb-2">{Math.round(financialStats.cashPayments).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
                                 <div className="mt-3 pt-3 border-t border-rose-100/50 space-y-1">
                                     <div className="flex justify-between text-xs">
                                         <span className="text-slate-500">↳ الموردين</span>
-                                        <span className="font-bold text-rose-600">{Math.round(financialStats.supplierPayments).toLocaleString()} ج.م</span>
+                                        <span className="font-bold text-rose-600">{Math.round(financialStats.cashSupplierPayments).toLocaleString()} ج.م</span>
                                     </div>
                                     <div className="flex justify-between text-xs">
                                         <span className="text-slate-500">↳ المصممين</span>
-                                        <span className="font-bold text-rose-600">{Math.round(financialStats.designerPayments).toLocaleString()} ج.م</span>
+                                        <span className="font-bold text-rose-600">{Math.round(financialStats.cashDesignerPayments).toLocaleString()} ج.م</span>
                                     </div>
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-slate-500">↳ مصروفات تشغيلية</span>
-                                        <span className="font-bold text-rose-600">{Math.round(financialStats.operatingExpenses).toLocaleString()} ج.م</span>
+                                        <span className="text-slate-500">↳ مصروفات ونثريات</span>
+                                        <span className="font-bold text-rose-600">{Math.round(financialStats.cashOtherExpenses).toLocaleString()} ج.م</span>
                                     </div>
                                 </div>
                             </div>
                             <div className={clsx(
                                 "bg-gradient-to-br p-5 rounded-xl border",
-                                financialStats.netCashFlow >= 0
+                                financialStats.cashNetFlow >= 0
                                     ? "from-blue-50 to-white border-blue-100"
                                     : "from-amber-50 to-white border-amber-100"
                             )}>
                                 <div className="flex items-center gap-2 mb-3">
-                                    <Wallet size={18} className={financialStats.netCashFlow >= 0 ? "text-blue-600" : "text-amber-600"} />
+                                    <Wallet size={18} className={financialStats.cashNetFlow >= 0 ? "text-blue-600" : "text-amber-600"} />
                                     <span className="text-sm font-medium text-slate-600">صافي التدفق</span>
                                 </div>
                                 <p className={clsx(
                                     "text-2xl font-black",
-                                    financialStats.netCashFlow >= 0 ? "text-blue-700" : "text-amber-700"
-                                )}>{Math.round(financialStats.netCashFlow).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
+                                    financialStats.cashNetFlow >= 0 ? "text-blue-700" : "text-amber-700"
+                                )}>{Math.round(financialStats.cashNetFlow).toLocaleString()} <span className="text-xs font-normal text-slate-400">ج.م</span></p>
                             </div>
                         </div>
                     </div>
@@ -1162,7 +1169,7 @@ export default function Analytics() {
                             </div>
                             <div>
                                 <h3 className="font-bold text-lg text-slate-800">قائمة الدخل</h3>
-                                <p className="text-slate-400 text-xs">Profit & Loss Statement</p>
+                                <p className="text-slate-400 text-xs">أساس استحقاق — الإيراد والتكلفة بتاريخ التسليم الفعلي، والمصروف بالشهر اللي بيخصه</p>
                             </div>
                         </div>
                         <div className="space-y-4">
