@@ -29,6 +29,7 @@ interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
 }
 
 import { DoctorSelect } from './DoctorSelect';
+import CaseAttachments from './CaseAttachments';
 
 const calculateOrderCost = (
     workflowType: 'full' | 'split',
@@ -894,6 +895,22 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 }}
                                 disabled={isFieldDisabled('instructions')}
                             />
+
+                            {/* Photos that go with the instructions. Shown only
+                                once the case has an id: an attachment belongs
+                                to an order, and an unsaved order has none yet.
+                                These are what the technician sees on the task
+                                card before starting. */}
+                            {initialData?.id && (
+                                <div className="p-3 border-t border-surface-100">
+                                    <CaseAttachments
+                                        orderId={initialData.id}
+                                        kind="instruction"
+                                        canUpload={!isFieldDisabled('instructions')}
+                                        label="صور مع التعليمات — الفني هيشوفها قبل ما يبدأ"
+                                    />
+                                </div>
+                            )}
                         </Card>
                     </div>
                 </div>

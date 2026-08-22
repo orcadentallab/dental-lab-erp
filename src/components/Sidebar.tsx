@@ -75,6 +75,7 @@ export default function Sidebar() {
                 { name: 'لوحة الإنتاج', href: '/production/board', icon: Factory, roles: ['admin', 'lab'] },
                 { name: 'الشغل الخارجي', href: '/production/external', icon: Briefcase, roles: ['admin', 'lab', 'accountant'] },
                 { name: 'خرائط الإنتاج', href: '/production/routes', icon: Layers, roles: ['admin'] },
+                { name: 'تقرير الظل', href: '/production/shadow', icon: Shield, roles: ['admin', 'lab'] },
                 { name: 'مواعيد العمل', href: '/settings/work-calendar', icon: Clock, roles: ['admin'] },
             ]
         },

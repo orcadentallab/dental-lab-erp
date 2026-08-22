@@ -21,6 +21,7 @@ import {
     type StageRunCard, type BlockReason,
 } from '../../services/supabase/production';
 import { ISSUE_CAUSE } from '../../constants/issueCauses';
+import CaseAttachments from '../../components/orders/CaseAttachments';
 import { Play, Check, RefreshCw, Clock, Star } from 'lucide-react';
 
 const BLOCK_REASONS: { code: BlockReason; label: string }[] = [
@@ -175,6 +176,33 @@ export default function MyTasks() {
                                     <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-2 mt-1">
                                         {t.instructions}
                                     </p>
+                                )}
+
+                                {/* The instruction photos sit here on purpose:
+                                    above the start button, so the technician
+                                    understands the case before committing to
+                                    it rather than after. */}
+                                <CaseAttachments
+                                    orderId={t.orderId}
+                                    kind="instruction"
+                                    compact
+                                />
+
+                                {/* Evidence, and only where it settles a real
+                                    dispute: what left the lab looking like.
+                                    Optional -- making it mandatory would break
+                                    the two-tap rule for every single case. */}
+                                {t.status === 'in_progress'
+                                    && (t.stageCode === 'qc' || t.stageCode === 'packaging') && (
+                                    <CaseAttachments
+                                        orderId={t.orderId}
+                                        kind={t.stageCode === 'qc' ? 'qc' : 'packaging'}
+                                        stageRunId={t.id}
+                                        canUpload
+                                        useCamera
+                                        compact
+                                        label="صوّر الحالة (اختياري)"
+                                    />
                                 )}
 
                                 <div className="flex items-center gap-4 text-xs text-slate-500 pt-1 flex-wrap">

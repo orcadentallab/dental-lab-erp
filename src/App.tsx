@@ -39,6 +39,7 @@ const MyTasks = lazy(() => import('./pages/production/MyTasks'));
 const RouteEditor = lazy(() => import('./pages/production/RouteEditor'));
 const ExternalWorkOrders = lazy(() => import('./pages/production/ExternalWorkOrders'));
 const WorkCalendarSettings = lazy(() => import('./pages/settings/WorkCalendarSettings'));
+const ShadowReport = lazy(() => import('./pages/production/ShadowReport'));
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
@@ -91,6 +92,7 @@ function App() {
                   <Route element={<ProtectedRoute allowedRoles={['admin', 'lab']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/board" element={<ProductionBoard />} />
+                      <Route path="/production/shadow" element={<ShadowReport />} />
                     </Route>
                   </Route>
 

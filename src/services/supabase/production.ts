@@ -521,6 +521,35 @@ export interface ShadowRow {
     agrees: boolean;
 }
 
+export interface ShadowSummary {
+    total: number;
+    agreeing: number;
+    disagreeing: number;
+    /** NULL when nothing has been compared yet — never a flattering 100%. */
+    agreementPct: number | null;
+    flagEnabled: boolean;
+}
+
+export async function getShadowSummary(): Promise<ShadowSummary> {
+    const { data, error } = await supabase.rpc('get_production_shadow_summary');
+    if (error) throw ErrorHandler.handle(error, 'getShadowSummary');
+    return data as ShadowSummary;
+}
+
+/**
+ * Puts a case into the new pipeline. Splits it into one job per route, so an
+ * order carrying two different services becomes two chains. Idempotent.
+ */
+export async function startProduction(orderId: string) {
+    const { data, error } = await supabase.rpc('start_production_for_order', {
+        p_order_id: orderId,
+    });
+    if (error) throw ErrorHandler.handle(error, 'startProduction');
+    return data as {
+        orderId: string; jobIds: string[]; jobCount?: number; alreadyStarted?: boolean;
+    };
+}
+
 export async function getShadowReport(): Promise<ShadowRow[]> {
     const { data, error } = await supabase.rpc('get_production_shadow_report');
     if (error) throw ErrorHandler.handle(error, 'getShadowReport');
