@@ -130,3 +130,28 @@ export const buildSmartSearchResults = (
         suggestion,
     };
 };
+
+/**
+ * Destination search, reusing the same Arabic normalisation the record
+ * search already had -- diacritics, alef and hamza variants, compound
+ * names, and a one-character typo budget. Aliases carry the words people
+ * actually type ("الجودة" for the issues report, "الطابور" for tasks).
+ */
+export interface DestinationMatch<T> { destination: T; score: number }
+
+export function searchDestinations<T extends { labelAr: string; labelEn: string; aliases?: string[] }>(
+    query: string,
+    destinations: T[],
+): DestinationMatch<T>[] {
+    if (!query.trim()) return [];
+    return destinations
+        .map(destination => {
+            const candidates = [destination.labelAr, destination.labelEn, ...(destination.aliases || [])];
+            const score = Math.min(
+                ...candidates.map(candidate => scoreSmartMatch(query, candidate) ?? Number.POSITIVE_INFINITY)
+            );
+            return { destination, score };
+        })
+        .filter(({ score }) => Number.isFinite(score))
+        .sort((a, b) => a.score - b.score);
+}

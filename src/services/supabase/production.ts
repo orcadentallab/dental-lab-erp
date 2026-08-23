@@ -23,6 +23,8 @@ export interface ProductionStage {
     id: string;
     code: string;
     nameAr: string;
+    /** One line explaining what physically happens, shown in the editor. */
+    descriptionAr: string | null;
     sequence: number;
     scope: StageScope;
     defaultExecution: Execution;
@@ -48,6 +50,10 @@ export interface EffectiveRouteStage {
     stageId: string;
     stageCode: string;
     nameAr: string;
+    /** What this pass is for — "واكس" / "بروفة" / "كاست". Same printer, different resin. */
+    variantLabel: string | null;
+    /** Job types allowed to work this step. Empty means anyone on production. */
+    allowedRoles: string[];
     execution: Execution;
     supplierId: string | null;
     isQcGate: boolean;
@@ -125,6 +131,7 @@ export async function getStages(): Promise<ProductionStage[]> {
         id: r.id as string,
         code: r.code as string,
         nameAr: r.name_ar as string,
+        descriptionAr: (r.description_ar as string) ?? null,
         sequence: r.sequence as number,
         scope: r.scope as StageScope,
         defaultExecution: r.default_execution as Execution,
@@ -210,6 +217,8 @@ export async function getEffectiveRouteStages(
         stageId: r.stage_id as string,
         stageCode: r.stage_code as string,
         nameAr: r.name_ar as string,
+        variantLabel: (r.variant_label as string) ?? null,
+        allowedRoles: (r.allowed_roles as string[]) ?? [],
         execution: r.execution as Execution,
         supplierId: (r.supplier_id as string) ?? null,
         isQcGate: r.is_qc_gate as boolean,
@@ -260,6 +269,28 @@ export async function clearRouteStageRule(routeId: string, stageId: string): Pro
     if (error) throw ErrorHandler.handle(error, 'clearRouteStageRule');
 }
 
+export interface ServiceRouteLink {
+    id: string;
+    name: string;
+    routeId: string | null;
+}
+
+/** Every service and which route it is mapped to, for the linking panel. */
+export async function getServicesForRouting(): Promise<ServiceRouteLink[]> {
+    const { data, error } = await supabase
+        .from('services')
+        .select('id, name, route_id')
+        .order('name', { ascending: true });
+
+    if (error) throw ErrorHandler.handle(error, 'getServicesForRouting');
+
+    return (data || []).map((r) => ({
+        id: r.id as string,
+        name: r.name as string,
+        routeId: (r.route_id as string) ?? null,
+    }));
+}
+
 export async function setServiceRoute(serviceId: string, routeId: string | null): Promise<void> {
     const { error } = await supabase
         .from('services')
@@ -270,10 +301,18 @@ export async function setServiceRoute(serviceId: string, routeId: string | null)
 
 // ─── Live queues ─────────────────────────────────────────────────────────
 
+/**
+ * production_stage_runs has TWO foreign keys into production_stages --
+ * stage_id and on_fail_goto_stage_id -- so the embed must name the column it
+ * means. Left implicit, PostgREST refuses the whole query with "more than one
+ * relationship was found", which is what emptied the board and My Tasks.
+ *
+ * This is a PostgREST select string, not SQL: no comments allowed inside it.
+ */
 const RUN_CARD_SELECT = `
     id, job_id, stage_id, seq, execution, advance_mode, status, blocked_reason,
     queued_at, started_at, units_in, assignee_id, supplier_id, rework_of,
-    production_stages ( code, name_ar ),
+    production_stages:stage_id ( code, name_ar ),
     users:assignee_id ( name ),
     suppliers:supplier_id ( name ),
     production_jobs (
@@ -450,7 +489,7 @@ export async function getExternalWorkOrders(onlyOpen = true): Promise<ExternalWo
             returned_at, agreed_cost, invoice_ref, status,
             suppliers ( name ),
             production_stage_runs (
-                production_stages ( name_ar ),
+                production_stages:stage_id ( name_ar ),
                 production_jobs ( orders ( case_id, doctors ( name ) ) )
             )
         `)

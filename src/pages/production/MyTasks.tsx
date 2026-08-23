@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { refreshNavBadges } from '../../hooks/useNavBadges';
 import { useToast } from '../../context/ToastContext';
 import {
     getMyTasks, startStageRun, completeStageRun, blockStageRun,
@@ -64,6 +65,9 @@ export default function MyTasks() {
         if (!user?.id) return;
         try {
             setTasks(await getMyTasks(user.id));
+            // Starting, finishing or blocking a task changes this count, and
+            // load() runs after each of them.
+            refreshNavBadges();
         } catch (e) {
             console.error('[MyTasks] load failed', e);
             toastError('تعذّر تحميل المهام');

@@ -1,156 +1,146 @@
--- Production route composition: default in, explicit out.
+-- A route is an ordered list of steps, and a stage may repeat.
 --
--- Guards 20260821001000_production_stage_catalog_and_routes.sql.
+-- Guards 20260821001000 as reshaped by 20260823002000.
 --
--- The rule being protected: a service inherits every GLOBAL stage with no
--- configuration at all, and records only its exceptions. If that inverts --
--- if a route ever has to list its stages -- then adding a stage to the lab
--- means editing every service by hand, and services will silently diverge.
---
--- The other rule: an unmapped service resolves to the fully outsourced
--- fallback, which is exactly today's behaviour. Assigning routes has to be a
--- deliberate act, never something that happens to existing orders by default.
+-- The model this replaces composed a route as "all global stages, minus the
+-- ones a service excludes". That could not express what the lab actually does:
+--   * a try-in passes QC, packaging and shipping TWICE -- once on the way to
+--     the doctor and again after it comes back;
+--   * emax press has a different middle entirely (ring, press) instead of
+--     milling;
+--   * printing happens at different points with different resin.
+-- So the rules under test now are: steps are ordered, a stage may appear more
+-- than once, conditional steps appear only for matching orders, and a route
+-- nobody has laid out yet still produces a usable chain.
 
 BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(16);
-
--- ─── Fixtures ────────────────────────────────────────────────────────────
--- Own routes, so editing the seeded ones in production cannot break this.
+SELECT plan(14);
 
 INSERT INTO public.production_routes (id, name_ar, is_fallback, ignores_global_stages)
-VALUES
-    ('d1000000-0000-0000-0000-000000000001', 'Route test — plain', FALSE, FALSE),
-    ('d1000000-0000-0000-0000-000000000002', 'Route test — no cast', FALSE, FALSE),
-    ('d1000000-0000-0000-0000-000000000003', 'Route test — opts out', FALSE, TRUE);
+VALUES ('d1000000-0000-0000-0000-000000000001', 'Route test — steps', FALSE, FALSE),
+       ('d1000000-0000-0000-0000-000000000002', 'Route test — conditional', FALSE, FALSE),
+       ('d1000000-0000-0000-0000-000000000003', 'Route test — untouched', FALSE, FALSE);
 
--- ─── 1-3. The seeded catalogue ───────────────────────────────────────────
+-- ─── 1-3. The catalogue after the merges ─────────────────────────────────
 
--- Unconditional globals only. doctor_review is also global but carries
--- {"delivery_type":"TryIn"}, so it is present in every route yet active only
--- on try-ins -- counting it here would misstate what a normal case walks.
+-- One printer, one queue, one bottleneck: wax, proof and cast are the same
+-- stage with different resin, not three stages.
 SELECT is(
     (SELECT COUNT(*)::int FROM public.production_stages
-      WHERE scope = 'global' AND is_active AND default_condition IS NULL),
-    9,
-    'nine stages apply unconditionally to every service');
-
--- Milling and sintering are outsourced on opening day. This is the setting
--- that flips to internal later with no migration.
-SELECT is(
-    (SELECT default_execution FROM public.production_stages WHERE code = 'milling'),
-    'external',
-    'milling ships as an outsourced stage');
-
--- The codes have to stay identical to RESPONSIBLE_STAGE in
--- src/constants/issueCauses.ts, or issue causes stop joining onto stage runs.
-SELECT is(
-    (SELECT COUNT(*)::int FROM public.production_stages
-      WHERE code IN ('design', 'milling', 'finish', 'glaze', 'qc')),
-    5,
-    'stage codes reuse the existing issue-cause vocabulary');
-
--- ─── 4-6. A route with no rows already works ─────────────────────────────
-
-SELECT is(
-    (SELECT COUNT(*)::int FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')),
-    9,
-    'a route with zero configuration inherits the whole global chain');
-
-SELECT is(
-    (SELECT array_agg(stage_code ORDER BY seq)::text
-       FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')),
-    '{design,cast_print,milling,sintering,finish,glaze,qc,packaging,shipping}',
-    'and in the right order, staining excluded because it is optional');
-
-SELECT is(
-    (SELECT advance_mode FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')
-      WHERE stage_code = 'qc'),
-    'qc_gate',
-    'a QC stage never advances on its own');
-
--- ─── 7-8. Excluding one global stage: the "no printed cast" service ──────
-
-INSERT INTO public.production_route_stages (route_id, stage_id, mode)
-SELECT 'd1000000-0000-0000-0000-000000000002', s.id, 'excluded'
-  FROM public.production_stages s WHERE s.code = 'cast_print';
-
-SELECT is(
-    (SELECT array_agg(stage_code ORDER BY seq)::text
-       FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000002')),
-    '{design,milling,sintering,finish,glaze,qc,packaging,shipping}',
-    'one excluded row drops cast printing and leaves the rest untouched');
-
-SELECT is(
-    (SELECT COUNT(*)::int FROM public.production_route_stages
-      WHERE route_id = 'd1000000-0000-0000-0000-000000000002'),
+      WHERE code IN ('printing', 'cast_print') AND is_active),
     1,
-    'expressing that took exactly one row, not eight inclusions');
+    'printing is a single active stage, not one per resin');
 
--- ─── 9-11. Opting an optional stage in, and overriding it ────────────────
-
-INSERT INTO public.production_route_stages (route_id, stage_id, mode)
-SELECT 'd1000000-0000-0000-0000-000000000001', s.id, 'included'
-  FROM public.production_stages s WHERE s.code = 'staining';
-
+-- Milling and sintering are done together by the same outside vendor.
 SELECT is(
-    (SELECT array_agg(stage_code ORDER BY seq)::text
-       FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')),
-    '{design,cast_print,milling,sintering,finish,staining,glaze,qc,packaging,shipping}',
-    'an optional stage slots into its catalogue position when opted in');
+    (SELECT is_active FROM public.production_stages WHERE code = 'sintering'),
+    FALSE,
+    'sintering folded into milling and is no longer its own stage');
 
--- Bringing milling in-house for ONE service: a dropdown, not a migration.
-INSERT INTO public.production_route_stages (route_id, stage_id, mode, execution_override)
-SELECT 'd1000000-0000-0000-0000-000000000002', s.id, 'override', 'internal'
-  FROM public.production_stages s WHERE s.code = 'milling';
-
+-- The issue-cause vocabulary must survive the merges, or every historical
+-- problem record stops joining to a stage.
 SELECT is(
-    (SELECT execution FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000002')
-      WHERE stage_code = 'milling'),
-    'internal',
-    'a route can run a normally-outsourced stage in-house');
+    (SELECT COUNT(*)::int FROM public.production_stages
+      WHERE code IN ('design', 'milling', 'finish', 'glaze', 'qc') AND is_active),
+    5,
+    'the codes RESPONSIBLE_STAGE depends on are all still live');
 
-SELECT is(
-    (SELECT execution FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')
-      WHERE stage_code = 'milling'),
-    'external',
-    'and that override does not leak into any other service');
+-- ─── 4-5. A route with no steps is still usable ──────────────────────────
 
--- ─── 12-13. Conditional stages ───────────────────────────────────────────
-
-INSERT INTO public.production_route_stages (route_id, stage_id, mode, condition)
-SELECT 'd1000000-0000-0000-0000-000000000001', s.id, 'override',
-       '{"delivery_type": "TryIn"}'::jsonb
-  FROM public.production_stages s WHERE s.code = 'packaging';
+SELECT ok(
+    (SELECT COUNT(*)::int FROM public.get_effective_route_stages(
+        'd1000000-0000-0000-0000-000000000003')) > 0,
+    'a route nobody has laid out yet falls back to the standard chain');
 
 SELECT ok(
     NOT EXISTS (SELECT 1 FROM public.get_effective_route_stages(
-                    'd1000000-0000-0000-0000-000000000001', '{}'::jsonb)
-                 WHERE stage_code = 'packaging'),
-    'a conditional stage is absent when the order does not match');
+                    'd1000000-0000-0000-0000-000000000003')
+                 WHERE stage_code = 'sintering'),
+    'and the fallback carries no retired stage');
 
-SELECT ok(
-    EXISTS (SELECT 1 FROM public.get_effective_route_stages(
-                'd1000000-0000-0000-0000-000000000001',
-                '{"delivery_type": "TryIn", "is_redo": false}'::jsonb)
-             WHERE stage_code = 'packaging'),
-    'and present when it does, ignoring the extra context keys');
+-- ─── 6-9. Ordered steps, with a repeat ───────────────────────────────────
+-- The try-in shape: print, QC, pack, ship, doctor, then the real production
+-- pass and QC/pack/ship again.
 
--- ─── 14. A route may opt out of the global chain entirely ────────────────
+SELECT public.seed_route_steps('d1000000-0000-0000-0000-000000000001', $json$[
+    {"code":"design"},
+    {"code":"printing",  "variant":"بروفة"},
+    {"code":"qc"},
+    {"code":"packaging"},
+    {"code":"shipping"},
+    {"code":"doctor_review"},
+    {"code":"milling"},
+    {"code":"printing",  "variant":"كاست"},
+    {"code":"finish"},
+    {"code":"glaze"},
+    {"code":"qc"},
+    {"code":"packaging"},
+    {"code":"shipping"}
+]$json$::jsonb);
 
-INSERT INTO public.production_route_stages (route_id, stage_id, mode)
-SELECT 'd1000000-0000-0000-0000-000000000003', s.id, 'included'
-  FROM public.production_stages s WHERE s.code = 'external_full';
+SELECT is(
+    (SELECT COUNT(*)::int FROM public.get_effective_route_stages(
+        'd1000000-0000-0000-0000-000000000001')),
+    13,
+    'the chain is thirteen steps, repeats included');
+
+-- The constraint the old model enforced would have made this impossible.
+SELECT is(
+    (SELECT COUNT(*)::int FROM public.get_effective_route_stages(
+        'd1000000-0000-0000-0000-000000000001')
+      WHERE stage_code = 'qc'),
+    2,
+    'quality review appears twice: before the doctor and after');
 
 SELECT is(
     (SELECT array_agg(stage_code ORDER BY seq)::text
-       FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000003')),
-    '{external_full}',
-    'a route that opts out carries only what it lists');
+       FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')),
+    '{design,printing,qc,packaging,shipping,doctor_review,milling,printing,finish,glaze,qc,packaging,shipping}',
+    'and the order is exactly as laid out, not the catalogue order');
 
--- ─── 15-16. Legacy orders keep today's behaviour ─────────────────────────
+-- The resin is what differs between the two print passes, so the step says so.
+SELECT is(
+    (SELECT array_agg(variant_label ORDER BY seq)::text
+       FROM public.get_effective_route_stages('d1000000-0000-0000-0000-000000000001')
+      WHERE stage_code = 'printing'),
+    '{بروفة,كاست}',
+    'each print pass carries what it is printing, so the right resin is loaded');
+
+-- ─── 10-12. Conditional steps ────────────────────────────────────────────
+
+SELECT public.seed_route_steps('d1000000-0000-0000-0000-000000000002', $json$[
+    {"code":"design"},
+    {"code":"printing", "variant":"بروفة", "condition":{"delivery_type":"TryIn"}},
+    {"code":"milling"},
+    {"code":"finish"},
+    {"code":"qc"}
+]$json$::jsonb);
+
+SELECT is(
+    (SELECT COUNT(*)::int FROM public.get_effective_route_stages(
+        'd1000000-0000-0000-0000-000000000002', '{"delivery_type":"Final"}'::jsonb)),
+    4,
+    'a final case skips the try-in-only step');
+
+SELECT is(
+    (SELECT COUNT(*)::int FROM public.get_effective_route_stages(
+        'd1000000-0000-0000-0000-000000000002', '{"delivery_type":"TryIn"}'::jsonb)),
+    5,
+    'and a try-in picks it up');
+
+-- Time at the doctor is measured on the wall clock, never on our shift
+-- calendar: a dentist's opening hours are no more ours than a vendor's.
+SELECT is(
+    (SELECT execution FROM public.get_effective_route_stages(
+        'd1000000-0000-0000-0000-000000000001')
+      WHERE stage_code = 'doctor_review' LIMIT 1),
+    'external',
+    'the doctor step is external, so our calendar is not applied to it');
+
+-- ─── 13-14. Legacy orders keep today's behaviour ─────────────────────────
 
 INSERT INTO public.doctors (id, name, phone, address, doctor_code, representative_name)
 VALUES ('d2000000-0000-0000-0000-000000000001', 'Route test doctor',
@@ -164,21 +154,19 @@ INSERT INTO public.orders (
     'd2000000-0000-0000-0000-000000000001', 'Legacy patient', '[]',
     500, 'A1', 'New Case', CURRENT_DATE, 200, 'not_started', 'none');
 
--- No service is mapped to a route by the migration, on purpose. An existing
--- order therefore still describes a case that leaves the building whole.
 SELECT is(
     (SELECT is_fallback FROM public.production_routes
       WHERE id = public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001')),
     TRUE,
-    'an order with no mapped service resolves to the outsourced fallback');
+    'an order with no mapped service still resolves to the outsourced fallback');
 
 UPDATE public.orders
-   SET route_override_id = 'd1000000-0000-0000-0000-000000000002'
+   SET route_override_id = 'd1000000-0000-0000-0000-000000000001'
  WHERE id = 'd3000000-0000-0000-0000-000000000001';
 
 SELECT is(
     public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001'),
-    'd1000000-0000-0000-0000-000000000002'::uuid,
+    'd1000000-0000-0000-0000-000000000001'::uuid,
     'an explicit override on the order wins over everything else');
 
 SELECT * FROM finish();

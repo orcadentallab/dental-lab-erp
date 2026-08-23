@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, type ReactNode } from 'react';
 
 export type Language = 'ar' | 'en';
 
@@ -27,12 +27,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, language);
     }, [language, isRTL]);
 
-    const setLanguage = (lang: Language) => {
+    const setLanguage = useCallback((lang: Language) => {
         setLanguageState(lang);
-    };
+    }, []);
+
+    // Memoised for the same reason as the toast and auth contexts: a fresh
+    // object here re-runs every consumer effect that depends on it.
+    const value = useMemo(() => ({ language, setLanguage, isRTL }), [language, setLanguage, isRTL]);
 
     return (
-        <LanguageContext.Provider value={{ language, setLanguage, isRTL }}>
+        <LanguageContext.Provider value={value}>
             {children}
         </LanguageContext.Provider>
     );

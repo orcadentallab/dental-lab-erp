@@ -18,7 +18,10 @@ const accountingSnapshotsMigration = readFileSync(
     'utf8'
 );
 const registrationPage = readFileSync('src/pages/CaseRegistration.tsx', 'utf8');
-const sidebar = readFileSync('src/components/Sidebar.tsx', 'utf8');
+// The unregistered-cases badge count moved out of the sidebar into the
+// shared navigation badge hook, so every badge is one fetch rather than one
+// query per menu item. The rule it must obey is unchanged.
+const navBadges = readFileSync('src/hooks/useNavBadges.ts', 'utf8');
 const dashboard = readFileSync('src/pages/DashboardNew.tsx', 'utf8');
 
 describe('accounting re-registration protection', () => {
@@ -56,8 +59,8 @@ describe('accounting re-registration protection', () => {
         expect(registrationPage).toContain("change: 'تعديل'");
         expect(registrationPage).not.toContain('تعديل بعد التسجيل');
         expect(registrationPage).not.toContain('مؤرشفة بعد التسجيل');
-        expect(sidebar).toContain("isAccountingRegistrationCandidate(order, 'pending')");
-        expect(sidebar).toContain('getOrdersForAccountingRegistration');
+        expect(navBadges).toContain("isAccountingRegistrationCandidate(order, 'pending')");
+        expect(navBadges).toContain('getOrdersForAccountingRegistration');
     });
 
     test('reopens only Tasneem cancelled entry for one-time accounting removal', () => {

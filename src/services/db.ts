@@ -122,7 +122,7 @@ export interface User {
     username: string;
     email?: string;
     // password removed - using Supabase Auth only
-    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor';
+    role: 'admin' | 'lab' | 'technician' | 'representative' | 'accountant' | 'designer' | 'doctor';
     name: string;
     entityId?: string;
     // Payroll Info (for Representatives)

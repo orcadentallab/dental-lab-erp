@@ -1436,10 +1436,21 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
  * Fetch every non-deleted order needed by the accounting-registration screen.
  * Pagination is handled internally so older re-registration rows cannot be
  * hidden by the generic 1,000-row UI limit.
+ *
+ * Page size is deliberately small. Each row drags two collections behind it
+ * (order_items and order_comments), and at 1,000 rows a page Postgres was
+ * cancelling the statement on its own timeout -- the screen then showed
+ * nothing at all, which reads as "there is nothing to register" rather than
+ * as a failure. Smaller pages fetch the same rows in statements that finish.
+ *
+ * The secondary sort on id matters as much as the size: created_at is not
+ * unique, and range-paginating on a non-unique sort key silently skips and
+ * duplicates rows across page boundaries. On a list that decides what gets
+ * booked, a skipped row is a case that never gets registered.
  */
 export async function getOrdersForAccountingRegistration(): Promise<Order[]> {
     const allData: DbOrderWithRelations[] = [];
-    const pageSize = 1000;
+    const pageSize = 250;
     let from = 0;
 
     while (true) {
@@ -1447,7 +1458,11 @@ export async function getOrdersForAccountingRegistration(): Promise<Order[]> {
             .from('orders')
             .select('*, order_items(*), order_comments(*)')
             .or('is_deleted.eq.false,is_deleted.is.null')
+            // isAccountingRegistrationCandidate rejects these on both tabs,
+            // so filtering here removes rows without changing the outcome.
+            .not('exclude_from_accounting_registration', 'is', true)
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .range(from, from + pageSize - 1);
 
         if (error) {

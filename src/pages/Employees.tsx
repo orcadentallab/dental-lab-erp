@@ -507,7 +507,7 @@ export default function Employees() {
 
         try {
             // Map employeeType to role
-            let role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor' = 'lab';
+            let role: 'admin' | 'lab' | 'technician' | 'representative' | 'accountant' | 'designer' | 'doctor' = 'lab';
             if (newEmp.employeeType === 'sales_rep') role = 'representative';
             else if (newEmp.employeeType === 'accountant') role = 'accountant';
             else if (newEmp.employeeType === 'admin') role = 'admin';

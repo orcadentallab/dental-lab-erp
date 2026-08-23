@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type PropsWithChildren } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type PropsWithChildren } from 'react';
 import { supabase } from '../lib/supabase';
 import type { User } from '../services/db';
 import { isDesignerUser } from '../lib/userRoles';
@@ -79,7 +79,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return () => subscription.unsubscribe();
     }, []);
 
-    const login = async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    /**
+     * login, logout and hasPermission are memoised, and so is the context
+     * value. Consumers put them in useCallback dependency lists that feed
+     * useEffect; rebuilt every render, they turn one failed request into an
+     * unbounded refetch loop. That already happened once with the toast
+     * callbacks and it took the database down with it.
+     */
+    const login = useCallback(async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
         setIsLoading(true);
 
         let email = identifier;
@@ -134,18 +141,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // State update handled by onAuthStateChange
         setIsLoading(false);
         return { success: true };
-    };
+    }, []);
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         setIsLoading(true);
         await supabase.auth.signOut();
         setUser(null);
         setIsLoading(false);
-    };
+    }, []);
 
     // Permission checking helper
     // Returns true if user has the permission (either via role or custom override)
-    const hasPermission = (permissionKey: string): boolean => {
+    const hasPermission = useCallback((permissionKey: string): boolean => {
         if (!user) return false;
 
         // Super admin has all permissions
@@ -170,10 +177,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
         if (isDesignerUser(user) && rolePermissions.designer?.includes(permissionKey)) return true;
 
         return false;
-    };
+    }, [user]);
+
+    const value = useMemo(
+        () => ({ user, isAuthenticated: !!user, login, logout, isLoading, hasPermission }),
+        [user, login, logout, isLoading, hasPermission]
+    );
 
     return (
-        <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, isLoading, hasPermission }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );

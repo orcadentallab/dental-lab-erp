@@ -166,7 +166,7 @@ export interface DbUser {
     username: string;
     email: string | null;
     // password removed - using Supabase Auth only
-    role: 'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor';
+    role: 'admin' | 'lab' | 'technician' | 'representative' | 'accountant' | 'designer' | 'doctor';
     name: string;
     entity_id?: string | null;
     base_salary?: number | null;

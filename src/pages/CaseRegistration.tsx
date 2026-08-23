@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from '../translations';
 import { db } from '../services/db';
+import { refreshNavBadges } from '../hooks/useNavBadges';
 import { 
     CheckCircle2, 
     History, 
@@ -137,6 +138,9 @@ export default function CaseRegistration() {
             });
 
             setOrders(filtered);
+            // The sidebar badge counts exactly this list, so recount whenever
+            // it is rebuilt -- registering a case must move the number.
+            refreshNavBadges();
         } catch (error) {
             console.error('Failed to fetch orders:', error);
             toastError(t.common.error);

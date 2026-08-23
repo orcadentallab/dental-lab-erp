@@ -63,12 +63,17 @@ function App() {
                   <Route path="/" element={<Suspense fallback={<div className="min-h-screen bg-brand-offwhite" />}><MarketingPage /></Suspense>} />
 
                   <Route element={<ProtectedRoute />}>
-                    <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'representative', 'accountant', 'designer']} />}>
+                    <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'representative', 'accountant', 'designer']} />}>
                       <Route element={<DashboardLayout />}>
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/orders" element={<Orders />} />
                         <Route element={<ProtectedRoute allowedRoles={['admin', 'representative']} />}>
                           <Route path="/doctors" element={<Doctors />} />
+                        </Route>
+                        {/* Retention reads the whole client base's activity and
+                            the follow-up log, so it stays with management even
+                            though the directory beside it does not. */}
+                        <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                           <Route path="/doctors/retention" element={<DoctorRetention />} />
                         </Route>
                         {/* The quality dashboard was retired: its problem counts
@@ -89,14 +94,14 @@ function App() {
                     </Route>
                   </Route>
 
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/board" element={<ProductionBoard />} />
                       <Route path="/production/shadow" element={<ShadowReport />} />
                     </Route>
                   </Route>
 
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'accountant']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'accountant']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/external" element={<ExternalWorkOrders />} />
                     </Route>
@@ -111,14 +116,14 @@ function App() {
                   </Route>
 
                   {/* Accounts: Shared + Designer */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'representative', 'designer']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'technician', 'representative', 'designer']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/accounts" element={<Accounts />} />
                     </Route>
                   </Route>
 
                   {/* Settings: No Designer */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'representative']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'technician', 'representative']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/settings" element={<Settings />} />
                     </Route>

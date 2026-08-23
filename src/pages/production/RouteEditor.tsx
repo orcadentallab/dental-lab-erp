@@ -16,10 +16,21 @@ import { useToast } from '../../context/ToastContext';
 import {
     getRoutes, getStages, getRouteRules, getEffectiveRouteStages,
     setRouteStageRule, clearRouteStageRule, createRoute,
+    getServicesForRouting, setServiceRoute,
     type ProductionRoute, type ProductionStage, type RouteStageRule,
-    type EffectiveRouteStage, type Execution,
+    type EffectiveRouteStage, type Execution, type ServiceRouteLink,
 } from '../../services/supabase/production';
 import { Plus, ArrowLeft, Building2, Home, ShieldCheck, Layers } from 'lucide-react';
+
+/** Job types a step can be reserved for. Empty means anyone on production. */
+const ROLE_LABELS: Record<string, string> = {
+    technician: 'فني',
+    designer: 'مصمم',
+    admin: 'أدمن',
+    lab: 'مدير إنتاج',
+};
+
+const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 
 export default function RouteEditor() {
     const { success, error: toastError } = useToast();
@@ -29,13 +40,28 @@ export default function RouteEditor() {
     const [rules, setRules] = useState<RouteStageRule[]>([]);
     const [chain, setChain] = useState<EffectiveRouteStage[]>([]);
     const [tryIn, setTryIn] = useState(false);
+    const [services, setServices] = useState<ServiceRouteLink[]>([]);
     const [loading, setLoading] = useState(true);
 
+    /** Ticking a service here is what makes the route apply to real cases. */
+    const linkService = async (serviceId: string, currentlyOnThisRoute: boolean) => {
+        if (!routeId) return;
+        try {
+            await setServiceRoute(serviceId, currentlyOnThisRoute ? null : routeId);
+            setServices(await getServicesForRouting());
+            success(currentlyOnThisRoute ? 'الخدمة اتشالت من الخريطة' : 'الخدمة اترابطت');
+        } catch (e) {
+            console.error('[RouteEditor] link service failed', e);
+            toastError('تعذّر ربط الخدمة');
+        }
+    };
+
     useEffect(() => {
-        Promise.all([getRoutes(), getStages()])
-            .then(([r, s]) => {
+        Promise.all([getRoutes(), getStages(), getServicesForRouting()])
+            .then(([r, s, sv]) => {
                 setRoutes(r);
                 setStages(s);
+                setServices(sv);
                 setRouteId((prev) => prev ?? r.find((x) => !x.isFallback)?.id ?? r[0]?.id ?? null);
             })
             .catch((e) => {
@@ -168,7 +194,7 @@ export default function RouteEditor() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">خرائط الإنتاج</h1>
                     <p className="text-sm text-slate-500">
-                        المراحل العامة متعلّمة تلقائيًا — شيل العلامة عن اللي الخدمة دي مش محتاجاه
+                        الخريطة = المراحل اللي الحالة بتعدّي عليها بالترتيب
                     </p>
                 </div>
                 <button
@@ -194,6 +220,16 @@ export default function RouteEditor() {
                         {r.isFallback && <span className="text-xs opacity-70"> (افتراضية)</span>}
                     </button>
                 ))}
+            </div>
+
+            {/* Three sentences, because a screen nobody understands does not
+                get used, and a route nobody configures sends every case to the
+                outside lab by default. */}
+            <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-sm text-sky-900 space-y-1">
+                <p><b>إزاي تشتغل الصفحة دي:</b></p>
+                <p>١. اختار خريطة من الأزرار فوق (أو اعمل واحدة جديدة).</p>
+                <p>٢. على الشمال: علّم المراحل اللي الخدمة دي بتعدّي عليها، وشيل العلامة عن اللي مش محتاجاها.</p>
+                <p>٣. تحت: اربط الخدمات اللي هتمشي على الخريطة دي — <b>من غير الربط ده، الحالة بتروح لمعمل خارجي بالكامل زي الوضع القديم.</b></p>
             </div>
 
             {route?.isFallback && (
@@ -236,6 +272,14 @@ export default function RouteEditor() {
                                     {s.isQcGate && <ShieldCheck className="w-4 h-4 text-emerald-600" />}
                                     {s.isBatchStage && <Layers className="w-4 h-4 text-sky-600" />}
                                 </label>
+
+                                {/* What the stage actually covers. Nobody
+                                    should have to guess before ticking it. */}
+                                {s.descriptionAr && (
+                                    <p className="text-xs text-slate-400 pr-8 mt-0.5">
+                                        {s.descriptionAr}
+                                    </p>
+                                )}
 
                                 {included && (
                                     <div className="flex flex-wrap items-center gap-3 mt-2 pr-8 text-xs">
@@ -313,6 +357,17 @@ export default function RouteEditor() {
                                 </span>
                                 <div className="flex-1 flex items-center gap-2 flex-wrap">
                                     <span className="font-medium text-slate-800">{s.nameAr}</span>
+                                    {/* Same printer, different resin — the step says which. */}
+                                    {s.variantLabel && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
+                                            {s.variantLabel}
+                                        </span>
+                                    )}
+                                    {s.allowedRoles.length > 0 && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                                            {s.allowedRoles.map(roleLabel).join(' · ')}
+                                        </span>
+                                    )}
                                     <span className={`text-[10px] px-2 py-0.5 rounded ${
                                         s.execution === 'external'
                                             ? 'bg-sky-100 text-sky-800'
@@ -343,6 +398,56 @@ export default function RouteEditor() {
                             الخريطة دي مالهاش مراحل — الحالة مش هتقدر تدخل إنتاج.
                         </p>
                     )}
+                </div>
+            </div>
+
+            {/* The link that makes any of this apply to a real case. Without a
+                service pointing here, the route is configuration nobody uses
+                and every order silently falls through to the outside lab. */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                <h2 className="font-bold text-slate-700 mb-1">الخدمات اللي بتمشي على الخريطة دي</h2>
+                <p className="text-xs text-slate-400 mb-3">
+                    علّم الخدمة عشان حالاتها تمشي على المراحل اللي فوق. الخدمة اللي مش
+                    متعلّمة على أي خريطة بتروح لمعمل خارجي بالكامل.
+                </p>
+
+                {services.length === 0 && (
+                    <p className="text-sm text-slate-400 py-2">مفيش خدمات مسجّلة في السيستم.</p>
+                )}
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {services.map((sv) => {
+                        const onThis = sv.routeId === routeId;
+                        const onOther = Boolean(sv.routeId) && !onThis;
+                        const otherName = routes.find((r) => r.id === sv.routeId)?.nameAr;
+
+                        return (
+                            <label
+                                key={sv.id}
+                                className={`flex items-start gap-2 p-2 rounded-xl border cursor-pointer ${
+                                    onThis ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'
+                                }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={onThis}
+                                    onChange={() => void linkService(sv.id, onThis)}
+                                    className="w-4 h-4 accent-brand-blue mt-0.5"
+                                />
+                                <span className="min-w-0">
+                                    <span className="block text-sm text-slate-800 truncate">{sv.name}</span>
+                                    {onOther && (
+                                        // Say where it already went: unticking it
+                                        // here would otherwise look like it did
+                                        // nothing.
+                                        <span className="block text-[10px] text-amber-700">
+                                            على خريطة: {otherName ?? '—'}
+                                        </span>
+                                    )}
+                                </span>
+                            </label>
+                        );
+                    })}
                 </div>
             </div>
         </div>

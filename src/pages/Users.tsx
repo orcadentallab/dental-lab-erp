@@ -5,7 +5,7 @@ import { Plus, Trash2, Edit2, User as UserIcon, Shield, Settings } from 'lucide-
 import ConfirmDialog from '../components/ConfirmDialog';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useAuth } from '../context/AuthContext';
-import { DUAL_ROLE_DESIGNER_PERMISSION, FIXED_SALARY_DESIGNER_PERMISSION, getUserRoleDisplay } from '../lib/userRoles';
+import { DUAL_ROLE_DESIGNER_PERMISSION, FIXED_SALARY_DESIGNER_PERMISSION, getUserRoleDisplay, isOtherEmployeeOnly } from '../lib/userRoles';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 import { useToast } from '../context/ToastContext';
 
@@ -32,7 +32,7 @@ export default function Users() {
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState(''); // Only for creating new users
-    const [role, setRole] = useState<'admin' | 'lab' | 'representative' | 'accountant' | 'designer' | 'doctor' | 'other'>('lab');
+    const [role, setRole] = useState<'admin' | 'lab' | 'technician' | 'representative' | 'accountant' | 'designer' | 'doctor' | 'other'>('lab');
     const [entityId, setEntityId] = useState(''); // For linking to Supplier
     const [baseSalary, setBaseSalary] = useState(''); // New State for Payroll
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
@@ -69,6 +69,9 @@ export default function Users() {
         accountant: ['view_finance', 'view_suppliers', 'view_accounts', 'view_staff'],
         representative: ['view_doctors', 'manage_orders', 'view_accounts'],
         lab: ['manage_orders'],
+        // The floor is one technician per stage in a lab this size, so the
+        // technician is a near-copy of lab rather than a locked-down role.
+        technician: ['manage_orders', 'view_accounts'],
         designer: ['manage_orders', 'view_accounts'],
         doctor: ['view_orders']
     };
@@ -112,8 +115,9 @@ export default function Users() {
             setEmail(user.email || '');
             setUsername(user.username);
             setPassword(''); // Don't show password when editing
-            // If they are employeeType === 'other' and not lab, designer or doctor, UI role state is 'other'
-            if (user.employeeType === 'other' && !['lab', 'designer', 'doctor'].includes(user.role)) {
+            // Shares its role exclusions with the sidebar and the route guard
+            // via isOtherEmployeeOnly, so the three cannot drift apart.
+            if (isOtherEmployeeOnly(user)) {
                 setRole('other');
             } else {
                 setRole(user.role);
@@ -129,7 +133,7 @@ export default function Users() {
                 setShowAsEmployee(explicitFlag);
             } else {
                 setShowAsEmployee(
-                    ['representative', 'accountant'].includes(user.role) ||
+                    ['representative', 'accountant', 'technician'].includes(user.role) ||
                     ['sales_rep', 'accountant', 'admin', 'other'].includes(user.employeeType || '')
                 );
             }
@@ -484,6 +488,7 @@ export default function Users() {
                                  >
                                     <option value="admin">مدير نظام (Admin)</option>
                                     <option value="lab">معمل خارجي (Lab)</option>
+                                    <option value="technician">فني إنتاج (Technician)</option>
                                     <option value="representative">مندوب (Representative)</option>
                                     <option value="accountant">محاسب (Accountant)</option>
                                     <option value="designer">مصمم (Designer)</option>

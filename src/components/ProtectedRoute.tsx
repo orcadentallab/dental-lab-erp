@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { isDesignerUser } from '../lib/userRoles';
+import { isDesignerUser, isOtherEmployeeOnly } from '../lib/userRoles';
 
 interface ProtectedRouteProps {
     allowedRoles?: string[];
@@ -23,8 +23,11 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
         return <div className="p-8 text-center text-red-600">غير مصرح لك بدخول هذه الصفحة</div>;
     }
 
-    // Restrict employee-only ('other') users to their own profile page and settings only
-    if (user?.employeeType === 'other' && !['lab', 'designer', 'doctor'].includes(user.role)) {
+    // Restrict employee-only ('other') users to their own profile page and
+    // settings only. The role exclusions live in isOtherEmployeeOnly so the
+    // sidebar and this guard cannot drift apart -- they did once, and a
+    // technician flagged as 'other' was bounced to a page it could not open.
+    if (user && isOtherEmployeeOnly(user)) {
         const path = window.location.pathname;
         const isSelfProfile = path === `/employees/${user.id}` || path.startsWith(`/employees/${user.id}/`);
         if (!isSelfProfile && path !== '/settings') {

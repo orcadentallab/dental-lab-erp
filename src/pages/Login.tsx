@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Key } from 'lucide-react';
+import { getLandingRoute } from '../lib/navigation';
 
 export default function Login() {
     const { login, isAuthenticated, user } = useAuth();
@@ -13,11 +14,10 @@ export default function Login() {
 
     useEffect(() => {
         if (isAuthenticated && user) {
-            if (user.role === 'doctor') {
-                navigate('/doctor/my-orders', { replace: true });
-            } else {
-                navigate('/dashboard', { replace: true });
-            }
+            // Every role lands on the page it actually works from. The old
+            // doctor-or-dashboard split locked out any role without dashboard
+            // access -- a technician logged straight into "غير مصرح لك".
+            navigate(getLandingRoute(user), { replace: true });
         }
     }, [isAuthenticated, user, navigate]);
 

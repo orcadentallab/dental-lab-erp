@@ -40,8 +40,20 @@ export default function WorkCalendarSettings() {
     const [flagged, setFlagged] = useState<FlaggedWorkSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [bulkStart, setBulkStart] = useState('09:00');
+    const [bulkEnd, setBulkEnd] = useState('18:00');
 
     const today = new Date().toISOString().slice(0, 10);
+
+    /** Applies the bulk hours to the working days only, leaving days off alone. */
+    const applyToAll = () => {
+        const next: Record<number, DayDraft> = {};
+        WEEKDAYS.forEach((w) => {
+            const d = draft[w] ?? { enabled: false, start: bulkStart, end: bulkEnd };
+            next[w] = d.enabled ? { ...d, start: bulkStart, end: bulkEnd } : d;
+        });
+        setDraft(next);
+    };
 
     const load = useCallback(async () => {
         try {
@@ -199,6 +211,65 @@ export default function WorkCalendarSettings() {
                     >
                         <Save className="w-4 h-4" /> حفظ
                     </button>
+                </div>
+
+                {/* Setting seven days one at a time is tedious and invites a
+                    typo on the one day nobody re-checks afterwards. Set the
+                    hours once, then untick whichever days are off. */}
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap text-sm">
+                        <span className="text-slate-600 font-medium">المواعيد لكل الأيام:</span>
+                        <input
+                            type="time" value={bulkStart}
+                            onChange={(e) => setBulkStart(e.target.value)}
+                            className="border border-slate-200 rounded-lg px-2 py-1"
+                        />
+                        <span className="text-slate-400">لـ</span>
+                        <input
+                            type="time" value={bulkEnd}
+                            onChange={(e) => setBulkEnd(e.target.value)}
+                            className="border border-slate-200 rounded-lg px-2 py-1"
+                        />
+                        <button
+                            type="button"
+                            onClick={applyToAll}
+                            className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs font-medium"
+                        >
+                            طبّق على أيام الشغل
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-slate-600 font-medium">أيام الشغل:</span>
+                        {WEEKDAYS.map((w) => {
+                            const on = draft[w]?.enabled;
+                            return (
+                                <button
+                                    key={w}
+                                    type="button"
+                                    onClick={() => setDraft({
+                                        ...draft,
+                                        [w]: {
+                                            start: draft[w]?.start ?? bulkStart,
+                                            end: draft[w]?.end ?? bulkEnd,
+                                            enabled: !on,
+                                        },
+                                    })}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                                        on
+                                            ? 'bg-emerald-600 text-white border-emerald-600'
+                                            : 'bg-white text-slate-500 border-slate-200'
+                                    }`}
+                                >
+                                    {WEEKDAY_LABELS_AR[w]}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <p className="text-xs text-slate-400">
+                        لسه محتاج تدوس «حفظ» عشان التغيير يتسجّل.
+                    </p>
                 </div>
 
                 {WEEKDAYS.map((w) => {

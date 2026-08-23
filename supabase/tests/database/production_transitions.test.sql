@@ -116,7 +116,7 @@ SELECT is(
     (SELECT s.code FROM public.production_stage_runs r
        JOIN public.production_stages s ON s.id = r.stage_id
       WHERE r.job_id = :'job_id' AND r.status = 'ready'),
-    'cast_print',
+    'printing',
     'the next stage opened on its own: pull, not push');
 
 -- ─── 8-11. QC failure creates rework and NOT an order issue ──────────────

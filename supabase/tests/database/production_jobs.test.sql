@@ -69,7 +69,7 @@ SELECT is(
     (SELECT COUNT(*)::int FROM public.production_stage_runs r
        JOIN public.production_jobs j ON j.id = r.job_id
       WHERE j.order_id = 'e3000000-0000-0000-0000-000000000001'),
-    9,
+    8,
     'the whole global chain was expanded into concrete stage runs');
 
 -- unit_count comes from the order lines, not from a guess.
@@ -106,7 +106,7 @@ SELECT is(
     (SELECT COUNT(*)::int FROM public.production_stage_runs r
        JOIN public.production_jobs j ON j.id = r.job_id
       WHERE j.order_id = 'e3000000-0000-0000-0000-000000000001'),
-    9,
+    8,
     'removing a stage from the route leaves the already-running job untouched');
 
 -- ─── 7-10. The three clocks on an internal stage ─────────────────────────

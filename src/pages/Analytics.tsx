@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService } from '../services/supabase/analyticsService';
+import ReportsHub from '../components/ReportsHub';
 import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
@@ -485,6 +486,11 @@ export default function Analytics() {
 
     return (
         <div className="space-y-6">
+            {/* The reports hub. /analytics is both the analytics overview and
+                the catalogue for every other report, which is what let the
+                sidebar drop seven permanent entries. */}
+            <ReportsHub />
+
             {/* Header Section */}
             <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 sm:p-8 rounded-2xl shadow-xl text-white relative overflow-hidden">
                 {/* Background decorations */}
