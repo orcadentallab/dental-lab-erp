@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2, Car, Landmark, Building2, Wrench } from 'lucide-react';
 import { db, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
@@ -601,7 +601,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">الشهر المالي المستحق (لتوزيع الأرباح)</label>
-                                        {/* eslint-disable-next-line -- month type not supported in all browsers */}
+                                        { }
                                         <input aria-label="الشهر المالي" required type="month" value={effectiveDate ? effectiveDate.substring(0, 7) : ''} onChange={e => setEffectiveDate(`${e.target.value}-01`)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
                                     </div>
                                 </div>

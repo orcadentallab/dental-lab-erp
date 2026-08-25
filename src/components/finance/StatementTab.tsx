@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
     FileText,
     Download,
@@ -11,16 +11,17 @@ import {
     Star,
     Users,
     TrendingUp,
-    TrendingDown
+    TrendingDown,
+    Layers
 } from 'lucide-react';
-import { type Order, type Transaction, type Doctor, type Supplier, type Service } from '../../services/db';
+import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../../services/db';
 import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 interface StatementTabProps {
@@ -59,12 +60,44 @@ interface ServiceStats {
 
 const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
 
+function getStatusBadgeStyle(status?: string, issueState?: string) {
+    if (issueState === 'doctor_rejected') {
+        return { label: 'مرتجع طبيب', color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' };
+    }
+    if (issueState === 'lab_rejected') {
+        return { label: 'مرتجع معمل', color: 'bg-red-100 text-red-800 border-red-300 font-bold' };
+    }
+    if (issueState === 'cancelled' || normalizeStatus(status) === 'cancelled') {
+        return { label: 'ملغي', color: 'bg-slate-200 text-slate-800 border-slate-300 font-bold' };
+    }
+
+    const norm = normalizeStatus(status);
+    if (norm === 'delivered' || norm === 'تم التسليم') {
+        return { label: 'تم التسليم', color: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' };
+    }
+    if (norm === 'doctor rejected' || norm === 'rejected') {
+        return { label: 'مرتجع طبيب', color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' };
+    }
+    if (norm === 'lab rejected') {
+        return { label: 'مرتجع معمل', color: 'bg-red-100 text-red-800 border-red-300 font-bold' };
+    }
+    if (norm === 'try in' || norm === 'بروفة') {
+        return { label: 'بروفة', color: 'bg-amber-100 text-amber-900 border-amber-300 font-bold' };
+    }
+    if (norm === 'under production' || norm === 'in progress' || norm === 'تشغيل') {
+        return { label: 'قيد التشغيل', color: 'bg-blue-100 text-blue-800 border-blue-300 font-bold' };
+    }
+    if (norm === 'ready' || norm === 'جاهز') {
+        return { label: 'جاهز للتسليم', color: 'bg-teal-100 text-teal-800 border-teal-300 font-bold' };
+    }
+    return { label: status || 'غير محدد', color: 'bg-slate-100 text-slate-700 border-slate-200 font-bold' };
+}
+
 export default function StatementTab({
     type: targetType,
     orders,
     transactions,
     doctors,
-    suppliers,
     services,
     externalStartDate,
     externalEndDate,
@@ -78,6 +111,14 @@ export default function StatementTab({
     const [serviceSortKey, setServiceSortKey] = useState<ServiceSortKey>('revenue');
     const [serviceSortAsc, setServiceSortAsc] = useState(false);
     const [expandedService, setExpandedService] = useState<string | null>(null);
+
+    const [groupMode, setGroupMode] = useState<'service' | 'family'>('service');
+    const [families, setFamilies] = useState<import('../../services/db').ServiceFamily[]>([]);
+    const [expandedFamily, setExpandedFamily] = useState<string | null>(null);
+
+    useEffect(() => {
+        db.getServiceFamilies().then(setFamilies).catch(console.error);
+    }, []);
 
     const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
     const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
@@ -150,26 +191,24 @@ export default function StatementTab({
             const items = o.items as any[];
             if (!items || items.length === 0) return;
 
-            const supplier = o.supplierId ? suppliers.find(s => s.id === o.supplierId) : undefined;
             const orderDoctor = doctors.find(d => d.id === o.doctorId);
-            const orderTotalUnits = items.reduce((s: number, it: any) =>
-                s + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
-            const distinctServices = new Set(items.map((it: any) => it.serviceType as string));
-            const isSingleService = distinctServices.size === 1;
 
-            // 'Rejected' alone is a legacy value no live order can have since
-            // migration 093 (renamed to 'Doctor Rejected' / 'Lab Rejected');
-            // checking only 'Rejected' meant this branch never fired for any
-            // current rejection.
-            const isRejected = ['Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(o.status as string);
+            const isCancelled = normalizeStatus(o.status) === 'cancelled' || getEffectiveIssueState(o) === 'cancelled';
+            const isLabRejected = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
+            const isDoctorRejected = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
+            const isRejected = isLabRejected || isDoctorRejected;
+
             // Revenue mirrors the doctor statement page exactly: full price
             // for a normal delivered order, the settled rejection amount
             // (once decided) for a rejected/redo order, 0 otherwise.
             const effectiveTotalPrice = getDoctorReceivableAmount(o);
-            // Cost = rejectedLabCost (what was paid to lab) or fallback to order.cost
-            const effectiveCost = isRejected
-                ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
-                : (o.cost || 0);
+            
+            // Cost = 0 for Cancelled / Lab Rejected; rejectedLabCost (or cost) for Doctor Rejected; fallback to order.cost
+            const effectiveCost = (isCancelled || isLabRejected)
+                ? 0
+                : isDoctorRejected
+                    ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
+                    : (o.cost || 0);
 
             // Compute proportional weights (same approach regardless of rejection)
             const itemWeights2: number[] = items.map((it: any) => {
@@ -191,21 +230,16 @@ export default function StatementTab({
                 }
 
                 const count = Array.isArray(item.teethNumbers) ? item.teethNumbers.length : 1;
-                const svcDef = services.find(s => s.name === svcName);
 
                 // Revenue = proportional share of effective total (0 for rejected)
                 const itemRevenue = totalWeight2 > 0
                     ? (effectiveTotalPrice * itemWeights2[itemIdx]) / totalWeight2
                     : 0;
 
-                // Cost = proportional share of effective cost
-                let costPerUnit: number;
-                if (isSingleService) {
-                    costPerUnit = orderTotalUnits > 0 ? effectiveCost / orderTotalUnits : 0;
-                } else {
-                    const supplierCustomPrice = supplier?.customPrices?.[svcName];
-                    costPerUnit = supplierCustomPrice ?? svcDef?.costPrice ?? 0;
-                }
+                // Cost = proportional share of effective cost (matching RPC & statement parity)
+                const itemCost = totalWeight2 > 0
+                    ? (effectiveCost * itemWeights2[itemIdx]) / totalWeight2
+                    : 0;
 
                 if (!map.has(svcName)) {
                     map.set(svcName, { cases: new Set(), units: 0, revenue: 0, cost: 0, rejectedCases: new Set(), rejectedCost: 0, doctorStats: new Map() });
@@ -214,10 +248,10 @@ export default function StatementTab({
                 if (o.id) entry.cases.add(o.id);
                 entry.units += count;
                 entry.revenue += itemRevenue;
-                entry.cost += costPerUnit * count;
+                entry.cost += itemCost;
                 if (isRejected && o.id) {
                     entry.rejectedCases.add(o.id);
-                    entry.rejectedCost += costPerUnit * count;
+                    entry.rejectedCost += itemCost;
                 }
 
                 const drId = o.doctorId || '';
@@ -274,7 +308,63 @@ export default function StatementTab({
         });
 
         return stats;
-    }, [filteredOrders, targetType, selectedServiceId, services, suppliers, doctors, serviceSortKey, serviceSortAsc]);
+    }, [filteredOrders, targetType, selectedServiceId, services, doctors, serviceSortKey, serviceSortAsc]);
+
+    // Aggregate family analytics from serviceAnalytics
+    const familyAnalytics = useMemo(() => {
+        if (targetType !== 'service' || serviceAnalytics.length === 0) return [];
+        const map = new Map<string, {
+            familyId: string | null;
+            familyName: string;
+            familyColor: string;
+            totalCases: number;
+            totalUnits: number;
+            totalRevenue: number;
+            totalCost: number;
+            services: ServiceStats[];
+        }>();
+
+        serviceAnalytics.forEach(stat => {
+            const svc = services.find(s => s.name === stat.serviceName);
+            const family = families.find(f => f.id === svc?.familyId);
+            const familyKey = family ? family.id : `single_${stat.serviceName}`;
+            const familyName = family ? family.nameAr : stat.serviceName;
+            const familyColor = family ? (family.color || 'emerald') : 'slate';
+
+            if (!map.has(familyKey)) {
+                map.set(familyKey, {
+                    familyId: family?.id || null,
+                    familyName,
+                    familyColor,
+                    totalCases: 0,
+                    totalUnits: 0,
+                    totalRevenue: 0,
+                    totalCost: 0,
+                    services: []
+                });
+            }
+            const entry = map.get(familyKey)!;
+            entry.totalCases += stat.totalCases;
+            entry.totalUnits += stat.totalUnits;
+            entry.totalRevenue += stat.totalRevenue;
+            entry.totalCost += stat.totalCost;
+            entry.services.push(stat);
+        });
+
+        return Array.from(map.values()).map(f => {
+            const grossProfit = f.totalRevenue - f.totalCost;
+            const grossMargin = f.totalRevenue > 0 ? (grossProfit / f.totalRevenue) * 100 : 0;
+            const avgSalePrice = f.totalUnits > 0 ? f.totalRevenue / f.totalUnits : 0;
+            const avgCostPrice = f.totalUnits > 0 ? f.totalCost / f.totalUnits : 0;
+            return {
+                ...f,
+                grossProfit,
+                grossMargin,
+                avgSalePrice,
+                avgCostPrice
+            };
+        }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    }, [targetType, serviceAnalytics, services, families]);
 
     // Detail rows for expanded service panel
     const expandedItems = useMemo(() => {
@@ -284,10 +374,6 @@ export default function StatementTab({
             const orderDate = getOfficialStatementDate(o);
             const orderDocExp = doctors.find(d => d.id === o.doctorId);
             const orderItems = o.items as any[];
-            const orderTotalUnits = orderItems.reduce((s: number, it: any) =>
-                s + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
-            const isSingleSvc = new Set(orderItems.map((it: any) => it.serviceType)).size === 1;
-            const orderSupplier = o.supplierId ? suppliers.find(s => s.id === o.supplierId) : undefined;
 
             // Compute proportional weights (same as analytics)
             const expWeights: number[] = orderItems.map((it: any) => {
@@ -321,18 +407,25 @@ export default function StatementTab({
                     priceSource = 'estimated'; // catalog only
                 }
 
-                // Cost per unit
-                const svcDef = services.find(s => s.name === item.serviceType);
-                let costPerUnit: number;
-                if (isSingleSvc) {
-                    costPerUnit = orderTotalUnits > 0 ? (o.cost || 0) / orderTotalUnits : 0;
-                } else {
-                    costPerUnit = orderSupplier?.customPrices?.[item.serviceType] ?? svcDef?.costPrice ?? 0;
-                }
+                // Cost per unit based on proportional share of effective order cost
+                const isCancelledExp = normalizeStatus(o.status) === 'cancelled' || getEffectiveIssueState(o) === 'cancelled';
+                const isLabRejectedExp = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
+                const isDoctorRejectedExp = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
+
+                const effectiveCostExp = (isCancelledExp || isLabRejectedExp)
+                    ? 0
+                    : isDoctorRejectedExp
+                        ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
+                        : (o.cost || 0);
+                const itemCostExp = expWeightTotal > 0
+                    ? (effectiveCostExp * expWeights[idx]) / expWeightTotal
+                    : 0;
+                const costPerUnit = count > 0 ? itemCostExp / count : 0;
 
                 items.push({
                     id: `${o.id}-${idx}`,
                     date: orderDate, caseId: o.caseId,
+                    serviceType: item.serviceType || expandedService,
                     patientName: o.patientName,
                     doctorName: orderDocExp?.name || 'غير معروف',
                     teeth: Array.isArray(item.teethNumbers) ? item.teethNumbers.join(', ') : '',
@@ -342,12 +435,14 @@ export default function StatementTab({
                     costPerUnit,
                     totalCost: costPerUnit * count,
                     priceSource,
+                    status: o.status,
+                    issueState: getEffectiveIssueState(o)
                 });
             });
         });
         items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         return items;
-    }, [expandedService, filteredOrders, doctors, services, suppliers]);
+    }, [expandedService, filteredOrders, doctors, services]);
 
     // Expense data
     const expenseData = useMemo(() => {
@@ -417,9 +512,9 @@ export default function StatementTab({
             if (!isLedgerTransaction(t)) return;
             if (!NON_OPERATIONAL_CATEGORIES.includes(t.category || '')) return;
             if (!t.amount || t.amount <= 0) return;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             if ((t as any).status === 'rejected') return;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
             if (!isDateInOpenRange(txDate, { start, end })) return;
             if (t.category === 'supplier_payment') { supplierTotal += t.amount; supplierCount++; }
@@ -436,9 +531,9 @@ export default function StatementTab({
             .filter(t => {
                 if (t.type !== 'income') return false;
                 if (!t.amount || t.amount <= 0) return false;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 if ((t as any).status === 'rejected') return false;
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 const txDate = ((t as any).effectiveDate || t.date || '').split('T')[0];
                 if (!isDateInOpenRange(txDate, { start, end })) return false;
                 return true;
@@ -465,9 +560,9 @@ export default function StatementTab({
             if (!dId) return;
             if (!matrix.has(dId)) matrix.set(dId, new Map());
             const dRow = matrix.get(dId)!;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             const items = (o.items as any[]) || [];
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             items.forEach((item: any) => {
                 const svc = item.serviceType as string;
                 if (!svc) return;
@@ -710,14 +805,14 @@ export default function StatementTab({
                                                 const pct = (svc.totalRevenue / totalRevenue) * 100;
                                                 if (pct < 0.5) return null;
                                                 return (
-                                                    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                                                     
                                                     <div key={svc.serviceName} className={clsx(COLORS[i % COLORS.length], 'transition-all hover:opacity-80')}
                                                         style={{ width: `${pct}%` }}
                                                         title={`${svc.serviceName}: ${pct.toFixed(1)}%`} />
                                                 );
                                             })}
                                             {otherShare > 0 && (
-                                                // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                                                 
                                                 <div className="bg-slate-400"
                                                     style={{ width: `${(otherShare / totalRevenue) * 100}%` }}
                                                     title={`أخرى: ${((otherShare / totalRevenue) * 100).toFixed(1)}%`} />
@@ -748,8 +843,142 @@ export default function StatementTab({
                         </div>
                     )}
 
+                    {/* Mode Selector Header */}
+                    <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-700">طريقة تجميع التحليلات:</span>
+                            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                                <button
+                                    onClick={() => setGroupMode('service')}
+                                    className={clsx(
+                                        'px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer',
+                                        groupMode === 'service' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                                    )}
+                                >
+                                    📊 حسب الخدمة (تفصيلي)
+                                </button>
+                                <button
+                                    onClick={() => setGroupMode('family')}
+                                    className={clsx(
+                                        'px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer',
+                                        groupMode === 'family' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-700'
+                                    )}
+                                >
+                                    🔷 حسب العائلة (تجميعي)
+                                </button>
+                            </div>
+                        </div>
+                        <span className="text-xs text-slate-400">
+                            {groupMode === 'family' ? `عرض ${familyAnalytics.length} عائلة مجمعة` : `عرض ${serviceAnalytics.length} خدمة تفصيلية`}
+                        </span>
+                    </div>
+
+                    {/* Family Comparison Table */}
+                    {groupMode === 'family' && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-indigo-100 overflow-hidden">
+                            <div className="p-4 border-b border-indigo-100 bg-indigo-50/40 flex justify-between items-center">
+                                <h3 className="font-bold text-indigo-950 flex items-center gap-2 text-sm">
+                                    <Layers size={18} className="text-indigo-600" />
+                                    جدول مقارنة العوائل
+                                    <span className="bg-indigo-100 text-indigo-800 py-0.5 px-2.5 rounded-full text-xs font-bold">{familyAnalytics.length} عائلة</span>
+                                </h3>
+                                <button onClick={handleExportExcel}
+                                    className="bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer">
+                                    <Download size={14} /> تصدير Excel
+                                </button>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-right">
+                                    <thead className="bg-indigo-900 text-white font-bold">
+                                        <tr>
+                                            <th className="p-3 w-8 text-center">#</th>
+                                            <th className="p-3">عائلة الخدمة</th>
+                                            <th className="p-3 text-center">الحالات</th>
+                                            <th className="p-3 text-center">الوحدات</th>
+                                            <th className="p-3 text-center">إجمالي الإيراد</th>
+                                            <th className="p-3 text-center">متوسط البيع</th>
+                                            <th className="p-3 text-center">متوسط التكلفة</th>
+                                            <th className="p-3 text-center">هامش الربح</th>
+                                            <th className="p-3 text-center">الربح (ج.م)</th>
+                                            <th className="p-3 text-center">التفاصيل</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {familyAnalytics.map((fam, idx) => {
+                                            const isExpanded = expandedFamily === fam.familyName;
+                                            return (
+                                                <>
+                                                    <tr key={fam.familyName} className="hover:bg-indigo-50/30 transition-colors font-semibold">
+                                                        <td className="p-3 text-center text-slate-400 font-mono">{idx + 1}</td>
+                                                        <td className="p-3 font-bold text-slate-800">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0"></span>
+                                                                <span>{fam.familyName}</span>
+                                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{fam.services.length} خدمات</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-3 text-center text-slate-700 font-bold">{fam.totalCases}</td>
+                                                        <td className="p-3 text-center font-bold">
+                                                            <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md">{fam.totalUnits}</span>
+                                                        </td>
+                                                        <td className="p-3 text-center font-black text-slate-900 font-mono">{Math.round(fam.totalRevenue).toLocaleString()} ج.م</td>
+                                                        <td className="p-3 text-center font-mono text-slate-600">{Math.round(fam.avgSalePrice).toLocaleString()} ج.م</td>
+                                                        <td className="p-3 text-center font-mono text-rose-600">{Math.round(fam.avgCostPrice).toLocaleString()} ج.م</td>
+                                                        <td className="p-3 text-center">
+                                                            <span className={clsx(
+                                                                'px-2 py-0.5 rounded-md font-bold text-[11px]',
+                                                                fam.grossMargin >= 40 ? 'bg-emerald-100 text-emerald-800' : fam.grossMargin >= 20 ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+                                                            )}>
+                                                                {fam.grossMargin.toFixed(1)}%
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-3 text-center font-black text-emerald-600 font-mono">
+                                                            +{Math.round(fam.grossProfit).toLocaleString()} ج.م
+                                                        </td>
+                                                        <td className="p-3 text-center">
+                                                            <button
+                                                                onClick={() => setExpandedFamily(isExpanded ? null : fam.familyName)}
+                                                                className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition-all cursor-pointer"
+                                                            >
+                                                                {isExpanded ? 'إخفاء ▲' : 'عرض الخدمات ▼'}
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+
+                                                    {/* Expanded Sub-services */}
+                                                    {isExpanded && (
+                                                        <tr className="bg-slate-50/80 border-y border-indigo-100">
+                                                            <td colSpan={10} className="p-3 pr-8">
+                                                                <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                                                                    <span className="text-xs font-bold text-slate-700 block">الخدمات التابعة لعائلة {fam.familyName}:</span>
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                                        {fam.services.map((subSvc) => (
+                                                                            <div key={subSvc.serviceName} className="p-2 bg-slate-50 rounded-lg border border-slate-100 text-xs flex justify-between items-center">
+                                                                                <span className="font-bold text-slate-800">{subSvc.serviceName}</span>
+                                                                                <div className="text-left font-mono">
+                                                                                    <span className="text-slate-600 font-bold block">{subSvc.totalUnits} وحدة</span>
+                                                                                    <span className="text-emerald-600 font-bold block">{Math.round(subSvc.totalRevenue).toLocaleString()} ج.م</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                </>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Services Table */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    {groupMode === 'service' && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800 flex items-center gap-2">
                                 <Package size={18} className="text-teal-600" />
@@ -894,6 +1123,7 @@ export default function StatementTab({
                                                                                 <tr>
                                                                                     <th className="px-3 py-2.5 font-semibold">تاريخ الاستحقاق</th>
                                                                                     <th className="px-3 py-2.5 font-semibold">رقم الحالة</th>
+                                                                                    <th className="px-3 py-2.5 font-semibold">الخدمة</th>
                                                                                     <th className="px-3 py-2.5 font-semibold">الطبيب</th>
                                                                                     <th className="px-3 py-2.5 font-semibold">المريض</th>
                                                                                     <th className="px-3 py-2.5 font-semibold text-center">الأسنان</th>
@@ -901,11 +1131,12 @@ export default function StatementTab({
                                                                                     <th className="px-3 py-2.5 font-semibold text-center">سعر البيع/وحدة</th>
                                                                                     <th className="px-3 py-2.5 font-semibold text-center">تكلفة الشراء/وحدة</th>
                                                                                     <th className="px-3 py-2.5 font-semibold text-center">الإجمالي</th>
+                                                                                    <th className="px-3 py-2.5 font-semibold text-center">حالة الطلب</th>
                                                                                 </tr>
                                                                             </thead>
                                                                             <tbody className="divide-y divide-gray-100">
                                                                                 {expandedItems.length === 0
-                                                                                    ? <tr><td colSpan={9} className="p-6 text-center text-gray-400">لا توجد بيانات</td></tr>
+                                                                                    ? <tr><td colSpan={11} className="p-6 text-center text-gray-400">لا توجد بيانات</td></tr>
                                                                                     : expandedItems.map((item: any) => {
                                                                                         const priceColor = item.priceSource === 'actual' ? 'text-blue-600'
                                                                                             : item.priceSource === 'derived' ? 'text-teal-600'
@@ -913,10 +1144,14 @@ export default function StatementTab({
                                                                                         const priceLabel = item.priceSource === 'actual' ? null
                                                                                             : item.priceSource === 'derived' ? <span className="block text-[9px] text-teal-400">محسوب</span>
                                                                                                 : <span className="block text-[9px] text-amber-400">تقديري</span>;
+                                                                                        const statusBadge = getStatusBadgeStyle(item.status, item.issueState);
                                                                                         return (
                                                                                             <tr key={item.id} className="hover:bg-teal-50/20">
                                                                                                 <td className="px-3 py-2.5 text-gray-500">{new Date(item.date).toLocaleDateString('ar-EG')}</td>
                                                                                                 <td className="px-3 py-2.5 font-bold text-gray-700">#{item.caseId}</td>
+                                                                                                <td className="px-3 py-2.5 font-bold text-slate-800">
+                                                                                                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs border border-slate-200">{item.serviceType}</span>
+                                                                                                </td>
                                                                                                 <td className="px-3 py-2.5 text-gray-800 font-medium">{item.doctorName}</td>
                                                                                                 <td className="px-3 py-2.5 text-gray-600">{item.patientName}</td>
                                                                                                 <td className="px-3 py-2.5 text-center text-gray-400 max-w-[90px] truncate">{item.teeth}</td>
@@ -936,6 +1171,14 @@ export default function StatementTab({
                                                                                                 <td className="px-3 py-2.5 text-center font-black text-slate-900">
                                                                                                     {Math.round(item.totalPrice).toLocaleString()} ج.م
                                                                                                     {priceLabel}
+                                                                                                </td>
+                                                                                                <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                                                                                                    <span className={clsx(
+                                                                                                        "px-2.5 py-1 rounded-full text-[11px] font-extrabold border inline-block shadow-2xs",
+                                                                                                        statusBadge.color
+                                                                                                    )}>
+                                                                                                        {statusBadge.label}
+                                                                                                    </span>
                                                                                                 </td>
                                                                                             </tr>
                                                                                         );
@@ -979,6 +1222,7 @@ export default function StatementTab({
                             </div>
                         )}
                     </div>
+                    )}
 
                     {/* Doctor × Service Matrix */}
                     {doctorServiceMatrix && doctorServiceMatrix.rows.length > 0 && doctorServiceMatrix.services.length > 0 && (

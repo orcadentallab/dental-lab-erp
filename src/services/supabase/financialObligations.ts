@@ -698,7 +698,7 @@ export async function reallocatePaymentsAfterObligationVoid(
     if (obligError) {
         throw ErrorHandler.handle(obligError, 'reallocatePaymentsAfterObligationVoid.fetchVoidedObligation');
     }
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+     
     const voidedOblig = voidedData as FinancialObligationRow;
 
 
@@ -713,7 +713,7 @@ export async function reallocatePaymentsAfterObligationVoid(
         if (error) {
             throw ErrorHandler.handle(error, 'reallocatePaymentsAfterObligationVoid.fetchNewObligation');
         }
-        // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+         
         newOblig = data as FinancialObligationRow;
     }
 
@@ -799,7 +799,7 @@ export async function reallocatePaymentsAfterObligationVoid(
                 if (insAllocError) {
                     throw ErrorHandler.handle(insAllocError, 'reallocatePaymentsAfterObligationVoid.insertNewAlloc');
                 }
-                // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+                 
                 const newAllocId = (newAllocData as FinancialObligationRow & { id: string })?.id ?? '';
 
                 // Increment allocated_amount on the new obligation
@@ -863,7 +863,7 @@ export async function reallocatePaymentsAfterObligationVoid(
             if (insCreditError) {
                 throw ErrorHandler.handle(insCreditError, 'reallocatePaymentsAfterObligationVoid.insertCredit');
             }
-            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+             
             const newCreditId = (newCreditData as FinancialObligationRow & { id: string })?.id ?? '';
 
             // Create credit creation event

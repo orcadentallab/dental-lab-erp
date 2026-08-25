@@ -23,7 +23,7 @@ export function getNestedValue(obj: Record<string, unknown>, path: string): stri
 
     for (const key of keys) {
         if (result && typeof result === 'object' && key in result) {
-            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+             
             result = (result as Record<string, unknown>)[key];
         } else {
             return path; // Return the path if not found

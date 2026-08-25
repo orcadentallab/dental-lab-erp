@@ -3,18 +3,19 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService } from '../services/supabase/analyticsService';
 import ReportsHub from '../components/ReportsHub';
-import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle } from 'lucide-react';
+import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle, Layers } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
+import OrderAnalysisTab from '../components/finance/OrderAnalysisTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../services/db';
 import { formatOpenDateRangeLabel } from '../utils/dateRange';
 
-type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis';
+type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis' | 'order_analysis';
 
 const ANALYTICS_TAB_STORAGE_KEY = 'analytics_active_tab';
-const ANALYTICS_TABS: AnalyticsTab[] = ['overview', 'financial', 'service_analysis', 'expense_analysis'];
+const ANALYTICS_TABS: AnalyticsTab[] = ['overview', 'financial', 'service_analysis', 'expense_analysis', 'order_analysis'];
 
 const getInitialAnalyticsTab = (): AnalyticsTab => {
     const savedTab = sessionStorage.getItem(ANALYTICS_TAB_STORAGE_KEY);
@@ -118,6 +119,7 @@ export default function Analytics() {
     });
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
     const [topServices, setTopServices] = useState<{ name: string; count: number; revenue: number }[]>([]);
+    const [topFamilies, setTopFamilies] = useState<import('../services/supabase/analyticsService').TopFamily[]>([]);
     // Surfaces load failures. Without this the page silently keeps its previous
     // (or zeroed) numbers, which reads as real data rather than a failed fetch.
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -160,7 +162,7 @@ export default function Analytics() {
     }, []);
 
     useEffect(() => {
-        if (['service_analysis', 'expense_analysis'].includes(activeTab)) loadAnalysisData();
+        if (['service_analysis', 'expense_analysis', 'order_analysis'].includes(activeTab)) loadAnalysisData();
     }, [activeTab, loadAnalysisData]);
 
     // Financial Analysis State
@@ -297,19 +299,19 @@ export default function Analytics() {
             const rpcStart = dateRange === 'all' ? undefined : startDate || undefined;
             const rpcEnd = dateRange === 'all' ? undefined : endDate || undefined;
 
-            // Lightweight RPC calls instead of massive SELECTs.
-            // `issues` comes from order_issues (the event log) rather than
-            // orders.status, which loses any problem that was later resolved.
-            const [summary, doctors, services, allServices, expenseCategories, issues] = await Promise.all([
+            const [summary, doctors, services, allServices, expenseCategories, issues, families] = await Promise.all([
                 analyticsService.getSummary(rpcStart, rpcEnd),
                 analyticsService.getTopDoctors(rpcStart, rpcEnd),
                 analyticsService.getTopServices(rpcStart, rpcEnd, 5),
                 analyticsService.getTopServices(rpcStart, rpcEnd, 5000), // Fetch all active services to compute true totals
                 analyticsService.getTopExpenseCategories(rpcStart, rpcEnd, 1), // Only need the top 1
-                analyticsService.getIssuesSummary(rpcStart, rpcEnd)
+                analyticsService.getIssuesSummary(rpcStart, rpcEnd),
+                analyticsService.getTopFamilies(rpcStart, rpcEnd, 5)
             ]);
 
             if (requestId !== analyticsRequestId.current) return;
+
+            setTopFamilies(families || []);
 
             // Derive values from the compact JSON response
             const grossProfit = summary.total_sales_value - summary.total_cost_of_goods;
@@ -443,7 +445,7 @@ export default function Analytics() {
     }, [startDate, endDate, dateRange]);
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- Data fetching requires setting state after async operations
+         
         calculateStats();
     }, [calculateStats]);
 
@@ -486,9 +488,7 @@ export default function Analytics() {
 
     return (
         <div className="space-y-6">
-            {/* The reports hub. /analytics is both the analytics overview and
-                the catalogue for every other report, which is what let the
-                sidebar drop seven permanent entries. */}
+            {/* The reports hub catalogue */}
             <ReportsHub />
 
             {/* Header Section */}
@@ -601,6 +601,18 @@ export default function Analytics() {
                     >
                         <FileText size={18} />
                         التحليل المالي
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('order_analysis')}
+                        className={clsx(
+                            "flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2",
+                            activeTab === 'order_analysis'
+                                ? "bg-teal-700 text-white shadow-lg"
+                                : "bg-gray-50 text-slate-600 hover:bg-slate-100"
+                        )}
+                    >
+                        <FileText size={18} />
+                        تحليل الأوردرات
                     </button>
                     <button
                         onClick={() => setActiveTab('service_analysis')}
@@ -874,7 +886,7 @@ export default function Analytics() {
                                             {stats.deliveredRevenue > 0 ? ((stats.totalRevenue / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                         </div>
                                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                            {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
+                                            { }
                                             <div
                                                 className="bg-gradient-to-r from-blue-500 to-blue-400 h-full rounded-full transition-all duration-700"
                                                 style={{ width: `${Math.min(100, (stats.totalRevenue / (stats.deliveredRevenue || 1)) * 100)}%` }}
@@ -961,7 +973,7 @@ export default function Analytics() {
                                                 </div>
                                             </div>
                                             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                                {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
+                                                { }
                                                 <div
                                                     className={clsx(
                                                         "h-full rounded-full transition-all duration-700 ease-out",
@@ -979,6 +991,53 @@ export default function Analytics() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Top Service Families Section */}
+                    {topFamilies.length > 0 && (
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                            <div className="flex justify-between items-center mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                                        <Layers size={18} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-lg text-slate-800">أكثر العوائل طلباً</h3>
+                                        <p className="text-slate-400 text-xs">تحليل تجميعي إجمالي بحسب عائلة الخدمة (بأثر رجعي)</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                {topFamilies.map((fam, idx) => {
+                                    const maxVal = topFamilies[0]?.count || 1;
+                                    const percent = (fam.count / maxVal) * 100;
+                                    return (
+                                        <div key={idx} className="group bg-slate-50 p-4 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all cursor-pointer">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm bg-indigo-100 text-indigo-600">
+                                                    {idx + 1}
+                                                </div>
+                                                <span className="font-bold text-slate-800 text-sm truncate">{fam.name}</span>
+                                            </div>
+                                            <div className="text-center mb-3">
+                                                <span className="text-3xl font-black text-slate-800">{fam.count}</span>
+                                                <span className="text-xs text-slate-400 block">وحدة</span>
+                                            </div>
+                                            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full bg-indigo-500 rounded-full transition-all duration-700"
+                                                    style={{ width: `${percent}%` }}
+                                                />
+                                            </div>
+                                            <div className="mt-2 text-center">
+                                                <span className="text-xs text-slate-500 font-mono font-bold">{fam.revenue.toLocaleString()} ج.م</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Top Services Section */}
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -1017,7 +1076,7 @@ export default function Analytics() {
                                             <span className="text-xs text-slate-400 block">وحدة</span>
                                         </div>
                                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                                            {/* eslint-disable-next-line -- Dynamic width required for progress bar */}
+                                            { }
                                             <div
                                                 className={clsx(
                                                     "h-full rounded-full transition-all duration-700",
@@ -1491,6 +1550,19 @@ export default function Analytics() {
                     type="expense"
                     orders={orders}
                     transactions={transactions}
+                    doctors={doctors}
+                    suppliers={suppliers}
+                    services={services}
+                    externalStartDate={dateRange === 'all' ? '' : (startDate || '')}
+                    externalEndDate={dateRange === 'all' ? '' : (endDate || '')}
+                    externalRangeLabel={activeDateRangeLabel}
+                />
+            )}
+
+            {/* Order Analysis Tab Content */}
+            {activeTab === 'order_analysis' && (
+                <OrderAnalysisTab
+                    orders={orders}
                     doctors={doctors}
                     suppliers={suppliers}
                     services={services}

@@ -21,14 +21,47 @@ export interface Doctor {
     branches?: DoctorBranch[];
 }
 
+export interface ServiceFamily {
+    id: string;
+    nameAr: string;
+    nameEn?: string;
+    description?: string;
+    color?: string; // e.g., 'emerald', 'blue', 'indigo', 'amber', 'purple', 'rose', 'slate'
+    defaultServiceId?: string | null;
+    defaultRouteId?: string | null;
+    sortOrder?: number;
+    createdAt?: string;
+}
+
+export type CreateServiceFamilyPayload = {
+    nameAr: string;
+    nameEn?: string;
+    description?: string;
+    color?: string;
+    defaultServiceId?: string | null;
+    defaultRouteId?: string | null;
+};
+
+export type UpdateServiceFamilyPayload = Partial<{
+    nameAr: string;
+    nameEn: string | null;
+    description: string | null;
+    color: string;
+    defaultServiceId: string | null;
+    defaultRouteId: string | null;
+    sortOrder: number;
+}>;
+
 export interface Service {
     id: string;
+    familyId?: string | null;
     name: string;
     sellingPrice: number;
     costPrice: number;
     designerPrice?: number; // Default designer cost per unit (0 = not billed to designer)
     millingPrice?: number; // Default milling price (can be overridden per supplier)
     sortOrder?: number; // Manual display order
+    routeId?: string | null;
 }
 
 export interface AccountingOrderSnapshot {
@@ -1208,6 +1241,42 @@ class MockDB {
     async reorderServices(orderedIds: string[]): Promise<void> {
         const { reorderServices } = await import('./supabase/services');
         return reorderServices(orderedIds);
+    }
+
+    // --- SERVICE FAMILIES ---
+    async getServiceFamilies(): Promise<ServiceFamily[]> {
+        try {
+            const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+            return await serviceFamilyService.getFamilies();
+        } catch (err) {
+            console.warn('[DB] getServiceFamilies safe fallback:', err);
+            return [];
+        }
+    }
+    async createServiceFamily(payload: CreateServiceFamilyPayload): Promise<ServiceFamily> {
+        const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+        return serviceFamilyService.createFamily(payload);
+    }
+    async updateServiceFamily(id: string, updates: UpdateServiceFamilyPayload): Promise<void> {
+        const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+        return serviceFamilyService.updateFamily(id, updates);
+    }
+    async deleteServiceFamily(id: string): Promise<void> {
+        const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+        return serviceFamilyService.deleteFamily(id);
+    }
+    async assignServiceToFamily(serviceId: string, familyId: string | null): Promise<void> {
+        const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+        return serviceFamilyService.assignServiceToFamily(serviceId, familyId);
+    }
+    async bulkAdjustFamilyPrices(
+        familyId: string,
+        adjustmentType: 'percentage' | 'fixed',
+        adjustmentValue: number,
+        targetField: 'sellingPrice' | 'costPrice' | 'both'
+    ): Promise<void> {
+        const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+        return serviceFamilyService.bulkAdjustPrices(familyId, adjustmentType, adjustmentValue, targetField);
     }
 
     // --- TRANSACTIONS ---

@@ -6,7 +6,7 @@
  * المسار: /balance-snapshot (للادمن فقط)
  */
 
-/* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { financeService } from '../services/financeService';

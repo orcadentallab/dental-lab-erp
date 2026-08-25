@@ -365,21 +365,50 @@ export interface ServiceRouteLink {
     id: string;
     name: string;
     routeId: string | null;
+    familyId: string | null;
+    familyName: string | null;
+    familyRouteId: string | null;
 }
 
 /** Every service and which route it is mapped to, for the linking panel. */
 export async function getServicesForRouting(): Promise<ServiceRouteLink[]> {
     const { data, error } = await supabase
         .from('services')
-        .select('id, name, route_id')
+        .select(`
+            id,
+            name,
+            route_id,
+            family_id,
+            service_families:family_id (
+                id,
+                name_ar,
+                default_route_id
+            )
+        `)
         .order('name', { ascending: true });
 
     if (error) throw ErrorHandler.handle(error, 'getServicesForRouting');
 
-    return (data || []).map((r) => ({
-        id: r.id as string,
-        name: r.name as string,
-        routeId: (r.route_id as string) ?? null,
+    interface ServiceRoutingRow {
+        id: string;
+        name: string;
+        route_id: string | null;
+        family_id: string | null;
+        service_families: {
+            id: string;
+            name_ar: string;
+            default_route_id: string | null;
+        } | null;
+    }
+
+    const rows = (data || []) as unknown as ServiceRoutingRow[];
+    return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        routeId: r.route_id ?? null,
+        familyId: r.family_id ?? null,
+        familyName: r.service_families ? r.service_families.name_ar : null,
+        familyRouteId: r.service_families ? (r.service_families.default_route_id ?? null) : null,
     }));
 }
 
@@ -389,6 +418,14 @@ export async function setServiceRoute(serviceId: string, routeId: string | null)
         .update({ route_id: routeId })
         .eq('id', serviceId);
     if (error) throw ErrorHandler.handle(error, 'setServiceRoute');
+}
+
+export async function setFamilyRoute(familyId: string, routeId: string | null): Promise<void> {
+    const { error } = await supabase
+        .from('service_families')
+        .update({ default_route_id: routeId })
+        .eq('id', familyId);
+    if (error) throw ErrorHandler.handle(error, 'setFamilyRoute');
 }
 
 // ─── Live queues ─────────────────────────────────────────────────────────

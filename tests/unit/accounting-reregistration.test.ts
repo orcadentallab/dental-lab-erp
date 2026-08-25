@@ -90,4 +90,16 @@ describe('accounting re-registration protection', () => {
 
         expect(acceptOrderBlock).not.toContain('isRegistered: true');
     });
+
+    test('restores accounting registration after item price backfill without modifying financials', () => {
+        const repairMigration = readFileSync(
+            'supabase/migrations/20260826001000_restore_accounting_after_item_price_backfill.sql',
+            'utf8'
+        );
+        expect(repairMigration).toContain('is_registered = TRUE');
+        expect(repairMigration).toContain('needs_accounting_reregistration = FALSE');
+        expect(repairMigration).toContain('accounting_review_cycle_id = NULL');
+        expect(repairMigration).toContain('order_item_price_backfill_audit');
+        expect(repairMigration).not.toMatch(/SET\s+(total_price|discount|cost|manual_cost|design_price)/i);
+    });
 });

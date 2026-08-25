@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
+ 
 import { supabase } from '../../lib/supabase';
 import type { DbUser, DbUserInsert, DbUserUpdate } from './types';
 import type { User } from '../db';

@@ -109,7 +109,7 @@ export class ErrorHandler {
         }
 
         // Handle Supabase/Postgrest errors (which are objects, not Error instances)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         if (typeof error === 'object' && error !== null && 'message' in error) {
             const msg = (error as { message: string }).message;
 

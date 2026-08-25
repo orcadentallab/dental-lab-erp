@@ -15,8 +15,11 @@ import DoctorSegmentationTab from '../components/reports/DoctorSegmentationTab';
 import { useReportDateRange } from '../hooks/useReportDateRange';
 import ReportDateRangeFilter from '../components/reports/ReportDateRangeFilter';
 
+import { db, type Service, type ServiceFamily } from '../services/db';
+import { Sparkles } from 'lucide-react';
+
 type TabType = 'profitability' | 'segmentation';
-type GroupMode = 'detail' | 'doctor' | 'service';
+type GroupMode = 'detail' | 'doctor' | 'service' | 'family';
 type SortKey = 'gross_profit' | 'revenue' | 'cost' | 'margin_pct' | 'units' | 'redo_cost';
 
 const fmt = (n: number) =>
@@ -74,6 +77,9 @@ export default function DoctorServiceProfitabilityPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    const [catalogServices, setCatalogServices] = useState<Service[]>([]);
+    const [catalogFamilies, setCatalogFamilies] = useState<ServiceFamily[]>([]);
+
     useEffect(() => {
         let isMounted = true;
 
@@ -81,23 +87,22 @@ export default function DoctorServiceProfitabilityPage() {
             setLoading(true);
             setError(null);
             try {
-                // All three together: the grading tab needs profit from the
-                // first, volume from the second and aging from the third, and
-                // a partial set would grade doctors on missing dimensions.
-                const [profitability, inputs, ar] = await Promise.all([
+                const [profitability, inputs, ar, svcs, fams] = await Promise.all([
                     analyticsService.getDoctorServiceProfitability(startDate, endDate),
                     analyticsService.getDoctorSegmentationInputs(startDate, endDate),
                     analyticsService.getDoctorReceivablesBreakdown(),
+                    db.getServices(),
+                    db.getServiceFamilies(),
                 ]);
                 if (isMounted) {
                     setData(profitability);
                     setSegmentationInputs(inputs);
                     setReceivables(ar);
+                    setCatalogServices(svcs);
+                    setCatalogFamilies(fams);
                 }
             } catch (e) {
                 console.error('Failed to load profitability report:', e);
-                // Surfaced, never swallowed into an empty table — an empty
-                // table and a failed query look identical to the reader.
                 if (isMounted) {
                     setData(null);
                     setSegmentationInputs([]);
@@ -127,8 +132,19 @@ export default function DoctorServiceProfitabilityPage() {
 
         const buckets = new Map<string, { label: string; rows: DoctorServiceProfitabilityRow[] }>();
         for (const row of rows) {
-            const key = groupMode === 'doctor' ? row.doctor_id : row.service_name;
-            const label = groupMode === 'doctor' ? row.doctor_name : row.service_name;
+            let key = row.service_name;
+            let label = row.service_name;
+
+            if (groupMode === 'doctor') {
+                key = row.doctor_id;
+                label = row.doctor_name;
+            } else if (groupMode === 'family') {
+                const svc = catalogServices.find(s => s.name === row.service_name);
+                const fam = catalogFamilies.find(f => f.id === svc?.familyId);
+                key = fam ? fam.id : `single_${row.service_name}`;
+                label = fam ? fam.nameAr : row.service_name;
+            }
+
             if (!buckets.has(key)) buckets.set(key, { label, rows: [] });
             buckets.get(key)!.rows.push(row);
         }
@@ -138,10 +154,12 @@ export default function DoctorServiceProfitabilityPage() {
             bucket.label,
             groupMode === 'doctor'
                 ? `${bucket.rows.length} خدمة`
-                : `${new Set(bucket.rows.map(r => r.doctor_id)).size} طبيب`,
+                : groupMode === 'family'
+                    ? `${new Set(bucket.rows.map(r => r.service_name)).size} نوع / ${new Set(bucket.rows.map(r => r.doctor_id)).size} طبيب`
+                    : `${new Set(bucket.rows.map(r => r.doctor_id)).size} طبيب`,
             bucket.rows
         ));
-    }, [data, groupMode]);
+    }, [data, groupMode, catalogServices, catalogFamilies]);
 
     const visibleRows = useMemo(() => {
         const filtered = search.trim()
@@ -329,6 +347,7 @@ export default function DoctorServiceProfitabilityPage() {
                         { mode: 'detail' as const, label: 'طبيب × خدمة', icon: Grid3x3 },
                         { mode: 'doctor' as const, label: 'حسب الطبيب', icon: Users },
                         { mode: 'service' as const, label: 'حسب الخدمة', icon: Layers },
+                        { mode: 'family' as const, label: 'حسب العائلة', icon: Sparkles },
                     ]).map(option => (
                         <button
                             key={option.mode}

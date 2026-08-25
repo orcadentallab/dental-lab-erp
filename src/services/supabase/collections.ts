@@ -188,11 +188,11 @@ export async function computeAgingReport(
 
     const entityMap = new Map<string, { entityType: BillingEntityType; entityId: string; obligations: RawRow[] }>();
 
-    // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+     
     for (const row of (data || []) as unknown as RawRow[]) {
         const key = `${row.entity_type}:${row.entity_id}`;
         if (!entityMap.has(key)) {
-            // eslint-disable-next-line @typescript-eslint/consistent-type-assertions
+             
             const entityType = row.entity_type as BillingEntityType;
             entityMap.set(key, {
                 entityType,

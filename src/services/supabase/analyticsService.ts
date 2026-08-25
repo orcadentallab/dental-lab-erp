@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
+ 
 /**
  * analyticsService.ts
  * 
@@ -76,6 +76,13 @@ export interface TopDoctor {
 
 export interface TopService {
     name: string;
+    count: number;
+    revenue: number;
+}
+
+export interface TopFamily {
+    name: string;
+    color: string;
     count: number;
     revenue: number;
 }
@@ -322,6 +329,24 @@ export const analyticsService = {
         }
 
         return (data || []) as unknown as TopService[];
+    },
+
+    /**
+     * Fetches top service families by unit count (retroactive dynamic analytics).
+     */
+    async getTopFamilies(startDate?: string, endDate?: string, limit: number = 5): Promise<TopFamily[]> {
+        const { data, error } = await supabase.rpc('get_top_families', {
+            p_start_date: startDate || null,
+            p_end_date: endDate || null,
+            p_limit: limit,
+        });
+
+        if (error) {
+            console.error('Error fetching top families:', error);
+            return [];
+        }
+
+        return (data || []) as unknown as TopFamily[];
     },
 
     /**

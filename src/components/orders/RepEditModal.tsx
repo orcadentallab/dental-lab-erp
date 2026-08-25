@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
 import { db } from '../../services/db';
-import type { Order, Supplier, User, Service, Doctor } from '../../services/db';
+import type { Order, Supplier, User, Service, ServiceFamily, Doctor } from '../../services/db';
 import { repUpdateOrderWithAudit } from '../../services/supabase/orderWorkflow';
 import {
     ORDER_EDIT_REASON_CODES,
@@ -191,6 +191,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     const [items, setItems] = useState<FormOrderItem[]>([]);
 
     const [services, setServices] = useState<Service[]>([]);
+    const [families, setFamilies] = useState<ServiceFamily[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
 
     const [pendingProposal, setPendingProposal] = useState<PendingProposalInfo | null>(null);
@@ -205,11 +206,13 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     useEffect(() => {
         const loadServicesAndDoctors = async () => {
             try {
-                const [servicesData, doctorsData] = await Promise.all([
+                const [servicesData, familiesData, doctorsData] = await Promise.all([
                     db.getServices(),
+                    db.getServiceFamilies(),
                     db.getDoctors()
                 ]);
                 setServices(servicesData);
+                setFamilies(familiesData);
                 setDoctors(doctorsData);
             } catch (err) {
                 console.error('Failed to load services or doctors in RepEditModal', err);
@@ -712,7 +715,29 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                                                     disabled={!isFieldEnabled('items')}
                                                     className="w-full bg-transparent font-bold text-xs outline-none text-surface-800 cursor-pointer border border-surface-200 rounded px-2 py-1 bg-white disabled:opacity-50"
                                                 >
-                                                    {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                                    {families.map(family => {
+                                                        const familyServices = services.filter(s => s.familyId === family.id);
+                                                        if (familyServices.length === 0) return null;
+                                                        return (
+                                                            <optgroup key={family.id} label={`🔷 ${family.nameAr}`}>
+                                                                {familyServices.map(s => {
+                                                                    const isDefault = family.defaultServiceId === s.id;
+                                                                    return (
+                                                                        <option key={s.id} value={s.name}>
+                                                                            {s.name} {isDefault ? '⭐ (افتراضي)' : ''}
+                                                                        </option>
+                                                                    );
+                                                                })}
+                                                            </optgroup>
+                                                        );
+                                                    })}
+                                                    {services.filter(s => !s.familyId).length > 0 && (
+                                                        <optgroup label="🔹 خدمات فردية">
+                                                            {services.filter(s => !s.familyId).map(s => (
+                                                                <option key={s.id} value={s.name}>{s.name}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                    )}
                                                 </select>
                                             </div>
                                             <div className="flex-1">

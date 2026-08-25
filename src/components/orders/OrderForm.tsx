@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
+import { db, type Doctor, type Order, type Service, type ServiceFamily, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -126,6 +126,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const { error: toastError } = useToast();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<Service[]>([]);
+    const [families, setFamilies] = useState<ServiceFamily[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
@@ -320,16 +321,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [doctorsData, servicesData, suppliersData, usersData] = await Promise.all([
+                const [doctorsData, servicesData, familiesData, suppliersData, usersData] = await Promise.all([
                     db.getDoctors(),
                     db.getServices(),
+                    db.getServiceFamilies(),
                     db.getSuppliers(),
                     db.getUsers(),
-                    // removed: db.getAllOrdersUnpaginated()
-
                 ]);
                 setDoctors(doctorsData);
                 setServices(servicesData);
+                setFamilies(familiesData);
 
                 if (!initialData && servicesData.length > 0) {
                     setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: servicesData[0].name } : i));
@@ -856,7 +857,29 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                                 value={item.serviceType}
                                                 onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
                                             >
-                                                {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                                {families.map(family => {
+                                                    const familyServices = services.filter(s => s.familyId === family.id);
+                                                    if (familyServices.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={family.id} label={`🔷 ${family.nameAr}`}>
+                                                            {familyServices.map(s => {
+                                                                const isDefault = family.defaultServiceId === s.id;
+                                                                return (
+                                                                    <option key={s.id} value={s.name}>
+                                                                        {s.name} {isDefault ? '⭐ (افتراضي)' : ''}
+                                                                    </option>
+                                                                );
+                                                            })}
+                                                        </optgroup>
+                                                    );
+                                                })}
+                                                {services.filter(s => !s.familyId).length > 0 && (
+                                                    <optgroup label="🔹 خدمات فردية">
+                                                        {services.filter(s => !s.familyId).map(s => (
+                                                            <option key={s.id} value={s.name}>{s.name}</option>
+                                                        ))}
+                                                    </optgroup>
+                                                )}
                                             </select>
                                         </div>
                                         <div className="flex-1">

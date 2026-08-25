@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
+ 
 import { useState, useEffect, useMemo } from 'react';
 import { db, type User, type Supplier, type Doctor, type Service } from '../services/db';
 import { Plus, Trash2, Edit2, User as UserIcon, Shield, Settings } from 'lucide-react';

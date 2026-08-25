@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
+ 
 import { supabase } from './supabase';
 import { EXPENSE_CATEGORY } from '../constants/expenseCategories';
 

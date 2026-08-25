@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, type Doctor, type Service, type OrderItem } from '../../services/db';
+import { db, type Doctor, type Service, type ServiceFamily, type OrderItem } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../../components/ui/Input';
@@ -19,6 +19,7 @@ export default function NewOrderRequest() {
     const navigate = useNavigate();
 
     const [services, setServices] = useState<Service[]>([]);
+    const [families, setFamilies] = useState<ServiceFamily[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [loading, setLoading] = useState(false);
     const [doctorInfo, setDoctorInfo] = useState<Doctor | null>(null);
@@ -35,13 +36,15 @@ export default function NewOrderRequest() {
 
     useEffect(() => {
         const loadInitialData = async () => {
-            const [data, doctorsData] = await Promise.all([
+            const [data, familiesData, doctorsData] = await Promise.all([
                 db.getServices(),
+                db.getServiceFamilies(),
                 db.getDoctors()
             ]);
             setServices(data.sort((a, b) => a.name.localeCompare(b.name)));
+            setFamilies(familiesData);
             setDoctors(doctorsData);
-            
+
             if (user?.entityId) {
                 const doc = doctorsData.find(d => d.id === user.entityId) || await db.getDoctor(user.entityId);
                 setDoctorInfo(doc);
@@ -135,7 +138,7 @@ export default function NewOrderRequest() {
     };
 
     return (
-        <div className="max-w-4xl mx-auto p-4 space-y-6">
+        <div className="max-w-4xl mx-auto p-4 space-y-6" dir="rtl">
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">طلب أوردر جديد</h1>
@@ -187,7 +190,29 @@ export default function NewOrderRequest() {
                                         onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
                                     >
                                         <option value="" disabled>-- اختر نوع الخدمة --</option>
-                                        {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                        {families.map(family => {
+                                            const familyServices = services.filter(s => s.familyId === family.id);
+                                            if (familyServices.length === 0) return null;
+                                            return (
+                                                <optgroup key={family.id} label={`🔷 ${family.nameAr}`}>
+                                                    {familyServices.map(s => {
+                                                        const isDefault = family.defaultServiceId === s.id;
+                                                        return (
+                                                            <option key={s.id} value={s.name}>
+                                                                {s.name} {isDefault ? '⭐ (افتراضي)' : ''}
+                                                            </option>
+                                                        );
+                                                    })}
+                                                </optgroup>
+                                            );
+                                        })}
+                                        {services.filter(s => !s.familyId).length > 0 && (
+                                            <optgroup label="🔹 خدمات فردية">
+                                                {services.filter(s => !s.familyId).map(s => (
+                                                    <option key={s.id} value={s.name}>{s.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
                                     </select>
                                 </div>
                                 <div className="flex-[2]">
@@ -204,7 +229,7 @@ export default function NewOrderRequest() {
                                         type="button"
                                         aria-label="Remove Item"
                                         onClick={() => handleRemoveItem(index)}
-                                        className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        className="p-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                                     >
                                         <Trash2 size={18} />
                                     </button>
@@ -265,8 +290,6 @@ export default function NewOrderRequest() {
 
                 </Card>
             </form>
-        </div >
+        </div>
     );
 }
-
-// placeholder aria-label

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/consistent-type-assertions */
+ 
 import { supabase } from '../../lib/supabase';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
 import type { AccountingOrderSnapshot, AccountingReviewChange, AccountingReviewType, DoctorOrderSummary, Order, OrderHistoryEntry, OrderItem, Transaction } from '../db';

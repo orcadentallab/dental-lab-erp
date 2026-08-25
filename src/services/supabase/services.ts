@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { supabase } from '../../lib/supabase';
 import type { DbService, DbServiceInsert, DbServiceUpdate } from './types';
 import type { Service } from '../db';
@@ -7,12 +7,14 @@ import { ErrorHandler } from '../../lib/errorHandler';
 function dbToService(dbService: DbService): Service {
     return {
         id: dbService.id,
+        familyId: (dbService as unknown as Record<string, unknown>).family_id as string | undefined ?? undefined,
         name: dbService.name,
         sellingPrice: dbService.selling_price,
         costPrice: dbService.cost_price,
         designerPrice: dbService.designer_price ?? undefined,
         millingPrice: dbService.milling_price ?? undefined,
         sortOrder: (dbService as unknown as Record<string, unknown>).sort_order as number | undefined,
+        routeId: (dbService as unknown as Record<string, unknown>).route_id as string | undefined ?? undefined,
     };
 }
 
@@ -23,8 +25,9 @@ function serviceToDb(service: Omit<Service, 'id'>): DbServiceInsert {
         cost_price: service.costPrice,
     };
 
-    // Only include optional fields if they have meaningful values
-    // to avoid "Column not found" errors if migrations haven't run
+    if (service.familyId !== undefined) {
+        dbService.family_id = service.familyId || null;
+    }
     if (service.millingPrice !== undefined && service.millingPrice > 0) {
         dbService.milling_price = service.millingPrice;
     }
@@ -71,6 +74,7 @@ export async function updateService(id: string, updates: Partial<Omit<Service, '
     if (updates.costPrice !== undefined) dbUpdates.cost_price = updates.costPrice;
     if (updates.millingPrice !== undefined) dbUpdates.milling_price = updates.millingPrice;
     if (updates.designerPrice !== undefined) dbUpdates.designer_price = updates.designerPrice;
+    if (updates.familyId !== undefined) (dbUpdates as Record<string, unknown>).family_id = updates.familyId || null;
     if ((updates as Service).sortOrder !== undefined) (dbUpdates as Record<string, unknown>).sort_order = (updates as Service).sortOrder;
 
     const { data, error } = await supabase

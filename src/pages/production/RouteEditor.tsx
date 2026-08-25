@@ -28,10 +28,11 @@ import { useToast } from '../../context/ToastContext';
 import {
     getRoutes, getStages, getRouteSteps, saveRouteSteps, getEffectiveRouteStages,
     createRoute, renameRoute, createStage,
-    getServicesForRouting, setServiceRoute,
+    getServicesForRouting, setServiceRoute, setFamilyRoute,
     type ProductionRoute, type ProductionStage, type RouteStep,
     type EffectiveRouteStage, type Execution, type DrivenBy, type ServiceRouteLink,
 } from '../../services/supabase/production';
+import { db, type ServiceFamily } from '../../services/db';
 import {
     Plus, ArrowLeft, Building2, Home, ShieldCheck, Layers, ChevronUp, ChevronDown,
     Trash2, Save, Undo2, Pencil, X, AlertTriangle,
@@ -108,6 +109,7 @@ export default function RouteEditor() {
 
     const [picking, setPicking] = useState(false);
     const [services, setServices] = useState<ServiceRouteLink[]>([]);
+    const [families, setFamilies] = useState<ServiceFamily[]>([]);
     const [loading, setLoading] = useState(true);
 
     const route = routes.find((r) => r.id === routeId);
@@ -121,16 +123,17 @@ export default function RouteEditor() {
     // ── loading ──────────────────────────────────────────────────────────
 
     useEffect(() => {
-        Promise.all([getRoutes(), getStages(), getServicesForRouting()])
-            .then(([r, s, sv]) => {
+        Promise.all([getRoutes(), getStages(), getServicesForRouting(), db.getServiceFamilies()])
+            .then(([r, s, sv, fam]) => {
                 setRoutes(r);
                 setStages(s);
                 setServices(sv);
+                setFamilies(fam);
                 setRouteId((prev) => prev ?? r.find((x) => !x.isFallback)?.id ?? r[0]?.id ?? null);
             })
             .catch((e) => {
                 console.error('[RouteEditor] load failed', e);
-                toastError('تعذّر تحميل الخرائط');
+                toastError('تعذّر تحميل الخرائط والعوائل');
             })
             .finally(() => setLoading(false));
     }, [toastError]);
@@ -322,6 +325,20 @@ export default function RouteEditor() {
         } catch (e) {
             console.error('[RouteEditor] link service failed', e);
             toastError('تعذّر ربط الخدمة');
+        }
+    };
+
+    const linkFamily = async (familyId: string, currentlyOnThisRoute: boolean) => {
+        if (!routeId) return;
+        try {
+            await setFamilyRoute(familyId, currentlyOnThisRoute ? null : routeId);
+            const [freshSv, freshFam] = await Promise.all([getServicesForRouting(), db.getServiceFamilies()]);
+            setServices(freshSv);
+            setFamilies(freshFam);
+            success(currentlyOnThisRoute ? 'العائلة اتشالت من الخريطة' : 'العائلة اترابطت بالخريطة');
+        } catch (e) {
+            console.error('[RouteEditor] link family failed', e);
+            toastError('تعذّر ربط العائلة بالخريطة');
         }
     };
 
@@ -775,50 +792,105 @@ export default function RouteEditor() {
             {/* The link that makes any of this apply to a real case. Without a
                 service pointing here, the route is configuration nobody uses
                 and every order silently falls through to the outside lab. */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-4">
-                <h2 className="font-bold text-slate-700 mb-1">الخدمات اللي بتمشي على الخريطة دي</h2>
-                <p className="text-xs text-slate-400 mb-3">
-                    علّم الخدمة عشان حالاتها تمشي على المراحل اللي فوق. الخدمة اللي مش
-                    متعلّمة على أي خريطة بتروح لمعمل خارجي بالكامل.
-                </p>
+            <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-4">
+                <div>
+                    <h2 className="font-bold text-slate-700 mb-1">الخدمات والعوائل اللي بتمشي على الخريطة دي</h2>
+                    <p className="text-xs text-slate-400">
+                        يمكنك ربط **عائلة بالكامل** بالخريطة لتطبيقيها تلقائياً على كل خدمات العائلة، أو تخصيص كل خدمة منفردة.
+                    </p>
+                </div>
+
+                {/* Family Level Linking Section */}
+                {families.length > 0 && (
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                        <span className="text-xs font-bold text-slate-700 block">🔷 ربط عائلة خدمات بالكامل بها:</span>
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {families.map((fam) => {
+                                const onThis = fam.defaultRouteId === routeId;
+                                const onOther = Boolean(fam.defaultRouteId) && !onThis;
+                                const otherName = routes.find((r) => r.id === fam.defaultRouteId)?.nameAr;
+
+                                return (
+                                    <label
+                                        key={fam.id}
+                                        className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                                            onThis ? 'border-brand-blue bg-blue-50/70 shadow-xs' : 'border-slate-200 bg-white hover:bg-slate-100/60'
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={onThis}
+                                            onChange={() => void linkFamily(fam.id, onThis)}
+                                            className="w-4 h-4 accent-brand-blue mt-0.5"
+                                        />
+                                        <span className="min-w-0">
+                                            <span className="block text-xs font-bold text-slate-800 truncate">
+                                                عائلة: {fam.nameAr}
+                                            </span>
+                                            {onOther && (
+                                                <span className="block text-[10px] text-amber-700 font-semibold">
+                                                    على خريطة: {otherName ?? '—'}
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {services.length === 0 && (
                     <p className="text-sm text-slate-400 py-2">مفيش خدمات مسجّلة في السيستم.</p>
                 )}
 
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {services.map((sv) => {
-                        const onThis = sv.routeId === routeId;
-                        const onOther = Boolean(sv.routeId) && !onThis;
-                        const otherName = routes.find((r) => r.id === sv.routeId)?.nameAr;
+                <div className="space-y-1">
+                    <span className="text-xs font-bold text-slate-700 block">🔹 ربط وتخصيص الخدمات الفردية:</span>
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {services.map((sv) => {
+                            const onThisService = sv.routeId === routeId;
+                            const onThisFamily = !sv.routeId && sv.familyRouteId === routeId;
+                            const onThis = onThisService || onThisFamily;
 
-                        return (
-                            <label
-                                key={sv.id}
-                                className={`flex items-start gap-2 p-2 rounded-xl border cursor-pointer ${
-                                    onThis ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'
-                                }`}
-                            >
-                                <input
-                                    type="checkbox"
-                                    checked={onThis}
-                                    onChange={() => void linkService(sv.id, onThis)}
-                                    className="w-4 h-4 accent-brand-blue mt-0.5"
-                                />
-                                <span className="min-w-0">
-                                    <span className="block text-sm text-slate-800 truncate">{sv.name}</span>
-                                    {onOther && (
-                                        // Say where it already went: unticking it
-                                        // here would otherwise look like it did
-                                        // nothing.
-                                        <span className="block text-[10px] text-amber-700">
-                                            على خريطة: {otherName ?? '—'}
-                                        </span>
-                                    )}
-                                </span>
-                            </label>
-                        );
-                    })}
+                            const onOtherService = Boolean(sv.routeId) && !onThisService;
+                            const otherServiceName = routes.find((r) => r.id === sv.routeId)?.nameAr;
+                            const familyRouteName = routes.find((r) => r.id === sv.familyRouteId)?.nameAr;
+
+                            return (
+                                <label
+                                    key={sv.id}
+                                    className={`flex items-start gap-2 p-2 rounded-xl border cursor-pointer transition-all ${
+                                        onThis ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'
+                                    }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={onThisService}
+                                        onChange={() => void linkService(sv.id, onThisService)}
+                                        className="w-4 h-4 accent-brand-blue mt-0.5"
+                                    />
+                                    <span className="min-w-0">
+                                        <span className="block text-sm text-slate-800 truncate">{sv.name}</span>
+                                        {onThisFamily && (
+                                            <span className="block text-[10px] text-emerald-700 font-semibold">
+                                                مرتبطة عبر عائلة: {sv.familyName}
+                                            </span>
+                                        )}
+                                        {onOtherService && (
+                                            <span className="block text-[10px] text-amber-700">
+                                                على خريطة خاصة: {otherServiceName ?? '—'}
+                                            </span>
+                                        )}
+                                        {!onThisService && sv.familyRouteId && sv.familyRouteId !== routeId && (
+                                            <span className="block text-[10px] text-sky-700">
+                                                خريطة عائلتها: {familyRouteName ?? '—'}
+                                            </span>
+                                        )}
+                                    </span>
+                                </label>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
 
