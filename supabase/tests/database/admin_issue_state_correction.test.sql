@@ -10,7 +10,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(40);
+SELECT plan(45);
 
 SELECT has_function(
     'public', 'admin_correct_order_issue_state_v2',
@@ -29,6 +29,15 @@ SELECT ok(
     pg_get_functiondef('public.guard_order_issue_transition_v2()'::regprocedure)
         LIKE '%admin_correct_issue_state%',
     'the transition guard recognises the correction operation'
+);
+SELECT has_function(
+    'public', 'is_observed_first_delivery_source', ARRAY['text'],
+    'the observed-vs-inferred delivery evidence rule is a named function'
+);
+SELECT ok(
+    NOT public.is_observed_first_delivery_source('accounting_snapshot_inferred')
+    AND public.is_observed_first_delivery_source('direct_transition'),
+    'an accounting-registration timestamp is not treated as an observed delivery'
 );
 SELECT ok(
     pg_get_functiondef('public.admin_correct_order_issue_state_v2(uuid,text,text,uuid,text,numeric,text,text)'::regprocedure)
@@ -72,17 +81,20 @@ VALUES (
     '01000000012', 'Test', 'CORRECT-PAID', 'Correction Rep'
 );
 
--- A delivered case that was then wrongly marked as a doctor rejection.
+-- A case that will be delivered and then wrongly marked as a doctor
+-- rejection. Every fixture below is inserted UNDELIVERED and then delivered
+-- through record_order_final_delivery_v2: guard_order_issue_transition_v2
+-- rejects any INSERT that carries first_delivered_at, so a hand-stamped
+-- delivery timestamp is not a shortcut the database allows.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, actual_delivery_date, cost, supplier_id, technician_status,
-    production_status, issue_state, first_delivered_at, first_delivered_source
+    delivery_date, cost, supplier_id, technician_status,
+    production_status, issue_state
 ) VALUES (
     '49100000-0000-0000-0000-000000000001', 'CORRECT-MISCLICK',
     '19100000-0000-0000-0000-000000000001', 'Misclick Patient', '[]',
-    1000, 'A1', 'Delivered', CURRENT_DATE, CURRENT_DATE, 400,
-    '29100000-0000-0000-0000-000000000001', 'Pending',
-    'final_delivered', 'none', timezone('utc', now()), 'direct_transition'
+    1000, 'A1', 'Ready', CURRENT_DATE, 400,
+    '29100000-0000-0000-0000-000000000001', 'Pending', 'final_ready', 'none'
 );
 
 -- A pre-delivery case cancelled by mistake.
@@ -102,14 +114,30 @@ INSERT INTO public.orders (
 -- zero in place on a case the doctor actually owes in full.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, actual_delivery_date, cost, supplier_id, technician_status,
-    production_status, issue_state, first_delivered_at, first_delivered_source
+    delivery_date, cost, supplier_id, technician_status,
+    production_status, issue_state
 ) VALUES (
     '49100000-0000-0000-0000-000000000003', 'CORRECT-ZERO-REJECT',
     '19100000-0000-0000-0000-000000000001', 'Zero Reject Patient', '[]',
-    1200, 'A1', 'Delivered', CURRENT_DATE, CURRENT_DATE, 500,
-    '29100000-0000-0000-0000-000000000001', 'Pending',
-    'final_delivered', 'none', timezone('utc', now()), 'direct_transition'
+    1200, 'A1', 'Ready', CURRENT_DATE, 500,
+    '29100000-0000-0000-0000-000000000001', 'Pending', 'final_ready', 'none'
+);
+
+-- A legacy case whose delivery evidence is INFERRED: 20260808002000 stamps
+-- first_delivered_source = 'accounting_snapshot_inferred' from
+-- accounting_registered_at, which says delivery happened but not when. A
+-- return clears actual_delivery_date, and clearing the return must NOT
+-- resurrect it from that inferred timestamp — doing so silently moved a real
+-- January case into July (production, 2026-08-25).
+INSERT INTO public.orders (
+    id, case_id, doctor_id, patient_name, items, total_price, shade, status,
+    delivery_date, cost, supplier_id, technician_status,
+    production_status, issue_state
+) VALUES (
+    '49100000-0000-0000-0000-000000000006', 'CORRECT-INFERRED',
+    '19100000-0000-0000-0000-000000000001', 'Inferred Evidence Patient', '[]',
+    500, 'A1', 'Ready', CURRENT_DATE - 200, 200,
+    '29100000-0000-0000-0000-000000000001', 'Pending', 'final_ready', 'none'
 );
 
 -- A delivered case wrongly returned for adjustment. The return CLEARS
@@ -143,6 +171,28 @@ INSERT INTO public.orders (
     1000, 'A1', 'Ready', CURRENT_DATE, 400,
     '29100000-0000-0000-0000-000000000001', 'Pending', 'final_ready', 'none'
 );
+
+SELECT set_config('request.jwt.claim.sub', '99100000-0000-0000-0000-000000000001', TRUE);
+SET LOCAL ROLE authenticated;
+
+-- Real deliveries, so first_delivered_at / first_delivered_source are what the
+-- workflow actually records rather than something the fixture invented.
+SELECT public.record_order_final_delivery_v2(
+    '49100000-0000-0000-0000-000000000001', timezone('utc', now()),
+    '89100000-0000-0000-0000-000000000020');
+SELECT public.record_order_final_delivery_v2(
+    '49100000-0000-0000-0000-000000000003', timezone('utc', now()),
+    '89100000-0000-0000-0000-000000000021');
+SELECT public.record_order_final_delivery_v2(
+    '49100000-0000-0000-0000-000000000006', timezone('utc', now()),
+    '89100000-0000-0000-0000-000000000022');
+RESET ROLE;
+
+-- Downgrade the legacy case's evidence to the inferred source the backfill
+-- produces. Only first_delivered_source changes, which no guard restricts.
+UPDATE public.orders
+SET first_delivered_source = 'accounting_snapshot_inferred'
+WHERE id = '49100000-0000-0000-0000-000000000006';
 
 SELECT set_config('request.jwt.claim.sub', '99100000-0000-0000-0000-000000000001', TRUE);
 SET LOCAL ROLE authenticated;
@@ -286,6 +336,32 @@ SELECT is(
      FROM public.orders WHERE id = '49100000-0000-0000-0000-000000000004'),
     CURRENT_DATE,
     'clearing a return restores the real delivery date the return had wiped'
+);
+
+-- ── Inferred delivery evidence must never become a delivery date ────────
+SELECT set_config('request.jwt.claim.sub', '99100000-0000-0000-0000-000000000001', TRUE);
+SET LOCAL ROLE authenticated;
+SELECT lives_ok(
+    $$SELECT public.apply_order_issue_transition_v2(
+        '49100000-0000-0000-0000-000000000006', 'return_for_adjustment',
+        'Returned in error', '89100000-0000-0000-0000-000000000023',
+        NULL, NULL, 'Correction Admin', 'contact', 'external_lab'
+    )$$,
+    'the legacy case with inferred evidence is returned by mistake'
+);
+SELECT lives_ok(
+    $$SELECT public.admin_correct_order_issue_state_v2(
+        '49100000-0000-0000-0000-000000000006', 'none',
+        'The return was a misclick', '89100000-0000-0000-0000-000000000024'
+    )$$,
+    'admin clears the return on the legacy case'
+);
+RESET ROLE;
+
+SELECT ok(
+    (SELECT actual_delivery_date IS NULL AND first_delivered_at IS NOT NULL
+     FROM public.orders WHERE id = '49100000-0000-0000-0000-000000000006'),
+    'inferred evidence still proves delivery, but is never promoted into a delivery date'
 );
 
 -- ── Part-paid case: reject at zero, then clear the issue ────────────────

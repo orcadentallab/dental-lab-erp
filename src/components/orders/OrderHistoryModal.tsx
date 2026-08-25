@@ -37,6 +37,7 @@ const EVENT_LABELS: Record<string, string> = {
     order_closed: 'تم إغلاق الأوردر',
     order_reopened: 'تم إعادة فتح الأوردر',
     issue_state_corrected: 'تم تصحيح حالة المشكلة',
+    delivery_date_repaired: 'تم تصحيح تاريخ التسليم',
 };
 
 const ROLE_LABELS: Record<string, string> = {
