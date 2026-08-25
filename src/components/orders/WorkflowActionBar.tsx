@@ -2,12 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import {
     Play, PenTool, ArrowRight, Package, PackageCheck, Truck,
     CheckCircle, RotateCcw, XCircle, Ban, MoreHorizontal, RefreshCw,
-    AlertTriangle, ChevronDown, Factory
+    AlertTriangle, ChevronDown, Factory, Wrench
 } from 'lucide-react';
 import { startProduction } from '../../services/supabase/production';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Input } from '../ui/Input';
 import IssueCauseFields from './IssueCauseFields';
+import IssueStateCorrectionModal from './IssueStateCorrectionModal';
+import { canCorrectIssueState } from '../../constants/issueStateCorrection';
 import type { Order } from '../../services/db';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { getForwardActions, getIssueActions, type WorkflowAction } from '../../constants/workflowTransitions';
@@ -92,6 +94,7 @@ interface Props {
 export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled }: Props) {
     const [confirmAction, setConfirmAction] = useState<WorkflowAction | null>(null);
     const [showIssueMenu, setShowIssueMenu] = useState(false);
+    const [showIssueCorrection, setShowIssueCorrection] = useState(false);
     const [doctorDecision, setDoctorDecision] = useState<RejectionDoctorDecision | 'half'>(
         REJECTION_DOCTOR_DECISIONS.fullPrice
     );
@@ -152,7 +155,17 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const redoBlockedByReplacement = (userRole === 'admin' || userRole === 'representative')
         && !!onRedo
         && issueState === 'redo';
-    const hasIssueOptions = issueActions.length > 0 || canRedo || redoBlockedByReplacement;
+    // Repairing a mis-clicked issue state is an admin-only correction, not a
+    // workflow step — the same idea as the admin "…" legacy-status override,
+    // applied to the issue axis instead of the production axis.
+    const canCorrectIssue = userRole === 'admin' && canCorrectIssueState({
+        issueState,
+        hasDeliveryEvidence: Boolean(order.firstDeliveredAt || order.legacyDeliveryConfirmed),
+        hasDesignSubmitted: Boolean(order.designSubmittedAt),
+        hasReplacementOrder: false,
+    });
+    const hasIssueOptions = issueActions.length > 0 || canRedo || redoBlockedByReplacement
+        || canCorrectIssue;
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -367,6 +380,22 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                         <span>الإعادة متاحة من آخر حالة في السلسلة فقط</span>
                                     </div>
                                 )}
+                                {canCorrectIssue && (
+                                    <>
+                                        {(issueActions.length > 0 || canRedo || redoBlockedByReplacement) && (
+                                            <div className="my-1 border-t border-surface-100" />
+                                        )}
+                                        <button
+                                            onClick={() => { setShowIssueMenu(false); setShowIssueCorrection(true); }}
+                                            disabled={disabled}
+                                            title="لو المشكلة اتسجّلت بالغلط — تصحيح نوعها أو إلغائها تماماً"
+                                            className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg text-slate-600 hover:bg-slate-100 transition-colors sm:min-h-0"
+                                        >
+                                            <Wrench size={13} />
+                                            <span>تصحيح حالة المشكلة</span>
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -413,6 +442,13 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     </div>
                 )}
             </div>
+
+            <IssueStateCorrectionModal
+                order={order}
+                isOpen={showIssueCorrection}
+                onClose={() => setShowIssueCorrection(false)}
+                onCorrected={() => onStatusChange(order.id, 'same')}
+            />
 
             <ConfirmDialog
                 isOpen={!!confirmAction}

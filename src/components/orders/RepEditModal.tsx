@@ -19,7 +19,7 @@ import {
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { useToast } from '../../context/ToastContext';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
-import { getDoctorServicePrice } from '../../lib/pricingUtils';
+import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
 
 interface Props {
@@ -410,12 +410,40 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
         const supplierChanged = supplierId !== (order.supplierId || '');
         const designerChanged = designerId !== (order.designerId || '');
 
+        const orderDoctor = doctors.find(d => d.id === order.doctorId);
+        const catalogUnitPrice = (serviceType: string) => getDoctorServicePrice(
+            serviceType,
+            services.find(s => s.name === serviceType),
+            orderDoctor,
+            doctors
+        );
+
+        // Unit prices of the order as it stands today. Legacy orders (created
+        // 2026-01-31 → 2026-04-06) were saved with price = 0 on every item, so
+        // rebuild those from the order's stored total first — otherwise editing
+        // one line would re-price the whole order at today's catalog prices.
+        const originalItems = reconcileLegacyItemPrices(
+            (order.items || []).map(i => ({
+                serviceType: i.serviceType,
+                teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers.map(String) : [],
+                price: i.price
+            })),
+            order.totalPrice || 0,
+            order.discount || 0,
+            catalogUnitPrice
+        );
+
         let resolvedItems = items;
         if (itemsChanged && isFieldEnabled('items')) {
-            const mapped = items.map(it => {
-                const svc = services.find(s => s.name === it.serviceType);
-                const finalDoctor = doctors.find(d => d.id === order.doctorId);
-                const unitPrice = getDoctorServicePrice(it.serviceType, svc, finalDoctor, doctors);
+            const mapped = items.map((it, idx) => {
+                // A line the rep did not re-type keeps the price it was sold at;
+                // only a new line, or one switched to another service (updateItem
+                // clears its price), picks up the current catalog price.
+                const original = originalItems[idx];
+                const carriedPrice = it.price > 0
+                    ? it.price
+                    : (original && original.serviceType === it.serviceType ? original.price : 0);
+                const unitPrice = carriedPrice > 0 ? carriedPrice : catalogUnitPrice(it.serviceType);
                 return {
                     serviceType: it.serviceType,
                     teethNumbers: it.teethNumbers,
@@ -436,16 +464,13 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
             (supplierChanged && isFieldEnabled('supplier_id')) ||
             (designerChanged && isFieldEnabled('designer_id'))
         ) {
-            const currentItems = resolvedItems.map(it => {
-                const svc = services.find(s => s.name === it.serviceType);
-                const finalDoctor = doctors.find(d => d.id === order.doctorId);
-                const unitPrice = getDoctorServicePrice(it.serviceType, svc, finalDoctor, doctors);
-                return {
-                    serviceType: it.serviceType,
-                    teethNumbers: it.teethNumbers,
-                    price: unitPrice
-                };
-            });
+            // Lab/designer cost is derived from the service cost prices, not from
+            // the selling price, so the resolved lines can be passed through as-is.
+            const currentItems = resolvedItems.map(it => ({
+                serviceType: it.serviceType,
+                teethNumbers: it.teethNumbers,
+                price: it.price
+            }));
 
             changes.cost = calculateOrderCost(
                 order.workflowType || 'full',

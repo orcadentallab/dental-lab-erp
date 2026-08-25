@@ -36,6 +36,7 @@ const EVENT_LABELS: Record<string, string> = {
     manual_allocation_override: 'تعديل يدوي في توزيع الدفع',
     order_closed: 'تم إغلاق الأوردر',
     order_reopened: 'تم إعادة فتح الأوردر',
+    issue_state_corrected: 'تم تصحيح حالة المشكلة',
 };
 
 const ROLE_LABELS: Record<string, string> = {

@@ -424,6 +424,62 @@ export async function changeIssueState(
 }
 
 /**
+ * Admin-only repair of a wrongly recorded issue state.
+ *
+ * `changeIssueState` above walks the normal workflow; it cannot leave a
+ * terminal state, because `guard_order_issue_transition_v2` refuses every
+ * transition out of one. This is the deliberate escape hatch for a MISCLICK —
+ * the issue-axis twin of the admin "…" legacy-status override.
+ *
+ * Thin wrapper by design: `admin_correct_order_issue_state_v2` is the security
+ * and consistency boundary (admin role, delivery-evidence invariants, redo
+ * chain protection, audit rows), and the money follows automatically from
+ * `sync_order_financial_obligations`. Nothing here recalculates an amount.
+ */
+export async function adminCorrectOrderIssueState(
+    orderId: string,
+    targetIssueState: string,
+    reason: string,
+    options: {
+        doctorDecision?: string | null;
+        customDoctorAmount?: number | null;
+        causeCategory?: string | null;
+        responsibleStage?: string | null;
+        idempotencyKey?: string;
+    } = {},
+): Promise<Order | null> {
+    if (!orderId || typeof orderId !== 'string') {
+        throw new ValidationError('orderId is required');
+    }
+    if (!reason?.trim()) {
+        throw new ValidationError('سبب التصحيح مطلوب');
+    }
+    if (targetIssueState === 'doctor_rejected' && !options.doctorDecision) {
+        throw new ValidationError('قرار الطبيب المالي مطلوب لتحويل الحالة إلى مرتجع طبيب');
+    }
+
+    const { error } = await supabase.rpc('admin_correct_order_issue_state_v2', {
+        p_order_id: orderId,
+        p_target_issue_state: targetIssueState,
+        p_reason: reason.trim(),
+        p_idempotency_key: options.idempotencyKey || crypto.randomUUID(),
+        p_doctor_decision: options.doctorDecision ?? null,
+        p_custom_doctor_amount: options.doctorDecision === 'custom_amount'
+            ? options.customDoctorAmount ?? null
+            : null,
+        p_cause_category: options.causeCategory ?? null,
+        p_responsible_stage: options.responsibleStage ?? null,
+    });
+
+    if (error) {
+        throw ErrorHandler.handle(error, 'adminCorrectOrderIssueState');
+    }
+
+    const { getOrder } = await import('./orders');
+    return getOrder(orderId);
+}
+
+/**
  * WF-2: Generic assignment-change wrapper (supplier_id, designer_id) for
  * admin/lab callers, with audit. Reps use repUpdateOrderWithAudit instead.
  */

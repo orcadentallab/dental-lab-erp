@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { db, type Doctor, type Order, type Service, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock } from 'lucide-react';
@@ -11,7 +11,7 @@ import { Card } from '../ui/Card';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
 import { isDesignerUser, isRepresentativeUser, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
-import { getDoctorServicePrice } from '../../lib/pricingUtils';
+import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
 import { canEditOrderField, type WorkflowRole } from '../../lib/workflowPermissions';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import type { ProductionStatus, IssueState } from '../../constants/workflow';
@@ -26,6 +26,10 @@ interface OrderFormProps {
 interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
     teethNumbers: string[]; // Changed to array for tags input
     customPrice?: number; // Override price for this order only
+    // Item of an existing order whose unit price could not be reconstructed
+    // (the order itself is priced at 0). Never re-price it from the current
+    // catalog — that would inflate a saved order just by opening it.
+    legacyUnpriced?: boolean;
 }
 
 import { DoctorSelect } from './DoctorSelect';
@@ -286,6 +290,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         return !canEditOrderField(userRole, dbField, effectivePS, effectiveIS, initialData.workflowType);
     };
 
+    // Guards the one-time price reconciliation of a legacy order's items so a
+    // re-render of the parent can never wipe out edits made in this session.
+    const reconciledOrderIdRef = useRef<string | null>(null);
+
     const [items, itemsSet] = useState<FormOrderItem[]>(initialData?.items && initialData.items.length > 0 ? initialData.items.map(i => ({
         serviceType: i.serviceType,
         teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (typeof i.teethNumbers === 'string' ? (i.teethNumbers as string).split(',') : []),
@@ -340,12 +348,34 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
 
                 if (initialData) {
-                    const initialItems = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
+                    const initialItems: FormOrderItem[] = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
                         serviceType: i.serviceType,
                         teethNumbers: Array.isArray(i.teethNumbers) ? i.teethNumbers : (typeof i.teethNumbers === 'string' ? (i.teethNumbers as string).split(',') : []),
                         price: i.price,
                         customPrice: undefined
                     })) : [{ serviceType: '', teethNumbers: [], price: 0 }];
+
+                    // Legacy orders (created 2026-01-31 → 2026-04-06) were saved
+                    // with price = 0 on every item. Rebuild those unit prices from
+                    // the order's own stored total; otherwise they fall through to
+                    // today's catalog price and the order silently re-prices itself
+                    // just by being opened.
+                    if (initialItems.some(i => !(i.price > 0)) && reconciledOrderIdRef.current !== initialData.id) {
+                        reconciledOrderIdRef.current = initialData.id;
+                        const orderDoctor = doctorsData.find(d => d.id === initialData.doctorId);
+                        const reconciled = reconcileLegacyItemPrices(
+                            initialItems,
+                            initialData.totalPrice || 0,
+                            initialData.discount || 0,
+                            (serviceName) => getDoctorServicePrice(
+                                serviceName,
+                                servicesData.find(s => s.name === serviceName),
+                                orderDoctor,
+                                doctorsData
+                            )
+                        );
+                        setItems(reconciled.map(i => ({ ...i, legacyUnpriced: !(i.price > 0) })));
+                    }
 
                     if (initialData.manualCost !== undefined && initialData.manualCost !== null) {
                         // manualCost is the explicit milling/lab override. Never infer or
@@ -437,7 +467,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         const newItems = [...items];
         if (field === 'serviceType') {
             // Reset prices when the service type changes so it picks up the new service's default/custom price
-            newItems[index] = { ...newItems[index], serviceType: value as string, price: 0, customPrice: undefined };
+            newItems[index] = { ...newItems[index], serviceType: value as string, price: 0, customPrice: undefined, legacyUnpriced: false };
         } else {
             newItems[index] = { ...newItems[index], [field]: value as any };
         }
@@ -460,6 +490,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         } else if (item.price > 0) {
             // Previously saved price from DB — respect it (may differ from svc.sellingPrice)
             unitPrice = item.price;
+        } else if (item.legacyUnpriced) {
+            // Saved order that is genuinely priced at 0 — pulling in today's
+            // catalog price here would invent revenue that was never charged
+            unitPrice = 0;
         } else {
             unitPrice = getDoctorServicePrice(item.serviceType, svc, finalDoctor, doctors);
         }
@@ -542,6 +576,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     } else if (i.price > 0) {
                         // Previously saved price — preserve it as-is
                         resolvedUnitPrice = i.price;
+                    } else if (i.legacyUnpriced) {
+                        resolvedUnitPrice = 0;
                     } else {
                         resolvedUnitPrice = getDoctorServicePrice(i.serviceType, svc, finalDoctor, doctors);
                     }
@@ -795,16 +831,18 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 const doctorSpecialPrice = currentDoctor?.customPrices?.[item.serviceType];
                                 const childDoctorSpecialPrice = finalDoctor?.customPrices?.[item.serviceType];
                                 
-                                // Priority: explicit customPrice → saved DB price → child doctor price → main doctor price → service default
+                                // Priority: explicit customPrice → saved DB price → saved-but-zero legacy price → child doctor price → main doctor price → service default
                                 const displayPrice = item.customPrice !== undefined
                                     ? item.customPrice
                                     : item.price > 0
                                         ? item.price
-                                        : childDoctorSpecialPrice !== undefined
-                                            ? childDoctorSpecialPrice
-                                            : doctorSpecialPrice !== undefined
-                                                ? doctorSpecialPrice
-                                                : (svc?.sellingPrice || 0);
+                                        : item.legacyUnpriced
+                                            ? 0
+                                            : childDoctorSpecialPrice !== undefined
+                                                ? childDoctorSpecialPrice
+                                                : doctorSpecialPrice !== undefined
+                                                    ? doctorSpecialPrice
+                                                    : (svc?.sellingPrice || 0);
                                 return (
                                     <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
                                         <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">

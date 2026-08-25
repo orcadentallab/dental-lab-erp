@@ -33,6 +33,8 @@ export const ORDER_EVENT_TYPES = {
     supplierChanged: 'supplier_changed',
     designerChanged: 'designer_changed',
     issueStateChanged: 'issue_state_changed',
+    // Admin repair of a wrongly recorded issue state — not a workflow step.
+    issueStateCorrected: 'issue_state_corrected',
     caseReturned: 'case_returned',
     caseRejected: 'case_rejected',
     caseCancelled: 'case_cancelled',

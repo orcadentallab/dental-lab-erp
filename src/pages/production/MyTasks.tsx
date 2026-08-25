@@ -164,6 +164,15 @@ export default function MyTasks() {
                                     )}
                                     <span className="text-lg font-bold text-slate-800">{t.caseId}</span>
                                     <span className="text-sm text-slate-500">{t.stageNameAr}</span>
+                                    {/* One printer, three resins. Which one is
+                                        the difference between a usable print
+                                        and a wasted plate, so it goes on the
+                                        card rather than somewhere to look up. */}
+                                    {t.variantLabel && (
+                                        <span className="text-sm font-bold px-2 py-1 rounded-lg bg-indigo-100 text-indigo-800">
+                                            {t.variantLabel}
+                                        </span>
+                                    )}
                                 </div>
 
                                 {/* Everything needed to work, with no further clicks. */}

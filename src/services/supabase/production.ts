@@ -12,12 +12,17 @@ import { ErrorHandler } from '../../lib/errorHandler';
 export type StageScope = 'global' | 'optional';
 export type Execution = 'internal' | 'external';
 export type AdvanceMode = 'auto' | 'manual' | 'qc_gate';
-export type RouteStageMode = 'included' | 'excluded' | 'override';
 export type BlockReason = 'machine_down' | 'material_out' | 'waiting_doctor' | 'other';
 
 export type StageRunStatus =
     | 'pending' | 'ready' | 'in_progress' | 'waiting_external'
     | 'done' | 'failed' | 'skipped';
+
+/**
+ * The one screen that advances a stage. Plan rule 4: a stage movable from two
+ * places is a stage counted twice.
+ */
+export type DrivenBy = 'my_tasks' | 'designer_dashboard' | 'external_wo';
 
 export interface ProductionStage {
     id: string;
@@ -28,6 +33,7 @@ export interface ProductionStage {
     sequence: number;
     scope: StageScope;
     defaultExecution: Execution;
+    drivenBy: DrivenBy;
     isQcGate: boolean;
     isBatchStage: boolean;
     defaultCondition: Record<string, unknown> | null;
@@ -49,7 +55,10 @@ export interface EffectiveRouteStage {
     seq: number;
     stageId: string;
     stageCode: string;
+    /** Already resolved: the route's own name if it set one, else the catalogue's. */
     nameAr: string;
+    /** The raw override, so the editor can show an empty box instead of the default. */
+    nameOverride: string | null;
     /** What this pass is for — "واكس" / "بروفة" / "كاست". Same printer, different resin. */
     variantLabel: string | null;
     /** Job types allowed to work this step. Empty means anyone on production. */
@@ -68,17 +77,35 @@ export interface EffectiveRouteStage {
     appliesWhen: Record<string, unknown> | null;
 }
 
-export interface RouteStageRule {
-    id: string;
-    routeId: string;
+/**
+ * One step of a route, as the editor holds it.
+ *
+ * A route IS its ordered step list (20260823002000), and a stage may appear on
+ * it more than once -- the try-in visits QC, packaging and shipping twice. So
+ * the editor's unit of work is a step, not a stage: `key` identifies the row in
+ * the list, `stageId` says which stage it performs, and position comes from
+ * array order alone. Nothing here carries a step number, because a number the
+ * user has to keep consistent is a number that will drift.
+ */
+export interface RouteStep {
+    /** Stable only within one editing session; the saved list is positional. */
+    key: string;
     stageId: string;
-    mode: RouteStageMode;
-    seqOverride: number | null;
+    /** This route's own name for the step. Null shows the catalogue name. */
+    nameOverride: string | null;
+    /** "واكس" / "بروفة" / "كاست" — printed on the technician's card. */
+    variantLabel: string | null;
+    /** Job types allowed to work it. Empty means anyone on production. */
+    allowedRoles: string[];
+    /** The step applies only to orders matching this, by JSONB containment. */
+    condition: Record<string, unknown> | null;
     executionOverride: Execution | null;
     supplierOverride: string | null;
     advanceMode: AdvanceMode | null;
     onFailGotoStageId: string | null;
-    condition: Record<string, unknown> | null;
+    parallelGroup: number | null;
+    standardMinutesPerUnit: number | null;
+    standardCostPerUnit: number | null;
 }
 
 /** A case sitting in a stage queue, with everything the card needs. */
@@ -98,7 +125,17 @@ export interface StageRunCard {
     priority: string;
     stageId: string;
     stageCode: string;
+    /** The route's name for this step if it set one, else the catalogue's. */
     stageNameAr: string;
+    /**
+     * Which pass of the stage this is — "واكس" / "كاست". Frozen from the route
+     * at materialisation so the technician loads the right resin.
+     */
+    variantLabel: string | null;
+    /** Frozen from the route step. Empty means anyone on production. */
+    allowedRoles: string[];
+    /** The screen that may advance this run. */
+    drivenBy: DrivenBy;
     seq: number;
     execution: Execution;
     advanceMode: AdvanceMode;
@@ -135,6 +172,7 @@ export async function getStages(): Promise<ProductionStage[]> {
         sequence: r.sequence as number,
         scope: r.scope as StageScope,
         defaultExecution: r.default_execution as Execution,
+        drivenBy: (r.driven_by as DrivenBy) ?? 'my_tasks',
         isQcGate: r.is_qc_gate as boolean,
         isBatchStage: r.is_batch_stage as boolean,
         defaultCondition: (r.default_condition as Record<string, unknown>) ?? null,
@@ -174,26 +212,115 @@ export async function createRoute(nameAr: string, notes?: string): Promise<strin
     return data.id as string;
 }
 
-export async function getRouteRules(routeId: string): Promise<RouteStageRule[]> {
+export async function renameRoute(routeId: string, nameAr: string, notes?: string | null): Promise<void> {
+    const { error } = await supabase
+        .from('production_routes')
+        .update({ name_ar: nameAr, ...(notes === undefined ? {} : { notes }) })
+        .eq('id', routeId);
+
+    if (error) throw ErrorHandler.handle(error, 'renameRoute');
+}
+
+/**
+ * Adds a stage to the catalogue. The code is generated server-side rather than
+ * typed: a hand-picked code colliding with RESPONSIBLE_STAGE in
+ * src/constants/issueCauses.ts would silently attach historical issue records
+ * to a stage created this morning.
+ */
+export async function createStage(input: {
+    nameAr: string;
+    descriptionAr?: string | null;
+    execution?: Execution;
+    drivenBy?: DrivenBy;
+    isQcGate?: boolean;
+    isBatchStage?: boolean;
+}): Promise<string> {
+    const { data, error } = await supabase.rpc('create_production_stage', {
+        p_name_ar: input.nameAr,
+        p_description_ar: input.descriptionAr ?? null,
+        p_execution: input.execution ?? 'internal',
+        p_driven_by: input.drivenBy ?? 'my_tasks',
+        p_is_qc_gate: input.isQcGate ?? false,
+        p_is_batch_stage: input.isBatchStage ?? false,
+    });
+
+    if (error) throw ErrorHandler.handle(error, 'createStage');
+    return data as string;
+}
+
+/**
+ * The route's step list, in order, for the editor to hold and rewrite.
+ *
+ * Only 'included' rows are steps. 'excluded' and 'override' rows are leftovers
+ * of the composition model that preceded 20260823002000; none exist in
+ * production, and `legacyRuleCount` says so out loud rather than letting a save
+ * drop rows the editor never showed.
+ */
+export async function getRouteSteps(
+    routeId: string,
+): Promise<{ steps: RouteStep[]; legacyRuleCount: number }> {
     const { data, error } = await supabase
         .from('production_route_stages')
         .select('*')
-        .eq('route_id', routeId);
+        .eq('route_id', routeId)
+        .order('step_no', { ascending: true, nullsFirst: false });
 
-    if (error) throw ErrorHandler.handle(error, 'getRouteRules');
+    if (error) throw ErrorHandler.handle(error, 'getRouteSteps');
 
-    return (data || []).map((r) => ({
-        id: r.id as string,
-        routeId: r.route_id as string,
-        stageId: r.stage_id as string,
-        mode: r.mode as RouteStageMode,
-        seqOverride: (r.seq_override as number) ?? null,
-        executionOverride: (r.execution_override as Execution) ?? null,
-        supplierOverride: (r.supplier_override as string) ?? null,
-        advanceMode: (r.advance_mode as AdvanceMode) ?? null,
-        onFailGotoStageId: (r.on_fail_goto_stage_id as string) ?? null,
-        condition: (r.condition as Record<string, unknown>) ?? null,
-    }));
+    const rows = data || [];
+
+    return {
+        steps: rows
+            .filter((r) => r.mode === 'included')
+            .map((r) => ({
+                key: r.id as string,
+                stageId: r.stage_id as string,
+                nameOverride: (r.name_override as string) ?? null,
+                variantLabel: (r.variant_label as string) ?? null,
+                allowedRoles: (r.allowed_roles as string[]) ?? [],
+                condition: (r.condition as Record<string, unknown>) ?? null,
+                executionOverride: (r.execution_override as Execution) ?? null,
+                supplierOverride: (r.supplier_override as string) ?? null,
+                advanceMode: (r.advance_mode as AdvanceMode) ?? null,
+                onFailGotoStageId: (r.on_fail_goto_stage_id as string) ?? null,
+                parallelGroup: (r.parallel_group as number) ?? null,
+                standardMinutesPerUnit: (r.standard_minutes_per_unit as number) ?? null,
+                standardCostPerUnit: (r.standard_cost_per_unit as number) ?? null,
+            })),
+        legacyRuleCount: rows.filter((r) => r.mode !== 'included').length,
+    };
+}
+
+/**
+ * Writes the whole list in one transaction, positions taken from array order.
+ *
+ * Not a row-by-row save: UNIQUE(route_id, step_no) is not deferrable, so
+ * reordering from the client would have to pass through colliding positions,
+ * and a route left half-written builds the wrong chain for every case started
+ * afterwards. The RPC also refuses an empty list -- a route with no steps
+ * silently falls back to the entire global chain.
+ */
+export async function saveRouteSteps(routeId: string, steps: RouteStep[]): Promise<number> {
+    const { data, error } = await supabase.rpc('save_route_steps', {
+        p_route_id: routeId,
+        p_steps: steps.map((s) => ({
+            stage_id: s.stageId,
+            name_override: s.nameOverride,
+            variant_label: s.variantLabel,
+            allowed_roles: s.allowedRoles,
+            condition: s.condition,
+            execution: s.executionOverride,
+            supplier_id: s.supplierOverride,
+            advance_mode: s.advanceMode,
+            on_fail_goto_stage_id: s.onFailGotoStageId,
+            parallel_group: s.parallelGroup,
+            standard_minutes_per_unit: s.standardMinutesPerUnit,
+            standard_cost_per_unit: s.standardCostPerUnit,
+        })),
+    });
+
+    if (error) throw ErrorHandler.handle(error, 'saveRouteSteps');
+    return data as number;
 }
 
 /**
@@ -217,6 +344,7 @@ export async function getEffectiveRouteStages(
         stageId: r.stage_id as string,
         stageCode: r.stage_code as string,
         nameAr: r.name_ar as string,
+        nameOverride: (r.name_override as string) ?? null,
         variantLabel: (r.variant_label as string) ?? null,
         allowedRoles: (r.allowed_roles as string[]) ?? [],
         execution: r.execution as Execution,
@@ -231,42 +359,6 @@ export async function getEffectiveRouteStages(
         requiredFields: (r.required_fields as string[]) ?? [],
         appliesWhen: (r.applies_when as Record<string, unknown>) ?? null,
     }));
-}
-
-/**
- * Records one exception on a route. `included`/`excluded` toggle membership,
- * `override` keeps membership and changes how the stage behaves here.
- */
-export async function setRouteStageRule(
-    routeId: string,
-    stageId: string,
-    patch: Partial<Omit<RouteStageRule, 'id' | 'routeId' | 'stageId'>> & { mode: RouteStageMode },
-): Promise<void> {
-    const { error } = await supabase.from('production_route_stages').upsert(
-        {
-            route_id: routeId,
-            stage_id: stageId,
-            mode: patch.mode,
-            seq_override: patch.seqOverride ?? null,
-            execution_override: patch.executionOverride ?? null,
-            supplier_override: patch.supplierOverride ?? null,
-            advance_mode: patch.advanceMode ?? null,
-            on_fail_goto_stage_id: patch.onFailGotoStageId ?? null,
-            condition: patch.condition ?? null,
-        },
-        { onConflict: 'route_id,stage_id' },
-    );
-    if (error) throw ErrorHandler.handle(error, 'setRouteStageRule');
-}
-
-/** Removing the rule returns the stage to whatever the catalogue says. */
-export async function clearRouteStageRule(routeId: string, stageId: string): Promise<void> {
-    const { error } = await supabase
-        .from('production_route_stages')
-        .delete()
-        .eq('route_id', routeId)
-        .eq('stage_id', stageId);
-    if (error) throw ErrorHandler.handle(error, 'clearRouteStageRule');
 }
 
 export interface ServiceRouteLink {
@@ -312,7 +404,8 @@ export async function setServiceRoute(serviceId: string, routeId: string | null)
 const RUN_CARD_SELECT = `
     id, job_id, stage_id, seq, execution, advance_mode, status, blocked_reason,
     queued_at, started_at, units_in, assignee_id, supplier_id, rework_of,
-    production_stages:stage_id ( code, name_ar ),
+    variant_label, name_override, allowed_roles,
+    production_stages:stage_id ( code, name_ar, driven_by ),
     users:assignee_id ( name ),
     suppliers:supplier_id ( name ),
     production_jobs (
@@ -348,7 +441,12 @@ function toCard(r: any): StageRunCard {
         priority: job.priority ?? 'Normal',
         stageId: r.stage_id,
         stageCode: r.production_stages?.code ?? '',
-        stageNameAr: r.production_stages?.name_ar ?? '',
+        // The route's name for the step wins, so "الطباعة" can read
+        // "طباعة الواكس" on the route that prints wax.
+        stageNameAr: r.name_override || (r.production_stages?.name_ar ?? ''),
+        variantLabel: r.variant_label ?? null,
+        allowedRoles: (r.allowed_roles as string[]) ?? [],
+        drivenBy: (r.production_stages?.driven_by as DrivenBy) ?? 'my_tasks',
         seq: r.seq,
         execution: r.execution,
         advanceMode: r.advance_mode,
@@ -387,14 +485,37 @@ export async function getOpenStageRuns(): Promise<StageRunCard[]> {
  * assignee, because anyone qualified may take the next case. Work already in
  * this user's hands floats to the top so they finish it before starting more.
  *
- * The ordering IS the anti-cherry-picking rule (plan 7.6.1): urgent, then
- * nearest promise, then longest waiting. The UI marks the first card as the
- * recommended one.
+ * THREE FILTERS, AND EACH IS A RULE, NOT A PREFERENCE:
+ *
+ *   execution = 'internal'    an external run is worked on the vendor screen.
+ *
+ *   drivenBy = 'my_tasks'     plan rule 4 -- every stage has exactly one screen
+ *                             that advances it. Design is driven by the
+ *                             designer's own dashboard, which already starts
+ *                             and completes the run; showing it here too would
+ *                             be double entry against the same run.
+ *
+ *   allowedRoles             the route's own answer to "who does this step".
+ *                             Empty means anyone on production, which is the
+ *                             default and stays the common case.
+ *
+ * The role comes from the users row rather than a parameter so the nav badge
+ * and this list can never disagree about what is in the queue -- a badge that
+ * counts eight while the screen shows three is how people stop trusting the
+ * menu.
  */
 export async function getMyTasks(userId: string): Promise<StageRunCard[]> {
-    const runs = await getOpenStageRuns();
+    const [runs, { data: me }] = await Promise.all([
+        getOpenStageRuns(),
+        supabase.from('users').select('role').eq('id', userId).maybeSingle(),
+    ]);
+
+    const myRole = (me?.role as string) ?? '';
+
     return runs
         .filter((r) => r.execution === 'internal')
+        .filter((r) => r.drivenBy === 'my_tasks')
+        .filter((r) => r.allowedRoles.length === 0 || r.allowedRoles.includes(myRole))
         .sort((a, b) => {
             const mine = (r: StageRunCard) =>
                 r.status === 'in_progress' && r.assigneeId === userId ? 0 : 1;

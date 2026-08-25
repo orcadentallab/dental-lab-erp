@@ -1057,6 +1057,29 @@ class MockDB {
     }
 
     /**
+     * Admin-only repair of an issue state recorded by mistake (for example a
+     * case marked «مرتجع طبيب» in error). Not part of the workflow: the normal
+     * issue actions cannot leave a terminal state, deliberately.
+     *
+     * The obligations are rebuilt by the database from the corrected order row
+     * — this never adjusts an amount directly.
+     */
+    async adminCorrectOrderIssueState(
+        orderId: string,
+        targetIssueState: string,
+        reason: string,
+        options?: {
+            doctorDecision?: string | null;
+            customDoctorAmount?: number | null;
+            causeCategory?: string | null;
+            responsibleStage?: string | null;
+        }
+    ): Promise<Order | null> {
+        const { adminCorrectOrderIssueState } = await import('./supabase/orderWorkflow');
+        return adminCorrectOrderIssueState(orderId, targetIssueState, reason, options);
+    }
+
+    /**
      * CENTRALIZED STATUS UPDATE - Use this for all status changes.
      * Ensures status/designStatus synchronization for Split Workflows.
      */
