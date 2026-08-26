@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, type Service, type ServiceFamily } from '../services/db';
+import type { FamilyPriceAdjustment } from '../services/supabase/serviceFamilyService';
 import {
     FileSpreadsheet, Printer, Trash2, Edit2, Layers, GripVertical,
     Plus, Sparkles, SlidersHorizontal, Star, Check, AlertCircle, X
@@ -39,6 +40,24 @@ export default function ServicesPage() {
     const [bulkType, setBulkType] = useState<'percentage' | 'fixed'>('percentage');
     const [bulkTarget, setBulkTarget] = useState<'sellingPrice' | 'costPrice' | 'both'>('sellingPrice');
     const [bulkValue, setBulkValue] = useState<number>(10);
+    // Preview of what the adjustment would do, fetched with dryRun before any
+    // write. Repricing a whole family should never be the first thing the
+    // admin learns about from the resulting prices.
+    const [bulkPreview, setBulkPreview] = useState<FamilyPriceAdjustment | null>(null);
+    const [bulkBusy, setBulkBusy] = useState(false);
+
+    // Load status. An empty catalogue and a failed fetch used to render the
+    // same empty table, which reads as "there is nothing here".
+    const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    // Any change to the inputs invalidates the preview. Without this the admin
+    // could preview +10%, change the field to +50%, and confirm — the button
+    // would still say "10%" while applying 50, because the confirm step reads
+    // live state rather than the previewed values.
+    useEffect(() => {
+        setBulkPreview(null);
+    }, [bulkFamilyId, bulkType, bulkValue, bulkTarget]);
 
     // Drag state
     const servicesRef = useRef<Service[]>([]);
@@ -47,18 +66,22 @@ export default function ServicesPage() {
     const dragOverIndex = useRef<number | null>(null);
 
     const refreshData = async () => {
+        setLoadState('loading');
+        setLoadError(null);
         try {
-            const fetchedServices = await db.getServices();
+            // Together: a page showing the catalogue without the families it is
+            // grouped by would present every service as unassigned.
+            const [fetchedServices, fetchedFamilies] = await Promise.all([
+                db.getServices(),
+                db.getServiceFamilies(),
+            ]);
             setServices(fetchedServices || []);
-        } catch (err) {
-            console.error('Failed to load services data:', err);
-        }
-
-        try {
-            const fetchedFamilies = await db.getServiceFamilies();
             setFamilies(fetchedFamilies || []);
+            setLoadState('ready');
         } catch (err) {
-            console.warn('Failed to load families data (fallback active):', err);
+            console.error('Failed to load services/families:', err);
+            setLoadError(err instanceof Error ? err.message : 'تعذر تحميل البيانات');
+            setLoadState('error');
         }
     };
 
@@ -138,19 +161,41 @@ export default function ServicesPage() {
         }
     };
 
-    const handleApplyBulkAdjustment = async (e: React.FormEvent) => {
+    /** Step 1: ask the server what would change, without changing it. */
+    const handlePreviewBulkAdjustment = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!bulkFamilyId) {
             toastError('يرجى اختيار العائلة المستهدفة');
             return;
         }
+        setBulkBusy(true);
         try {
-            await db.bulkAdjustFamilyPrices(bulkFamilyId, bulkType, bulkValue, bulkTarget);
-            toastSuccess('تم تحديث أسعار خدمات العائلة بنجاح');
+            const preview = await db.bulkAdjustFamilyPrices(bulkFamilyId, bulkType, bulkValue, bulkTarget, true);
+            if (preview.affected === 0) {
+                toastError('مفيش أي خدمة في العائلة دي هيتغير سعرها');
+                return;
+            }
+            setBulkPreview(preview);
+        } catch (err) {
+            toastError(err instanceof Error ? err.message : 'تعذر حساب المعاينة');
+        } finally {
+            setBulkBusy(false);
+        }
+    };
+
+    /** Step 2: apply exactly what the preview showed. */
+    const handleConfirmBulkAdjustment = async () => {
+        setBulkBusy(true);
+        try {
+            const applied = await db.bulkAdjustFamilyPrices(bulkFamilyId, bulkType, bulkValue, bulkTarget, false);
+            toastSuccess(`تم تحديث أسعار ${applied.applied} خدمة`);
             setShowBulkModal(false);
+            setBulkPreview(null);
             refreshData();
         } catch (err) {
             toastError(err instanceof Error ? err.message : 'تعذر التحديث الجماعي للأسعار');
+        } finally {
+            setBulkBusy(false);
         }
     };
 
@@ -185,6 +230,37 @@ export default function ServicesPage() {
         const option = COLOR_OPTIONS.find(c => c.id === colorName) || COLOR_OPTIONS[0];
         return option.badge;
     };
+
+    if (loadState === 'loading') {
+        return (
+            <div className="max-w-7xl mx-auto space-y-4" dir="rtl">
+                <div className="h-24 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+                <div className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+                <div className="h-96 animate-pulse rounded-2xl border border-slate-200 bg-white" />
+            </div>
+        );
+    }
+
+    // Distinct from an empty catalogue on purpose: an empty table would say
+    // the lab has no services, which is a much worse thing to be wrong about
+    // than saying the fetch failed.
+    if (loadState === 'error') {
+        return (
+            <div className="max-w-7xl mx-auto" dir="rtl">
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center">
+                    <AlertCircle size={32} className="mx-auto mb-3 text-rose-500" />
+                    <p className="font-bold text-rose-800">تعذر تحميل الخدمات والعوائل</p>
+                    <p className="mt-1 text-xs text-rose-600">{loadError}</p>
+                    <button
+                        onClick={refreshData}
+                        className="mt-4 cursor-pointer rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white transition-all hover:bg-rose-700"
+                    >
+                        إعادة المحاولة
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="max-w-7xl mx-auto space-y-6" dir="rtl">
@@ -628,7 +704,7 @@ export default function ServicesPage() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleApplyBulkAdjustment} className="space-y-4">
+                        <form onSubmit={handlePreviewBulkAdjustment} className="space-y-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 mb-1">اختر العائلة المستهدفة</label>
                                 <select
@@ -695,16 +771,59 @@ export default function ServicesPage() {
                                 <span>سيتم تطبيق هذا التغيير على أسعار الكتالوج لجميع الخدمات التابعة لهذه العائلة أوتوماتيكياً.</span>
                             </div>
 
+                            {/* The exact rows the server would write, read back from
+                                a dry run of the same statement — not a client-side
+                                guess at what it will do. */}
+                            {bulkPreview && (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+                                    <p className="mb-2 text-xs font-bold text-amber-800">
+                                        هيتغير سعر {bulkPreview.affected} خدمة — راجعها قبل التأكيد:
+                                    </p>
+                                    <div className="max-h-44 space-y-1 overflow-y-auto">
+                                        {bulkPreview.services.map(row => (
+                                            <div key={row.id} className="flex items-center justify-between gap-2 rounded-lg bg-white px-2 py-1.5 text-[11px]">
+                                                <span className="truncate font-semibold text-slate-700">{row.name}</span>
+                                                <span className="shrink-0 font-mono text-slate-500">
+                                                    {row.sellingBefore !== row.sellingAfter && (
+                                                        <span className="text-emerald-700">
+                                                            بيع {row.sellingBefore} ← {row.sellingAfter}
+                                                        </span>
+                                                    )}
+                                                    {row.sellingBefore !== row.sellingAfter && row.costBefore !== row.costAfter && ' • '}
+                                                    {row.costBefore !== row.costAfter && (
+                                                        <span className="text-rose-700">
+                                                            تكلفة {row.costBefore} ← {row.costAfter}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="flex gap-3 pt-2">
-                                <button
-                                    type="submit"
-                                    className="flex-1 bg-amber-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-amber-700 shadow-md shadow-amber-200 transition-all cursor-pointer"
-                                >
-                                    تطبيق التحديث الجماعي
-                                </button>
+                                {bulkPreview ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleConfirmBulkAdjustment}
+                                        disabled={bulkBusy}
+                                        className="flex-1 bg-amber-600 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-amber-700 shadow-md shadow-amber-200 transition-all cursor-pointer disabled:opacity-50"
+                                    >
+                                        {bulkBusy ? 'جارٍ التطبيق…' : `أكّد وطبّق على ${bulkPreview.affected} خدمة`}
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="submit"
+                                        disabled={bulkBusy}
+                                        className="flex-1 bg-slate-800 text-white py-2.5 rounded-xl text-xs font-bold hover:bg-slate-900 shadow-md transition-all cursor-pointer disabled:opacity-50"
+                                    >
+                                        {bulkBusy ? 'جارٍ الحساب…' : 'اعرض المعاينة'}
+                                    </button>
+                                )}
                                 <button
                                     type="button"
-                                    onClick={() => setShowBulkModal(false)}
+                                    onClick={() => { setShowBulkModal(false); setBulkPreview(null); }}
                                     className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
                                 >
                                     إلغاء

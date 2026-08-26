@@ -11,14 +11,15 @@ import {
     Filter,
     ArrowUpDown,
     ArrowUp,
-    ArrowDown
+    ArrowDown,
+    AlertTriangle
 } from 'lucide-react';
 import { type Order, type Doctor, type Supplier, type Service } from '../../services/db';
 import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus } from '../../constants/orderLifecycle';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 export interface OrderAnalysisRow {
@@ -32,6 +33,12 @@ export interface OrderAnalysisRow {
     hasSupplier: boolean;
     serviceSummary: string;
     totalUnits: number;
+    /**
+     * The order carries a receivable but no order_items — legacy Excel
+     * imports whose sheets had no service columns. Kept in the table rather
+     * than filtered out, so the totals still tie to the doctor statement.
+     */
+    hasNoItems: boolean;
     revenue: number;
     cost: number;
     grossProfit: number;
@@ -141,7 +148,11 @@ export default function OrderAnalysisTab({
         const result: OrderAnalysisRow[] = [];
 
         orders.forEach(o => {
-            if (!o.items || o.items.length === 0) return;
+            // Membership is decided by the statement rule alone. Orders with no
+            // items used to be dropped here, which silently removed 125 legacy
+            // imports worth ~185k EGP of receivable — a tenth of the period —
+            // and left this tab's KPIs unable to agree with the statement or
+            // the P&L. They are carried through with zero units instead.
             if (!isDoctorStatementIncluded(o)) return;
 
             const orderDate = getOfficialStatementDate(o);
@@ -158,7 +169,8 @@ export default function OrderAnalysisTab({
             }
 
             // Service filter
-            const items = o.items;
+            const items = o.items ?? [];
+            const hasNoItems = items.length === 0;
             if (selectedServiceId) {
                 const targetService = services.find(s => s.id === selectedServiceId);
                 if (targetService) {
@@ -171,19 +183,12 @@ export default function OrderAnalysisTab({
             const doctor = doctors.find(d => d.id === o.doctorId);
             const supplier = suppliers.find(s => s.id === o.supplierId);
             
-            const isCancelled = normalizeStatus(o.status) === 'cancelled' || getEffectiveIssueState(o) === 'cancelled';
-            const isLabRejected = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
-            const isDoctorRejected = o.status === 'Doctor Rejected' || o.status === 'Rejected' || getEffectiveIssueState(o) === 'doctor_rejected';
-
             // Revenue / Receivable amount
             const revenue = getDoctorReceivableAmount(o);
 
-            // Production cost: Cancelled and Lab Rejected carry ZERO cost
-            const cost = (isCancelled || isLabRejected)
-                ? 0
-                : isDoctorRejected
-                    ? (o.rejectedLabCost ?? o.cost ?? 0)
-                    : (o.cost || 0);
+            // Production cost, on the P&L's basis. See getLabCostAmount for why
+            // a rejected case must not fall back to the orders.cost estimate.
+            const cost = getLabCostAmount(o);
 
             const grossProfit = revenue - cost;
             const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
@@ -219,7 +224,9 @@ export default function OrderAnalysisTab({
             }
 
             // Summary text for services
-            const serviceSummary = Array.from(new Set(items.map(it => it.serviceType))).join(' + ');
+            const serviceSummary = hasNoItems
+                ? 'بدون تفاصيل خدمات'
+                : Array.from(new Set(items.map(it => it.serviceType))).join(' + ');
             const totalUnits = items.reduce((sum, it) => sum + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
 
             // Manual reason details for tooltips
@@ -244,6 +251,7 @@ export default function OrderAnalysisTab({
                 hasSupplier: Boolean(o.supplierId),
                 serviceSummary,
                 totalUnits,
+                hasNoItems,
                 revenue,
                 cost,
                 grossProfit,
@@ -291,6 +299,10 @@ export default function OrderAnalysisTab({
         const overallMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0;
         const manualCount = filteredOrdersData.filter(x => x.isManual).length;
         const totalUnits = filteredOrdersData.reduce((s, x) => s + x.totalUnits, 0);
+        const noItemsCount = filteredOrdersData.filter(x => x.hasNoItems).length;
+        const noItemsRevenue = filteredOrdersData
+            .filter(x => x.hasNoItems)
+            .reduce((s, x) => s + x.revenue, 0);
 
         return {
             totalOrders,
@@ -299,7 +311,9 @@ export default function OrderAnalysisTab({
             totalGrossProfit,
             overallMargin,
             manualCount,
-            totalUnits
+            totalUnits,
+            noItemsCount,
+            noItemsRevenue
         };
     }, [filteredOrdersData]);
 
@@ -319,7 +333,7 @@ export default function OrderAnalysisTab({
             'المريض': o.patientName,
             'المعمل الخارجي': o.supplierName,
             'الخدمات': o.serviceSummary,
-            'عدد الوحدات': o.totalUnits,
+            'عدد الوحدات': o.hasNoItems ? '—' : o.totalUnits,
             'سعر البيع (ج.م)': Math.round(o.revenue),
             'تسعير البيع': o.isManualPrice ? `يدوي (${o.priceReasons})` : 'افتراضي',
             'التكلفة (ج.م)': Math.round(o.cost),
@@ -538,6 +552,21 @@ export default function OrderAnalysisTab({
                 </div>
             </div>
 
+            {/* These orders are real receivables with no service breakdown behind
+                them. They belong in the totals, but a reader comparing this tab
+                against a per-service report needs to know they carry no units. */}
+            {stats.noItemsCount > 0 && (
+                <div className="flex items-start gap-2.5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+                    <p className="text-xs font-semibold leading-relaxed text-amber-800">
+                        فيه <span className="font-bold">{stats.noItemsCount.toLocaleString()}</span> حالة
+                        بقيمة <span className="font-mono font-bold">{Math.round(stats.noItemsRevenue).toLocaleString()} ج.م</span>{' '}
+                        مسجّلة من غير تفاصيل خدمات (حالات قديمة مستوردة من إكسيل). محسوبة في الإجماليات
+                        عشان الأرقام تطابق كشف الحساب، لكن مش داخلة في تحليل الخدمات أو العوائل.
+                    </p>
+                </div>
+            )}
+
             {/* Orders Table */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
@@ -628,14 +657,20 @@ export default function OrderAnalysisTab({
                                         </td>
 
                                         {/* Services */}
-                                        <td className="p-3 text-slate-700 max-w-[180px] truncate" title={o.serviceSummary}>
+                                        <td
+                                            className={clsx("p-3 max-w-[180px] truncate", o.hasNoItems ? "text-amber-700 italic" : "text-slate-700")}
+                                            title={o.hasNoItems ? 'حالة قديمة مستوردة من غير تفاصيل خدمات' : o.serviceSummary}
+                                        >
                                             {o.serviceSummary}
                                         </td>
 
                                         {/* Total Units */}
                                         <td className="p-3 text-center">
-                                            <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md">
-                                                {o.totalUnits}
+                                            <span className={clsx(
+                                                "font-bold px-2 py-0.5 rounded-md",
+                                                o.hasNoItems ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-700"
+                                            )}>
+                                                {o.hasNoItems ? '—' : o.totalUnits}
                                             </span>
                                         </td>
 

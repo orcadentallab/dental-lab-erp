@@ -1245,13 +1245,11 @@ class MockDB {
 
     // --- SERVICE FAMILIES ---
     async getServiceFamilies(): Promise<ServiceFamily[]> {
-        try {
-            const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
-            return await serviceFamilyService.getFamilies();
-        } catch (err) {
-            console.warn('[DB] getServiceFamilies safe fallback:', err);
-            return [];
-        }
+        // No swallow-and-return-[] here: callers need to tell a failed fetch
+        // apart from a lab that has not set up families yet, and the two
+        // render very differently.
+        const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
+        return serviceFamilyService.getFamilies();
     }
     async createServiceFamily(payload: CreateServiceFamilyPayload): Promise<ServiceFamily> {
         const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
@@ -1273,10 +1271,11 @@ class MockDB {
         familyId: string,
         adjustmentType: 'percentage' | 'fixed',
         adjustmentValue: number,
-        targetField: 'sellingPrice' | 'costPrice' | 'both'
-    ): Promise<void> {
+        targetField: 'sellingPrice' | 'costPrice' | 'both',
+        dryRun = false
+    ): Promise<import('./supabase/serviceFamilyService').FamilyPriceAdjustment> {
         const { serviceFamilyService } = await import('./supabase/serviceFamilyService');
-        return serviceFamilyService.bulkAdjustPrices(familyId, adjustmentType, adjustmentValue, targetField);
+        return serviceFamilyService.bulkAdjustPrices(familyId, adjustmentType, adjustmentValue, targetField, dryRun);
     }
 
     // --- TRANSACTIONS ---

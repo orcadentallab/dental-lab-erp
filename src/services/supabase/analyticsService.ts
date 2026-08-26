@@ -1,4 +1,3 @@
- 
 /**
  * analyticsService.ts
  * 
@@ -85,7 +84,38 @@ export interface TopFamily {
     color: string;
     count: number;
     revenue: number;
+    /**
+     * False when the row is a bare service name shown because that service
+     * belongs to no family. Zero configured families makes every row false,
+     * which is the difference between "the lab's families ranked" and "the
+     * fallback, mislabelled as families".
+     */
+    isFamily: boolean;
 }
+
+export interface TopFamiliesResult {
+    families: TopFamily[];
+    /** Rows in service_families. 0 means the feature is not set up yet. */
+    familyCount: number;
+    /** Receivable for the range — the same figure the doctor statement shows. */
+    totalRevenue: number;
+    /** The part of totalRevenue that reached a family through order_items. */
+    allocatedRevenue: number;
+    /**
+     * totalRevenue - allocatedRevenue: in-scope orders holding a receivable
+     * but no order_items, so no family can ever claim them. Reported rather
+     * than dropped, so the card adds back up to the statement.
+     */
+    itemlessRevenue: number;
+}
+
+export const EMPTY_TOP_FAMILIES: TopFamiliesResult = {
+    families: [],
+    familyCount: 0,
+    totalRevenue: 0,
+    allocatedRevenue: 0,
+    itemlessRevenue: 0,
+};
 
 export interface TopExpenseCategory {
     category: string;
@@ -332,9 +362,14 @@ export const analyticsService = {
     },
 
     /**
-     * Fetches top service families by unit count (retroactive dynamic analytics).
+     * Top service families by unit count, plus the totals needed to prove the
+     * card reconciles with the doctor statement.
+     *
+     * Throws like every other method here. Returning an empty result on
+     * failure would render as "no families yet", which is a different
+     * statement about the business than "the query failed".
      */
-    async getTopFamilies(startDate?: string, endDate?: string, limit: number = 5): Promise<TopFamily[]> {
+    async getTopFamilies(startDate?: string, endDate?: string, limit: number = 5): Promise<TopFamiliesResult> {
         const { data, error } = await supabase.rpc('get_top_families', {
             p_start_date: startDate || null,
             p_end_date: endDate || null,
@@ -343,10 +378,30 @@ export const analyticsService = {
 
         if (error) {
             console.error('Error fetching top families:', error);
-            return [];
+            throw error;
         }
 
-        return (data || []) as unknown as TopFamily[];
+        const raw = (data || {}) as {
+            families?: { name: string; color: string; count: number; revenue: number; is_family: boolean }[];
+            family_count?: number;
+            total_revenue?: number;
+            allocated_revenue?: number;
+            itemless_revenue?: number;
+        };
+
+        return {
+            families: (raw.families || []).map(row => ({
+                name: row.name,
+                color: row.color || 'emerald',
+                count: Number(row.count) || 0,
+                revenue: Number(row.revenue) || 0,
+                isFamily: Boolean(row.is_family),
+            })),
+            familyCount: Number(raw.family_count) || 0,
+            totalRevenue: Number(raw.total_revenue) || 0,
+            allocatedRevenue: Number(raw.allocated_revenue) || 0,
+            itemlessRevenue: Number(raw.itemless_revenue) || 0,
+        };
     },
 
     /**

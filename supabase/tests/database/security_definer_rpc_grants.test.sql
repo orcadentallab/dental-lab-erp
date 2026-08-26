@@ -105,7 +105,17 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     ('public.get_top_services_privileged_20260801(date,date,integer)',         'privileged', true),
     ('public.get_top_expense_categories_privileged_20260801(date,date,integer)', 'privileged', true),
     ('public.get_finance_dashboard_privileged_20260801()',                     'privileged', true),
-    ('public.get_dashboard_data_privileged_20260801()',                        'privileged', true);
+    ('public.get_dashboard_data_privileged_20260801()',                        'privileged', true),
+    -- added by 20260826000000 (service families), hole closed by 20260826002000.
+    -- The privileged half shipped granted to PUBLIC/anon/authenticated because
+    -- that migration revoked the wrapper only. Test 2 above would have failed
+    -- on it the moment it was applied -- the suite was simply never run. Listed
+    -- here as well so a regression names the function instead of only saying
+    -- "some SECURITY DEFINER function is reachable by anon".
+    ('public.get_top_families(date,date,integer)',                             'wrapper',    true),
+    ('public.get_top_families_privileged_20260826(date,date,integer)',         'privileged', true),
+    -- added by 20260826005000 (atomic family repricing; admin gate is inside)
+    ('public.adjust_family_prices(uuid,text,numeric,text,boolean)',            'wrapper',    true);
 
 -- ─── 1. Sanity: the catalog is populated ────────────────────────────────
 -- Without this, every assertion below could pass vacuously (e.g. if the

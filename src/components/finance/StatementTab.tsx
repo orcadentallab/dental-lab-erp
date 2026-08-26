@@ -21,7 +21,7 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 interface StatementTabProps {
@@ -193,7 +193,6 @@ export default function StatementTab({
 
             const orderDoctor = doctors.find(d => d.id === o.doctorId);
 
-            const isCancelled = normalizeStatus(o.status) === 'cancelled' || getEffectiveIssueState(o) === 'cancelled';
             const isLabRejected = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
             const isDoctorRejected = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
             const isRejected = isLabRejected || isDoctorRejected;
@@ -203,12 +202,9 @@ export default function StatementTab({
             // (once decided) for a rejected/redo order, 0 otherwise.
             const effectiveTotalPrice = getDoctorReceivableAmount(o);
             
-            // Cost = 0 for Cancelled / Lab Rejected; rejectedLabCost (or cost) for Doctor Rejected; fallback to order.cost
-            const effectiveCost = (isCancelled || isLabRejected)
-                ? 0
-                : isDoctorRejected
-                    ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
-                    : (o.cost || 0);
+            // Cost on the P&L's basis. Shared with OrderAnalysisTab so the two
+            // tabs of this page cannot report different costs for one order.
+            const effectiveCost = getLabCostAmount(o);
 
             // Compute proportional weights (same approach regardless of rejection)
             const itemWeights2: number[] = items.map((it: any) => {

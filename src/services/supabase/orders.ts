@@ -1414,7 +1414,15 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
         const { data, error } = await supabase
             .from('orders')
             .select('*, order_items(*), order_comments(*)')
+            // The secondary sort on id is not cosmetic. created_at is not
+            // unique, and range-paginating on a non-unique sort key lets
+            // Postgres order the tied rows differently between pages, which
+            // silently skips some rows and returns others twice. Callers here
+            // sum or export what they get back, so a skipped row is money
+            // missing from a report with nothing to indicate it. Same fix,
+            // and same reason, as getOrdersForAccountingRegistration.
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .range(from, from + limit - 1);
 
         if (error) {
@@ -1491,7 +1499,15 @@ export async function fetchAllOrdersForExport(): Promise<Order[]> {
         const { data, error } = await supabase
             .from('orders')
             .select('*, order_items(*), order_comments(*)')
+            // The secondary sort on id is not cosmetic. created_at is not
+            // unique, and range-paginating on a non-unique sort key lets
+            // Postgres order the tied rows differently between pages, which
+            // silently skips some rows and returns others twice. Callers here
+            // sum or export what they get back, so a skipped row is money
+            // missing from a report with nothing to indicate it. Same fix,
+            // and same reason, as getOrdersForAccountingRegistration.
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .range(from, from + limit - 1);
 
         if (error) throw ErrorHandler.handle(error, 'fetchAllOrdersForExport');

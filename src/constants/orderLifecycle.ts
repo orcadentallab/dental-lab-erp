@@ -249,6 +249,44 @@ export function getDoctorReceivableAmount(order: LifecycleOrder): number {
 }
 
 /**
+ * Production cost of an order, on the same basis the P&L uses.
+ *
+ * The cost twin of getDoctorReceivableAmount, and it exists for the same
+ * reason: two screens each rebuilding this expression drifted apart from
+ * get_analytics_summary and from each other.
+ *
+ * Cancelled and lab-rejected cases were never worked on, so they cost
+ * nothing. For a doctor rejection the case WAS produced, so a cost can
+ * exist -- but only the settled rejection amounts count, never orders.cost.
+ * That column holds the estimate captured when the order was created and is
+ * not cleared when the case ends, so falling back to it (`rejectedLabCost
+ * ?? cost`) charged the lab for work its own ledger says was never billed:
+ * 24 rejected cases with no settled lab cost and zero live supplier or
+ * designer obligations, carrying 34,340 EGP of stale estimate between them.
+ *
+ * Everything else is orders.cost. That already equals the RPC's
+ * supplier + designer split for every workflow: a split order stores
+ * milling + design in cost, and the RPC subtracts design_price from the
+ * supplier side only to add it back on the designer side.
+ */
+export function getLabCostAmount(order: LifecycleOrder): number {
+    const status = normalizeStatus(order.status);
+    const issue = getEffectiveIssueState(order);
+
+    if (status === 'cancelled' || issue === 'cancelled') return 0;
+    if (status === 'lab rejected' || issue === 'lab_rejected') return 0;
+
+    const isDoctorRejected =
+        status === 'doctor rejected' || status === 'rejected' || issue === 'doctor_rejected';
+
+    if (isDoctorRejected) {
+        return Math.max(0, (order.rejectedLabCost ?? 0) + (order.rejectedDesignerCost ?? 0));
+    }
+
+    return order.cost || 0;
+}
+
+/**
  * Amount shown when the user explicitly asks to include unfinished orders.
  * This is a projected order value for active work, but terminal issue states
  * must keep their approved accounting amount instead of reverting to zero.

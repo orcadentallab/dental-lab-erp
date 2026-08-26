@@ -87,6 +87,9 @@ export default function DoctorServiceProfitabilityPage() {
             setLoading(true);
             setError(null);
             try {
+                // All of them together: the grading tab needs profit from the
+                // first, volume from the second and aging from the third, and a
+                // partial set would grade doctors on missing dimensions.
                 const [profitability, inputs, ar, svcs, fams] = await Promise.all([
                     analyticsService.getDoctorServiceProfitability(startDate, endDate),
                     analyticsService.getDoctorSegmentationInputs(startDate, endDate),
@@ -103,6 +106,8 @@ export default function DoctorServiceProfitabilityPage() {
                 }
             } catch (e) {
                 console.error('Failed to load profitability report:', e);
+                // Surfaced, never swallowed into an empty table — an empty
+                // table and a failed query look identical to the reader.
                 if (isMounted) {
                     setData(null);
                     setSegmentationInputs([]);

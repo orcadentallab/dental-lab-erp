@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
-import { analyticsService } from '../services/supabase/analyticsService';
+import { analyticsService, EMPTY_TOP_FAMILIES, type TopFamiliesResult } from '../services/supabase/analyticsService';
 import ReportsHub from '../components/ReportsHub';
 import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle, Layers } from 'lucide-react';
 import clsx from 'clsx';
@@ -119,7 +119,7 @@ export default function Analytics() {
     });
     const [topDoctors, setTopDoctors] = useState<{ name: string; revenue: number; count: number }[]>([]);
     const [topServices, setTopServices] = useState<{ name: string; count: number; revenue: number }[]>([]);
-    const [topFamilies, setTopFamilies] = useState<import('../services/supabase/analyticsService').TopFamily[]>([]);
+    const [topFamilies, setTopFamilies] = useState<TopFamiliesResult>(EMPTY_TOP_FAMILIES);
     // Surfaces load failures. Without this the page silently keeps its previous
     // (or zeroed) numbers, which reads as real data rather than a failed fetch.
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -142,10 +142,19 @@ export default function Analytics() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [services, setServices] = useState<Service[]>([]);
     const analysisDataRequested = useRef(false);
+    const [analysisLoading, setAnalysisLoading] = useState(false);
 
-    const loadAnalysisData = useCallback(() => {
-        if (analysisDataRequested.current) return;
+    // The ref makes this fetch once per mount rather than on every tab switch,
+    // which matters: it pulls every order with its items and comments. The
+    // `force` escape hatch exists because the guard also meant the data could
+    // never be refreshed at all — edit an order in another tab, come back, and
+    // these tabs kept showing the numbers from when the page first loaded, with
+    // no way to tell. On failure the flag is released so the next tab switch
+    // retries instead of leaving the tabs permanently empty.
+    const loadAnalysisData = useCallback((force = false) => {
+        if (analysisDataRequested.current && !force) return;
         analysisDataRequested.current = true;
+        setAnalysisLoading(true);
         Promise.all([
             db.getAllOrdersUnpaginated(),
             db.getTransactions(),
@@ -158,7 +167,11 @@ export default function Analytics() {
             setDoctors(docs);
             setSuppliers(sups);
             setServices(servs);
-        }).catch(console.error);
+        }).catch(err => {
+            console.error('Failed to load analysis data:', err);
+            analysisDataRequested.current = false;
+            setLoadError(err instanceof Error ? err.message : 'تعذر تحميل بيانات التحليل');
+        }).finally(() => setAnalysisLoading(false));
     }, []);
 
     useEffect(() => {
@@ -311,7 +324,7 @@ export default function Analytics() {
 
             if (requestId !== analyticsRequestId.current) return;
 
-            setTopFamilies(families || []);
+            setTopFamilies(families);
 
             // Derive values from the compact JSON response
             const grossProfit = summary.total_sales_value - summary.total_cost_of_goods;
@@ -639,6 +652,22 @@ export default function Analytics() {
                         تحليل المصروفات
                     </button>
                 </div>
+
+                {/* These three tabs read a snapshot taken when the page mounted.
+                    Without a way to re-take it, an order edited elsewhere never
+                    shows up here and nothing says so. */}
+                {['service_analysis', 'expense_analysis', 'order_analysis'].includes(activeTab) && (
+                    <div className="mt-3 flex justify-end">
+                        <button
+                            onClick={() => loadAnalysisData(true)}
+                            disabled={analysisLoading}
+                            className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-all hover:bg-slate-50 disabled:opacity-50"
+                        >
+                            <RefreshCcw size={13} className={clsx(analysisLoading && 'animate-spin')} />
+                            {analysisLoading ? 'جارٍ التحديث…' : 'تحديث البيانات'}
+                        </button>
+                    </div>
+                )}
             </div>
 
             {loadError && (
@@ -886,7 +915,7 @@ export default function Analytics() {
                                             {stats.deliveredRevenue > 0 ? ((stats.totalRevenue / stats.deliveredRevenue) * 100).toFixed(1) : 0}%
                                         </div>
                                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                            { }
+                                            {/* Width is inline, not a class: it is a data-driven percentage. */}
                                             <div
                                                 className="bg-gradient-to-r from-blue-500 to-blue-400 h-full rounded-full transition-all duration-700"
                                                 style={{ width: `${Math.min(100, (stats.totalRevenue / (stats.deliveredRevenue || 1)) * 100)}%` }}
@@ -973,7 +1002,7 @@ export default function Analytics() {
                                                 </div>
                                             </div>
                                             <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                                { }
+                                                {/* Width is inline, not a class: it is a data-driven percentage. */}
                                                 <div
                                                     className={clsx(
                                                         "h-full rounded-full transition-all duration-700 ease-out",
@@ -993,7 +1022,7 @@ export default function Analytics() {
                     </div>
 
                     {/* Top Service Families Section */}
-                    {topFamilies.length > 0 && (
+                    {topFamilies.families.length > 0 && (
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <div className="flex justify-between items-center mb-6">
                                 <div className="flex items-center gap-3">
@@ -1001,15 +1030,30 @@ export default function Analytics() {
                                         <Layers size={18} />
                                     </div>
                                     <div>
-                                        <h3 className="font-bold text-lg text-slate-800">أكثر العوائل طلباً</h3>
+                                        <h3 className="font-bold text-lg text-slate-800">
+                                            {topFamilies.familyCount > 0 ? 'أكثر العوائل طلباً' : 'أكثر الخدمات طلباً (بدون عوائل)'}
+                                        </h3>
                                         <p className="text-slate-400 text-xs">تحليل تجميعي إجمالي بحسب عائلة الخدمة (بأثر رجعي)</p>
                                     </div>
                                 </div>
                             </div>
 
+                            {/* With no families configured the RPC falls back to raw service
+                                names. Useful, but it must not be presented as family analysis —
+                                otherwise the admin reads an unconfigured feature as a finished one. */}
+                            {topFamilies.familyCount === 0 && (
+                                <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                    <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
+                                    <p className="text-xs font-semibold leading-relaxed text-amber-800">
+                                        لسه مفيش عوائل خدمات معرّفة، فالأرقام دي معروضة حسب اسم الخدمة مش حسب العائلة.
+                                        عرّف العوائل من صفحة <span className="font-bold">الخدمات</span> وابدأ اربط الخدمات بيها.
+                                    </p>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                                {topFamilies.map((fam, idx) => {
-                                    const maxVal = topFamilies[0]?.count || 1;
+                                {topFamilies.families.map((fam, idx) => {
+                                    const maxVal = topFamilies.families[0]?.count || 1;
                                     const percent = (fam.count / maxVal) * 100;
                                     return (
                                         <div key={idx} className="group bg-slate-50 p-4 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all cursor-pointer">
@@ -1030,12 +1074,31 @@ export default function Analytics() {
                                                 />
                                             </div>
                                             <div className="mt-2 text-center">
-                                                <span className="text-xs text-slate-500 font-mono font-bold">{fam.revenue.toLocaleString()} ج.م</span>
+                                                <span className="text-xs text-slate-500 font-mono font-bold">{Math.round(fam.revenue).toLocaleString()} ج.م</span>
                                             </div>
                                         </div>
                                     );
                                 })}
                             </div>
+
+                            {/* Revenue only reaches a family through order_items, so orders
+                                carrying a receivable with no items at all can never appear
+                                above. Stating that amount is what lets these figures be
+                                reconciled against the doctor statement instead of quietly
+                                falling ~10% short of it. */}
+                            {topFamilies.itemlessRevenue > 0 && (
+                                <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-500">
+                                    إجمالي إيراد الفترة{' '}
+                                    <span className="font-mono font-bold text-slate-700">
+                                        {Math.round(topFamilies.totalRevenue).toLocaleString()} ج.م
+                                    </span>
+                                    {' '}— منها{' '}
+                                    <span className="font-mono font-bold text-amber-700">
+                                        {Math.round(topFamilies.itemlessRevenue).toLocaleString()} ج.م
+                                    </span>
+                                    {' '}على حالات مفيهاش تفاصيل خدمات، فمش متوزّعة على أي عائلة.
+                                </p>
+                            )}
                         </div>
                     )}
 
@@ -1076,7 +1139,7 @@ export default function Analytics() {
                                             <span className="text-xs text-slate-400 block">وحدة</span>
                                         </div>
                                         <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                                            { }
+                                            {/* Width is inline, not a class: it is a data-driven percentage. */}
                                             <div
                                                 className={clsx(
                                                     "h-full rounded-full transition-all duration-700",

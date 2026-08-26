@@ -2,20 +2,42 @@ import { supabase } from '../../lib/supabase';
 import { ErrorHandler } from '../../lib/errorHandler';
 import type { ServiceFamily } from '../db';
 
+export interface FamilyPriceChange {
+    id: string;
+    name: string;
+    sellingBefore: number;
+    sellingAfter: number;
+    costBefore: number;
+    costAfter: number;
+}
+
+export interface FamilyPriceAdjustment {
+    /** True when nothing was written and this is only a preview. */
+    dryRun: boolean;
+    /** Services whose price would change. */
+    affected: number;
+    /** Services actually written — 0 on a dry run. */
+    applied: number;
+    services: FamilyPriceChange[];
+}
+
 export const serviceFamilyService = {
-    /** Get all service families ordered by sort_order / name_ar */
+    /**
+     * Get all service families ordered by sort_order / name_ar.
+     *
+     * Throws on failure. Returning [] here made a broken query render as
+     * "this lab has no service families", which is a claim about the
+     * business rather than about the request.
+     */
     async getFamilies(): Promise<ServiceFamily[]> {
-        try {
+        {
             const { data, error } = await supabase
                 .from('service_families')
                 .select('*')
                 .order('sort_order', { ascending: true, nullsFirst: false })
                 .order('name_ar', { ascending: true });
 
-            if (error) {
-                console.warn('[serviceFamilyService] Table may not exist or error:', error.message);
-                return [];
-            }
+            if (error) throw ErrorHandler.handle(error, 'serviceFamilyService.getFamilies');
 
             return (data || []).map((row) => ({
                 id: row.id,
@@ -28,9 +50,6 @@ export const serviceFamilyService = {
                 sortOrder: row.sort_order ?? undefined,
                 createdAt: row.created_at,
             }));
-        } catch (err) {
-            console.warn('[serviceFamilyService] Exception fetching families:', err);
-            return [];
         }
     },
 
@@ -43,9 +62,23 @@ export const serviceFamilyService = {
         defaultServiceId?: string | null;
         defaultRouteId?: string | null;
     }): Promise<ServiceFamily> {
+        // sort_order defaults to 0 in the table, so every family created
+        // through the UI tied on it and the ORDER BY fell through to name_ar,
+        // making the column look broken. Append each new family after the
+        // current last one instead.
+        const { data: lastRow } = await supabase
+            .from('service_families')
+            .select('sort_order')
+            .order('sort_order', { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+
+        const nextSortOrder = (Number(lastRow?.sort_order) || 0) + 10;
+
         const { data, error } = await supabase
             .from('service_families')
             .insert({
+                sort_order: nextSortOrder,
                 name_ar: payload.nameAr.trim(),
                 name_en: payload.nameEn?.trim() || null,
                 description: payload.description?.trim() || null,
@@ -121,48 +154,60 @@ export const serviceFamilyService = {
         if (error) throw ErrorHandler.handle(error, 'serviceFamilyService.assignServiceToFamily');
     },
 
-    /** Bulk adjust prices for all services in a family */
+    /**
+     * Reprice every service in a family, in one atomic statement.
+     *
+     * Previously a read followed by one UPDATE per service: a failure
+     * halfway through left part of the catalogue repriced with no record of
+     * which part, and no way back to the old prices. The RPC does the whole
+     * family or none of it.
+     *
+     * Pass dryRun to get the exact before/after list without writing, which
+     * is what the confirmation step in Services.tsx shows.
+     */
     async bulkAdjustPrices(
         familyId: string,
         adjustmentType: 'percentage' | 'fixed',
         adjustmentValue: number,
-        targetField: 'sellingPrice' | 'costPrice' | 'both'
-    ): Promise<void> {
-        // Fetch all services in this family
-        const { data: services, error: fetchErr } = await supabase
-            .from('services')
-            .select('id, selling_price, cost_price')
-            .eq('family_id', familyId);
+        targetField: 'sellingPrice' | 'costPrice' | 'both',
+        dryRun = false
+    ): Promise<FamilyPriceAdjustment> {
+        const { data, error } = await supabase.rpc('adjust_family_prices', {
+            p_family_id: familyId,
+            p_adjustment_type: adjustmentType,
+            p_value: adjustmentValue,
+            p_target: targetField,
+            p_dry_run: dryRun,
+        });
 
-        if (fetchErr) throw ErrorHandler.handle(fetchErr, 'serviceFamilyService.bulkAdjustPrices.fetch');
-        if (!services || services.length === 0) return;
+        if (error) throw ErrorHandler.handle(error, 'serviceFamilyService.bulkAdjustPrices');
 
-        for (const s of services) {
-            const updates: Record<string, number> = {};
+        const raw = (data || {}) as {
+            dry_run?: boolean;
+            affected?: number;
+            applied?: number;
+            services?: {
+                id: string;
+                name: string;
+                selling_price_before: number;
+                selling_price_after: number;
+                cost_price_before: number;
+                cost_price_after: number;
+            }[];
+        };
 
-            if (targetField === 'sellingPrice' || targetField === 'both') {
-                const current = Number(s.selling_price || 0);
-                const nextVal = adjustmentType === 'percentage'
-                    ? Math.max(0, Math.round(current * (1 + adjustmentValue / 100)))
-                    : Math.max(0, current + adjustmentValue);
-                updates.selling_price = nextVal;
-            }
-
-            if (targetField === 'costPrice' || targetField === 'both') {
-                const current = Number(s.cost_price || 0);
-                const nextVal = adjustmentType === 'percentage'
-                    ? Math.max(0, Math.round(current * (1 + adjustmentValue / 100)))
-                    : Math.max(0, current + adjustmentValue);
-                updates.cost_price = nextVal;
-            }
-
-            if (Object.keys(updates).length > 0) {
-                const { error: updateErr } = await supabase
-                    .from('services')
-                    .update(updates)
-                    .eq('id', s.id);
-                if (updateErr) throw ErrorHandler.handle(updateErr, 'serviceFamilyService.bulkAdjustPrices.update');
-            }
-        }
+        return {
+            dryRun: Boolean(raw.dry_run),
+            affected: Number(raw.affected) || 0,
+            applied: Number(raw.applied) || 0,
+            services: (raw.services || []).map(row => ({
+                id: row.id,
+                name: row.name,
+                sellingBefore: Number(row.selling_price_before) || 0,
+                sellingAfter: Number(row.selling_price_after) || 0,
+                costBefore: Number(row.cost_price_before) || 0,
+                costAfter: Number(row.cost_price_after) || 0,
+            })),
+        };
     }
 };

@@ -417,6 +417,20 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             }
                         }
 
+                        // A row that names no service produced an order carrying money
+                        // with nothing to attribute it to. 125 such orders exist from the
+                        // Jan/Feb 2026 imports, holding ~185k EGP that no per-service or
+                        // per-family report can ever see. Refuse the row instead, and name
+                        // the columns that were expected — the sheets that caused this had
+                        // doctor, patient, price and delivery date and simply no service
+                        // column at all, so the fix belongs on the sheet, not in the data.
+                        if (items.length === 0) {
+                            throw new Error(
+                                'لا توجد خدمات في هذا الصف. أضف عمود "الخدمة 1" (أو "اسم الصنف") ' +
+                                'مع عمود الكمية والسعر، أو عمود "العناصر" بصيغة JSON.'
+                            );
+                        }
+
 
                         const netValue = parseNumber(getVal(['صافى قيمة', 'صافي القيمة', 'Total Value', 'Net Value']));
                         const totalPrice = netValue > 0 ? netValue : calculatedTotal;
