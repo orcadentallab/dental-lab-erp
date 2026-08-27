@@ -2,7 +2,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(13);
+SELECT plan(10);
 
 INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password,
@@ -98,62 +98,70 @@ SELECT throws_ok(
     'direct deletion of a financially active order remains blocked'
 );
 
+SELECT throws_ok(
+    $$
+        SELECT public.soft_delete_order_atomic(
+            '42000000-0000-0000-0000-000000000001'
+        );
+    $$,
+    'P0001',
+    'لا يمكن حذف أوردر مُسلَّم أو له استحقاق مالي نشط',
+    'soft_delete_order_atomic is blocked on delivered or financially active order'
+);
+
+-- The former "delete a paid order and check the payment survives as a credit"
+-- scenario was removed here on purpose: the guard above now makes that path
+-- unreachable by design — a delivered or financially active order can no longer
+-- be deleted at all, through the RPC or a direct UPDATE. The credit-preservation
+-- behaviour it used to assert (reallocate_voided_obligation_allocations ->
+-- apply_entity_credits_fifo) is still covered, via the party/amount correction
+-- scenarios in financial_obligations_integration.test.sql.
+
+-- A delivered order with no obligation at all (zero price) must still be
+-- undeletable. This is the case the RPC-only guard missed: updateOrder writes
+-- orders.is_deleted directly, bypassing soft_delete_order_atomic entirely, so
+-- the block has to live on the trigger as well.
+INSERT INTO public.orders (
+    id, case_id, doctor_id, patient_name, items, total_price, shade, status,
+    delivery_date, actual_delivery_date, cost, production_status, issue_state,
+    is_deleted
+) VALUES (
+    '42000000-0000-0000-0000-000000000004', 'WORKFLOW-ATOMIC-ZERO-PRICE',
+    '12000000-0000-0000-0000-000000000001', 'Zero price patient', '[]',
+    0, 'A1', 'Delivered', CURRENT_DATE, CURRENT_DATE, 0,
+    'final_delivered', 'none', FALSE
+);
+
+SELECT throws_ok(
+    $$
+        UPDATE public.orders
+        SET is_deleted = TRUE
+        WHERE id = '42000000-0000-0000-0000-000000000004'
+    $$,
+    'P0001',
+    'لا يمكن حذف أوردر مُسلَّم أو له استحقاق مالي نشط',
+    'a delivered order with no active obligation is still blocked at the trigger'
+);
+
+INSERT INTO public.orders (
+    id, case_id, doctor_id, patient_name, items, total_price, shade, status,
+    delivery_date, cost, production_status, issue_state, is_deleted
+) VALUES (
+    '42000000-0000-0000-0000-000000000003', 'WORKFLOW-ATOMIC-CANCELLED',
+    '12000000-0000-0000-0000-000000000001', 'Cancelled patient', '[]',
+    1000, 'A1', 'New Case', CURRENT_DATE, 0,
+    'not_started', 'none', FALSE
+);
+
 SELECT public.soft_delete_order_atomic(
-    '42000000-0000-0000-0000-000000000001'
+    '42000000-0000-0000-0000-000000000003'
 );
 
 SELECT is(
     (SELECT is_deleted FROM public.orders
-     WHERE id = '42000000-0000-0000-0000-000000000001'),
+     WHERE id = '42000000-0000-0000-0000-000000000003'),
     TRUE,
-    'the order soft-delete commits'
-);
-
-SELECT is(
-    (SELECT status FROM public.financial_obligations
-     WHERE order_id = '42000000-0000-0000-0000-000000000001'
-       AND entity_type = 'doctor'),
-    'void'::text,
-    'the same transaction voids the doctor obligation'
-);
-
-SELECT is(
-    (SELECT count(*)::integer FROM public.payment_allocations
-     WHERE payment_transaction_id = '52000000-0000-0000-0000-000000000001'
-       AND status = 'active'),
-    0,
-    'the same transaction removes active allocation from the void obligation'
-);
-
-SELECT is(
-    (SELECT remaining_amount FROM public.account_credits
-     WHERE source_transaction_id = '52000000-0000-0000-0000-000000000001'
-       AND status = 'active'),
-    500::numeric,
-    'the same transaction preserves the payment as doctor credit'
-);
-
-SELECT is(
-    (SELECT 500
-          - COALESCE((SELECT SUM(allocated_amount)
-                      FROM public.payment_allocations
-                      WHERE payment_transaction_id = '52000000-0000-0000-0000-000000000001'
-                        AND status = 'active'), 0)
-          - COALESCE((SELECT SUM(remaining_amount)
-                      FROM public.account_credits
-                      WHERE source_transaction_id = '52000000-0000-0000-0000-000000000001'
-                        AND status IN ('active', 'review')), 0)),
-    0::numeric,
-    'no part of the payment is lost after the workflow mutation'
-);
-
-SELECT is(
-    (SELECT count(*)::integer
-     FROM public.payment_allocations allocation
-     JOIN public.financial_obligations obligation ON obligation.id = allocation.obligation_id
-     WHERE allocation.status = 'active' AND obligation.status = 'void'),
-    0,
-    'no active allocation points to a void obligation'
+    'the non-delivered non-active order soft-delete commits'
 );
 
 -- The same actor-id contract applies to automatic supplier/designer payments.

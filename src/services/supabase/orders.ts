@@ -39,6 +39,7 @@ import {
     voidFinancialObligation,
     reallocatePaymentsAfterObligationVoid,
 } from './financialObligations';
+import { flagReconciliationIssue } from './reconciliationFlags';
 
 
 // Helper to handle joined data which isn't in DbOrder type
@@ -2508,6 +2509,15 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             }
         } catch (error) {
             console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void doctor receivable obligation on deletion', { orderId: id, error });
+            await flagReconciliationIssue({
+                flagType: 'orphaned_doctor_obligation_on_deletion',
+                orderId: id,
+                entityType: 'doctor',
+                entityId: updatedOrder.doctorId || null,
+                severity: 'error',
+                message: `Failed to void doctor receivable obligation on order deletion: ${error instanceof Error ? error.message : String(error)}`,
+                metadata: { error: String(error) },
+            });
         }
 
         // 2. Void External Lab Payable Obligation
@@ -2523,6 +2533,15 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             }
         } catch (error) {
             console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab payable obligation on deletion', { orderId: id, error });
+            await flagReconciliationIssue({
+                flagType: 'orphaned_supplier_obligation_on_deletion',
+                orderId: id,
+                entityType: 'external_lab',
+                entityId: updatedOrder.supplierId || null,
+                severity: 'error',
+                message: `Failed to void external lab payable obligation on order deletion: ${error instanceof Error ? error.message : String(error)}`,
+                metadata: { error: String(error) },
+            });
         }
 
         // 3. Void External Lab Rejection Cost Obligations (if any)
@@ -2538,10 +2557,29 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
                     await reallocatePaymentsAfterObligationVoid(rejectionObligation.id, null, context.userId || null);
                 } catch (error) {
                     console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void external lab rejection obligation on deletion', { orderId: id, obligationId: rejectionObligation.id, error });
+                    await flagReconciliationIssue({
+                        flagType: 'orphaned_supplier_rejection_obligation_on_deletion',
+                        orderId: id,
+                        obligationId: rejectionObligation.id,
+                        entityType: 'external_lab',
+                        entityId: updatedOrder.supplierId || null,
+                        severity: 'error',
+                        message: `Failed to void external lab rejection obligation on order deletion: ${error instanceof Error ? error.message : String(error)}`,
+                        metadata: { obligationId: rejectionObligation.id, error: String(error) },
+                    });
                 }
             }
         } catch (error) {
             console.error('[ORPHANED_OBLIGATION_ERROR] Failed to fetch external lab rejection obligations on deletion', { orderId: id, error });
+            await flagReconciliationIssue({
+                flagType: 'failed_fetch_supplier_rejection_obligations_on_deletion',
+                orderId: id,
+                entityType: 'external_lab',
+                entityId: updatedOrder.supplierId || null,
+                severity: 'error',
+                message: `Failed to fetch external lab rejection obligations on order deletion: ${error instanceof Error ? error.message : String(error)}`,
+                metadata: { error: String(error) },
+            });
         }
 
         // 4. Void Designer Payable Obligation
@@ -2557,6 +2595,15 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
             }
         } catch (error) {
             console.error('[ORPHANED_OBLIGATION_ERROR] Failed to void designer payable obligation on deletion', { orderId: id, error });
+            await flagReconciliationIssue({
+                flagType: 'orphaned_designer_obligation_on_deletion',
+                orderId: id,
+                entityType: 'designer',
+                entityId: updatedOrder.designerId || null,
+                severity: 'error',
+                message: `Failed to void designer payable obligation on order deletion: ${error instanceof Error ? error.message : String(error)}`,
+                metadata: { error: String(error) },
+            });
         }
     }
 

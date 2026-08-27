@@ -7,44 +7,50 @@ This document tracks identified technical debt, architectural issues, and planne
 ## TD-001: Move financial obligation creation to DB trigger
 
 ### Description
-Currently, financial obligations (receivables and payables) are created in TypeScript inside `updateOrderStatus()`. This means any direct write to `orders.status` (either via raw database queries or direct `supabase.from('orders').update` calls) bypasses obligation creation, which can lead to out-of-sync financial data.
+Financial obligations (receivables and payables) are created and kept in sync automatically via database triggers, eliminating risk of out-of-sync data from direct database writes or external RPCs.
 
-### Proposed Fix
-Implement an `AFTER UPDATE` trigger on the `orders` table in the database that calls the obligation creation and voiding logic atomically. This ensures that no matter how a status change occurs, the corresponding financial obligations are kept in sync.
-
-### Priority
-* **Priority**: HIGH
-* **Timeline**: Implement before the next major feature addition.
+### Status
+* **Status**: ✅ Resolved (Implemented via trigger `sync_order_financial_obligations` in migration `20260724000100_atomic_order_financial_obligations.sql`).
+* **Details**: Atomic DB trigger runs on order creation/status update. TypeScript client-side mutation sync remains as an emergency fallback (`FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled = false` in `src/constants/financialObligations.ts`).
 
 ---
 
 ## TD-002: Obligations voided on delete/archive cannot be restored automatically
 
 ### Description
-When an order is archived (soft-deleted), its obligations (doctor receivable, designer payable, external lab payable, external lab rejection cost) are automatically voided and any active payment allocations are reversed. However, if the user un-archives (restores) the order, there is currently no automatic mechanism to recreate or un-void these obligations and re-apply the payments.
+Clarification of Archiving (`is_archived`) versus Deletion (`is_deleted`) and enforcement of deletion boundaries.
 
-### Priority
-* **Priority**: MEDIUM
-* **Timeline**: Address when unarchive/restore feature is fully specified.
+### Status
+* **Status**: ✅ Clarified & Resolved (Implemented guard in migration `20260827007000_guard_soft_delete_final_delivered.sql`).
+* **Details**:
+  - **Archiving (`is_archived`)**: Purely a UI display/filtering toggle. It carries zero financial impact and does not affect or void financial obligations or reports.
+  - **Deletion (`is_deleted`)**: Soft deletion is restricted to administrative workflows on unfulfilled or cancelled cases. In migration `20260827007000_guard_soft_delete_final_delivered.sql`, `soft_delete_order_atomic` explicitly forbids deleting any order where `production_status = 'final_delivered'` or where active financial obligations (`status NOT IN ('void', 'written_off')`) exist.
+  - Because delivered orders and financially active orders cannot be deleted, automatic restoration of obligations upon unarchive/restore is not required.
 
 ---
 
-## TD-003: Orphaned obligation logging on archive failure
+## TD-003: Orphaned obligation logging and reconciliation tracking
 
 ### Description
-If voiding an individual financial obligation fails during order archiving/deletion (e.g. database connection drop or check constraint error), the exception is caught, and an error prefixed with `[ORPHANED_OBLIGATION_ERROR]` is logged. Since we do not have a dedicated `reconciliation_flags` database table, these logs must be monitored to review and manually reconcile orphaned obligations.
+When an exceptional condition or failure occurs during obligation handling (such as fallback emergency voiding), records are captured in a dedicated database table for audit and manual accountant review rather than only ephemeral console logs.
+
+### Status
+* **Status**: ✅ Resolved (Implemented `reconciliation_flags` in migration `20260827008000_reconciliation_flags.sql`).
+* **Details**:
+  - `reconciliation_flags` database table stores flagged issues with status (`open` / `resolved`), severity, error messages, and metadata.
+  - `flagReconciliationIssue()` helper in `src/services/supabase/reconciliationFlags.ts` inserts audit records on failure.
+  - `FinancialReview.tsx` includes a "تسويات معلّقة" tab allowing accountants to review open flags and mark them resolved with audit notes.
 
 ---
 
 ## TD-004: Client-side full-table aggregation for financial summaries
 
 ### Description
-Financial summaries on pages like Accounts, Aging Report, Balance Snapshot, and Statements pull the entire `orders` and `transactions` tables to the client browser to calculate debits/credits. This was capped silently at 1000 rows by Supabase's default PostgREST limit, requiring a chunked range-based loop pagination fix. 
+Financial summaries on pages like Accounts, Aging Report, Balance Snapshot, and Statements currently aggregate orders and transactions client-side.
 
-### Proposed Fix
-Long-term, client-side aggregation will not scale as the database grows to tens of thousands of rows (creating high network overhead and slow page loads). These aggregations should be moved to database-level SQL queries, views, or RPC functions (e.g. returning aggregated balances per entity ID directly from Postgres).
-
-### Priority
-* **Priority**: MEDIUM
-* **Timeline**: Implement when database size approaches ~5,000+ orders.
-
+### Status
+* **Status**: ⏸️ Deferred (By decision).
+* **Rationale**:
+  - Current volume (~1,174 orders) is well within performance limits and far from the ~5,000 threshold.
+  - Financial aggregation embeds critical business logic (cancellation/rejection exceptions, redo rules, split workflows) where direct SQL migration poses regression risk.
+  - Deferred until database size approaches ~5,000+ orders, at which point comprehensive automated parity test suites (comparing TS output to SQL output) will accompany any SQL migration.

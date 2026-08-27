@@ -117,6 +117,7 @@ SELECT lives_ok(
 );
 
 -- ─── 8b. Regression guards from the phase 3-6 review ─────────────────────────
+RESET ROLE;
 
 -- C3: units come from order_items, not the legacy orders.items JSONB. Reading
 -- orders.items returned 1 unit for most of the live order base and silently
