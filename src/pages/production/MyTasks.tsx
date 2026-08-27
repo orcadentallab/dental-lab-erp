@@ -23,7 +23,8 @@ import {
 } from '../../services/supabase/production';
 import { ISSUE_CAUSE } from '../../constants/issueCauses';
 import CaseAttachments from '../../components/orders/CaseAttachments';
-import { Play, Check, RefreshCw, Clock, Star } from 'lucide-react';
+import { Play, Check, RefreshCw, Clock, Star, Layers, Disc, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { materialService, type MaterialBatch } from '../../services/supabase/materialService';
 
 const BLOCK_REASONS: { code: BlockReason; label: string }[] = [
     { code: 'machine_down', label: 'الجهاز واقف' },
@@ -60,13 +61,28 @@ export default function MyTasks() {
     const [busyId, setBusyId] = useState<string | null>(null);
     const [failFor, setFailFor] = useState<StageRunCard | null>(null);
     const [blockFor, setBlockFor] = useState<StageRunCard | null>(null);
+    const [openBatches, setOpenBatches] = useState<MaterialBatch[]>([]);
+    const [sealedBatches, setSealedBatches] = useState<MaterialBatch[]>([]);
+    const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
+
+    const loadBatches = useCallback(async () => {
+        try {
+            const batches = await materialService.getBatches(['open', 'sealed']);
+            setOpenBatches(batches.filter(b => b.status === 'open'));
+            setSealedBatches(batches.filter(b => b.status === 'sealed'));
+        } catch {
+            // Silently fail if user role cannot read batches or internal lab disabled
+        }
+    }, []);
 
     const load = useCallback(async () => {
         if (!user?.id) return;
         try {
-            setTasks(await getMyTasks(user.id));
-            // Starting, finishing or blocking a task changes this count, and
-            // load() runs after each of them.
+            const [taskList] = await Promise.all([
+                getMyTasks(user.id),
+                loadBatches()
+            ]);
+            setTasks(taskList);
             refreshNavBadges();
         } catch (e) {
             console.error('[MyTasks] load failed', e);
@@ -74,7 +90,7 @@ export default function MyTasks() {
         } finally {
             setLoading(false);
         }
-    }, [user?.id, toastError]);
+    }, [user?.id, toastError, loadBatches]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -84,6 +100,26 @@ export default function MyTasks() {
         const timer = setInterval(() => { void load(); }, 60_000);
         return () => clearInterval(timer);
     }, [load]);
+
+    const handleOpenBatch = async (batchId: string) => {
+        try {
+            await materialService.openBatch(batchId);
+            success('تم فتح الخامة / الديسك وبدء العمل بها');
+            await loadBatches();
+        } catch (err) {
+            toastError(err instanceof Error ? err.message : 'تعذر فتح الخامة');
+        }
+    };
+
+    const handleDepleteBatch = async (batchId: string) => {
+        try {
+            await materialService.depleteBatch(batchId);
+            success('تم استنفاد الديسك وتسجيل الاستهلاك في السجل');
+            await loadBatches();
+        } catch (err) {
+            toastError(err instanceof Error ? err.message : 'تعذر استنفاد الخامة');
+        }
+    };
 
     const run = async (id: string, fn: () => Promise<unknown>, done: string) => {
         setBusyId(id);
@@ -112,14 +148,88 @@ export default function MyTasks() {
                         {tasks.length} حالة في الطابور — الأولى هي الموصى بيها
                     </p>
                 </div>
-                <button
-                    onClick={() => void load()}
-                    className="p-3 rounded-xl bg-white border border-slate-200 text-slate-600"
-                    aria-label="تحديث"
-                >
-                    <RefreshCw className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                    {(openBatches.length > 0 || sealedBatches.length > 0) && (
+                        <button
+                            onClick={() => setShowMaterialsPanel(p => !p)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold ${
+                                openBatches.length > 0
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                                    : 'bg-white border-slate-200 text-slate-700'
+                            }`}
+                        >
+                            <Disc className="w-4 h-4 text-emerald-600" />
+                            <span>الخامات المفتوحة ({openBatches.length})</span>
+                            {showMaterialsPanel ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                    )}
+                    <button
+                        onClick={() => void load()}
+                        className="p-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        aria-label="تحديث"
+                    >
+                        <RefreshCw className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
+
+            {/* 2-Tap Material Batch Bar (Plan 7.7) */}
+            {showMaterialsPanel && (openBatches.length > 0 || sealedBatches.length > 0) && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Layers className="w-4 h-4 text-brand-blue" />
+                            الخامات والديسكات الحالية على الماكينات / المحطات:
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                            ضغطة واحدة لفتح خامة جديدة أو إغلاق خامة مستنفدة
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                        {/* Currently Open Batches */}
+                        {openBatches.map(b => (
+                            <div key={b.id} className="bg-white border border-emerald-300 rounded-xl p-3 flex flex-col justify-between shadow-xs">
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="font-bold text-xs text-slate-800">{b.materialName}</span>
+                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.5 rounded">مفتوح للتشغيل</span>
+                                    </div>
+                                    <p className="text-[11px] font-mono text-slate-500">{b.batchCode}</p>
+                                    <p className="text-[10px] text-slate-400">متبقي: {b.qtyRemaining} {b.materialUnit}</p>
+                                </div>
+                                <button
+                                    onClick={() => handleDepleteBatch(b.id)}
+                                    className="mt-2.5 w-full py-1.5 bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-red-700 border border-slate-200 hover:border-red-200 rounded-lg text-xs font-bold flex items-center justify-center gap-1"
+                                >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    خلص واستنفد الديسك
+                                </button>
+                            </div>
+                        ))}
+
+                        {/* Sealed Batches Available to Open */}
+                        {sealedBatches.slice(0, 4).map(b => (
+                            <div key={b.id} className="bg-white border border-slate-200 rounded-xl p-3 flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="font-bold text-xs text-slate-700">{b.materialName}</span>
+                                        <span className="bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.5 rounded">مغلق</span>
+                                    </div>
+                                    <p className="text-[11px] font-mono text-slate-500">{b.batchCode}</p>
+                                </div>
+                                <button
+                                    onClick={() => handleOpenBatch(b.id)}
+                                    className="mt-2.5 w-full py-1.5 bg-brand-blue text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-700"
+                                >
+                                    <Play className="w-3 h-3" />
+                                    فتح واستخدام ديسك جديد
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {tasks.length === 0 && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">

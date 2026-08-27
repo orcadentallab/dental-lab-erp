@@ -57,13 +57,19 @@ UPDATE public.production_stages SET standard_cost_per_unit = 25 WHERE code = 'fi
 UPDATE public.production_stages SET default_execution = 'internal'
  WHERE code IN ('milling', 'sintering', 'shipping');
 
+-- Predates the auto-measurement cutoff on purpose. 20260827000000 builds a
+-- chain for every NEW order, which is what the lab needs and what this file
+-- does not: these tests are about the explicit materialisation API, so the
+-- fixture opts out by being older than production_autostart_since and stays in
+-- control of when its job is created.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, cost, production_status, issue_state, delivery_type
+    delivery_date, cost, production_status, issue_state, delivery_type, created_at
 ) VALUES (
     'b5000000-0000-0000-0000-000000000001', 'CUT-1',
     'b2000000-0000-0000-0000-000000000001', 'Cutover patient', '[]',
-    3300, 'A2', 'New Case', CURRENT_DATE + 7, 1000, 'not_started', 'none', 'Final');
+    3300, 'A2', 'New Case', CURRENT_DATE + 7, 1000, 'not_started', 'none', 'Final',
+    NOW() - INTERVAL '365 days');
 
 INSERT INTO public.order_items (order_id, product_type, teeth_numbers, shade, price, count)
 VALUES ('b5000000-0000-0000-0000-000000000001', 'Cutover Zirconia',

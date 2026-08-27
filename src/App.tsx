@@ -38,6 +38,9 @@ const ProductionBoard = lazy(() => import('./pages/production/ProductionBoard'))
 const MyTasks = lazy(() => import('./pages/production/MyTasks'));
 const RouteEditor = lazy(() => import('./pages/production/RouteEditor'));
 const ExternalWorkOrders = lazy(() => import('./pages/production/ExternalWorkOrders'));
+const InventoryDashboard = lazy(() => import('./pages/inventory/InventoryDashboard'));
+const Shipments = lazy(() => import('./pages/production/Shipments'));
+const ProductionCostingReport = lazy(() => import('./pages/reports/ProductionCostingReport'));
 const WorkCalendarSettings = lazy(() => import('./pages/settings/WorkCalendarSettings'));
 const ShadowReport = lazy(() => import('./pages/production/ShadowReport'));
 import { ThemeProvider } from './context/ThemeContext';
@@ -104,6 +107,8 @@ function App() {
                   <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'accountant']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/external" element={<ExternalWorkOrders />} />
+                      <Route path="/inventory" element={<InventoryDashboard />} />
+                      <Route path="/production/shipments" element={<Shipments />} />
                     </Route>
                   </Route>
 
@@ -162,6 +167,7 @@ function App() {
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
                       <Route path="/designer-stats" element={<DesignerStats />} />
                       <Route path="/reports/profitability" element={<DoctorServiceProfitability />} />
+                      <Route path="/reports/production-costing" element={<ProductionCostingReport />} />
                       <Route path="/reports/cashflow" element={<CashFlow />} />
 
 

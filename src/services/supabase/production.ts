@@ -22,7 +22,12 @@ export type StageRunStatus =
  * The one screen that advances a stage. Plan rule 4: a stage movable from two
  * places is a stage counted twice.
  */
-export type DrivenBy = 'my_tasks' | 'designer_dashboard' | 'external_wo';
+/**
+ * `order_status` is the driver for work that happens where we cannot see it.
+ * The outside lab does not use our system, so its stage advances when the rep
+ * moves the order's own status -- no second place to press anything.
+ */
+export type DrivenBy = 'my_tasks' | 'designer_dashboard' | 'external_wo' | 'order_status';
 
 export interface ProductionStage {
     id: string;
@@ -63,6 +68,8 @@ export interface EffectiveRouteStage {
     variantLabel: string | null;
     /** Job types allowed to work this step. Empty means anyone on production. */
     allowedRoles: string[];
+    /** Resolved: the step's own answer if it set one, else the catalogue's. */
+    drivenBy: DrivenBy;
     execution: Execution;
     supplierId: string | null;
     isQcGate: boolean;
@@ -97,6 +104,13 @@ export interface RouteStep {
     variantLabel: string | null;
     /** Job types allowed to work it. Empty means anyone on production. */
     allowedRoles: string[];
+    /**
+     * What advances this step on this route. Null takes the catalogue's answer.
+     * It belongs on the step because the same stage differs by route: shipping
+     * on the outsourced route is something we watch happen, shipping on the
+     * in-house route will be something a person does.
+     */
+    drivenBy: DrivenBy | null;
     /** The step applies only to orders matching this, by JSONB containment. */
     condition: Record<string, unknown> | null;
     executionOverride: Execution | null;
@@ -278,6 +292,7 @@ export async function getRouteSteps(
                 nameOverride: (r.name_override as string) ?? null,
                 variantLabel: (r.variant_label as string) ?? null,
                 allowedRoles: (r.allowed_roles as string[]) ?? [],
+                drivenBy: (r.driven_by as DrivenBy) ?? null,
                 condition: (r.condition as Record<string, unknown>) ?? null,
                 executionOverride: (r.execution_override as Execution) ?? null,
                 supplierOverride: (r.supplier_override as string) ?? null,
@@ -308,6 +323,7 @@ export async function saveRouteSteps(routeId: string, steps: RouteStep[]): Promi
             name_override: s.nameOverride,
             variant_label: s.variantLabel,
             allowed_roles: s.allowedRoles,
+            driven_by: s.drivenBy,
             condition: s.condition,
             execution: s.executionOverride,
             supplier_id: s.supplierOverride,
@@ -347,6 +363,7 @@ export async function getEffectiveRouteStages(
         nameOverride: (r.name_override as string) ?? null,
         variantLabel: (r.variant_label as string) ?? null,
         allowedRoles: (r.allowed_roles as string[]) ?? [],
+        drivenBy: (r.driven_by as DrivenBy) ?? 'my_tasks',
         execution: r.execution as Execution,
         supplierId: (r.supplier_id as string) ?? null,
         isQcGate: r.is_qc_gate as boolean,
@@ -441,8 +458,8 @@ export async function setFamilyRoute(familyId: string, routeId: string | null): 
 const RUN_CARD_SELECT = `
     id, job_id, stage_id, seq, execution, advance_mode, status, blocked_reason,
     queued_at, started_at, units_in, assignee_id, supplier_id, rework_of,
-    variant_label, name_override, allowed_roles,
-    production_stages:stage_id ( code, name_ar, driven_by ),
+    variant_label, name_override, allowed_roles, driven_by,
+    production_stages:stage_id ( code, name_ar ),
     users:assignee_id ( name ),
     suppliers:supplier_id ( name ),
     production_jobs (
@@ -483,7 +500,9 @@ function toCard(r: any): StageRunCard {
         stageNameAr: r.name_override || (r.production_stages?.name_ar ?? ''),
         variantLabel: r.variant_label ?? null,
         allowedRoles: (r.allowed_roles as string[]) ?? [],
-        drivenBy: (r.production_stages?.driven_by as DrivenBy) ?? 'my_tasks',
+        // From the RUN, not the catalogue: the route's answer was frozen here
+        // at materialisation, and the same stage answers differently by route.
+        drivenBy: (r.driven_by as DrivenBy) ?? 'my_tasks',
         seq: r.seq,
         execution: r.execution,
         advanceMode: r.advance_mode,

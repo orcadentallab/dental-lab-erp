@@ -115,7 +115,36 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     ('public.get_top_families(date,date,integer)',                             'wrapper',    true),
     ('public.get_top_families_privileged_20260826(date,date,integer)',         'privileged', true),
     -- added by 20260826005000 (atomic family repricing; admin gate is inside)
-    ('public.adjust_family_prices(uuid,text,numeric,text,boolean)',            'wrapper',    true);
+    ('public.adjust_family_prices(uuid,text,numeric,text,boolean)',            'wrapper',    true),
+    -- added by 20260827001000 (materials, inventory & suppliers)
+    ('public.open_material_batch(uuid)',                                       'wrapper',    true),
+    ('public.deplete_material_batch(uuid)',                                    'wrapper',    true),
+    ('public.record_material_purchase(uuid,text,date,jsonb,text,uuid)',        'wrapper',    true),
+    ('public.adjust_material_batch(uuid,numeric,text)',                        'wrapper',    true),
+    -- added by 20260827002000 (packaging & shipments)
+    ('public.create_shipment(uuid,uuid,text,uuid[],text[],text,text,text,text)', 'wrapper', true),
+    ('public.dispatch_shipment(uuid,text,text)',                                'wrapper',    true),
+    ('public.confirm_shipment_delivery(uuid,text,timestamp with time zone,text)', 'wrapper', true),
+    ('public.cancel_shipment(uuid,text)',                                       'wrapper',    true),
+    -- added by 20260827003000 (costing & profitability)
+    ('public.freeze_overhead_allocation(date,numeric,integer,text,boolean)',    'wrapper',    true),
+    ('public.get_order_cost_breakdown(uuid)',                                   'wrapper',    true),
+    ('public.get_cost_of_quality_report(date,date)',                            'wrapper',    true),
+    ('public.get_internal_vs_external_benchmark(date,date)',                    'wrapper',    true),
+    ('public.get_technician_material_efficiency(date,date)',                    'wrapper',    true),
+    ('public.get_production_capacity_and_bottlenecks(date,date)',               'wrapper',    true),
+    ('public.get_supplier_lead_time_analytics(date,date)',                      'wrapper',    true),
+    ('public.estimate_order_delivery_time(uuid,integer)',                       'wrapper',    true),
+    ('public.get_team_throughput_and_productivity(date,date)',                  'wrapper',    true),
+    ('public.add_working_minutes(timestamp with time zone,numeric,uuid)',       'wrapper',    true),
+    -- added while fixing the phase 3-6 review findings
+    ('public.cancel_material_purchase(uuid,text)',                              'wrapper',    true),
+    ('public.reconcile_courier_invoice(uuid,date,numeric,text)',                'wrapper',    true),
+    -- added by 20260827005000 (cutover baseline -- plan 5.2)
+    ('public.get_cutover_boundary()',                                           'wrapper',    true),
+    ('public.capture_cutover_baseline(date,date,text)',                         'wrapper',    true),
+    -- added by 20260827006000 (operational warnings)
+    ('public.get_open_system_warnings(integer)',                                'wrapper',    true);
 
 -- ─── 1. Sanity: the catalog is populated ────────────────────────────────
 -- Without this, every assertion below could pass vacuously (e.g. if the

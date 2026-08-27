@@ -14,7 +14,7 @@ import {
     TrendingDown,
     Layers
 } from 'lucide-react';
-import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../../services/db';
+import { db, getFamilyAnalyticsName, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../../services/db';
 import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -324,7 +324,7 @@ export default function StatementTab({
             const svc = services.find(s => s.name === stat.serviceName);
             const family = families.find(f => f.id === svc?.familyId);
             const familyKey = family ? family.id : `single_${stat.serviceName}`;
-            const familyName = family ? family.nameAr : stat.serviceName;
+            const familyName = getFamilyAnalyticsName(family, stat.serviceName);
             const familyColor = family ? (family.color || 'emerald') : 'slate';
 
             if (!map.has(familyKey)) {

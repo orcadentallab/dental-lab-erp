@@ -33,6 +33,26 @@ export interface ServiceFamily {
     createdAt?: string;
 }
 
+/**
+ * Family label for ANALYTICS surfaces only.
+ *
+ * Reports are read in English; the catalogue is maintained in Arabic. So the
+ * reporting screens resolve the name through here, while order entry, the
+ * route editor and the services page keep showing nameAr directly.
+ *
+ * nameEn is optional, so the Arabic name is the fallback — an empty label in
+ * a report reads as a broken query rather than as an unfilled field. Mirrors
+ * the COALESCE chain in get_top_families_privileged_20260826 exactly, so the
+ * card and the tables never disagree about what a family is called.
+ */
+export function getFamilyAnalyticsName(
+    family: ServiceFamily | undefined | null,
+    fallback: string
+): string {
+    if (!family) return fallback;
+    return family.nameEn?.trim() || family.nameAr || fallback;
+}
+
 export type CreateServiceFamilyPayload = {
     nameAr: string;
     nameEn?: string;
@@ -145,6 +165,7 @@ export interface Supplier {
     username: string; // for login
     phone: string;
     isActive?: boolean;
+    supplierType?: 'external_lab' | 'material_vendor' | 'courier';
     customPrices?: Record<string, number>; // serviceName -> costPrice
     millingPrices?: Record<string, number>; // serviceName -> millingOnlyPrice
     redoCostPercentage?: number; // 0 to 100 (Percentage of cost covered by us during redo)

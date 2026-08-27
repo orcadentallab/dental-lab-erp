@@ -623,7 +623,7 @@ export default function ServicesPage() {
                             </div>
 
                             <div>
-                                <label className="block text-xs font-bold text-slate-700 mb-1">اسم العائلة (بالإنجليزية - اختياري)</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">اسم العائلة (بالإنجليزية)</label>
                                 <input
                                     type="text"
                                     placeholder="مثال: Zirconia"
@@ -631,6 +631,11 @@ export default function ServicesPage() {
                                     onChange={(e) => setFamilyForm(f => ({ ...f, nameEn: e.target.value }))}
                                     className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
                                 />
+                                {/* The field stays optional at the schema level, but leaving it
+                                    empty silently downgrades every report to the Arabic name. */}
+                                <p className="mt-1 text-[10px] text-slate-500">
+                                    ده الاسم اللي هيظهر في كل التقارير والتحاليل. لو سبته فاضي هيظهر الاسم العربي.
+                                </p>
                             </div>
 
                             <div>

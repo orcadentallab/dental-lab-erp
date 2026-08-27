@@ -2,9 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import {
     Play, PenTool, ArrowRight, Package, PackageCheck, Truck,
     CheckCircle, RotateCcw, XCircle, Ban, MoreHorizontal, RefreshCw,
-    AlertTriangle, ChevronDown, Factory, Wrench
+    AlertTriangle, ChevronDown, Wrench
 } from 'lucide-react';
-import { startProduction } from '../../services/supabase/production';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Input } from '../ui/Input';
 import IssueCauseFields from './IssueCauseFields';
@@ -103,27 +102,6 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const [causeCategory, setCauseCategory] = useState('');
     const [responsibleStage, setResponsibleStage] = useState('');
     const issueMenuRef = useRef<HTMLDivElement>(null);
-    const [startingProduction, setStartingProduction] = useState(false);
-
-    /**
-     * Builds the stage chain for this case. Reports what happened rather than
-     * failing silently: a button that appears to do nothing is worse than one
-     * that says it already did.
-     */
-    const handleStartProduction = async () => {
-        setStartingProduction(true);
-        try {
-            const result = await startProduction(order.id);
-            window.alert(result.alreadyStarted
-                ? 'الحالة دي داخلة الإنتاج بالفعل.'
-                : `اتعمل ${result.jobCount ?? 1} أمر شغل. شوف لوحة الإنتاج.`);
-        } catch (e) {
-            console.error('[WorkflowActionBar] start production failed', e);
-            window.alert(e instanceof Error ? e.message : 'تعذّر بدء الإنتاج');
-        } finally {
-            setStartingProduction(false);
-        }
-    };
 
     const productionStatus = getEffectiveProductionStatus(order);
     const issueState = getEffectiveIssueState(order);
@@ -292,23 +270,14 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     {currentStatusLabel}
                 </span>
 
-                {/* Entry into the stage pipeline. Deliberately a separate,
-                    manual action rather than a side effect of a status change:
-                    while the cutover flag is off these two systems run in
-                    parallel, and cases should join the new one by decision.
-                    Idempotent, so a second press is harmless. */}
-                {(userRole === 'admin' || userRole === 'lab') && (
-                    <button
-                        type="button"
-                        disabled={disabled || startingProduction}
-                        onClick={() => void handleStartProduction()}
-                        title="ينشئ سلسلة مراحل الإنتاج للحالة — شغلانة لكل خريطة خدمة"
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold border border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 shrink-0"
-                    >
-                        <Factory size={12} />
-                        {startingProduction ? '…' : 'ابدأ الإنتاج'}
-                    </button>
-                )}
+                {/* The "ابدأ الإنتاج" button used to live here. It is gone
+                    because the chain now builds itself: 20260827000000 puts a
+                    trigger on the order that starts the case and keeps its
+                    stages level with production_status. Leaving the button
+                    would be a second way to do what already happened -- and on
+                    a case older than the measurement cutoff it would build a
+                    chain stamped with today's clock, which reads as a case that
+                    took no time at all. */}
 
                 {(forwardActions.length > 0 || hasIssueOptions) && (
                     <span className="text-surface-300 text-xs select-none">←</span>

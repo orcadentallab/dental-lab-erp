@@ -35,7 +35,15 @@ export default function ExternalWorkOrders() {
             ]);
             setOpen(wos);
             // External stages sitting ready: they have not been handed over yet.
-            setPending(runs.filter((r) => r.execution === 'external' && r.status === 'ready'));
+            //
+            // A step whose driver is the ORDER STATUS never appears here, even
+            // though it is external. Today's whole-case outsourcing is recorded
+            // by the rep moving the order, and offering a second Send/Receive
+            // for the same run would be two places advancing one stage -- the
+            // one thing the driver field exists to prevent.
+            setPending(runs.filter((r) => r.execution === 'external'
+                && r.status === 'ready'
+                && r.drivenBy !== 'order_status'));
         } catch (e) {
             console.error('[ExternalWorkOrders] load failed', e);
             toastError('تعذّر التحميل');

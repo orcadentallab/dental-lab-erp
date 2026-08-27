@@ -39,13 +39,19 @@ INSERT INTO public.doctors (id, name, phone, address, doctor_code, representativ
 VALUES ('a2000000-0000-0000-0000-000000000001', 'Transitions doctor',
         '01000000000', 'Test address', 'DBTRANS', 'Test representative');
 
+-- Predates the auto-measurement cutoff on purpose. 20260827000000 builds a
+-- chain for every NEW order, which is what the lab needs and what this file
+-- does not: these tests are about the explicit materialisation API, so the
+-- fixture opts out by being older than production_autostart_since and stays in
+-- control of when its job is created.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, cost, production_status, issue_state, delivery_type
+    delivery_date, cost, production_status, issue_state, delivery_type, created_at
 ) VALUES (
     'a5000000-0000-0000-0000-000000000001', 'TRANS-1',
     'a2000000-0000-0000-0000-000000000001', 'Transitions patient', '[]',
-    2000, 'A2', 'New Case', CURRENT_DATE + 7, 800, 'not_started', 'none', 'Final');
+    2000, 'A2', 'New Case', CURRENT_DATE + 7, 800, 'not_started', 'none', 'Final',
+    NOW() - INTERVAL '365 days');
 
 INSERT INTO public.order_items (order_id, product_type, teeth_numbers, shade, price, count)
 VALUES ('a5000000-0000-0000-0000-000000000001', 'Zirconia Crown',

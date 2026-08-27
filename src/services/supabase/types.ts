@@ -153,6 +153,7 @@ export interface DbSupplier {
     username?: string | null;
     phone: string;
     is_active?: boolean | null;
+    supplier_type?: 'external_lab' | 'material_vendor' | 'courier' | null;
     custom_prices?: Record<string, number> | null; // JSONB
     milling_prices?: Record<string, number> | null; // JSONB
     redo_cost_percentage?: number | null;

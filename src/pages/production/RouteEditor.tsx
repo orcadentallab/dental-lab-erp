@@ -59,12 +59,37 @@ const ROLE_LABELS: Record<string, string> = {
 
 const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 
-/** Which screen advances the step. Shown, not chosen: it is a stage property. */
+/**
+ * What advances the step. Exactly one thing may, or the same work gets counted
+ * twice (plan rule 4).
+ *
+ * `order_status` is the one that needs explaining: the outside lab does not use
+ * our system, so nobody here can press "started" or "finished" on its behalf.
+ * What we do have is the rep moving the order's own status, which already says
+ * where the case is. The step follows that instead of asking for a second entry.
+ */
 const DRIVEN_BY_LABELS: Record<DrivenBy, string> = {
     my_tasks: 'من «مهامي»',
     designer_dashboard: 'من صفحة المصمم',
     external_wo: 'من شاشة الشغل الخارجي',
+    order_status: 'من حالة الأوردر نفسها',
 };
+
+/** The step's own answer, or the catalogue's when it has none. */
+const DRIVEN_BY_CHOICES: { value: string; label: string }[] = [
+    { value: '', label: 'زي ما القاموس بيقول' },
+    { value: 'order_status', label: DRIVEN_BY_LABELS.order_status },
+    { value: 'my_tasks', label: DRIVEN_BY_LABELS.my_tasks },
+    { value: 'designer_dashboard', label: DRIVEN_BY_LABELS.designer_dashboard },
+    { value: 'external_wo', label: DRIVEN_BY_LABELS.external_wo },
+];
+
+function asDrivenBy(value: string): DrivenBy | null {
+    return value === 'my_tasks' || value === 'designer_dashboard'
+        || value === 'external_wo' || value === 'order_status'
+        ? value
+        : null;
+}
 
 /**
  * The branches routes actually take. Free-form JSON would be a second way to
@@ -220,6 +245,7 @@ export default function RouteEditor() {
             nameOverride: null,
             variantLabel: null,
             allowedRoles: [],
+            drivenBy: null,
             condition: null,
             executionOverride: null,
             supplierOverride: null,
@@ -434,11 +460,11 @@ export default function RouteEditor() {
                             const open = openStep === step.key;
                             const execution = step.executionOverride
                                 ?? stage?.defaultExecution ?? 'internal';
-                            // An external step is worked on the vendor screen
-                            // whatever the catalogue says about the stage.
-                            const drivenBy: DrivenBy = execution === 'external'
-                                ? 'external_wo'
-                                : stage?.drivenBy ?? 'my_tasks';
+                            // The step's own answer wins; the catalogue is the
+                            // default, not the rule. Same stage, different
+                            // routes, different drivers.
+                            const drivenBy: DrivenBy =
+                                step.drivenBy ?? stage?.drivenBy ?? 'my_tasks';
 
                             return (
                                 <li key={step.key} className="rounded-xl border border-slate-200 overflow-hidden">
@@ -631,6 +657,27 @@ export default function RouteEditor() {
                                                         )}
                                                     </div>
                                                 </div>
+
+                                                <label className="block">
+                                                    <span className="text-slate-500 block mb-1">
+                                                        الخطوة دي بتتحرّك منين
+                                                    </span>
+                                                    <select
+                                                        value={step.drivenBy ?? ''}
+                                                        onChange={(e) => patchStep(step.key, {
+                                                            drivenBy: asDrivenBy(e.target.value),
+                                                        })}
+                                                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                                                    >
+                                                        {DRIVEN_BY_CHOICES.map((c) => (
+                                                            <option key={c.value} value={c.value}>{c.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <span className="text-slate-400 block mt-1">
+                                                        حاجة واحدة بس تحرّك الخطوة — عشان الشغل
+                                                        متتحسبش مرتين.
+                                                    </span>
+                                                </label>
 
                                                 <label className="block">
                                                     <span className="text-slate-500 block mb-1">

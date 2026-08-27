@@ -70,6 +70,16 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             badge: 'myOpenTasks', aliases: ['شغلي', 'الطابور', 'queue', 'tasks'],
         },
         {
+            id: 'production.inventory', labelAr: 'المخزن والخامات', labelEn: 'Inventory & Materials',
+            path: '/inventory', capability: 'view_inventory',
+            aliases: ['الخامات', 'المخزن', 'الديسكات', 'inventory', 'materials', 'stock'],
+        },
+        {
+            id: 'production.shipments', labelAr: 'الشحن والتسليم', labelEn: 'Shipments',
+            path: '/production/shipments', capability: 'view_shipments',
+            aliases: ['الشحن', 'التسليم', 'الطرود', 'shipments', 'delivery', 'couriers'],
+        },
+        {
             id: 'production.external', labelAr: 'الشغل الخارجي', labelEn: 'External Work',
             path: '/production/external', capability: 'view_external_work',
             aliases: ['معمل خارجي', 'outsourced', 'external lab'],
@@ -182,6 +192,11 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
                 aliases: ['ربحية', 'شرائح العملاء', 'profit', 'margin', 'segmentation'],
             },
             {
+                id: 'report.costing', labelAr: 'التكلفة الفعلية والإنتاجية', labelEn: 'Production Costing',
+                path: '/reports/production-costing', capability: 'view_reports',
+                aliases: ['تكلفة الكراون', 'الأوفرهيد', 'تكلفة الجودة', 'costing', 'overhead', 'cogs'],
+            },
+            {
                 id: 'report.cashflow', labelAr: 'التدفق النقدي', labelEn: 'Cash Flow',
                 path: '/reports/cashflow', capability: 'view_reports',
                 aliases: ['السيولة', 'الكاش', 'cashflow', 'liquidity'],
@@ -260,6 +275,18 @@ export const SIDEBAR: SidebarEntry[] = [
         path: '/accounts', capability: 'view_accounts', section: 'operations',
         fallbackFor: 'finance',
         aliases: ['حسابي', 'كشوف', 'statement', 'ledger'],
+    },
+    {
+        id: 'inventory', labelAr: 'المخزن والخامات', labelEn: 'Inventory',
+        path: '/inventory', capability: 'view_inventory', section: 'operations',
+        fallbackFor: 'production',
+        aliases: ['المخزن', 'الخامات', 'inventory', 'stock'],
+    },
+    {
+        id: 'shipments', labelAr: 'الشحن والتسليم', labelEn: 'Shipments',
+        path: '/production/shipments', capability: 'view_shipments', section: 'operations',
+        fallbackFor: 'production',
+        aliases: ['الشحن', 'التسليم', 'الطرود', 'shipments'],
     },
     {
         id: 'externalWork', labelAr: 'الشغل الخارجي', labelEn: 'External Work',

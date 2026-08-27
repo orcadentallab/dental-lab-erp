@@ -148,6 +148,7 @@ export const SupplierSchema = z.object({
     username: z.string().min(3, 'اسم المستخدم يجب أن يكون من 3 أحرف على الأقل').max(50).optional().nullable(),
     phone: z.string().min(8, 'رقم الهاتف يجب أن يكون من 8 أرقام على الأقل').max(20, 'رقم الهاتف طويل جداً'),
     isActive: z.boolean().optional(),
+    supplierType: z.enum(['external_lab', 'material_vendor', 'courier']).optional().nullable(),
     customPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     millingPrices: z.record(z.string(), z.number().min(0)).optional().nullable(),
     redoCostPercentage: z.number().min(0, 'النسبة لا يمكن أن تكون أقل من صفر').max(100, 'النسبة لا يمكن أن تتجاوز 100').optional().nullable()
@@ -172,7 +173,6 @@ export const ServiceCreateSchema = ServiceSchema;
 export const ServiceUpdateSchema = ServiceSchema.partial().extend({
     id: z.string().uuid()
 });
-
 
 // Helper function to format validation errors
 export function formatValidationError(error: z.ZodError | any): string {

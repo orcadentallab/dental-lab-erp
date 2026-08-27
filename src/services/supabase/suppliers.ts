@@ -12,6 +12,7 @@ function dbToSupplier(dbSupplier: DbSupplier): Supplier {
         username: dbSupplier.username || '',
         phone: dbSupplier.phone,
         isActive: dbSupplier.is_active ?? true,
+        supplierType: dbSupplier.supplier_type || 'external_lab',
         customPrices: dbSupplier.custom_prices || undefined,
         millingPrices: dbSupplier.milling_prices || undefined,
         redoCostPercentage: dbSupplier.redo_cost_percentage || undefined
@@ -25,6 +26,7 @@ function supplierToDb(supplier: Omit<Supplier, 'id'>): DbSupplierInsert {
         username: supplier.username,
         phone: supplier.phone,
         is_active: supplier.isActive ?? true,
+        supplier_type: supplier.supplierType || 'external_lab',
         custom_prices: supplier.customPrices || null,
         milling_prices: supplier.millingPrices || null,
         redo_cost_percentage: supplier.redoCostPercentage || null
@@ -71,6 +73,7 @@ export async function updateSupplier(id: string, updates: Partial<Supplier>): Pr
     if (updates.username !== undefined) dbUpdates.username = updates.username;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
     if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+    if (updates.supplierType !== undefined) dbUpdates.supplier_type = updates.supplierType;
     if (updates.customPrices !== undefined) dbUpdates.custom_prices = updates.customPrices;
     if (updates.millingPrices !== undefined) dbUpdates.milling_prices = updates.millingPrices;
     if (updates.redoCostPercentage !== undefined) dbUpdates.redo_cost_percentage = updates.redoCostPercentage;

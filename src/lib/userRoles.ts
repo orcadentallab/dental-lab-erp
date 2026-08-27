@@ -74,6 +74,10 @@ export type Capability =
     | 'manage_services'
     | 'manage_users'
     | 'view_settings'
+    | 'view_inventory'
+    | 'manage_inventory'
+    | 'view_shipments'
+    | 'manage_shipments'
     | 'doctor_portal'
     | 'self_profile_only';
 
@@ -115,7 +119,15 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     // App.tsx already draw that line, so the capabilities must too.
     if (isAdmin || isFloor) caps.add('view_production');
     if (isAdmin || isFloor || isDesigner) caps.add('view_my_tasks');
-    if (isAdmin || isFloor || role === 'accountant') caps.add('view_external_work');
+    if (isAdmin || isFloor || role === 'accountant') {
+        caps.add('view_external_work');
+        caps.add('view_inventory');
+        caps.add('view_shipments');
+        caps.add('manage_shipments');
+    }
+    if (isAdmin || role === 'accountant') {
+        caps.add('manage_inventory');
+    }
     if (isAdmin || role === 'representative') caps.add('view_doctors');
     // The directory is the rep's working tool; retention is not. It reads
     // the whole client base's activity and the follow-up log -- who went

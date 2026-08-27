@@ -15,7 +15,7 @@ import DoctorSegmentationTab from '../components/reports/DoctorSegmentationTab';
 import { useReportDateRange } from '../hooks/useReportDateRange';
 import ReportDateRangeFilter from '../components/reports/ReportDateRangeFilter';
 
-import { db, type Service, type ServiceFamily } from '../services/db';
+import { db, getFamilyAnalyticsName, type Service, type ServiceFamily } from '../services/db';
 import { Sparkles } from 'lucide-react';
 
 type TabType = 'profitability' | 'segmentation';
@@ -147,7 +147,7 @@ export default function DoctorServiceProfitabilityPage() {
                 const svc = catalogServices.find(s => s.name === row.service_name);
                 const fam = catalogFamilies.find(f => f.id === svc?.familyId);
                 key = fam ? fam.id : `single_${row.service_name}`;
-                label = fam ? fam.nameAr : row.service_name;
+                label = getFamilyAnalyticsName(fam, row.service_name);
             }
 
             if (!buckets.has(key)) buckets.set(key, { label, rows: [] });

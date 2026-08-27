@@ -41,13 +41,19 @@ VALUES ('e2000000-0000-0000-0000-000000000001', 'Jobs test doctor',
 INSERT INTO public.suppliers (id, name, phone)
 VALUES ('e4000000-0000-0000-0000-000000000001', 'Jobs test milling house', '01000000001');
 
+-- Predates the auto-measurement cutoff on purpose. 20260827000000 builds a
+-- chain for every NEW order, which is what the lab needs and what this file
+-- does not: these tests are about the explicit materialisation API, so the
+-- fixture opts out by being older than production_autostart_since and stays in
+-- control of when its job is created.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, cost, production_status, issue_state, priority
+    delivery_date, cost, production_status, issue_state, priority, created_at
 ) VALUES (
     'e3000000-0000-0000-0000-000000000001', 'JOBS-1',
     'e2000000-0000-0000-0000-000000000001', 'Jobs patient', '[]',
-    3000, 'A2', 'New Case', DATE '2026-06-10', 900, 'not_started', 'none', 'Normal');
+    3000, 'A2', 'New Case', DATE '2026-06-10', 900, 'not_started', 'none', 'Normal',
+    NOW() - INTERVAL '365 days');
 
 INSERT INTO public.order_items (id, order_id, product_type, teeth_numbers, shade, price, count)
 VALUES ('e5000000-0000-0000-0000-000000000001', 'e3000000-0000-0000-0000-000000000001',

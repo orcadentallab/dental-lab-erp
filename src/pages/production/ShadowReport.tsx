@@ -16,7 +16,41 @@ import {
     getShadowReport, getShadowSummary,
     type ShadowRow, type ShadowSummary,
 } from '../../services/supabase/production';
-import { RefreshCw, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { RefreshCw, ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react';
+
+interface SystemWarning {
+    source: string;
+    ref_id: string | null;
+    message: string;
+    occurred_at: string;
+}
+
+/**
+ * The reconciler and the material attribution both swallow their exceptions so
+ * a bug in either cannot stop somebody saving an order or finishing a case.
+ * That is correct -- but it leaves the failure with no trace a person will ever
+ * look at. Every swallowed failure now lands in system_warnings, and this is
+ * where they surface: a case that failed to sync shows up here instead of only
+ * as an unexplained gap in the comparison below.
+ */
+function parseWarnings(value: unknown): SystemWarning[] {
+    if (typeof value !== 'object' || value === null) return [];
+    const envelope: Record<string, unknown> = { ...value };
+    const list = envelope.warnings;
+    if (!Array.isArray(list)) return [];
+    return list.flatMap((raw: unknown) => {
+        if (typeof raw !== 'object' || raw === null) return [];
+        const r: Record<string, unknown> = { ...raw };
+        if (typeof r.source !== 'string' || typeof r.message !== 'string') return [];
+        return [{
+            source: r.source,
+            ref_id: typeof r.ref_id === 'string' ? r.ref_id : null,
+            message: r.message,
+            occurred_at: typeof r.occurred_at === 'string' ? r.occurred_at : '',
+        }];
+    });
+}
 
 const STATUS_LABELS: Record<string, string> = {
     not_started: 'لم يبدأ',
@@ -35,13 +69,19 @@ export default function ShadowReport() {
     const { error: toastError } = useToast();
     const [rows, setRows] = useState<ShadowRow[]>([]);
     const [summary, setSummary] = useState<ShadowSummary | null>(null);
+    const [warnings, setWarnings] = useState<SystemWarning[]>([]);
     const [loading, setLoading] = useState(true);
 
     const load = useCallback(async () => {
         try {
-            const [r, s] = await Promise.all([getShadowReport(), getShadowSummary()]);
+            const [r, s, w] = await Promise.all([
+                getShadowReport(),
+                getShadowSummary(),
+                supabase.rpc('get_open_system_warnings', { p_limit: 50 }),
+            ]);
             setRows(r);
             setSummary(s);
+            setWarnings(w.error ? [] : parseWarnings(w.data));
         } catch (e) {
             console.error('[ShadowReport] load failed', e);
             toastError('تعذّر تحميل تقرير الظل');
@@ -73,6 +113,34 @@ export default function ShadowReport() {
                     <RefreshCw className="w-5 h-5" />
                 </button>
             </div>
+
+            {/* Swallowed background failures. A row here means a measurement did
+                not happen -- not that anything a user did failed. Rendered above
+                the agreement figure on purpose: the comparison below is only
+                trustworthy if nothing failed to be measured in the first place. */}
+            {warnings.length > 0 && (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                        <h2 className="font-bold text-amber-900 text-sm">
+                            {warnings.length} عملية قياس فشلت في الخلفية
+                        </h2>
+                    </div>
+                    <p className="text-xs text-amber-800">
+                        دي حاجات اتبلعت عمداً عشان متوقّفش حفظ الأوردرات — بس معناها إن الأرقام
+                        اللي تحت ناقصة الحالات دي.
+                    </p>
+                    <ul className="space-y-1 max-h-56 overflow-y-auto">
+                        {warnings.map((w, i) => (
+                            <li key={i} className="text-xs bg-white/70 rounded-lg px-3 py-2">
+                                <span className="font-mono font-semibold text-amber-900">{w.source}</span>
+                                <span className="text-slate-500"> · {w.occurred_at.slice(0, 16).replace('T', ' ')}</span>
+                                <div className="text-slate-700 mt-0.5">{w.message}</div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             {/* The switch state, stated plainly. */}
             <div className={`rounded-2xl border p-4 flex items-center gap-3 ${

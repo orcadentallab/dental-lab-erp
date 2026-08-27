@@ -1,6 +1,17 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { db, type Order, type User, type Doctor } from '../services/db';
-import { Search, BarChart3, ArrowRight } from 'lucide-react';
+import {
+  Search,
+  BarChart3,
+  ArrowRight,
+  Clock,
+  AlertTriangle,
+  Zap,
+  Truck,
+  Activity,
+  Calculator,
+  RefreshCw
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
 import { useToast } from '../context/ToastContext';
@@ -8,6 +19,14 @@ import { ensureAbsoluteUrl } from '../lib/urlUtils';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
+import {
+  capacityService,
+  type ProductionCapacityReport,
+  type SupplierLeadTimeReport,
+  type TeamProductivityReport,
+  type DeliveryEstimate
+} from '../services/supabase/capacityService';
+import { supabase } from '../lib/supabase';
 
 export default function DesignerStats() {
     const { user } = useAuth();
@@ -17,14 +36,27 @@ export default function DesignerStats() {
     const [isLoading, setIsLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
     const [designerOrders, setDesignerOrders] = useState<Order[]>([]);
-    const [activeTeamTab, setActiveTeamTab] = useState<'design' | 'production'>('design');
+    const [activeTeamTab, setActiveTeamTab] = useState<'design' | 'production' | 'suppliers' | 'estimator'>('design');
     const [users, setUsers] = useState<User[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // Filter states for designer tab
     const [designerStatsSearch, setDesignerStatsSearch] = useState('');
     const [designerStatsTimeFilter, setDesignerStatsTimeFilter] = useState<'all' | 'week' | 'month'>('all');
     const [designerStatsStatusFilter, setDesignerStatsStatusFilter] = useState<'all' | 'pending' | 'submitted' | 'tryin' | 'delivered'>('all');
+
+    // Phase 6 Production Capacity States
+    const [capacityReport, setCapacityReport] = useState<ProductionCapacityReport | null>(null);
+    const [supplierReport, setSupplierReport] = useState<SupplierLeadTimeReport | null>(null);
+    const [teamReport, setTeamReport] = useState<TeamProductivityReport | null>(null);
+
+    // Delivery Estimator States ("كام هتاخد؟")
+    const [servicesList, setServicesList] = useState<Array<{ id: string; name: string; selling_price: number }>>([]);
+    const [selectedServiceId, setSelectedServiceId] = useState('');
+    const [estimatorUnits, setEstimatorUnits] = useState(1);
+    const [deliveryEstimate, setDeliveryEstimate] = useState<DeliveryEstimate | null>(null);
+    const [isEstimating, setIsEstimating] = useState(false);
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
         if (!rawUrl) return;
@@ -42,39 +74,70 @@ export default function DesignerStats() {
         document.body.removeChild(link);
     };
 
+    const loadData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            const [ordersData, designerOrdersData, usersData, doctorsData, servicesRes] = await Promise.all([
+                db.getDashboardActiveOrders(),
+                db.getDesignerDashboardOrders(),
+                db.getUsers(),
+                db.getDoctors(),
+                supabase.from('services').select('id, name, selling_price').order('name')
+            ]);
+
+            setOrders(ordersData);
+            setDesignerOrders(designerOrdersData);
+            setUsers(usersData);
+            setDoctors(doctorsData);
+            setServicesList(servicesRes.data || []);
+
+            if (servicesRes.data && servicesRes.data.length > 0 && !selectedServiceId) {
+                setSelectedServiceId(servicesRes.data[0].id);
+            }
+
+            // Load Phase 6 metrics in parallel
+            try {
+                const [cap, sup, team] = await Promise.all([
+                    capacityService.getCapacityAndBottlenecks(),
+                    capacityService.getSupplierLeadTimes(),
+                    capacityService.getTeamProductivity()
+                ]);
+                setCapacityReport(cap);
+                setSupplierReport(sup);
+                setTeamReport(team);
+            } catch (err: unknown) {
+                console.error('Phase 6 capacity metrics load error:', err);
+            }
+        } catch (error) {
+            console.error('Error loading statistics data:', error);
+            toast.error('حدث خطأ أثناء تحميل البيانات');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedServiceId, toast]);
+
     useEffect(() => {
         if (!user) return;
-
-        const loadData = async () => {
-            setIsLoading(true);
-            try {
-                // No per-call `.catch(() => [])` here on purpose: swallowing a
-                // failed fetch renders an empty page that looks like "no data"
-                // instead of "loading failed". Let it reject so the outer catch
-                // surfaces a real error to the user.
-                const [ordersData, designerOrdersData, usersData, doctorsData] = await Promise.all([
-                    db.getDashboardActiveOrders(),
-                    db.getDesignerDashboardOrders(),
-                    db.getUsers(),
-                    db.getDoctors(),
-                ]);
-
-                setOrders(ordersData);
-                setDesignerOrders(designerOrdersData);
-                setUsers(usersData);
-                setDoctors(doctorsData);
-            } catch (error) {
-                console.error('Error loading designer statistics data:', error);
-                toast.error('حدث خطأ أثناء تحميل البيانات');
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         loadData();
-    }, [user, refreshKey, toast]);
+    }, [user, refreshKey, loadData]);
 
-    const today = new Date().toISOString().split('T')[0];
+    // Handle Delivery Estimator Run
+    const handleCalculateEstimate = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!selectedServiceId) return;
+
+        try {
+            setIsEstimating(true);
+            const estimate = await capacityService.estimateDeliveryTime(selectedServiceId, estimatorUnits);
+            setDeliveryEstimate(estimate);
+        } catch (err: unknown) {
+            console.error('Failed to calculate delivery estimate:', err);
+            toast.error('فشل حساب موعد التسليم المتوقع');
+        } finally {
+            setIsEstimating(false);
+        }
+    };
+
     const nowMs = Date.now();
 
     const getOrderUnitsCount = (order: Order) => {
@@ -84,26 +147,6 @@ export default function DesignerStats() {
     const getRowsUnitsCount = (rows: { order: Order }[]) => {
         return rows.reduce((total, row) => total + getOrderUnitsCount(row.order), 0);
     };
-
-    const designerSubmittedOrders = useMemo(
-        () => designerOrders.filter(order => isDesignSubmitted(order)),
-        [designerOrders]
-    );
-
-    const designerPerformanceRows = useMemo(() => {
-        return designerSubmittedOrders
-            .map(order => {
-                const submittedAt = getDesignSubmittedAt(order);
-                const durationMs = getDesignerWorkDurationMs(order, nowMs);
-
-                return {
-                    order,
-                    submittedAt,
-                    durationMs,
-                };
-            })
-            .sort((a, b) => new Date(b.submittedAt || b.order.createdAt).getTime() - new Date(a.submittedAt || a.order.createdAt).getTime());
-    }, [designerSubmittedOrders, nowMs]);
 
     const designerTimelineRows = useMemo(() => {
         return designerOrders
@@ -184,58 +227,34 @@ export default function DesignerStats() {
             });
         }
         return rows;
-    }, [designerTimelineRows, pendingDesignerTimelineRows, submittedDesignerTimelineRows, orders, designerStatsStatusFilter, designerStatsTimeFilter, designerStatsSearch, nowMs, doctors]);
+    }, [
+        designerStatsStatusFilter,
+        pendingDesignerTimelineRows,
+        submittedDesignerTimelineRows,
+        orders,
+        designerTimelineRows,
+        designerStatsTimeFilter,
+        designerStatsSearch,
+        nowMs,
+        doctors,
+    ]);
 
     const filteredDesignerStatsGroups = useMemo(() => {
-        const groups = new Map<string, { designerId: string; designerName: string; rows: typeof designerTimelineRows; }>();
-        filteredDesignerStatsRows.forEach(row => {
+        const groups: Record<string, { designerId: string; designerName: string; rows: typeof filteredDesignerStatsRows }> = {};
+        for (const row of filteredDesignerStatsRows) {
             const designerId = row.order.designerId || 'unassigned';
-            const designerName = users.find(u => u.id === row.order.designerId)?.name || 'غير محدد';
-            if (!groups.has(designerId)) {
-                groups.set(designerId, { designerId, designerName, rows: [] });
+            const designerName = designerId === 'unassigned'
+                ? 'غير مسند لمصمم'
+                : (users.find(u => u.id === designerId)?.name || 'مصمم غير محدد');
+            if (!groups[designerId]) {
+                groups[designerId] = { designerId, designerName, rows: [] };
             }
-            groups.get(designerId)?.rows.push(row);
-        });
-        return Array.from(groups.values());
+            groups[designerId].rows.push(row);
+        }
+        return Object.values(groups).sort((a, b) => b.rows.length - a.rows.length);
     }, [filteredDesignerStatsRows, users]);
 
-    const dailyDesignerCount = useMemo(() => {
-        return designerPerformanceRows.filter(({ submittedAt }) =>
-            submittedAt && submittedAt.startsWith(today)
-        ).length;
-    }, [designerPerformanceRows, today]);
-
-    const weeklyDesignerCount = useMemo(() => {
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        const weekAgoMs = weekAgo.getTime();
-        return designerPerformanceRows.filter(({ submittedAt }) => {
-            if (!submittedAt) return false;
-            return new Date(submittedAt).getTime() >= weekAgoMs;
-        }).length;
-    }, [designerPerformanceRows]);
-
-    const monthlyDesignerCount = useMemo(() => {
-        const monthAgo = new Date();
-        monthAgo.setDate(monthAgo.getDate() - 30);
-        const monthAgoMs = monthAgo.getTime();
-        return designerPerformanceRows.filter(({ submittedAt }) => {
-            if (!submittedAt) return false;
-            return new Date(submittedAt).getTime() >= monthAgoMs;
-        }).length;
-    }, [designerPerformanceRows]);
-
-    const averageDesignerDuration = useMemo(() => {
-        const finishedRows = designerPerformanceRows.filter(row => row.durationMs !== null);
-        if (finishedRows.length === 0) return null;
-
-        const totalDuration = finishedRows.reduce((sum, row) => sum + (row.durationMs || 0), 0);
-        return Math.round(totalDuration / finishedRows.length);
-    }, [designerPerformanceRows]);
-
-    const getDoctorDisplayName = (doctorId?: string) => {
-        if (!doctorId) return '-';
-
+    const getDoctorDisplayName = (doctorId: string) => {
         const doctor = doctors.find(doc => doc.id === doctorId);
         if (!doctor) return '-';
 
@@ -281,13 +300,13 @@ export default function DesignerStats() {
     }
 
     return (
-        <div className="space-y-6 p-6">
+        <div className="space-y-6 p-6" dir="rtl">
             {/* Header */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                 <div className="flex items-center gap-3">
                     <button 
                         onClick={() => navigate('/dashboard')}
-                        className="p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                        className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition"
                         title="العودة للرئيسية"
                     >
                         <ArrowRight size={18} className="rtl:rotate-0 ltr:rotate-180" />
@@ -295,29 +314,40 @@ export default function DesignerStats() {
                     <div>
                         <div className="flex items-center gap-2">
                             <BarChart3 size={22} className="text-teal-600 dark:text-teal-400" />
-                            <h1 className="text-xl font-bold text-gray-900 dark:text-white">إنتاجية الفريق</h1>
+                            <h1 className="text-xl font-bold text-slate-900 dark:text-white">إنتاجية الفريق والطاقة التشغيلية</h1>
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">متابعة زمن تنفيذ التصميم وروابط المراجعة الأخيرة</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            متابعة زمن التصميم، تحليل الاختناقات، أداء الفنيين، أزمنة الموردين، وحاسبة مواعيد التسليم
+                        </p>
                     </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={loadData}
+                        className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition"
+                        title="تحديث"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
 
-            {/* Tabs. The production-stages tab is deliberately an empty state
-                rather than a hidden section: the work is not measurable yet,
-                and saying so is more useful than pretending the question does
-                not exist. */}
-            <div className="flex items-center gap-1.5 bg-white dark:bg-gray-800 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm w-fit">
-                {([
-                    { tab: 'design' as const, label: 'التصميم' },
-                    { tab: 'production' as const, label: 'مراحل الإنتاج' },
-                ]).map(option => (
+            {/* Navigation Tabs */}
+            <div className="flex flex-wrap items-center gap-1.5 bg-white dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
+                {[
+                    { tab: 'design' as const, label: 'فريق التصميم' },
+                    { tab: 'production' as const, label: 'الطاقة والاختناقات (المعمل الداخلي)' },
+                    { tab: 'suppliers' as const, label: 'أزمنة الموردين الخارجيين (p80)' },
+                    { tab: 'estimator' as const, label: 'حاسبة ميعاد التسليم («كام هتاخد؟»)' },
+                ].map(option => (
                     <button
                         key={option.tab}
                         onClick={() => setActiveTeamTab(option.tab)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                             activeTeamTab === option.tab
                                 ? 'bg-teal-600 text-white shadow-sm'
-                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                     >
                         {option.label}
@@ -325,19 +355,312 @@ export default function DesignerStats() {
                 ))}
             </div>
 
-            {activeTeamTab === 'production' && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-8 text-center">
-                    <p className="text-slate-800 dark:text-white font-bold mb-2">التحليل ده لسه مش متاح</p>
-                    <p className="text-slate-600 dark:text-gray-400 text-sm mb-1">
-                        محتاج تسجيل مراحل الإنتاج (دخول وخروج كل مرحلة: فرز، تشطيب، جلاز، مراجعة جودة).
-                        الشغل حالياً بيروح لمعامل خارجية، فمفيش مراحل داخلية تتقاس ومفيش موظف مربوط بيها.
-                    </p>
-                    <p className="text-slate-400 dark:text-gray-500 text-xs">
-                        هيتفعّل مع تشغيل المعمل الفعلي — خطة سيستم منفصلة، مش جزء من التقارير.
-                    </p>
+            {/* Tab 2: Production Capacity & Bottlenecks */}
+            {activeTeamTab === 'production' && capacityReport && (
+                <div className="space-y-6">
+                    {/* Top Bottleneck Banner */}
+                    <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-200 dark:border-amber-900/50 p-5 rounded-2xl flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl">
+                                <AlertTriangle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">أكبر مرحلة تسبب اختناقاً في المعمل:</span>
+                                <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+                                    {capacityReport.top_bottleneck_stage}
+                                </h2>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    إجمالي الحالات الجارية في مراحل الإنتاج (WIP): <span className="font-bold font-mono text-slate-900 dark:text-white">{capacityReport.total_active_wip} وحدة</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Stages Capacity Table */}
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-4">
+                        <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Activity className="w-5 h-5 text-teal-600" />
+                            <span>مؤشرات أداء المراحل وزمن الدورة (بوقت العمل الفعلي المحسوب)</span>
+                        </h3>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-right">
+                                <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400">
+                                    <tr>
+                                        <th className="p-3">المرحلة</th>
+                                        <th className="p-3">الحالات بالانتظار (WIP)</th>
+                                        <th className="p-3">متوسط وقت الانتظار</th>
+                                        <th className="p-3">متوسط وقت الشغل الفعلي</th>
+                                        <th className="p-3">إجمالي وقت المرحلة</th>
+                                        <th className="p-3">نسبة النجاح من أول مرة</th>
+                                        <th className="p-3">أعطال الأجهزة</th>
+                                        <th className="p-3">مؤشر الاختناق</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                    {capacityReport.stages.map(st => (
+                                        <tr key={st.stage_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                            <td className="p-3 font-semibold text-slate-900 dark:text-white">{st.stage_name}</td>
+                                            <td className="p-3 font-mono">
+                                                <span className={`px-2 py-0.5 rounded-md font-bold ${st.active_wip_units > 10 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200'}`}>
+                                                    {st.active_wip_units} وحدة
+                                                </span>
+                                            </td>
+                                            <td className="p-3 font-mono">{st.avg_wait_minutes} دقيقة</td>
+                                            <td className="p-3 font-mono text-teal-600 font-semibold">{st.avg_touch_minutes} دقيقة</td>
+                                            <td className="p-3 font-mono font-bold">{st.avg_stage_minutes} دقيقة</td>
+                                            <td className="p-3 font-mono text-emerald-600 font-bold">{st.first_pass_rate_pct}%</td>
+                                            <td className="p-3 font-mono text-rose-500">{st.machine_downtime_hours} ساعة</td>
+                                            <td className="p-3 font-mono font-bold text-slate-700 dark:text-slate-300">{st.bottleneck_score}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Team Throughput Table */}
+                    {teamReport && teamReport.team_productivity.length > 0 && (
+                        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-4">
+                            <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <Zap className="w-5 h-5 text-teal-600" />
+                                <span>إنتاجية الفنيين في المراحل الداخلية</span>
+                            </h3>
+
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs text-right">
+                                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400">
+                                        <tr>
+                                            <th className="p-3">الفني</th>
+                                            <th className="p-3">المراحل التي يعمل بها</th>
+                                            <th className="p-3">الوحدات المنجزة</th>
+                                            <th className="p-3">الوحدات الراسبة</th>
+                                            <th className="p-3">ساعات الشغل الفعلي</th>
+                                            <th className="p-3">الإنتاجية بالساعة</th>
+                                            <th className="p-3">نسبة الأخطاء</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        {teamReport.team_productivity.map(tech => (
+                                            <tr key={tech.user_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                                <td className="p-3 font-semibold text-slate-900 dark:text-white">{tech.user_name}</td>
+                                                <td className="p-3 text-slate-500">{(tech.stages_operated || []).join('، ') || '—'}</td>
+                                                <td className="p-3 font-mono font-bold text-emerald-600">{tech.total_units_passed}</td>
+                                                <td className="p-3 font-mono text-rose-500">{tech.total_units_failed}</td>
+                                                <td className="p-3 font-mono">{tech.total_touch_hours} ساعة</td>
+                                                <td className="p-3 font-mono font-bold text-teal-600">{tech.units_per_hour} وحدة/ساعة</td>
+                                                <td className="p-3 font-mono">{tech.error_rate_pct}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
+            {/* Tab 3: Supplier Lead Times */}
+            {activeTeamTab === 'suppliers' && supplierReport && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden p-6 space-y-4">
+                    <div>
+                        <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <Truck className="w-5 h-5 text-teal-600" />
+                            <span>تحليل أزمنة استلام المعامل والموردين الخارجيين</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                            يُقاس بالوقت المنقضي الفعلي (أيام تقويم شاملة الإجازات) مع تحديد العينات الموثوقة ومعدل الالتزام
+                        </p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-right">
+                            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400">
+                                <tr>
+                                    <th className="p-3">المعمل / المورد</th>
+                                    <th className="p-3">عدد الحالات المقيسة</th>
+                                    <th className="p-3">الوسيط (p50)</th>
+                                    <th className="p-3">المعيار الإحصائي (p80)</th>
+                                    <th className="p-3">المتوسط العام</th>
+                                    <th className="p-3">نسبة الالتزام بالميعاد</th>
+                                    <th className="p-3">حالة العينة</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {supplierReport.suppliers.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="p-6 text-center text-slate-400">لا توجد بيانات شغل خارجي مكتملة</td>
+                                    </tr>
+                                ) : (
+                                    supplierReport.suppliers.map(sup => (
+                                        <tr key={sup.supplier_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                            <td className="p-3 font-semibold text-slate-900 dark:text-white">{sup.supplier_name}</td>
+                                            <td className="p-3 font-mono">{sup.total_sample_count} حالة</td>
+                                            <td className="p-3 font-mono font-semibold">{sup.p50_lead_days} يوم</td>
+                                            <td className="p-3 font-mono font-bold text-teal-600">{sup.p80_lead_days} يوم</td>
+                                            <td className="p-3 font-mono">{sup.avg_lead_days} يوم</td>
+                                            <td className="p-3 font-mono font-bold text-emerald-600">{sup.on_time_rate_pct}%</td>
+                                            <td className="p-3">
+                                                {sup.is_low_sample ? (
+                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded text-[11px]">
+                                                        ⚠️ عينة قليلة (&lt;20)
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 rounded text-[11px]">
+                                                        ✅ عينة موثوقة
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Tab 4: Delivery Estimator ("كام هتاخد؟") */}
+            {activeTeamTab === 'estimator' && (
+                <div className="space-y-6">
+                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-xl">
+                                <Calculator className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900 dark:text-white">حاسبة زمن التسليم المسبق («كام هتاخد؟»)</h3>
+                                <p className="text-xs text-slate-500">
+                                    توقع دقيق لتاريخ ووقت التسليم المحسوب بناءً على معيار p80 لخطوات الخريطة ومواعيد تقويم العمل
+                                </p>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleCalculateEstimate} className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">الخدمة المطلوبة</label>
+                                <select
+                                    value={selectedServiceId}
+                                    onChange={e => setSelectedServiceId(e.target.value)}
+                                    className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl"
+                                    required
+                                >
+                                    {servicesList.map(s => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">عدد الوحدات (Units)</label>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={estimatorUnits}
+                                    onChange={e => setEstimatorUnits(parseInt(e.target.value, 10) || 1)}
+                                    className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono"
+                                    required
+                                />
+                            </div>
+
+                            <div className="flex items-end">
+                                <button
+                                    type="submit"
+                                    disabled={isEstimating}
+                                    className="w-full py-2.5 px-4 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs transition shadow-sm flex items-center justify-center gap-2"
+                                >
+                                    <Clock className="w-4 h-4" />
+                                    <span>{isEstimating ? 'جاري الحساب...' : 'احسب موعد التسليم'}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    {deliveryEstimate && (
+                        <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+                            {/* Prediction Headline Cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="p-4 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900 rounded-xl">
+                                    <div className="text-xs text-teal-700 dark:text-teal-400 font-semibold">تاريخ التسليم المتوقع</div>
+                                    <div className="text-2xl font-bold text-teal-900 dark:text-teal-100 font-mono mt-1">
+                                        {deliveryEstimate.estimated_delivery_date ?? '—'}
+                                    </div>
+                                    {/* A null date means no work calendar is configured, so the
+                                        projection is not measurable. Showing today's date instead
+                                        would be a promise nobody computed. */}
+                                    <div className="text-xs text-teal-600 mt-1">
+                                        {deliveryEstimate.estimated_delivery_date === null
+                                            ? 'مفيش تقويم عمل متظبط — الموعد مش محسوب'
+                                            : `بعد حوالي ${deliveryEstimate.estimated_calendar_days} يوم`}
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                    <div className="text-xs text-slate-500">ساعات العمل المطلوبة</div>
+                                    <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono mt-1">
+                                        {deliveryEstimate.total_working_hours} <span className="text-sm font-normal">ساعة</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-1">
+                                        ({deliveryEstimate.total_working_minutes} دقيقة عمل)
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
+                                    <div className="text-xs text-slate-500">مستوى الثقة الإحصائية</div>
+                                    <div className="text-lg font-bold text-slate-900 dark:text-white mt-1">
+                                        {deliveryEstimate.confidence_level === 'high' ? (
+                                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 rounded-lg text-xs">
+                                                ✅ دقة عالية (عيّنة {deliveryEstimate.sample_size} حالة)
+                                            </span>
+                                        ) : deliveryEstimate.confidence_level === 'moderate' ? (
+                                            <span className="px-2.5 py-1 bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 rounded-lg text-xs">
+                                                ⚡ دقة متوسطة ({deliveryEstimate.sample_size} حالة)
+                                            </span>
+                                        ) : (
+                                            <span className="px-2.5 py-1 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded-lg text-xs">
+                                                ⚠️ تقدير افتراضي
+                                                {deliveryEstimate.stages_without_history > 0
+                                                    ? ` — ${deliveryEstimate.stages_without_history} مرحلة من غير تاريخ`
+                                                    : ` — أقل مرحلة عندها ${deliveryEstimate.sample_size} حالة`}
+                                            </span>
+                                        )}
+                                    </div>
+                                    {/* The sample size is the weakest stage on the route, not the
+                                        total across stages -- said out loud so nobody reads it as
+                                        "we measured this many whole cases". */}
+                                    <div className="text-[11px] text-slate-400 mt-1">
+                                        العيّنة محسوبة على أقل مرحلة في المسار
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Stages Timeline Breakdown */}
+                            <div className="space-y-3">
+                                <h4 className="font-bold text-xs text-slate-700 dark:text-slate-300">تفكيك أزمنة المراحل (معيار p80):</h4>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                    {deliveryEstimate.stages_breakdown.map((st, idx) => (
+                                        <div key={idx} className="p-3 bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 rounded-xl text-xs space-y-1">
+                                            <div className="font-bold text-slate-900 dark:text-white">{st.stage_name}</div>
+                                            <div className="text-teal-600 font-mono font-semibold">{st.p80_minutes} دقيقة عمل</div>
+                                            <div className="text-[11px] text-slate-500 font-mono">
+                                                {st.p80_minutes_per_unit} دقيقة/وحدة
+                                            </div>
+                                            <div className="text-[11px] text-slate-400">
+                                                {st.execution === 'internal' ? 'داخلي' : 'خارجي'}
+                                                {st.is_estimated
+                                                    ? ' · معياري (مفيش تاريخ)'
+                                                    : ` (${st.samples_count} عينة)`}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Tab 1: Design Team (Original View Preserved 100%) */}
             {activeTeamTab === 'design' && (
             <>
             {/* Metrics cards */}
@@ -348,55 +671,63 @@ export default function DesignerStats() {
                     <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">{pendingDesignerUnitsCount} يونت تحت التصميم</p>
                 </div>
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl shadow-sm border border-emerald-200 dark:border-emerald-800">
-                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-1">اترفع لها تصميم</p>
+                    <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mb-1">تم رفع التصميم</p>
                     <p className="text-2xl font-bold text-emerald-900 dark:text-emerald-100">{submittedDesignerTimelineRows.length}</p>
-                    <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">{submittedDesignerUnitsCount} يونت تم رفعها</p>
+                    <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">{submittedDesignerUnitsCount} يونت جاهز للتصنيع</p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">مرفوع آخر 7 أيام</p>
-                    <p className="text-2xl font-bold text-gray-800 dark:text-white">{weeklyDesignerCount}</p>
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">اليوم: {dailyDesignerCount}</p>
+                    <p className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-1">إجمالي الحالات المعروضة</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-white">{filteredDesignerStatsRows.length}</p>
+                    <p className="mt-1 text-xs text-gray-400">{getRowsUnitsCount(filteredDesignerStatsRows)} يونت في القائمة الحالية</p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">متوسط زمن التصميم</p>
-                    <p className="text-2xl font-bold text-gray-800 dark:text-white">{averageDesignerDuration !== null ? formatDesignerDuration(averageDesignerDuration) : '-'}</p>
-                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">آخر 30 يوم: {monthlyDesignerCount}</p>
+                    <p className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-1">المصممين النشطين</p>
+                    <p className="text-2xl font-bold text-gray-800 dark:text-white">{filteredDesignerStatsGroups.length}</p>
+                    <p className="mt-1 text-xs text-gray-400">بناءً على الحالات المعروضة</p>
                 </div>
             </div>
 
-            {/* Toolbar & Search */}
+            {/* Designer Stats Filters */}
             <div className="space-y-4">
-                <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 space-y-3">
-                    <div className="relative">
-                        <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center">
+                    <div className="relative flex-1 w-full">
+                        <Search className="absolute right-3 top-2.5 text-gray-400" size={18} />
                         <input
                             type="text"
-                            placeholder="ابحث بالمريض أو كود الحالة أو الطبيب..."
+                            placeholder="بحث باسم الطبيب، المريض، أو رقم الكيس..."
                             value={designerStatsSearch}
                             onChange={e => setDesignerStatsSearch(e.target.value)}
-                            className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pr-9 pl-3 text-sm text-right dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-400 dark:placeholder-gray-400"
+                            className="w-full pl-4 pr-10 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
                         />
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
-                            {(['all', 'week', 'month'] as const).map(f => (
-                                <button key={f} type="button" onClick={() => setDesignerStatsTimeFilter(f)}
-                                    className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${designerStatsTimeFilter === f ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-800 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-700/50'}`}>
-                                    {f === 'all' ? 'الكل' : f === 'week' ? 'الأسبوع' : 'الشهر'}
+                    <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <div className="flex bg-gray-100 dark:bg-gray-700/50 p-1 rounded-lg">
+                            {(['all', 'pending', 'submitted', 'tryin', 'delivered'] as const).map(status => (
+                                <button
+                                    key={status}
+                                    onClick={() => setDesignerStatsStatusFilter(status)}
+                                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                                        designerStatsStatusFilter === status
+                                            ? 'bg-white dark:bg-gray-800 text-teal-600 dark:text-teal-400 shadow-sm'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    {status === 'all' ? 'الكل' : status === 'pending' ? 'تحت التصميم' : status === 'submitted' ? 'تم الرفع' : status === 'tryin' ? 'تراى ان' : 'اتسلمت'}
                                 </button>
                             ))}
                         </div>
-                        <div className="flex flex-wrap gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-900">
-                            {([
-                                { key: 'all', label: 'كل الحالات' },
-                                { key: 'pending', label: 'تحت التصميم' },
-                                { key: 'submitted', label: 'تم رفع التصميم' },
-                                { key: 'tryin', label: 'تراى ان' },
-                                { key: 'delivered', label: 'اتسلمت' },
-                            ] as const).map(({ key, label }) => (
-                                <button key={key} type="button" onClick={() => setDesignerStatsStatusFilter(key)}
-                                    className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${designerStatsStatusFilter === key ? 'bg-amber-600 text-white shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:bg-white/60 dark:hover:bg-gray-700/50'}`}>
-                                    {label}
+                        <div className="flex bg-gray-100 dark:bg-gray-700/50 p-1 rounded-lg">
+                            {(['all', 'week', 'month'] as const).map(time => (
+                                <button
+                                    key={time}
+                                    onClick={() => setDesignerStatsTimeFilter(time)}
+                                    className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                                        designerStatsTimeFilter === time
+                                            ? 'bg-white dark:bg-gray-800 text-teal-600 dark:text-teal-400 shadow-sm'
+                                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                                    }`}
+                                >
+                                    {time === 'all' ? 'كل الوقت' : time === 'week' ? 'آخر أسبوع' : 'آخر شهر'}
                                 </button>
                             ))}
                         </div>
@@ -418,10 +749,6 @@ export default function DesignerStats() {
                                 </p>
                             </div>
                             {(() => {
-                                // Units per 1000 EGP of salary — only meaningful for a
-                                // salaried designer. A per-unit designer has no fixed
-                                // cost to divide by, so the column stays absent rather
-                                // than showing a number that means nothing.
                                 const salary = users.find(u => u.id === group.designerId)?.baseSalary;
                                 if (!salary || salary <= 0) return null;
                                 const units = getRowsUnitsCount(group.rows);
