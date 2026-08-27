@@ -5,7 +5,7 @@ import { db, type Doctor, type Order, type Supplier } from '../services/db';
 import { buildSmartSearchResults, searchDestinations } from '../lib/smartSearch';
 import { useAuth } from '../context/AuthContext';
 import { getCapabilities } from '../lib/userRoles';
-import { allDestinations, type Destination } from '../lib/navigation';
+import { reachableDestinations, type Destination } from '../lib/navigation';
 
 export default function GlobalSearch({ commandOnly = false }: { commandOnly?: boolean }) {
     const navigate = useNavigate();
@@ -86,7 +86,9 @@ export default function GlobalSearch({ commandOnly = false }: { commandOnly?: bo
     // Destinations are permission-filtered from the registry, so search can
     // never advertise a page the user would be bounced out of.
     const destinationResults = useMemo(() => {
-        const reachable = allDestinations().filter(destination => caps.has(destination.capability));
+        // Resolved paths, not catalogue paths: a result must open the page
+        // it names for THIS user, not the area's default landing tab.
+        const reachable = reachableDestinations(caps);
         return searchDestinations(query, reachable).slice(0, 5).map(match => match.destination);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [query, Array.from(caps).sort().join(',')]);

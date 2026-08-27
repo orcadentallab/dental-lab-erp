@@ -6,13 +6,17 @@
  * business record. Moving it to a user_preferences column later only
  * changes `read` and `write` at the top of this file.
  *
- * Two rules keep it honest:
+ * Three rules keep it honest:
  *   - Pins are validated against capabilities on every read, so losing
  *     access removes the chip instead of leaving a dead link.
  *   - Each role is seeded with the destinations it opens daily, because a
  *     favourites bar that starts empty never gets used.
+ *   - The list lives in ONE module-level store, not in each caller's
+ *     useState. Three components toggle pins -- the sidebar, the reports
+ *     hub and the workspace tab bar -- and per-component copies drifted:
+ *     starring a report left the sidebar chips stale until a reload.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import {
     DEFAULT_FAVOURITES, MAX_FAVOURITES, findDestination,
     activeWorkspace, activeSidebarEntry, REPORT_CATEGORIES,
@@ -43,6 +47,40 @@ function write(userId: string, ids: string[]): void {
     }
 }
 
+/* ------------------------------------------------------------------ *
+ * The store
+ *
+ * localStorage is the durable copy; this cache is what React renders.
+ * `useSyncExternalStore` needs a snapshot that is referentially stable
+ * while nothing changes, so every read hands back the same array until a
+ * toggle replaces it.
+ * ------------------------------------------------------------------ */
+
+const NO_PINS: string[] = [];
+const cache = new Map<string, string[]>();
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
+
+function currentIds(userId: string, role: string): string[] {
+    const key = storageKey(userId);
+    let ids = cache.get(key);
+    if (!ids) {
+        ids = read(userId, role);
+        cache.set(key, ids);
+    }
+    return ids;
+}
+
+function commitIds(userId: string, ids: string[]): void {
+    cache.set(storageKey(userId), ids);
+    write(userId, ids);
+    for (const listener of listeners) listener();
+}
+
 export interface FavouritesApi {
     /** Resolved, capability-filtered destinations, in pin order. */
     favourites: Destination[];
@@ -56,32 +94,23 @@ export function useFavourites(
     role: string | undefined,
     caps: Set<Capability>,
 ): FavouritesApi {
-    // Derived from the identity during render rather than in an effect:
-    // reading storage in an effect would render one frame with no pins and
-    // then flash them in.
-    const identity = `${userId || ''}|${role || ''}`;
-    const [state, setState] = useState(() => ({
-        identity,
-        ids: userId ? read(userId, role || '') : [],
-    }));
-    if (state.identity !== identity) {
-        setState({ identity, ids: userId ? read(userId, role || '') : [] });
-    }
-    const ids = state.ids;
-    const setIds = (updater: (previous: string[]) => string[]) =>
-        setState(previous => ({ ...previous, ids: updater(previous.ids) }));
+    // Read straight from the store during render rather than in an effect:
+    // loading pins in an effect would render one frame with none and then
+    // flash them in.
+    const ids = useSyncExternalStore(
+        subscribe,
+        () => (userId ? currentIds(userId, role || '') : NO_PINS),
+    );
 
     const toggle = useCallback((id: string) => {
         if (!userId) return;
-        setIds(previous => {
-            const next = previous.includes(id)
-                ? previous.filter(item => item !== id)
-                // Pinning a fifth drops the oldest rather than refusing.
-                : [...previous, id].slice(-MAX_FAVOURITES);
-            write(userId, next);
-            return next;
-        });
-    }, [userId]);
+        const previous = currentIds(userId, role || '');
+        const next = previous.includes(id)
+            ? previous.filter(item => item !== id)
+            // Pinning a fifth drops the oldest rather than refusing.
+            : [...previous, id].slice(-MAX_FAVOURITES);
+        commitIds(userId, next);
+    }, [userId, role]);
 
     const favourites = ids
         .map(id => findDestination(id))

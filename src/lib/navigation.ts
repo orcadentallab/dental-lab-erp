@@ -15,7 +15,7 @@
 import type { User } from '../services/db';
 import { getCapabilities, isOtherEmployeeOnly, type Capability } from './userRoles';
 
-export type NavSection = 'top' | 'operations' | 'directory' | 'analysis' | 'system';
+export type NavSection = 'top' | 'operations' | 'management';
 
 export interface Destination {
     /** Stable id. Favourites and analytics key off this, not the path. */
@@ -121,16 +121,35 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             aliases: ['تسجيل الحالات', 'غير مسجلة', 'unregistered', 'case registration'],
         },
     ],
-    doctors: [
+    // The address book used to be three sidebar rows -- Doctors, Staff and
+    // Suppliers -- for three lists nobody opens in the same minute. As tabs
+    // they cost one row, and every role still gets a usable bar: the rep sees
+    // Doctors and Staff, the accountant Staff and Suppliers.
+    //
+    // The tab ids are the old sidebar ids on purpose. Favourites are stored
+    // by id in localStorage, so renaming them would silently unpin whatever
+    // people already pinned.
+    directory: [
         {
-            id: 'doctors.directory', labelAr: 'الدليل', labelEn: 'Directory',
+            id: 'doctors', labelAr: 'الأطباء', labelEn: 'Doctors',
             path: '/doctors', capability: 'view_doctors',
-            aliases: ['الأطباء', 'العملاء', 'doctors', 'clients'],
+            aliases: ['العملاء', 'doctors', 'clients'],
         },
         {
             id: 'doctors.retention', labelAr: 'المتابعة والتنشيط', labelEn: 'Retention',
             path: '/doctors/retention', capability: 'view_doctor_retention',
             aliases: ['الاستبقاء', 'تنشيط الأطباء', 'retention', 'reactivation'],
+        },
+        {
+            id: 'employees', labelAr: 'الموظفين', labelEn: 'Staff',
+            path: '/employees', capability: 'view_staff',
+            matches: ['/employees/:id', '/staff'],
+            aliases: ['الفريق', 'شؤون العاملين', 'staff', 'employees', 'team'],
+        },
+        {
+            id: 'suppliers', labelAr: 'الموردين', labelEn: 'Suppliers',
+            path: '/suppliers', capability: 'view_suppliers',
+            aliases: ['الموردون', 'المعامل', 'suppliers', 'vendors'],
         },
     ],
     // Services, Users, Routes and the calendar were four more permanent rows
@@ -295,30 +314,23 @@ export const SIDEBAR: SidebarEntry[] = [
         aliases: ['معمل خارجي', 'outsourced'],
     },
     {
-        id: 'doctors', labelAr: 'الأطباء', labelEn: 'Doctors',
-        path: '/doctors', capability: 'view_doctors', section: 'directory',
-        workspace: 'doctors',
-        aliases: ['العملاء', 'doctors', 'clients'],
-    },
-    {
-        id: 'employees', labelAr: 'الموظفين', labelEn: 'Staff',
-        path: '/employees', capability: 'view_staff', section: 'directory',
-        matches: ['/employees/:id', '/staff'],
-        aliases: ['الفريق', 'شؤون العاملين', 'staff', 'employees', 'team'],
-    },
-    {
-        id: 'suppliers', labelAr: 'الموردين', labelEn: 'Suppliers',
-        path: '/suppliers', capability: 'view_suppliers', section: 'directory',
-        aliases: ['الموردون', 'المعامل', 'suppliers', 'vendors'],
+        // One area, not three peers. `view_directory` is the union of the
+        // three tab capabilities, so the entry appears for anyone who can
+        // open any of the lists and the resolver links it to the first one
+        // they may actually open.
+        id: 'directory', labelAr: 'الدليل', labelEn: 'Directory',
+        path: '/doctors', capability: 'view_directory', section: 'management',
+        workspace: 'directory',
+        aliases: ['الأطباء', 'العملاء', 'الموظفين', 'الموردين', 'doctors', 'staff', 'suppliers'],
     },
     {
         id: 'reports', labelAr: 'التقارير', labelEn: 'Reports',
-        path: '/analytics', capability: 'view_reports', section: 'analysis',
+        path: '/analytics', capability: 'view_reports', section: 'management',
         aliases: ['التحليلات', 'الإحصائيات', 'reports', 'analytics'],
     },
     {
         id: 'system', labelAr: 'النظام', labelEn: 'System',
-        path: '/settings', capability: 'view_settings', section: 'system',
+        path: '/settings', capability: 'view_settings', section: 'management',
         workspace: 'system',
         aliases: ['الضبط', 'الإعدادات', 'الإدارة', 'system', 'admin'],
     },
@@ -345,14 +357,14 @@ export const DOCTOR_PORTAL: SidebarEntry[] = [
 export const SECTION_LABELS: Record<NavSection, string | null> = {
     top: null,
     operations: 'التشغيل',
-    directory: 'الدليل',
-    analysis: 'التحليل',
-    // The System area is a single entry now, so a heading would just repeat
-    // its label. The sidebar draws a divider for a labelless section instead.
-    system: null,
+    // Directory, Reports and System are one entry each. Three headings over
+    // three single rows is more chrome than content, so they share one --
+    // they are all the back-office half of the app, opened occasionally,
+    // against the daily work above.
+    management: 'الإدارة',
 };
 
-export const SECTION_ORDER: NavSection[] = ['top', 'operations', 'directory', 'analysis', 'system'];
+export const SECTION_ORDER: NavSection[] = ['top', 'operations', 'management'];
 
 /* ------------------------------------------------------------------ *
  * Matching
@@ -485,7 +497,7 @@ export function visibleSidebarEntries(caps: Set<Capability>): SidebarEntry[] {
     });
 }
 
-/** Everything a user may reach, for search and for validating favourites. */
+/** The whole catalogue, for validating favourites and for the tests. */
 export function allDestinations(): Destination[] {
     return [
         ...SIDEBAR,
@@ -493,6 +505,35 @@ export function allDestinations(): Destination[] {
         ...Object.values(WORKSPACES).flat(),
         ...REPORT_CATEGORIES.flatMap(category => category.reports),
     ];
+}
+
+/**
+ * Everything a given user may actually open, each with a path they may
+ * actually open it at.
+ *
+ * `allDestinations` is a catalogue: a workspace entry's `path` there is
+ * only a default. Search navigated straight to those raw paths, so an
+ * accountant searching الدليل was sent to /doctors and a designer
+ * searching الإنتاج to the supervisory board -- both routes that refuse
+ * them. Resolved entries carry the same rule the sidebar uses.
+ *
+ * De-duplicated by path: the lab reaches كشف الحساب both as its own
+ * sidebar entry and as a Finance tab, and one search result is enough.
+ */
+export function reachableDestinations(caps: Set<Capability>): Destination[] {
+    const candidates: Destination[] = [
+        ...visibleSidebarEntries(caps),
+        ...Object.values(WORKSPACES).flat().filter(tab => caps.has(tab.capability)),
+        ...REPORT_CATEGORIES.flatMap(category => category.reports)
+            .filter(report => caps.has(report.capability)),
+    ];
+
+    const seen = new Set<string>();
+    return candidates.filter(destination => {
+        if (seen.has(destination.path)) return false;
+        seen.add(destination.path);
+        return true;
+    });
 }
 
 /* ------------------------------------------------------------------ *

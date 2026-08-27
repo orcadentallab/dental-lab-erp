@@ -15,7 +15,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     LayoutDashboard, ShoppingBag, Users, DollarSign, LogOut, Menu, X, Factory,
-    FileText, Settings as SettingsIcon, BarChart3, Briefcase, Layers,
+    FileText, Settings as SettingsIcon, BarChart3, Layers,
     Truck, Star, History, PanelRightClose, PanelRightOpen,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
@@ -38,9 +38,7 @@ const ICONS: Record<string, LucideIcon> = {
     finance: DollarSign,
     accounts: FileText,
     externalWork: Truck,
-    doctors: Users,
-    employees: Briefcase,
-    suppliers: Factory,
+    directory: Users,
     reports: BarChart3,
     system: SettingsIcon,
     'doctor.orders': ShoppingBag,
@@ -238,10 +236,7 @@ export default function Sidebar() {
                                     still gets a rule, so it reads as its own group
                                     rather than trailing off the list above it. */}
                                 {group.label && !isCollapsed ? (
-                                    <h3 className={clsx(
-                                        'px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider',
-                                        group.section === 'system' ? 'text-slate-300' : 'text-slate-400'
-                                    )}>
+                                    <h3 className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                                         {group.label}
                                     </h3>
                                 ) : (
@@ -254,7 +249,7 @@ export default function Sidebar() {
                                             entry={entry}
                                             isActive={active?.id === entry.id}
                                             isCollapsed={isCollapsed}
-                                            isMuted={group.section === 'system'}
+                                            isMuted={entry.id === 'system'}
                                             count={entry.badge ? badges[entry.badge] : undefined}
                                             pinned={isPinned(entry.id)}
                                             onPin={() => toggle(entry.id)}

@@ -15,7 +15,7 @@ import { getCapabilities, isOtherEmployeeOnly } from '../../src/lib/userRoles';
 import {
     SIDEBAR, WORKSPACES, REPORT_CATEGORIES, DOCTOR_PORTAL, DEFAULT_FAVOURITES,
     QUICK_ACTIONS, allDestinations, activeSidebarEntry, activeWorkspace,
-    findDestination, getLandingRoute, visibleSidebarEntries,
+    findDestination, getLandingRoute, visibleSidebarEntries, reachableDestinations,
 } from '../../src/lib/navigation';
 
 type Role = User['role'];
@@ -132,6 +132,27 @@ describe('visibility never disagrees with authorization', () => {
         });
     }
 
+    for (const role of ERP_ROLES) {
+        it(`${role}: every searchable destination opens where it says it does`, () => {
+            // Search and the header both navigate to a resolved path. A raw
+            // registry path here is the bug that sent the accountant from
+            // الدليل to /doctors, which their route refuses.
+            const caps = getCapabilities(makeUser(role));
+            for (const destination of reachableDestinations(caps)) {
+                const allowed = ROUTE_ROLES[destination.path];
+                expect(allowed, `${role} -> ${destination.path}`).toBeDefined();
+                expect(allowed, `${role} -> ${destination.path}`).toContain(role);
+            }
+        });
+    }
+
+    it('search offers one result per page, not one per registry row', () => {
+        // The lab reaches كشف الحساب as a sidebar entry AND as a Finance tab.
+        const paths = reachableDestinations(getCapabilities(makeUser('lab')))
+            .map(destination => destination.path);
+        expect(new Set(paths).size).toBe(paths.length);
+    });
+
     it('a designer Production entry goes to My Tasks, not the board', () => {
         const caps = getCapabilities(makeUser('designer'));
         const production = visibleSidebarEntries(caps).find(entry => entry.id === 'production');
@@ -161,37 +182,55 @@ describe('visibility never disagrees with authorization', () => {
     });
 
     it('doctor retention is admin-only, and the rep keeps the directory', () => {
-        const retention = WORKSPACES.doctors.find(tab => tab.id === 'doctors.retention');
+        const retention = WORKSPACES.directory.find(tab => tab.id === 'doctors.retention');
         const rep = getCapabilities(makeUser('representative'));
         expect(rep.has(retention!.capability)).toBe(false);
         expect(rep.has('view_doctors')).toBe(true);
         expect(getCapabilities(makeUser('admin')).has(retention!.capability)).toBe(true);
     });
 
-    it('a rep with one doctors tab gets no tab bar, and the entry still opens', () => {
-        const caps = getCapabilities(makeUser('representative'));
-        const open = WORKSPACES.doctors.filter(tab => caps.has(tab.capability));
-        expect(open.map(tab => tab.id)).toEqual(['doctors.directory']);
-        const doctors = visibleSidebarEntries(caps).find(entry => entry.id === 'doctors');
-        expect(doctors?.path).toBe('/doctors');
+    it('each role gets only the directory tabs it may open', () => {
+        const tabsFor = (role: Role) => WORKSPACES.directory
+            .filter(tab => getCapabilities(makeUser(role)).has(tab.capability))
+            .map(tab => tab.id);
+
+        expect(tabsFor('admin')).toEqual(['doctors', 'doctors.retention', 'employees', 'suppliers']);
+        // The rep has no suppliers and no retention; the accountant no doctors.
+        expect(tabsFor('representative')).toEqual(['doctors', 'employees']);
+        expect(tabsFor('accountant')).toEqual(['employees', 'suppliers']);
+        expect(tabsFor('designer')).toEqual([]);
+    });
+
+    it('the directory entry opens on the first list its role may read', () => {
+        const entryFor = (role: Role) => visibleSidebarEntries(getCapabilities(makeUser(role)))
+            .find(entry => entry.id === 'directory');
+
+        expect(entryFor('admin')?.path).toBe('/doctors');
+        expect(entryFor('representative')?.path).toBe('/doctors');
+        // The accountant cannot open /doctors, so the area must not link there.
+        expect(entryFor('accountant')?.path).toBe('/employees');
+        expect(entryFor('designer')).toBeUndefined();
     });
 });
 
 describe('active state', () => {
-    it('an employee detail page keeps Staff selected', () => {
-        expect(activeSidebarEntry('/employees/42')?.id).toBe('employees');
-        expect(activeSidebarEntry('/employees')?.id).toBe('employees');
+    it('an employee detail page keeps the Staff tab and its area selected', () => {
+        expect(activeSidebarEntry('/employees/42')?.id).toBe('directory');
+        expect(activeSidebarEntry('/employees')?.id).toBe('directory');
+        expect(activeWorkspace('/employees/42')?.tab.id).toBe('employees');
     });
 
     it('the more specific pattern wins', () => {
         expect(activeWorkspace('/doctors/retention')?.tab.id).toBe('doctors.retention');
-        expect(activeWorkspace('/doctors')?.tab.id).toBe('doctors.directory');
+        expect(activeWorkspace('/doctors')?.tab.id).toBe('doctors');
     });
 
     it('a workspace tab lights up its parent sidebar entry', () => {
         expect(activeSidebarEntry('/aging-report')?.id).toBe('finance');
         expect(activeSidebarEntry('/balance-snapshot')?.id).toBe('finance');
         expect(activeSidebarEntry('/production/my-tasks')?.id).toBe('production');
+        expect(activeSidebarEntry('/suppliers')?.id).toBe('directory');
+        expect(activeSidebarEntry('/doctors/retention')?.id).toBe('directory');
         expect(activeSidebarEntry('/settings/work-calendar')?.id).toBe('system');
         expect(activeSidebarEntry('/users')?.id).toBe('system');
         expect(activeSidebarEntry('/services')?.id).toBe('system');
@@ -267,9 +306,20 @@ describe('capabilities', () => {
 });
 
 describe('the sidebar stays small', () => {
-    it('an admin sees at most 9 entries, down from 28', () => {
+    it('an admin sees at most 7 entries, down from 28', () => {
         const caps = getCapabilities(makeUser('admin'));
-        expect(visibleSidebarEntries(caps).length).toBeLessThanOrEqual(9);
+        expect(visibleSidebarEntries(caps).length).toBeLessThanOrEqual(7);
+    });
+
+    it('the Directory area is one entry, not one per list', () => {
+        const caps = getCapabilities(makeUser('admin'));
+        const ids = visibleSidebarEntries(caps).map(entry => entry.id);
+        expect(ids).toContain('directory');
+        for (const gone of ['doctors', 'employees', 'suppliers']) {
+            expect(ids).not.toContain(gone);
+        }
+        // ...and every one of those lists is still reachable as a tab.
+        expect(WORKSPACES.directory.filter(tab => caps.has(tab.capability))).toHaveLength(4);
     });
 
     it('the System area is one entry, not one per admin page', () => {
@@ -296,7 +346,7 @@ describe('the sidebar stays small', () => {
         for (const role of ERP_ROLES) {
             const caps = getCapabilities(makeUser(role));
             expect(visibleSidebarEntries(caps).length,
-                `${role} menu length`).toBeLessThanOrEqual(9);
+                `${role} menu length`).toBeLessThanOrEqual(8);
         }
     });
 
@@ -318,6 +368,19 @@ describe('favourites and quick actions', () => {
                 const destination = findDestination(id);
                 expect(destination, `${role} -> ${id}`).not.toBeNull();
                 expect(caps.has(destination!.capability), `${role} -> ${id}`).toBe(true);
+            }
+        }
+    });
+
+    it('every workspace tab can be pinned', () => {
+        // The tab bar stars a tab by id; useFavourites resolves that id back
+        // through findDestination and drops anything it cannot resolve, so an
+        // id the registry does not know would star and then vanish.
+        for (const [workspace, tabs] of Object.entries(WORKSPACES)) {
+            for (const tab of tabs) {
+                const resolved = findDestination(tab.id);
+                expect(resolved, `${workspace}/${tab.id}`).not.toBeNull();
+                expect(resolved!.path, `${workspace}/${tab.id}`).toBe(tab.path);
             }
         }
     });

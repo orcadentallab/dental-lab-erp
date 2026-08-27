@@ -38,7 +38,13 @@ function resolveTitle(pathname: string, isArabic: boolean): string {
 
     // Most specific first: a tab names the page better than its area does.
     const workspace = activeWorkspace(pathname);
-    if (workspace) return label(workspace.tab);
+    if (workspace) {
+        // /employees/:id resolves to the Staff tab; say which page it is.
+        if (workspace.tab.id === 'employees' && pathname !== workspace.tab.path) {
+            return isArabic ? 'تفاصيل الموظف' : 'Employee Details';
+        }
+        return label(workspace.tab);
+    }
 
     if (isReportRoute(pathname)) {
         const report = REPORT_CATEGORIES
@@ -48,13 +54,7 @@ function resolveTitle(pathname: string, isArabic: boolean): string {
     }
 
     const entry = activeSidebarEntry(pathname);
-    if (entry) {
-        // /employees/:id resolves to Staff; say which page it really is.
-        if (entry.id === 'employees' && pathname !== entry.path) {
-            return isArabic ? 'تفاصيل الموظف' : 'Employee Details';
-        }
-        return label(entry);
-    }
+    if (entry) return label(entry);
 
     return '';
 }

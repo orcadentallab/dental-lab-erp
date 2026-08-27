@@ -70,6 +70,8 @@ export type Capability =
     | 'view_doctor_retention'
     | 'view_suppliers'
     | 'view_staff'
+    /** The directory area itself: the union of the three lists above. */
+    | 'view_directory'
     | 'view_reports'
     | 'manage_services'
     | 'manage_users'
@@ -139,6 +141,12 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
         caps.add('view_suppliers');
     }
     if (isAdmin || role === 'accountant' || role === 'representative') caps.add('view_staff');
+    // No role owns the whole address book -- the rep has doctors and staff,
+    // the accountant staff and suppliers -- so the area opens on the union
+    // rather than on a fourth grant nobody would remember to keep in sync.
+    if (caps.has('view_doctors') || caps.has('view_suppliers') || caps.has('view_staff')) {
+        caps.add('view_directory');
+    }
     if (isAdmin) {
         caps.add('view_reports');
         caps.add('manage_services');

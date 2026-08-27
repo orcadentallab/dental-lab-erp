@@ -5,7 +5,7 @@ import QuickActions from '../components/QuickActions';
 import WorkspaceTabs from '../components/WorkspaceTabs';
 import { useAuth } from '../context/AuthContext';
 import { getCapabilities } from '../lib/userRoles';
-import { getLandingRoute, activeSidebarEntry } from '../lib/navigation';
+import { getLandingRoute, activeSidebarEntry, visibleSidebarEntries } from '../lib/navigation';
 
 export default function DashboardLayout() {
     const { pathname } = useLocation();
@@ -17,6 +17,16 @@ export default function DashboardLayout() {
     // first. The header is now on every page.
     const active = activeSidebarEntry(pathname);
     const home = getLandingRoute(user);
+
+    // The header names the area you are in, so it has to GO there. It used
+    // to link to the landing route regardless: the header read "التقارير"
+    // and dropped you on the dashboard. The path comes from the registry
+    // rather than from the entry's own default, so a role that cannot open
+    // an area's first tab lands on the first tab it can.
+    const areaPath = active
+        ? visibleSidebarEntries(caps).find(entry => entry.id === active.id)?.path
+        : undefined;
+    const headerTarget = areaPath || home;
 
     // The "other" employee gets a page, not an ERP shell.
     const isSingleDestination = caps.has('self_profile_only');
@@ -39,9 +49,9 @@ export default function DashboardLayout() {
                         ) : (
                             <>
                                 <Link
-                                    to={home}
+                                    to={headerTarget}
                                     className="hidden shrink-0 text-[13px] font-bold text-teal-900 transition-colors hover:text-cyan-700 lg:block"
-                                    aria-label="الصفحة الرئيسية"
+                                    aria-label={areaPath ? undefined : 'الصفحة الرئيسية'}
                                 >
                                     {active?.labelAr || 'ORCA Lab'}
                                 </Link>
