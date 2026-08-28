@@ -97,6 +97,9 @@ export interface AccountingOrderSnapshot {
 
 export type AccountingReviewType = 'new' | 'change' | 'cancellation';
 
+/** Item kinds the dashboard review centre can mark as reviewed (per user, stored in DB). */
+export type DashboardReviewItemType = 'comment' | 'order_edit';
+
 export interface Transaction {
     id: string;
     type: 'income' | 'expense';
@@ -1398,19 +1401,60 @@ class MockDB {
         return (data || []).map((row: RowType) => dbToOrderEvent(row));
     }
 
-    async getAppliedOrderEdits(): Promise<OrderEvent[]> {
+    /**
+     * Applied/rejected order edits the current user has not acknowledged yet.
+     * Filtered server-side so the list is not silently capped at the newest N
+     * events — older unreviewed edits used to be unreachable behind a limit(50).
+     */
+    async getUnreviewedOrderEdits(limit = 200): Promise<OrderEvent[]> {
         const { supabase } = await import('../lib/supabase');
         const { dbToOrderEvent } = await import('./supabase/orderEvents');
-        const { data, error } = await supabase
-            .from('order_events')
-            .select('*')
-            .in('event_type', ['order_edit_applied', 'order_edit_proposed'])
-            .neq('approval_status', 'pending')
-            .order('created_at', { ascending: false })
-            .limit(50);
+        const { data, error } = await supabase.rpc('get_unreviewed_order_edits', { p_limit: limit });
         if (error) throw error;
         type RowType = Parameters<typeof dbToOrderEvent>[0];
         return (data || []).map((row: RowType) => dbToOrderEvent(row));
+    }
+
+    /** Ids of dashboard items the current user has already marked as reviewed. */
+    async getDashboardReviewMarks(itemType: DashboardReviewItemType): Promise<string[]> {
+        const { supabase } = await import('../lib/supabase');
+        const { data, error } = await supabase
+            .from('dashboard_review_marks')
+            .select('item_id')
+            .eq('item_type', itemType);
+        if (error) throw error;
+        return (data || []).map((row: { item_id: string }) => row.item_id);
+    }
+
+    /**
+     * Marks dashboard items as reviewed for the current user. Idempotent — an
+     * item already marked is left as-is instead of failing the whole batch.
+     */
+    async markDashboardItemsReviewed(itemType: DashboardReviewItemType, itemIds: string[]): Promise<void> {
+        if (itemIds.length === 0) return;
+        const { supabase } = await import('../lib/supabase');
+        const { data: userRow, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        const authId = userRow?.user?.id;
+        if (!authId) throw new Error('لا توجد جلسة مستخدم صالحة');
+
+        const { data: appUser, error: appUserError } = await supabase
+            .from('users')
+            .select('id')
+            .eq('auth_id', authId)
+            .maybeSingle();
+        if (appUserError) throw appUserError;
+        if (!appUser?.id) throw new Error('تعذر تحديد المستخدم الحالي');
+
+        const rows = [...new Set(itemIds)].map(itemId => ({
+            user_id: appUser.id,
+            item_type: itemType,
+            item_id: itemId,
+        }));
+        const { error } = await supabase
+            .from('dashboard_review_marks')
+            .upsert(rows, { onConflict: 'user_id,item_type,item_id', ignoreDuplicates: true });
+        if (error) throw error;
     }
 
     async computeAgingReport(params?: AgingReportParams): Promise<AgingReportResult> {

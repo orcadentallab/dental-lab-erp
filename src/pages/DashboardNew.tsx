@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useEffect, useState, useMemo } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { differenceInCalendarDays } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
-import { db, type Order, type Supplier, type User, type Doctor, type OrderEvent } from '../services/db';
+import { db, type Order, type Supplier, type User, type Doctor, type OrderEvent, type DashboardReviewItemType } from '../services/db';
 import { ORDER_EDIT_REASON_LABELS_AR, type OrderEditReasonCode } from '../constants/orderEditReasons';
 import { AlertTriangle, Clock, CheckCircle, UserCheck, Package, Building2, TrendingUp, PlusCircle, UserPlus, HelpCircle, Printer, MessageSquare, PhoneCall, CheckSquare, X } from 'lucide-react';
 import { contactService, type ContactInquiry } from '../services/contactService';
@@ -122,23 +123,13 @@ export default function DashboardNew() {
     const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [reviewTab, setReviewTab] = useState<'comments' | 'edits'>('comments');
-    // Track which comment IDs have been resolved (dismissed) — stored in localStorage
-    const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(() => {
-        try {
-            const stored = localStorage.getItem('resolvedCommentIds');
-            return stored ? new Set(JSON.parse(stored) as string[]) : new Set<string>();
-        } catch {
-            return new Set<string>();
-        }
-    });
-    const [reviewedAppliedEditIds, setReviewedAppliedEditIds] = useState<Set<string>>(() => {
-        try {
-            const stored = localStorage.getItem('reviewedAppliedEditIds');
-            return stored ? new Set(JSON.parse(stored) as string[]) : new Set<string>();
-        } catch {
-            return new Set<string>();
-        }
-    });
+    // Which comments / applied edits this user already reviewed. Persisted per user in
+    // the database (dashboard_review_marks) — the old localStorage copy was per-browser
+    // and a stale second tab could overwrite it, undoing "تمت مراجعة الكل".
+    const [resolvedCommentIds, setResolvedCommentIds] = useState<Set<string>>(new Set<string>());
+    // Applied edits arrive already filtered by the server; this set only drives the
+    // optimistic removal of rows the user just acknowledged.
+    const [reviewedAppliedEditIds, setReviewedAppliedEditIds] = useState<Set<string>>(new Set<string>());
     const { t } = useTranslation();
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
     const canViewDesignerWorkspace = Boolean(user && isDesignerUser(user) && user.role !== 'admin');
@@ -195,14 +186,15 @@ export default function DashboardNew() {
                     db.getOrdersWithComments().catch(() => [] as Order[]),
                 ] as const;
 
-                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, pendingProposalsData, appliedEditsData] =
+                const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, pendingProposalsData, appliedEditsData, commentMarksData] =
                     user?.role === 'admin'
                         ? await Promise.all([
                             ...baseRequests,
                             db.getPendingOrderEditProposals().catch(() => [] as OrderEvent[]),
-                            db.getAppliedOrderEdits().catch(() => [] as OrderEvent[]),
+                            db.getUnreviewedOrderEdits().catch(() => [] as OrderEvent[]),
+                            db.getDashboardReviewMarks('comment').catch(() => [] as string[]),
                         ] as const)
-                        : [...await Promise.all(baseRequests), [], []] as const;
+                        : [...await Promise.all(baseRequests), [], [], []] as const;
 
                 // Apply role-based filtering
                 let filteredOrders = ordersData;
@@ -228,6 +220,8 @@ export default function DashboardNew() {
                 setOrdersWithComments(commentOrdersData);
                 setPendingProposals((pendingProposalsData as OrderEvent[] | undefined) || []);
                 setAppliedEdits((appliedEditsData as OrderEvent[] | undefined) || []);
+                setResolvedCommentIds(new Set((commentMarksData as string[] | undefined) || []));
+                setReviewedAppliedEditIds(new Set<string>());
 
                 if (user?.role === 'admin') {
                     const pendingProposalsList = (pendingProposalsData as OrderEvent[] | undefined) || [];
@@ -385,27 +379,39 @@ export default function DashboardNew() {
         (o.technicianStatus === 'Rejected' && !isDashboardTerminal(o))
     );
 
-    // Helper to resolve (dismiss) a comment
-    const resolveComment = (commentId: string) => {
-        setResolvedCommentIds(prev => {
+    // Marks items as reviewed optimistically, then persists. A failed write is rolled
+    // back and surfaced — silently dropping it is what made "تمت مراجعة الكل" look like
+    // it worked while the items came straight back on the next load.
+    const persistReviewMarks = async (
+        itemType: DashboardReviewItemType,
+        itemIds: string[],
+        setIds: Dispatch<SetStateAction<Set<string>>>
+    ) => {
+        if (itemIds.length === 0) return;
+        setIds(prev => {
             const next = new Set(prev);
-            next.add(commentId);
-            try {
-                localStorage.setItem('resolvedCommentIds', JSON.stringify([...next]));
-            } catch { /* ignore */ }
+            itemIds.forEach(id => next.add(id));
             return next;
         });
+        try {
+            await db.markDashboardItemsReviewed(itemType, itemIds);
+        } catch (err) {
+            setIds(prev => {
+                const next = new Set(prev);
+                itemIds.forEach(id => next.delete(id));
+                return next;
+            });
+            toast.error(err instanceof Error ? err.message : 'تعذر حفظ حالة المراجعة');
+        }
+    };
+
+    // Helper to resolve (dismiss) a comment
+    const resolveComment = (commentId: string) => {
+        void persistReviewMarks('comment', [commentId], setResolvedCommentIds);
     };
 
     const markAppliedEditReviewed = (editId: string) => {
-        setReviewedAppliedEditIds(prev => {
-            const next = new Set(prev);
-            next.add(editId);
-            try {
-                localStorage.setItem('reviewedAppliedEditIds', JSON.stringify([...next]));
-            } catch { /* ignore */ }
-            return next;
-        });
+        void persistReviewMarks('order_edit', [editId], setReviewedAppliedEditIds);
     };
 
     const FIELD_NAMES_AR: Record<string, string> = {
@@ -1127,7 +1133,7 @@ export default function DashboardNew() {
                                         {reviewTab === 'comments' ? (
                                         <div className="h-full divide-y divide-blue-100 overflow-y-auto dark:divide-blue-800">
                                             {unresolvedCommentItems.length > 0 && <div className="px-4 py-2 flex justify-end bg-gray-50 dark:bg-gray-800/50">
-                                                <button onClick={() => unresolvedCommentItems.forEach(({ comment }) => resolveComment(comment.id))} className="text-[11px] font-bold text-blue-700 dark:text-blue-300 hover:underline">تمت مراجعة كل التعليقات</button>
+                                                <button onClick={() => void persistReviewMarks('comment', unresolvedCommentItems.map(({ comment }) => comment.id), setResolvedCommentIds)} className="text-[11px] font-bold text-blue-700 dark:text-blue-300 hover:underline">تمت مراجعة كل التعليقات</button>
                                             </div>}
                                             {unresolvedCommentItems.map(({ comment, order }) => (
                                             <div
@@ -1159,7 +1165,7 @@ export default function DashboardNew() {
                                         ) : (
                                         <div className="h-full divide-y divide-blue-100 overflow-y-auto dark:divide-blue-800">
                                             {unreviewedAppliedEdits.length > 0 && <div className="sticky top-0 z-10 px-4 py-2 flex justify-end bg-gray-50 dark:bg-gray-800 border-b border-blue-100 dark:border-blue-800">
-                                                <button onClick={() => unreviewedAppliedEdits.forEach(edit => markAppliedEditReviewed(edit.id))} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700"><CheckSquare size={14} /> تمت مراجعة كل التعديلات</button>
+                                                <button onClick={() => void persistReviewMarks('order_edit', unreviewedAppliedEdits.map(edit => edit.id), setReviewedAppliedEditIds)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700"><CheckSquare size={14} /> تمت مراجعة كل التعديلات</button>
                                             </div>}
                                             {unreviewedAppliedEdits.map(edit => {
                                                 const relOrder = orders.find(o => o.id === edit.orderId);
@@ -1568,6 +1574,7 @@ export default function DashboardNew() {
                 title="ملاحظات المصممين"
                 isOpen={activeModal === 'designer-feedback'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {designerFeedbackOrders.map(order => {
                     const designerReasonComment = [...(order.comments || [])].reverse().find(c => c.text.includes('[رفض المصمم]') || c.text.includes('[طلب تفاصيل]'));
@@ -1579,6 +1586,8 @@ export default function DashboardNew() {
                             order={order}
                             labName={getLabName(order.supplierId)}
                             designerName={getDesignerName(order.designerId)}
+                            doctorName={getDoctorDisplayName(order.doctorId)}
+                            showDoctor
                             customDetails={
                                 <div className="bg-orange-50 dark:bg-orange-900/20 p-2 rounded text-sm text-orange-800 dark:text-orange-200 mt-2 border border-orange-100 dark:border-orange-800/50">
                                     <span className="font-bold">سبب المصمم: </span>

@@ -51,21 +51,37 @@ const OrderListItem = React.memo(function OrderListItem({
         navigate(`/orders?highlight=${order.id}`);
     };
 
+    // Clicking anywhere on the row (except on an actual control) opens the case in the orders page
+    const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        const target = e.target;
+        if (target instanceof Element && target.closest('button, a, input, select, textarea, label')) return;
+        handleNavigate();
+    };
+
     const assigneeDisplayName = [labName, designerName].filter(Boolean).join(' / ') || '-';
     const columns = hideCaseId
         ? (showDeliveryDate ? 'md:grid-cols-5' : 'md:grid-cols-4')
         : (showDeliveryDate ? 'md:grid-cols-6' : 'md:grid-cols-5');
 
     return (
-        <div className="flex flex-col p-3 hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition-colors border-b border-surface-200 dark:border-surface-700 last:border-0 gap-3">
+        <div
+            onClick={handleRowClick}
+            title="فتح الحالة في صفحة الأوردرات"
+            className="flex flex-col p-3 cursor-pointer hover:bg-surface-100 dark:hover:bg-surface-800 rounded-lg transition-colors border-b border-surface-200 dark:border-surface-700 last:border-0 gap-3"
+        >
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-0 w-full">
                 <div className={`flex-1 flex flex-col md:grid ${columns} gap-2 md:gap-4 md:items-center`}>
                     <div className="flex items-center gap-2 md:contents">
                         {!hideCaseId && (
                             <div className="shrink-0 md:shrink">
-                                <span className="font-mono text-xs md:text-sm font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded border border-primary-100 dark:border-primary-800">
+                                <button
+                                    type="button"
+                                    onClick={handleNavigate}
+                                    title="فتح الحالة في صفحة الأوردرات"
+                                    className="font-mono text-xs md:text-sm font-bold text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30 px-1.5 py-0.5 rounded border border-primary-100 dark:border-primary-800 hover:bg-primary-100 dark:hover:bg-primary-900/50 hover:underline transition-colors"
+                                >
                                     #{order.caseId}
-                                </span>
+                                </button>
                             </div>
                         )}
 
@@ -144,7 +160,7 @@ const OrderListItem = React.memo(function OrderListItem({
                 </div>
 
                 {/* Actions */}
-                <div className="flex gap-2 mt-2 md:mt-0 md:mr-4 justify-end">
+                <div className="flex flex-wrap gap-2 mt-2 md:mt-0 md:mr-4 md:w-72 md:shrink-0 justify-end">
                     {customActions ? (
                         customActions
                     ) : (

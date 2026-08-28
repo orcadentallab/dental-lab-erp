@@ -34,14 +34,17 @@ export default function OrderListModal({ title, isOpen, onClose, children, showD
 
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto p-4">
-                    {/* Headers */}
-                    <div className={`grid ${columns} gap-4 pb-3 mb-3 border-b border-gray-300 dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-300`}>
-                        {!hideCaseId && <div>رقم الكيس</div>}
-                        <div>{showDoctor ? 'المريض / الطبيب' : 'المريض'}</div>
-                        <div>الخدمات</div>
-                        <div>المعمل/المصمم</div>
-                        {showDeliveryDate && <div>تاريخ التسليم</div>}
-                        <div>الحالة</div>
+                    {/* Headers — mirrors OrderListItem's row layout (content grid + fixed actions column) */}
+                    <div className="hidden md:flex md:items-center w-full px-3 pb-3 mb-3 border-b border-gray-300 dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-300">
+                        <div className={`flex-1 grid ${columns} gap-4`}>
+                            {!hideCaseId && <div>رقم الكيس</div>}
+                            <div>{showDoctor ? 'المريض / الطبيب' : 'المريض'}</div>
+                            <div>الخدمات</div>
+                            <div>المعمل/المصمم</div>
+                            {showDeliveryDate && <div>تاريخ التسليم</div>}
+                            <div>الحالة</div>
+                        </div>
+                        <div className="w-72 shrink-0 mr-4" aria-hidden="true" />
                     </div>
 
                     {/* Order List */}
