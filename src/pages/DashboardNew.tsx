@@ -405,6 +405,18 @@ export default function DashboardNew() {
         }
     };
 
+    // "Review all edits" goes through the server: the list is paged, so looping the
+    // loaded rows would leave everything past the page still queued.
+    const markAllAppliedEditsReviewed = async () => {
+        try {
+            await db.markAllOrderEditsReviewed();
+            setAppliedEdits([]);
+            setReviewedAppliedEditIds(new Set<string>());
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'تعذر حفظ حالة المراجعة');
+        }
+    };
+
     // Helper to resolve (dismiss) a comment
     const resolveComment = (commentId: string) => {
         void persistReviewMarks('comment', [commentId], setResolvedCommentIds);
@@ -1165,7 +1177,7 @@ export default function DashboardNew() {
                                         ) : (
                                         <div className="h-full divide-y divide-blue-100 overflow-y-auto dark:divide-blue-800">
                                             {unreviewedAppliedEdits.length > 0 && <div className="sticky top-0 z-10 px-4 py-2 flex justify-end bg-gray-50 dark:bg-gray-800 border-b border-blue-100 dark:border-blue-800">
-                                                <button onClick={() => void persistReviewMarks('order_edit', unreviewedAppliedEdits.map(edit => edit.id), setReviewedAppliedEditIds)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700"><CheckSquare size={14} /> تمت مراجعة كل التعديلات</button>
+                                                <button onClick={() => void markAllAppliedEditsReviewed()} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-blue-700"><CheckSquare size={14} /> تمت مراجعة كل التعديلات</button>
                                             </div>}
                                             {unreviewedAppliedEdits.map(edit => {
                                                 const relOrder = orders.find(o => o.id === edit.orderId);

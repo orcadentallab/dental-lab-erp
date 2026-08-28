@@ -1406,13 +1406,26 @@ class MockDB {
      * Filtered server-side so the list is not silently capped at the newest N
      * events — older unreviewed edits used to be unreachable behind a limit(50).
      */
-    async getUnreviewedOrderEdits(limit = 200): Promise<OrderEvent[]> {
+    async getUnreviewedOrderEdits(limit = 500): Promise<OrderEvent[]> {
         const { supabase } = await import('../lib/supabase');
         const { dbToOrderEvent } = await import('./supabase/orderEvents');
         const { data, error } = await supabase.rpc('get_unreviewed_order_edits', { p_limit: limit });
         if (error) throw error;
         type RowType = Parameters<typeof dbToOrderEvent>[0];
         return (data || []).map((row: RowType) => dbToOrderEvent(row));
+    }
+
+    /**
+     * Marks every applied/rejected order edit visible to the current user as
+     * reviewed, in one server-side statement — the list is paged, so acknowledging
+     * only the loaded rows would leave the rest silently queued.
+     * Returns how many new marks were written.
+     */
+    async markAllOrderEditsReviewed(): Promise<number> {
+        const { supabase } = await import('../lib/supabase');
+        const { data, error } = await supabase.rpc('mark_all_order_edits_reviewed');
+        if (error) throw error;
+        return typeof data === 'number' ? data : 0;
     }
 
     /** Ids of dashboard items the current user has already marked as reviewed. */
