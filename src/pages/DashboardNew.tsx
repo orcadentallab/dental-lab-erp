@@ -466,6 +466,10 @@ export default function DashboardNew() {
         }
         if (key === 'items') {
             if (isProposalItemArray(val)) {
+                // An order always has at least one service, so an empty list here means
+                // the snapshot was never captured — events written before the audit
+                // started reading order_items. Say so instead of rendering a blank cell.
+                if (val.length === 0) return 'غير مسجّل';
                 return val.map(it => {
                     const teeth = it.teethNumbers && it.teethNumbers.length > 0
                         ? it.teethNumbers.join(', ')
