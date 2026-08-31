@@ -473,42 +473,61 @@ export default function DesignerStats() {
                         </p>
                     </div>
 
+                    {/* Two numbers per supplier, never one: split_handoff is
+                        their pure production time after our own design;
+                        full_lab is registration-to-delivery, which includes
+                        design work they did themselves. Averaging them
+                        together blames the vendor for our own intake time --
+                        the exact mistake 20260821003000 documented and
+                        20260828003000 fixed. */}
                     <div className="overflow-x-auto">
                         <table className="w-full text-xs text-right">
                             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400">
                                 <tr>
-                                    <th className="p-3">المعمل / المورد</th>
-                                    <th className="p-3">عدد الحالات المقيسة</th>
-                                    <th className="p-3">الوسيط (p50)</th>
-                                    <th className="p-3">المعيار الإحصائي (p80)</th>
-                                    <th className="p-3">المتوسط العام</th>
-                                    <th className="p-3">نسبة الالتزام بالميعاد</th>
-                                    <th className="p-3">حالة العينة</th>
+                                    <th className="p-3" rowSpan={2}>المعمل / المورد</th>
+                                    <th className="p-3 text-center border-r border-slate-200 dark:border-slate-700" colSpan={3}>
+                                        بعد تسليم التصميم (وقت المورد الصافي)
+                                    </th>
+                                    <th className="p-3 text-center" colSpan={3}>
+                                        حالة كاملة (من التسجيل للتسليم)
+                                    </th>
+                                </tr>
+                                <tr>
+                                    <th className="p-2 font-normal">p50</th>
+                                    <th className="p-2 font-normal">p80</th>
+                                    <th className="p-2 font-normal border-r border-slate-200 dark:border-slate-700">العيّنة</th>
+                                    <th className="p-2 font-normal">p50</th>
+                                    <th className="p-2 font-normal">p80</th>
+                                    <th className="p-2 font-normal">العيّنة</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {supplierReport.suppliers.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="p-6 text-center text-slate-400">لا توجد بيانات شغل خارجي مكتملة</td>
+                                        <td colSpan={7} className="p-6 text-center text-slate-400">لا توجد بيانات شغل خارجي موثوقة بعد</td>
                                     </tr>
                                 ) : (
                                     supplierReport.suppliers.map(sup => (
                                         <tr key={sup.supplier_id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                                             <td className="p-3 font-semibold text-slate-900 dark:text-white">{sup.supplier_name}</td>
-                                            <td className="p-3 font-mono">{sup.total_sample_count} حالة</td>
-                                            <td className="p-3 font-mono font-semibold">{sup.p50_lead_days} يوم</td>
-                                            <td className="p-3 font-mono font-bold text-teal-600">{sup.p80_lead_days} يوم</td>
-                                            <td className="p-3 font-mono">{sup.avg_lead_days} يوم</td>
-                                            <td className="p-3 font-mono font-bold text-emerald-600">{sup.on_time_rate_pct}%</td>
+                                            <td className="p-3 font-mono">{sup.split_handoff.p50_days ?? '—'}</td>
+                                            <td className="p-3 font-mono font-bold text-teal-600">{sup.split_handoff.p80_days ?? '—'}</td>
+                                            <td className="p-3 border-r border-slate-100 dark:border-slate-800">
+                                                <span className={`font-mono ${sup.split_handoff.is_low_sample ? 'text-amber-600' : ''}`}>
+                                                    {sup.split_handoff.sample_size}
+                                                </span>
+                                                {sup.split_handoff.is_low_sample && sup.split_handoff.sample_size > 0 && (
+                                                    <span className="text-[10px] text-amber-600 block">عيّنة قليلة</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 font-mono">{sup.full_lab.p50_days ?? '—'}</td>
+                                            <td className="p-3 font-mono font-bold text-teal-600">{sup.full_lab.p80_days ?? '—'}</td>
                                             <td className="p-3">
-                                                {sup.is_low_sample ? (
-                                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 rounded text-[11px]">
-                                                        ⚠️ عينة قليلة (&lt;20)
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 rounded text-[11px]">
-                                                        ✅ عينة موثوقة
-                                                    </span>
+                                                <span className={`font-mono ${sup.full_lab.is_low_sample ? 'text-amber-600' : ''}`}>
+                                                    {sup.full_lab.sample_size}
+                                                </span>
+                                                {sup.full_lab.is_low_sample && sup.full_lab.sample_size > 0 && (
+                                                    <span className="text-[10px] text-amber-600 block">عيّنة قليلة</span>
                                                 )}
                                             </td>
                                         </tr>
@@ -596,13 +615,21 @@ export default function DesignerStats() {
                                 </div>
 
                                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                                    <div className="text-xs text-slate-500">ساعات العمل المطلوبة</div>
+                                    {/* Not "working hours": a full-lab chain is
+                                        entirely at the outside lab, so this is
+                                        elapsed time to the promise, not hours
+                                        of work done on our own clock. */}
+                                    <div className="text-xs text-slate-500">الوقت المتوقع للتسليم</div>
                                     <div className="text-2xl font-bold text-slate-900 dark:text-white font-mono mt-1">
-                                        {deliveryEstimate.total_working_hours} <span className="text-sm font-normal">ساعة</span>
+                                        {deliveryEstimate.total_working_hours === null
+                                            ? 'غير محسوب'
+                                            : <>{deliveryEstimate.total_working_hours} <span className="text-sm font-normal">ساعة</span></>}
                                     </div>
-                                    <div className="text-xs text-slate-400 mt-1">
-                                        ({deliveryEstimate.total_working_minutes} دقيقة عمل)
-                                    </div>
+                                    {deliveryEstimate.total_working_minutes !== null && (
+                                        <div className="text-xs text-slate-400 mt-1">
+                                            ({deliveryEstimate.total_working_minutes} دقيقة)
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl">

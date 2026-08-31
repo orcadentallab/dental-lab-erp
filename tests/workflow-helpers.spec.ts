@@ -109,6 +109,32 @@ test.describe('WF-4: getForwardActions', () => {
         expect(actions.some(a => a.id === 'start_production')).toBe(true);
     });
 
+    test('designing on a full case shows to_production without a design', () => {
+        const actions = getForwardActions('designing', 'none', { workflowType: 'full' });
+        expect(actions.some(a => a.id === 'to_production')).toBe(true);
+    });
+
+    test('designing with no workflow type shows to_production without a design', () => {
+        const actions = getForwardActions('designing', 'none', { workflowType: null });
+        expect(actions.some(a => a.id === 'to_production')).toBe(true);
+    });
+
+    test('designing on a split case without a design shows nothing', () => {
+        expect(getForwardActions('designing', 'none', { workflowType: 'split' }).length).toBe(0);
+    });
+
+    test('designing on a split case with a design shows to_production', () => {
+        const actions = getForwardActions('designing', 'none', {
+            workflowType: 'split',
+            designUrl: 'https://drive.example/design',
+        });
+        expect(actions.some(a => a.id === 'to_production')).toBe(true);
+    });
+
+    test('designing on a cancelled full case still shows nothing', () => {
+        expect(getForwardActions('designing', 'cancelled', { workflowType: 'full' }).length).toBe(0);
+    });
+
     test('Pending Review shows no forward actions', () => {
         const actions = getForwardActions('not_started', 'none', { status: 'Pending Review' });
         expect(actions.length).toBe(0);

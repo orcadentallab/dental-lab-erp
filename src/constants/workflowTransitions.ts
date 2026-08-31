@@ -58,17 +58,31 @@ export function getForwardActions(
                 },
             ];
 
-        case 'designing':
+        case 'designing': {
+            const toProduction: WorkflowAction = {
+                id: 'to_production',
+                label: 'إرسال للإنتاج',
+                targetLegacyStatus: 'Under Production',
+                variant: 'primary',
+                icon: 'ArrowRight',
+            };
+            // A case that is not split has no design of ours to wait for: the
+            // whole thing, design included, is at the external lab. It lands
+            // here when a case starts split and the designer is later removed
+            // -- that happens for real, so the case has to keep moving instead
+            // of sitting on a step that can never complete. A null workflow
+            // type is the same story: no internal design pipeline either.
+            if (orderContext.workflowType !== 'split') {
+                return [toProduction];
+            }
+            // Split with a designer on it: the lab must not be sent a case
+            // before its design is uploaded. The bar shows why instead of
+            // going blank; admins still have the "…" override.
             if (orderContext.designUrl) {
-                return [{
-                    id: 'to_production',
-                    label: 'إرسال للإنتاج',
-                    targetLegacyStatus: 'Under Production',
-                    variant: 'primary',
-                    icon: 'ArrowRight',
-                }];
+                return [toProduction];
             }
             return [];
+        }
 
         case 'in_production': {
             const dt = (orderContext.deliveryType || '').toLowerCase();

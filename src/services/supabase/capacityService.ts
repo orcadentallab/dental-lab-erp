@@ -24,28 +24,39 @@ export interface ProductionCapacityReport {
   stages: StageCapacityMetric[];
 }
 
+/**
+ * One bucket of a supplier's lead time. Never average split_handoff and
+ * full_lab together -- they measure different things (pure production time
+ * after our own design, vs registration-to-delivery including design the
+ * vendor did themselves). p50/p80/avg are null when sample_size is 0.
+ */
+export interface SupplierLeadTimeBucket {
+  sample_size: number;
+  is_low_sample: boolean;
+  p50_days: number | null;
+  p80_days: number | null;
+  avg_days: number | null;
+}
+
 export interface SupplierLeadTimeMetric {
   supplier_id: string;
   supplier_name: string;
-  total_sample_count: number;
-  is_low_sample: boolean;
-  avg_lead_days: number;
-  p50_lead_days: number;
-  p80_lead_days: number;
-  has_anomaly_warning: boolean;
-  on_time_rate_pct: number;
+  split_handoff: SupplierLeadTimeBucket;
+  full_lab: SupplierLeadTimeBucket;
 }
 
 export interface SupplierLeadTimeReport {
   period: { start_date: string; end_date: string };
+  note: string;
   suppliers: SupplierLeadTimeMetric[];
 }
 
 export interface DeliveryEstimate {
   service_id: string;
   units: number;
-  total_working_minutes: number;
-  total_working_hours: number;
+  /** null when no work calendar is configured -- render as "غير محسوب", never as today. */
+  total_working_minutes: number | null;
+  total_working_hours: number | null;
   /** null when no work calendar is configured -- render as "غير محسوب", never as today. */
   estimated_calendar_days: number | null;
   estimated_delivery_date: string | null;

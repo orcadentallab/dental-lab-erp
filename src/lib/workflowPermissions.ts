@@ -233,7 +233,11 @@ export function canChangeProductionStatus(
 
         case 'designing':
             if (targetStatus === 'in_production') {
-                return !!context.designUrl;
+                // Only a split case owes us a design before the lab can be
+                // sent the work. On anything else the design is the external
+                // lab's too, so there is nothing here to wait for -- mirrors
+                // getForwardActions('designing', ...).
+                return context.workflowType !== 'split' || !!context.designUrl;
             }
             return false;
 

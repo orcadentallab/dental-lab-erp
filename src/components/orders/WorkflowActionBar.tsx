@@ -144,6 +144,14 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     });
     const hasIssueOptions = issueActions.length > 0 || canRedo || redoBlockedByReplacement
         || canCorrectIssue;
+    // A split case owes us a design before the lab can be sent the work, so
+    // there is deliberately no forward action here. Saying that beats an
+    // empty bar that reads like the case is broken. Admins still have the "…"
+    // override; a non-split case is not gated at all and never reaches this.
+    const blockedOnDesignUpload = productionStatus === 'designing'
+        && order.workflowType === 'split'
+        && !order.designUrl
+        && forwardActions.length === 0;
 
     useEffect(() => {
         const handler = (e: MouseEvent) => {
@@ -279,12 +287,22 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     chain stamped with today's clock, which reads as a case that
                     took no time at all. */}
 
-                {(forwardActions.length > 0 || hasIssueOptions) && (
+                {(forwardActions.length > 0 || hasIssueOptions || blockedOnDesignUpload) && (
                     <span className="text-surface-300 text-xs select-none">←</span>
                 )}
 
                 {/* Forward Actions */}
                 {forwardActions.map(renderActionButton)}
+
+                {blockedOnDesignUpload && (
+                    <span
+                        className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-surface-50 text-surface-400 select-none sm:min-h-0"
+                        title="الحالة دي تصميمها عندنا — مش هتتحرك للإنتاج قبل ما التصميم يترفع."
+                    >
+                        <PenTool size={13} />
+                        <span>ارفع التصميم الأول</span>
+                    </span>
+                )}
 
                 {/* Issue Dropdown — all issue + redo actions collapsed */}
                 {hasIssueOptions && (
