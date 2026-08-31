@@ -957,7 +957,7 @@ export default function RouteEditor() {
             {/* Sticky, because the save is the whole transaction and a route
                 left edited-but-unsaved is a route that does nothing. */}
             {dirty && (
-                <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 shadow-lg p-3 z-40">
+                <div className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 shadow-lg p-3 z-20">
                     <div className="max-w-6xl mx-auto flex items-center justify-between gap-3 flex-wrap">
                         <span className="text-sm text-slate-600">
                             فيه تعديلات لسه متحفظتش — {steps.length} خطوة

@@ -750,7 +750,7 @@ export default function Orders() {
             </div>
 
             {/* Mobile compact toolbar */}
-            <div className="sticky top-2 z-40 mb-4 lg:hidden">
+            <div className="sticky top-2 z-20 mb-4 lg:hidden">
                 <Card className="border-none bg-white/95 p-2 shadow-lg ring-1 ring-surface-950/5 backdrop-blur-md">
                     <div className="flex items-center gap-2">
                         {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
@@ -915,7 +915,9 @@ export default function Orders() {
             </AnimatePresence>
 
             {/* Desktop header & filters */}
-            <div className="hidden lg:block sticky top-4 z-40 mb-6 space-y-4">
+            {/* z-20: above the cards (a highlighted one takes z-10) and below
+                the header, so the global search results are not covered. */}
+            <div className="hidden lg:block sticky top-4 z-20 mb-6 space-y-4">
                 <Card className="p-3 border-none shadow-sm bg-white/95 backdrop-blur-md ring-1 ring-surface-950/5">
                     <div className="flex flex-col gap-2">
                         {/* Row 1: Search, Date, Actions, Checkbox 1 */}

@@ -43,7 +43,13 @@ export default function DashboardLayout() {
                 <Sidebar />
                 <div className="flex flex-1 flex-col overflow-hidden">
 
-                    <header className="relative z-20 flex shrink-0 items-center gap-3 border-b border-teal-100/70 bg-white/70 px-4 py-2.5 backdrop-blur lg:px-8 print:hidden">
+                    {/* z-30: the header is global chrome and owns the search and
+                        quick-action menus, so it has to outrank page content --
+                        a page's own sticky bar used to paint over the open search
+                        results. Its children's z-index is scoped to this context,
+                        so raising it here is what actually lifts those menus.
+                        Modals (z-50+) and the sidebar stay above it on purpose. */}
+                    <header className="relative z-30 flex shrink-0 items-center gap-3 border-b border-teal-100/70 bg-white/70 px-4 py-2.5 backdrop-blur lg:px-8 print:hidden">
                         {isSingleDestination ? (
                             <h1 className="flex-1 text-sm font-bold text-teal-900">ملفي المالي</h1>
                         ) : (
