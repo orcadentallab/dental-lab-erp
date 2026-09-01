@@ -2,7 +2,7 @@
 -- Description: Create a table to track all changes to orders (Auditing)
 
 CREATE TABLE IF NOT EXISTS order_history (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id), -- Nullable if system action
     user_name TEXT, -- Snapshot of name in case user is deleted

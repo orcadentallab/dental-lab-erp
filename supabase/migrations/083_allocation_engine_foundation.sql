@@ -9,7 +9,7 @@
 --   change official financial reporting behavior.
 
 CREATE TABLE IF NOT EXISTS payment_allocations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     payment_transaction_id UUID NOT NULL REFERENCES transactions(id),
     obligation_id UUID NOT NULL REFERENCES financial_obligations(id),
@@ -90,7 +90,7 @@ FOR EACH ROW
 EXECUTE FUNCTION prevent_active_allocation_to_void_obligation();
 
 CREATE TABLE IF NOT EXISTS account_credits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     entity_type TEXT NOT NULL
         CHECK (entity_type IN ('doctor', 'external_lab', 'designer')),
@@ -139,7 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_account_credits_source_obligation
     ON account_credits(source_obligation_id);
 
 CREATE TABLE IF NOT EXISTS allocation_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     event_type TEXT NOT NULL
         CHECK (event_type IN (
@@ -193,7 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_allocation_events_created_at
     ON allocation_events(created_at);
 
 CREATE TABLE IF NOT EXISTS financial_exception_reviews (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     review_type TEXT NOT NULL
         CHECK (review_type IN (

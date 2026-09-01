@@ -4,7 +4,7 @@
 --   This does not create allocations, credits, backfill, reports, or automatic status wiring.
 
 CREATE TABLE IF NOT EXISTS financial_obligations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
 

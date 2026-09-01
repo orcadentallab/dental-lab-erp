@@ -4,7 +4,7 @@
 --   This does not replace order_history, which remains the raw field-change audit.
 
 CREATE TABLE IF NOT EXISTS order_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
 
     event_type TEXT NOT NULL,
