@@ -49,6 +49,10 @@ import { ToastProvider } from './context/ToastContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import TitleUpdater from './components/TitleUpdater';
 
+// Opt-out rather than opt-in: a deployment that says nothing keeps the landing
+// page, so the existing production build is unaffected.
+const SHOW_MARKETING = import.meta.env.VITE_SHOW_MARKETING !== 'false';
+
 function App() {
   return (
     <LanguageProvider>
@@ -63,7 +67,18 @@ function App() {
                   <Route path="/login" element={<Login />} />
 
 
-                  <Route path="/" element={<Suspense fallback={<div className="min-h-screen bg-brand-offwhite" />}><MarketingPage /></Suspense>} />
+                  {/* The marketing landing page belongs to one specific lab, so
+                      demo and white-label deployments set VITE_SHOW_MARKETING=false
+                      and "/" goes straight to the portal instead. Login forwards an
+                      already-signed-in user on to their own landing route. */}
+                  <Route
+                    path="/"
+                    element={
+                      SHOW_MARKETING
+                        ? <Suspense fallback={<div className="min-h-screen bg-brand-offwhite" />}><MarketingPage /></Suspense>
+                        : <Navigate to="/login" replace />
+                    }
+                  />
 
                   <Route element={<ProtectedRoute />}>
                     <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'representative', 'accountant', 'designer']} />}>
