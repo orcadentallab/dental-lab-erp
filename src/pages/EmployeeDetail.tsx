@@ -143,7 +143,7 @@ export default function EmployeeDetail() {
             return;
         }
         loadData();
-    }, [loadData, currentUser, isAuthorized]);
+    }, [loadData, currentUser, isAuthorized, navigate, toastError]);
 
     // Financial calculations for the selected month
     const stats = useMemo(() => {

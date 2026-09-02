@@ -8,7 +8,7 @@ import { formatCurrency, type LabInfo } from '../utils/finance';
 
 // ===================== HTML → PDF CORE =====================
 
-async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = true): Promise<void> {
+export async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = true): Promise<void> {
     const container = document.createElement('div');
     container.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;background:white;';
     container.innerHTML = html;
@@ -70,7 +70,7 @@ async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = tr
             const MARGIN_BOTTOM = 5;
             const FOOT_H = footerHeightMm;
 
-            const breakableElements = Array.from(container.querySelectorAll('tr, .s-card, .balance-banner, .doc-notice, .detail-box, .meta-strip, .totals-section'));
+            const breakableElements = Array.from(container.querySelectorAll('tbody tr, .s-card, .balance-banner, .doc-notice, .detail-box, .meta-strip, .totals-section, .report-section, .report-card, .p-box, .kpi-block, .unbroken-block, [data-avoid-break="true"]'));
             const containerBox = container.getBoundingClientRect();
 
             let currentYPx = 0;
@@ -90,13 +90,25 @@ async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = tr
                 if (currentYPx + availHPx < canvas.height) {
                     let bestBreakPx = 0;
                     for (const el of breakableElements) {
+                        // Skip elements inside thead or titles from being break points at their bottom
+                        if (el.closest('thead') || el.classList.contains('section-title')) continue;
+
                         const elBox = el.getBoundingClientRect();
                         const elTopPx = (elBox.top - containerBox.top) * 2;
                         const elBottomPx = (elBox.bottom - containerBox.top) * 2;
 
                         if (elBottomPx <= currentYPx + availHPx) {
                             bestBreakPx = elBottomPx;
-                        } else if (elTopPx > currentYPx + availHPx) {
+                        } else if (elTopPx > currentYPx) {
+                            // If element doesn't fit on this page, but starts within it, break before it if it's marked indivisible
+                            const isIndivisible = el.classList.contains('report-section') ||
+                                el.classList.contains('unbroken-block') ||
+                                el.getAttribute('data-avoid-break') === 'true' ||
+                                el.tagName.toLowerCase() === 'table';
+
+                            if (isIndivisible && elTopPx > currentYPx + 60) {
+                                bestBreakPx = elTopPx;
+                            }
                             break;
                         }
                     }
@@ -125,13 +137,13 @@ async function htmlToPdfPage(doc: jsPDF, html: string, isFirstPage: boolean = tr
     }
 }
 
-function createPdf(): jsPDF {
+export function createPdf(): jsPDF {
     return new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
 }
 
 // ===================== DESIGN SYSTEM =====================
 
-const COLORS = {
+export const COLORS = {
     primary: '#1e3a8a',       // Deep Royal Blue (Orca)
     primaryLight: '#3b82f6',  // Blue-500
     primaryBg: '#eff6ff',     // Blue-50

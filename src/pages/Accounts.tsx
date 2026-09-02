@@ -169,16 +169,18 @@ export default function Accounts() {
     });
 
     useEffect(() => {
-        const newParams = new URLSearchParams(searchParams);
-        if (viewMode !== 'summary') newParams.set('mode', viewMode);
-        else newParams.delete('mode');
+        setSearchParams(prevParams => {
+            const newParams = new URLSearchParams(prevParams);
+            if (viewMode !== 'summary') newParams.set('mode', viewMode);
+            else newParams.delete('mode');
 
-        newParams.set('tab', activeTab);
+            newParams.set('tab', activeTab);
 
-        if (selectedEntityId) newParams.set('entity', selectedEntityId);
-        else newParams.delete('entity');
+            if (selectedEntityId) newParams.set('entity', selectedEntityId);
+            else newParams.delete('entity');
 
-        setSearchParams(newParams, { replace: true });
+            return newParams;
+        }, { replace: true });
     }, [viewMode, activeTab, selectedEntityId, setSearchParams]);
 
     // Sync URL search parameters back to component state (handles history navigation and sidebar clicks)

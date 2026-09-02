@@ -58,7 +58,6 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
     // Filter/Privacy Logic
     const hideSensitiveInfo = userRole === 'lab' || userRole === 'designer';
-    const filteredOrders = orders || []; // Define filteredOrders
 
     const [usersMap, setUsersMap] = useState<Record<string, string>>({});
     const [designerFixedSalaryMap, setDesignerFixedSalaryMap] = useState<Record<string, boolean>>({});
@@ -144,8 +143,9 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     // preserves the surrounding board order while making a multi-redo chain
     // readable as one sequence.
     const finalOrders = useMemo(() => {
-        const byId = new Map(filteredOrders.map(order => [order.id, order]));
-        const originalIndexById = new Map(filteredOrders.map((order, index) => [order.id, index]));
+        const orderList = orders || [];
+        const byId = new Map(orderList.map(order => [order.id, order]));
+        const originalIndexById = new Map(orderList.map((order, index) => [order.id, index]));
         const getChainPosition = (order: Order) => {
             const visited = new Set<string>();
             let root = order;
@@ -163,7 +163,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 step,
             };
         };
-        return [...filteredOrders].sort((a, b) => {
+        return [...orderList].sort((a, b) => {
             const aPosition = getChainPosition(a);
             const bPosition = getChainPosition(b);
             const byGroupIndex = aPosition.groupIndex - bPosition.groupIndex;
@@ -171,7 +171,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
             if (aPosition.group === bPosition.group) return aPosition.step - bPosition.step;
             return 0;
         });
-    }, [filteredOrders]);
+    }, [orders]);
 
     // Prefill the lab-rejection cause/stage from what the designer picked
     // when they requested this rejection (request_designer_rejection_v2),

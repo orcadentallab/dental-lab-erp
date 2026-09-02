@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { db, type DoctorOrderSummary } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
@@ -18,11 +18,7 @@ export default function DoctorOrders() {
     const [rating, setRating] = useState(0);
     const [feedbackNotes, setFeedbackNotes] = useState('');
 
-    useEffect(() => {
-        loadOrders();
-    }, [user?.entityId]);
-
-    const loadOrders = async () => {
+    const loadOrders = useCallback(async () => {
         if (!user?.entityId) return;
         setLoading(true);
         try {
@@ -32,7 +28,11 @@ export default function DoctorOrders() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user?.entityId]);
+
+    useEffect(() => {
+        loadOrders();
+    }, [loadOrders]);
 
     const handleRateSubmit = async () => {
         if (!ratingOrder) return;

@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService, EMPTY_TOP_FAMILIES, type TopFamiliesResult } from '../services/supabase/analyticsService';
 import ReportsHub from '../components/ReportsHub';
-import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle, Layers } from 'lucide-react';
+import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle, Layers, Download } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
@@ -11,6 +11,7 @@ import OrderAnalysisTab from '../components/finance/OrderAnalysisTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../services/db';
 import { formatOpenDateRangeLabel } from '../utils/dateRange';
+import { generateComprehensiveAnalyticsPDF } from '../services/comprehensiveReportService';
 
 type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis' | 'order_analysis';
 
@@ -484,6 +485,29 @@ export default function Analytics() {
         }
     }, [isLoading]); // restore after main data finishes loading
 
+    const [isExportingReport, setIsExportingReport] = useState(false);
+
+    const handleExportComprehensiveReport = async () => {
+        setIsExportingReport(true);
+        try {
+            await generateComprehensiveAnalyticsPDF({
+                startDate: dateRange === 'all' ? '' : startDate,
+                endDate: dateRange === 'all' ? '' : endDate,
+                dateRangeLabel: activeDateRangeLabel,
+                preloadedOrders: orders,
+                preloadedTransactions: transactions,
+                preloadedDoctors: doctors,
+                preloadedSuppliers: suppliers,
+                preloadedServices: services
+            });
+        } catch (err) {
+            console.error('Failed to export comprehensive report:', err);
+            alert('حدث خطأ أثناء استخراج التقرير الشامل. يرجى المحاولة مرة أخرى.');
+        } finally {
+            setIsExportingReport(false);
+        }
+    };
+
     const dateRangeLabels: Record<string, string> = {
         today: 'اليوم',
         week: 'آخر 7 أيام',
@@ -523,8 +547,9 @@ export default function Analytics() {
                         </p>
                     </div>
 
-                    {/* Date Range Picker */}
+                    {/* Header Controls (Date Range Picker + Compact PDF Button) */}
                     <div className="flex flex-wrap items-center gap-2">
+                        {/* Date Range Picker */}
                         <div className="bg-white/10 backdrop-blur-md p-1 rounded-xl flex flex-wrap items-center gap-1 border border-white/10">
                             {(['today', 'week', 'month', 'current_month', 'prev_month', 'prev_prev_month', 'year', 'all'] as const).map((range) => (
                                 <button
@@ -541,6 +566,8 @@ export default function Analytics() {
                                 </button>
                             ))}
                         </div>
+
+                        {/* Custom Date Button */}
                         <button
                             onClick={() => setDateRange('custom')}
                             className={clsx(
@@ -552,6 +579,26 @@ export default function Analytics() {
                             title="تاريخ مخصص"
                         >
                             <Calendar size={18} />
+                        </button>
+
+                        {/* Compact PDF Export Button */}
+                        <button
+                            onClick={handleExportComprehensiveReport}
+                            disabled={isExportingReport}
+                            className="flex items-center gap-1.5 px-3 py-2.5 bg-blue-600/80 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-white/15 backdrop-blur-md shadow-sm"
+                            title="تصدير تقرير شامل PDF للفترة المحددة"
+                        >
+                            {isExportingReport ? (
+                                <>
+                                    <RefreshCcw size={15} className="animate-spin" />
+                                    <span>...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Download size={15} />
+                                    <span>PDF</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>

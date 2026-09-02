@@ -4,7 +4,7 @@
  * Displays conversion events tracked from the public Marketing Landing Page
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, MousePointerClick, Smartphone, Monitor, RefreshCw, AlertTriangle, BarChart2, MessageSquare, PhoneCall } from 'lucide-react';
 import clsx from 'clsx';
 import { marketingService, type MarketingSummary, type DailyTrendPoint } from '../services/supabase/marketingService';
@@ -154,7 +154,7 @@ export default function MarketingAnalytics() {
     const [inquiries, setInquiries] = useState<ContactInquiry[]>([]);
     const [inquiryFilter, setInquiryFilter] = useState<'all' | 'new' | 'contacted' | 'closed'>('all');
 
-    const load = async () => {
+    const load = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
@@ -169,9 +169,9 @@ export default function MarketingAnalytics() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [range]);
 
-    useEffect(() => { load(); }, [range]);
+    useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
         contactService.getInquiries(inquiryFilter).then(setInquiries).catch(() => setInquiries([]));

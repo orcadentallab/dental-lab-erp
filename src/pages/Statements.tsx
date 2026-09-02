@@ -407,7 +407,7 @@ export default function StatementsPage() {
         }
 
         return [];
-    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, timeFilter, showAllOrders]);
+    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, showAllOrders]);
 
     const totalBalance = useMemo(() => summaries.reduce((s, e) => s + e.balance, 0), [summaries]);
     const filtered = useMemo(() => {
@@ -551,7 +551,7 @@ export default function StatementsPage() {
             running += l.type === 'debit' ? l.amount : -l.amount;
             return { ...l, runningBalance: running };
         });
-    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, timeFilter, showAllOrders, getDoctorStatementRedoDisplay]);
+    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Invoice lines (فاتورة شهرية) ─────────────────────────────────────────
 
