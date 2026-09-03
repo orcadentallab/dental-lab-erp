@@ -121,6 +121,7 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
     // Count manual orders in period
     let manualOrdersCount = 0;
     filteredOrders.forEach(o => {
+        if (isNonProductiveOrder(o)) return;
         const items = o.items || [];
         const doctor = doctors.find(d => d.id === o.doctorId);
         const hasManualCost = o.manualCost !== null && o.manualCost !== undefined;
@@ -170,6 +171,7 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
     }>();
 
     filteredOrders.forEach(o => {
+        if (isNonProductiveOrder(o)) return;
         const items = o.items as any[];
         if (!items || items.length === 0) return;
         const orderDoctor = doctors.find(d => d.id === o.doctorId);

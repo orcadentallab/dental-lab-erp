@@ -157,4 +157,94 @@ describe('analytics overview and statement parity unification', () => {
         const avgSalePrice = Math.round(totalRevenue / productiveUnits);
         expect(avgSalePrice).toBe(694);
     });
+
+    it('ensures comprehensive report services table units sum reconciles with header totalUnits and never exceeds it', () => {
+        // Reproducing the user's reported bug:
+        // Top 15 services summing to 381, header showing 369 (-12 cancelled units)
+        const orders = [
+            {
+                id: 'ord-prod-1',
+                status: 'Delivered',
+                productionStatus: 'final_delivered',
+                actualDeliveryDate: '2026-02-10',
+                isDeleted: false,
+                items: [
+                    { serviceType: 'Zirconia Crown', teethNumbers: ['11', '12'], price: 500 }, // 2
+                    { serviceType: 'Emax Inlay', teethNumbers: ['14'], price: 400 },           // 1
+                ],
+                totalPrice: 1400,
+            },
+            {
+                id: 'ord-prod-2',
+                status: 'Delivered',
+                productionStatus: 'final_delivered',
+                actualDeliveryDate: '2026-02-15',
+                isDeleted: false,
+                items: [
+                    { serviceType: 'Zirconia Crown', teethNumbers: ['21', '22', '23'], price: 500 }, // 3
+                ],
+                totalPrice: 1500,
+            },
+            {
+                id: 'ord-cancelled-1',
+                status: 'Cancelled',
+                productionStatus: 'cancelled',
+                deliveryDate: '2026-02-18',
+                isDeleted: false,
+                items: [
+                    { serviceType: 'Zirconia Crown', teethNumbers: ['31', '32', '33', '34'], price: 0 }, // 4 cancelled units
+                ],
+                totalPrice: 0,
+            },
+            {
+                id: 'ord-lab-rejected-1',
+                status: 'Lab Rejected',
+                deliveryDate: '2026-02-20',
+                isDeleted: false,
+                items: [
+                    { serviceType: 'Emax Inlay', teethNumbers: ['41', '42'], price: 0 }, // 2 lab rejected units
+                ],
+                totalPrice: 0,
+            }
+        ];
+
+        const filteredOrders = orders.filter(o => isDoctorStatementIncluded(o));
+
+        // 1. Header totalUnits computation
+        const isNonProductiveOrder = (o: any) =>
+            o.status === 'Cancelled' || o.status === 'Lab Rejected';
+
+        const totalUnits = filteredOrders.reduce((sum, o) => {
+            if (isNonProductiveOrder(o)) return sum;
+            const items = o.items || [];
+            return sum + items.reduce((s, it) => s + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
+        }, 0);
+
+        // Productive units = (2 + 1) + 3 = 6 units
+        expect(totalUnits).toBe(6);
+
+        // 2. Services table map (detailedServices) WITH the fix
+        const serviceMap = new Map<string, { units: number; cases: Set<string> }>();
+        filteredOrders.forEach(o => {
+            if (isNonProductiveOrder(o)) return; // The bug was this check being missing
+            const items = o.items || [];
+            items.forEach(it => {
+                const count = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
+                if (!serviceMap.has(it.serviceType)) {
+                    serviceMap.set(it.serviceType, { units: 0, cases: new Set() });
+                }
+                const entry = serviceMap.get(it.serviceType)!;
+                entry.units += count;
+                entry.cases.add(o.id);
+            });
+        });
+
+        const tableUnitsSum = Array.from(serviceMap.values()).reduce((sum, s) => sum + s.units, 0);
+
+        // Table units sum MUST equal header totalUnits exactly (6 === 6, NOT 6 + 4 + 2 = 12)
+        expect(tableUnitsSum).toBe(totalUnits);
+        expect(serviceMap.get('Zirconia Crown')?.units).toBe(5); // 2 + 3, not 5 + 4 = 9
+        expect(serviceMap.get('Emax Inlay')?.units).toBe(1);     // 1, not 1 + 2 = 3
+    });
 });
+

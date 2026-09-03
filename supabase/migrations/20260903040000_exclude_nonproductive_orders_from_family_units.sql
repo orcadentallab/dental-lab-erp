@@ -1,0 +1,155 @@
+-- Migration: exclude non-productive orders (cancelled and lab rejected) from
+-- service family unit counts in get_top_families_privileged_20260826.
+--
+-- RATIONALE:
+-- Matches the fix made in 20260903020000_exclude_nonproductive_orders_from_service_units.sql
+-- for get_top_services and get_doctor_service_profitability. Cancelled and
+-- lab-rejected orders were never manufactured, so their units must not be
+-- counted in family unit totals or family rankings.
+
+BEGIN;
+
+CREATE OR REPLACE FUNCTION public.get_top_families_privileged_20260826(
+    p_start_date DATE DEFAULT NULL,
+    p_end_date   DATE DEFAULT NULL,
+    p_limit      INT  DEFAULT 5
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    result JSONB;
+BEGIN
+    WITH doctor_orders AS (
+        SELECT
+            o.id AS order_id,
+            o.doctor_id,
+            CASE WHEN o.production_status = 'final_delivered'
+                THEN COALESCE(o.actual_delivery_date, o.delivery_date, o.created_at::date)
+                ELSE COALESCE(o.delivery_date, o.created_at::date)
+            END AS statement_date,
+            CASE
+                WHEN COALESCE(o.issue_state, 'none') IN ('doctor_rejected', 'lab_rejected', 'redo') THEN
+                    CASE WHEN o.rejection_doctor_decision IS NOT NULL
+                        THEN GREATEST(COALESCE(o.rejected_doctor_amount, 0), 0)
+                        ELSE 0
+                    END
+                WHEN o.production_status = 'final_delivered' AND COALESCE(o.issue_state, 'none') = 'none'
+                    THEN COALESCE(o.total_price, 0)
+                ELSE 0
+            END AS receivable_amount,
+            (lower(o.status) IN ('cancelled', 'lab rejected')
+             OR COALESCE(o.issue_state, 'none') IN ('cancelled', 'lab_rejected')) AS is_non_productive
+        FROM orders o
+        WHERE COALESCE(o.is_deleted, false) = false
+          AND lower(o.status) IN ('delivered', 'completed', 'cancelled', 'rejected', 'doctor rejected', 'lab rejected', 'returned for adjustments')
+    ),
+    doctor_orders_in_range AS (
+        SELECT * FROM doctor_orders
+        WHERE p_start_date IS NULL
+           OR statement_date BETWEEN p_start_date AND COALESCE(p_end_date, CURRENT_DATE)
+    ),
+    item_base AS (
+        SELECT
+            oi.order_id,
+            oi.product_type,
+            -- English first; Arabic only when no English name was entered.
+            COALESCE(NULLIF(btrim(sf.name_en), ''), sf.name_ar, oi.product_type) AS family_name,
+            COALESCE(sf.color, 'emerald') AS family_color,
+            sf.id IS NOT NULL AS is_family,
+            CASE
+                WHEN do_.is_non_productive THEN 0
+                ELSE GREATEST(COALESCE(jsonb_array_length(oi.teeth_numbers), 1), 1)
+            END AS unit_count,
+            oi.price AS item_price,
+            COALESCE((pd.custom_prices->>oi.product_type)::numeric, sv.selling_price, 0) AS catalog_price
+        FROM order_items oi
+        JOIN doctor_orders_in_range do_ ON do_.order_id = oi.order_id
+        LEFT JOIN doctors od ON od.id = do_.doctor_id
+        LEFT JOIN doctors pd ON pd.id = COALESCE(od.parent_id, od.id)
+        LEFT JOIN services sv ON lower(btrim(sv.name)) = lower(btrim(oi.product_type))
+        LEFT JOIN service_families sf ON sf.id = sv.family_id
+    ),
+    item_weights AS (
+        SELECT
+            order_id,
+            family_name,
+            family_color,
+            is_family,
+            unit_count,
+            CASE
+                WHEN unit_count = 0 THEN 0
+                WHEN item_price > 0 THEN item_price * unit_count
+                WHEN catalog_price > 0 THEN catalog_price * unit_count
+                ELSE unit_count
+            END AS weight
+        FROM item_base
+    ),
+    order_weight_totals AS (
+        SELECT order_id, SUM(weight) AS total_weight
+        FROM item_weights
+        GROUP BY order_id
+    ),
+    allocated AS (
+        SELECT
+            iw.family_name,
+            iw.family_color,
+            iw.is_family,
+            iw.unit_count,
+            CASE WHEN owt.total_weight > 0
+                THEN do_.receivable_amount * iw.weight / owt.total_weight
+                ELSE 0
+            END AS allocated_revenue
+        FROM item_weights iw
+        JOIN doctor_orders_in_range do_ ON do_.order_id = iw.order_id
+        JOIN order_weight_totals owt ON owt.order_id = iw.order_id
+    ),
+    grouped AS (
+        SELECT
+            family_name,
+            MAX(family_color) AS family_color,
+            bool_or(is_family) AS is_family,
+            SUM(unit_count) AS unit_count,
+            SUM(allocated_revenue) AS revenue
+        FROM allocated
+        GROUP BY family_name
+    ),
+    ranked AS (
+        SELECT * FROM grouped
+        ORDER BY unit_count DESC
+        LIMIT p_limit
+    ),
+    totals AS (
+        SELECT
+            (SELECT COALESCE(SUM(receivable_amount), 0) FROM doctor_orders_in_range) AS total_revenue,
+            (SELECT COALESCE(SUM(allocated_revenue), 0) FROM allocated)              AS allocated_revenue
+    )
+    SELECT jsonb_build_object(
+        'families', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'name',      r.family_name,
+                'color',     r.family_color,
+                'count',     r.unit_count,
+                'revenue',   r.revenue,
+                'is_family', r.is_family
+            ) ORDER BY r.unit_count DESC)
+            FROM ranked r
+        ), '[]'::jsonb),
+        'family_count',       (SELECT count(*) FROM service_families),
+        'total_revenue',      t.total_revenue,
+        'allocated_revenue',  t.allocated_revenue,
+        'itemless_revenue',   t.total_revenue - t.allocated_revenue
+    )
+    INTO result
+    FROM totals t;
+
+    RETURN result;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_top_families_privileged_20260826(DATE, DATE, INT)
+    FROM PUBLIC, anon, authenticated;
+
+COMMIT;
