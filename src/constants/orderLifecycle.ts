@@ -287,6 +287,33 @@ export function getLabCostAmount(order: LifecycleOrder): number {
 }
 
 /**
+ * Orders that were never produced/worked on and must not enter into
+ * productive unit counts, work volume, or price/cost average calculations.
+ *
+ * Cancelled orders and Lab Rejected orders were terminated before
+ * manufacturing. Including their units with 0 revenue / 0 cost dilutes
+ * the lab's true average selling price and average purchase cost per unit,
+ * creating fictitious discounts.
+ */
+export function isNonProductiveOrder(order: LifecycleOrder): boolean {
+    const status = normalizeStatus(order.status);
+    const issue = getEffectiveIssueState(order);
+    return status === 'cancelled' || issue === 'cancelled' || status === 'lab rejected' || issue === 'lab_rejected';
+}
+
+export function getProductiveItemUnitCount(order: LifecycleOrder, item: { teethNumbers?: unknown } | null | undefined): number {
+    if (isNonProductiveOrder(order)) return 0;
+    return Array.isArray(item?.teethNumbers) ? item.teethNumbers.length : 1;
+}
+
+export function getOrderProductiveUnits(order: LifecycleOrder): number {
+    if (isNonProductiveOrder(order)) return 0;
+    const items = (order.items || []) as Array<{ teethNumbers?: unknown }>;
+    if (items.length === 0) return 0;
+    return items.reduce((sum, it) => sum + (Array.isArray(it?.teethNumbers) ? it.teethNumbers.length : 1), 0);
+}
+
+/**
  * Amount shown when the user explicitly asks to include unfinished orders.
  * This is a projected order value for active work, but terminal issue states
  * must keep their approved accounting amount instead of reverting to zero.

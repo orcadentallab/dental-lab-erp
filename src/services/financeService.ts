@@ -80,6 +80,8 @@ export interface CashboxSummaryRow {
     transferOut: number;
     expectedBalance: number;
     lastReconciliation?: CashboxReconciliation | null;
+    daysSinceLastReconciliation: number | null;
+    reconciliationStatus: 'today' | 'recent' | 'overdue' | 'never';
 }
 
 export interface CashboxSummary {
@@ -92,7 +94,44 @@ export interface CashboxSummary {
     currentMonthNetCashflow: number;
     daysSinceLastReconciliation: number | null;
     lastReconciliationDate: string | null;
+    unreconciledCount: number;
+    oldestReconciliationDays: number | null;
+    oldestReconciliationDate: string | null;
+    allActiveReconciled: boolean;
+    hasNeverReconciledActive: boolean;
     transfers: CashboxTransfer[];
+}
+
+export interface CashboxStatementItem {
+    id: string;
+    date: string;
+    createdAt?: string;
+    type: 'opening' | 'income' | 'expense' | 'transfer_in' | 'transfer_out' | 'reconciliation';
+    title: string;
+    description?: string;
+    entityName?: string;
+    entityType?: string;
+    category?: string;
+    inAmount: number;
+    outAmount: number;
+    runningBalance: number;
+    reconciliationExpected?: number;
+    reconciliationActual?: number;
+    reconciliationDifference?: number;
+    notes?: string;
+    isSystemGeneratedFee?: boolean;
+}
+
+export interface CashboxStatement {
+    cashbox: Cashbox;
+    openingBalance: number;
+    openingDate: string;
+    totalInflow: number;
+    totalOutflow: number;
+    netTransfers: number;
+    currentExpectedBalance: number;
+    lastReconciliation: CashboxReconciliation | null;
+    items: CashboxStatementItem[];
 }
 
 export const financeService = {
@@ -376,15 +415,30 @@ export const financeService = {
     },
 
     async getCashboxTransfers() {
-        const { data, error } = await supabase
-            .from('cashbox_transfers')
-            .select('*')
-            .order('date', { ascending: false })
-            .order('created_at', { ascending: false });
+        let allData: Array<Record<string, unknown>> = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
 
-        if (error) throw error;
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('cashbox_transfers')
+                .select('*')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .range(from, from + pageSize - 1);
 
-        return (data ?? []).map(row => ({
+            if (error) throw error;
+            const batch = data ?? [];
+            allData = allData.concat(batch);
+            if (batch.length < pageSize) {
+                hasMore = false;
+            } else {
+                from += pageSize;
+            }
+        }
+
+        return allData.map(row => ({
             id: row.id,
             fromCashboxId: row.from_cashbox_id,
             toCashboxId: row.to_cashbox_id,
@@ -424,15 +478,30 @@ export const financeService = {
     },
 
     async getCashboxReconciliations() {
-        const { data, error } = await supabase
-            .from('cashbox_reconciliations')
-            .select('*')
-            .order('date', { ascending: false })
-            .order('created_at', { ascending: false });
+        let allData: Array<Record<string, unknown>> = [];
+        let from = 0;
+        const pageSize = 1000;
+        let hasMore = true;
 
-        if (error) throw error;
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('cashbox_reconciliations')
+                .select('*')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .range(from, from + pageSize - 1);
 
-        return (data ?? []).map(row => ({
+            if (error) throw error;
+            const batch = data ?? [];
+            allData = allData.concat(batch);
+            if (batch.length < pageSize) {
+                hasMore = false;
+            } else {
+                from += pageSize;
+            }
+        }
+
+        return allData.map(row => ({
             id: row.id,
             cashboxId: row.cashbox_id,
             expectedBalance: Number(row.expected_balance),
@@ -487,18 +556,38 @@ export const financeService = {
     },
 
     async getCashboxSummary(): Promise<CashboxSummary> {
-        const [cashboxes, transfers, reconciliations, txResult] = await Promise.all([
+        type TxRow = { id: string; type: string; amount: number; cashbox_id: string | null; is_system_generated_fee: boolean; date: string; entity_id: string | null; entity_type: string | null; category: string };
+        const fetchAllTransactions = async (): Promise<TxRow[]> => {
+            let all: TxRow[] = [];
+            let from = 0;
+            const pageSize = 1000;
+            let hasMore = true;
+            while (hasMore) {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .select('id, type, amount, cashbox_id, is_system_generated_fee, date, entity_id, entity_type, category')
+                    .range(from, from + pageSize - 1);
+
+                if (error) throw error;
+                const batch = (data ?? []) as TxRow[];
+                all = all.concat(batch);
+                if (batch.length < pageSize) {
+                    hasMore = false;
+                } else {
+                    from += pageSize;
+                }
+            }
+            return all;
+        };
+
+        const [cashboxes, transfers, reconciliations, rawTransactions] = await Promise.all([
             this.getCashboxes(true),
             this.getCashboxTransfers(),
             this.getCashboxReconciliations(),
-            supabase
-                .from('transactions')
-                .select('id, type, amount, cashbox_id, is_system_generated_fee, date, entity_id, entity_type, category')
+            fetchAllTransactions()
         ]);
 
-        if (txResult.error) throw txResult.error;
-        type TxRow = { id: string; type: string; amount: number; cashbox_id: string | null; is_system_generated_fee: boolean; date: string; entity_id: string | null; entity_type: string | null; category: string };
-        const transactions = ((txResult.data ?? []) as TxRow[]).filter(t => {
+        const transactions = rawTransactions.filter(t => {
             const employeeClaim = t.type === 'expense'
                 && !!t.entity_id
                 && ['representative', 'general', null].includes(t.entity_type)
@@ -515,6 +604,7 @@ export const financeService = {
 
         let totalExpected = 0;
         let openingBalancesTotal = 0;
+        const now = new Date();
         const rows = cashboxes.map(cashbox => {
             const relatedTx = transactions.filter(t => t.cashbox_id === cashbox.id);
             const income = relatedTx
@@ -535,6 +625,18 @@ export const financeService = {
             totalExpected += expectedBalance;
             openingBalancesTotal += cashbox.openingBalance;
 
+            const lastRec = latestReconciliationByCashbox.get(cashbox.id) || null;
+            let daysSinceReconciliation: number | null = null;
+            let reconciliationStatus: 'today' | 'recent' | 'overdue' | 'never' = 'never';
+            if (lastRec?.date) {
+                const recDate = new Date(lastRec.date);
+                const diffMs = now.getTime() - recDate.getTime();
+                daysSinceReconciliation = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+                if (daysSinceReconciliation === 0) reconciliationStatus = 'today';
+                else if (daysSinceReconciliation <= 7) reconciliationStatus = 'recent';
+                else reconciliationStatus = 'overdue';
+            }
+
             return {
                 cashbox,
                 income,
@@ -542,7 +644,9 @@ export const financeService = {
                 transferIn,
                 transferOut,
                 expectedBalance,
-                lastReconciliation: latestReconciliationByCashbox.get(cashbox.id) || null
+                lastReconciliation: lastRec,
+                daysSinceLastReconciliation: daysSinceReconciliation,
+                reconciliationStatus
             };
         });
 
@@ -556,17 +660,34 @@ export const financeService = {
             .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
         // Current month net cashflow
-        const now = new Date();
         const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
         const monthTx = transactions.filter(t => t.date && t.date >= monthStart && !t.is_system_generated_fee);
         const monthIncome = monthTx.filter(t => t.type === 'income').reduce((sum, t) => sum + Number(t.amount || 0), 0);
         const monthExpenses = monthTx.filter(t => t.type === 'expense').reduce((sum, t) => sum + Number(t.amount || 0), 0);
         const currentMonthNetCashflow = monthIncome - monthExpenses;
 
-        // Days since last reconciliation (across all cashboxes)
+        // Reconciliation metrics across active cashboxes
+        const activeRows = rows.filter(r => r.cashbox.isActive);
+        const overdueOrNeverRows = activeRows.filter(r => r.reconciliationStatus === 'overdue' || r.reconciliationStatus === 'never');
+        const unreconciledCount = overdueOrNeverRows.length;
+        const allActiveReconciled = activeRows.length > 0 && unreconciledCount === 0;
+        const hasNeverReconciledActive = activeRows.some(r => r.daysSinceLastReconciliation === null);
+
+        let oldestReconciliationDays: number | null = null;
+        let oldestReconciliationDate: string | null = null;
+        const activeReconciledDays = activeRows
+            .map(r => r.daysSinceLastReconciliation)
+            .filter((d): d is number => d !== null);
+
+        if (activeReconciledDays.length > 0) {
+            oldestReconciliationDays = Math.max(...activeReconciledDays);
+            const oldestRow = activeRows.find(r => r.daysSinceLastReconciliation === oldestReconciliationDays);
+            oldestReconciliationDate = oldestRow?.lastReconciliation?.date || null;
+        }
+
+        // Backwards compatibility legacy field
         let lastReconciliationDate: string | null = null;
         if (reconciliations.length > 0) {
-            // reconciliations are already sorted desc by date
             lastReconciliationDate = reconciliations[0].date;
         }
         let daysSinceLastReconciliation: number | null = null;
@@ -586,7 +707,329 @@ export const financeService = {
             currentMonthNetCashflow,
             daysSinceLastReconciliation,
             lastReconciliationDate,
+            unreconciledCount,
+            oldestReconciliationDays,
+            oldestReconciliationDate,
+            allActiveReconciled,
+            hasNeverReconciledActive,
             transfers
         };
+    },
+
+    async getCashboxStatement(cashboxId: string): Promise<CashboxStatement> {
+        const { data: cbData, error: cbErr } = await supabase
+            .from('cashboxes')
+            .select('*')
+            .eq('id', cashboxId)
+            .single();
+
+        if (cbErr) throw cbErr;
+        const cashbox: Cashbox = {
+            id: cbData.id,
+            name: cbData.name,
+            type: cbData.type as CashboxType,
+            openingBalance: Number(cbData.opening_balance),
+            openingDate: cbData.opening_date,
+            isActive: cbData.is_active,
+            feeEnabled: cbData.fee_enabled,
+            feePercentage: Number(cbData.fee_percentage),
+            feeMinAmount: Number(cbData.fee_min_amount),
+            feeMaxAmount: cbData.fee_max_amount ? Number(cbData.fee_max_amount) : null,
+            isSaving: cbData.is_saving || false,
+            createdAt: cbData.created_at,
+            updatedAt: cbData.updated_at
+        };
+
+        type TxRow = {
+            id: string;
+            type: string;
+            amount: number;
+            category: string;
+            date: string;
+            description: string | null;
+            entity_id: string | null;
+            entity_type: string | null;
+            created_at: string;
+            is_system_generated_fee?: boolean;
+        };
+
+        const fetchCashboxTransactions = async (): Promise<TxRow[]> => {
+            let all: TxRow[] = [];
+            let from = 0;
+            const pageSize = 1000;
+            let hasMore = true;
+            while (hasMore) {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .eq('cashbox_id', cashboxId)
+                    .order('date', { ascending: true })
+                    .order('created_at', { ascending: true })
+                    .range(from, from + pageSize - 1);
+
+                if (error) throw error;
+                const batch = (data ?? []) as TxRow[];
+                all = all.concat(batch);
+                if (batch.length < pageSize) {
+                    hasMore = false;
+                } else {
+                    from += pageSize;
+                }
+            }
+            return all;
+        };
+
+        const [txList, transfersRes, recsRes, allCashboxesRes, docsRes, suppsRes, usersRes] = await Promise.all([
+            fetchCashboxTransactions(),
+            supabase
+                .from('cashbox_transfers')
+                .select('*')
+                .or(`from_cashbox_id.eq.${cashboxId},to_cashbox_id.eq.${cashboxId}`)
+                .order('date', { ascending: true })
+                .order('created_at', { ascending: true }),
+            supabase
+                .from('cashbox_reconciliations')
+                .select('*')
+                .eq('cashbox_id', cashboxId)
+                .order('date', { ascending: true })
+                .order('created_at', { ascending: true }),
+            supabase.from('cashboxes').select('id, name'),
+            supabase.from('doctors').select('id, name'),
+            supabase.from('suppliers').select('id, name'),
+            supabase.from('users').select('id, name')
+        ]);
+
+        if (transfersRes.error) throw transfersRes.error;
+        if (recsRes.error) throw recsRes.error;
+
+        const cashboxNames = new Map<string, string>((allCashboxesRes.data ?? []).map(c => [c.id, c.name]));
+        const doctorNames = new Map<string, string>((docsRes.data ?? []).map(d => [d.id, d.name]));
+        const supplierNames = new Map<string, string>((suppsRes.data ?? []).map(s => [s.id, s.name]));
+        const userNames = new Map<string, string>((usersRes.data ?? []).map(u => [u.id, u.name]));
+
+        const validTransactions = txList.filter(t => {
+            const employeeClaim = t.type === 'expense'
+                && !!t.entity_id
+                && ['representative', 'general', null].includes(t.entity_type)
+                && ![EXPENSE_CATEGORY.salaries, 'salaries'].includes(t.category);
+            return !employeeClaim;
+        });
+
+        type RawMovement = {
+            id: string;
+            date: string;
+            createdAt?: string;
+            type: 'opening' | 'income' | 'expense' | 'transfer_in' | 'transfer_out' | 'reconciliation';
+            title: string;
+            description?: string;
+            entityName?: string;
+            entityType?: string;
+            category?: string;
+            inAmount: number;
+            outAmount: number;
+            reconciliationExpected?: number;
+            reconciliationActual?: number;
+            reconciliationDifference?: number;
+            notes?: string;
+            isSystemGeneratedFee?: boolean;
+        };
+
+        const rawList: RawMovement[] = [];
+
+        // 1. Opening balance
+        rawList.push({
+            id: `opening-${cashbox.id}`,
+            date: cashbox.openingDate,
+            createdAt: cashbox.createdAt || `${cashbox.openingDate}T00:00:00.000Z`,
+            type: 'opening',
+            title: 'رصيد البداية الافتتاحي',
+            description: 'الرصيد عند إنشاء/افتتاح الصندوق',
+            inAmount: cashbox.openingBalance,
+            outAmount: 0
+        });
+
+        // 2. Transactions
+        validTransactions.forEach(t => {
+            let entityName = '';
+            if (t.entity_id) {
+                if (t.entity_type === 'doctor') entityName = doctorNames.get(t.entity_id) || '';
+                else if (t.entity_type === 'supplier') entityName = supplierNames.get(t.entity_id) || '';
+                else if (t.entity_type === 'user' || t.entity_type === 'designer') entityName = userNames.get(t.entity_id) || '';
+            }
+            const isIncome = t.type === 'income';
+            rawList.push({
+                id: t.id,
+                date: t.date,
+                createdAt: t.created_at,
+                type: isIncome ? 'income' : 'expense',
+                title: isIncome
+                    ? (entityName ? `تحصيل من د. ${entityName}` : 'إيراد نقدي وارد')
+                    : (entityName ? `صرف إلى ${entityName}` : 'مصروف صادر'),
+                description: t.description || '',
+                entityName: entityName || undefined,
+                entityType: t.entity_type || undefined,
+                category: t.category,
+                inAmount: isIncome ? Number(t.amount || 0) : 0,
+                outAmount: isIncome ? 0 : Number(t.amount || 0),
+                isSystemGeneratedFee: t.is_system_generated_fee
+            });
+        });
+
+        // 3. Transfers
+        type TrRow = {
+            id: string;
+            from_cashbox_id: string;
+            to_cashbox_id: string;
+            amount: number;
+            date: string;
+            description: string | null;
+            created_at: string;
+        };
+        ((transfersRes.data ?? []) as TrRow[]).forEach(tr => {
+            const isIncoming = tr.to_cashbox_id === cashboxId;
+            const otherName = isIncoming
+                ? (cashboxNames.get(tr.from_cashbox_id) || 'صندوق آخر')
+                : (cashboxNames.get(tr.to_cashbox_id) || 'صندوق آخر');
+            rawList.push({
+                id: tr.id,
+                date: tr.date,
+                createdAt: tr.created_at,
+                type: isIncoming ? 'transfer_in' : 'transfer_out',
+                title: isIncoming ? `تحويل وارد من: ${otherName}` : `تحويل صادر إلى: ${otherName}`,
+                description: tr.description || 'تحويل داخلي بين الصناديق',
+                inAmount: isIncoming ? Number(tr.amount || 0) : 0,
+                outAmount: isIncoming ? 0 : Number(tr.amount || 0)
+            });
+        });
+
+        // Sort chronologically: opening balance first, then date, then createdAt
+        rawList.sort((a, b) => {
+            if (a.type === 'opening') return -1;
+            if (b.type === 'opening') return 1;
+            const dateComp = a.date.localeCompare(b.date);
+            if (dateComp !== 0) return dateComp;
+            return (a.createdAt || '').localeCompare(b.createdAt || '');
+        });
+
+        // Calculate running balance
+        let runningBalance = 0;
+        let totalInflow = 0;
+        let totalOutflow = 0;
+        let netTransfers = 0;
+
+        const items: CashboxStatementItem[] = rawList.map(item => {
+            if (item.type === 'opening') {
+                runningBalance = item.inAmount;
+            } else if (item.type === 'income') {
+                runningBalance += item.inAmount;
+                totalInflow += item.inAmount;
+            } else if (item.type === 'expense') {
+                runningBalance -= item.outAmount;
+                totalOutflow += item.outAmount;
+            } else if (item.type === 'transfer_in') {
+                runningBalance += item.inAmount;
+                netTransfers += item.inAmount;
+            } else if (item.type === 'transfer_out') {
+                runningBalance -= item.outAmount;
+                netTransfers -= item.outAmount;
+            }
+            return {
+                ...item,
+                runningBalance: Math.round(runningBalance * 100) / 100
+            };
+        });
+
+        type RecRow = {
+            id: string;
+            cashbox_id: string;
+            expected_balance: number;
+            actual_balance: number;
+            difference: number;
+            date: string;
+            notes: string | null;
+            created_at: string;
+        };
+        const recList = (recsRes.data ?? []) as RecRow[];
+        const latestRec = recList.length > 0
+            ? {
+                id: recList[recList.length - 1].id,
+                cashboxId: recList[recList.length - 1].cashbox_id,
+                expectedBalance: Number(recList[recList.length - 1].expected_balance),
+                actualBalance: Number(recList[recList.length - 1].actual_balance),
+                difference: Number(recList[recList.length - 1].difference),
+                date: recList[recList.length - 1].date,
+                notes: recList[recList.length - 1].notes,
+                createdAt: recList[recList.length - 1].created_at
+            } as CashboxReconciliation
+            : null;
+
+        return {
+            cashbox,
+            openingBalance: cashbox.openingBalance,
+            openingDate: cashbox.openingDate,
+            totalInflow,
+            totalOutflow,
+            netTransfers,
+            currentExpectedBalance: Math.round(runningBalance * 100) / 100,
+            lastReconciliation: latestRec,
+            items
+        };
+    },
+
+    async batchSaveCashboxReconciliations(
+        reconciliations: Array<{
+            cashboxId: string;
+            expectedBalance: number;
+            actualBalance: number;
+            difference: number;
+            notes?: string;
+        }>,
+        date: string,
+        createdBy?: string | null
+    ) {
+        if (reconciliations.length === 0) return [];
+        const rowsToInsert = reconciliations.map(rec => ({
+            cashbox_id: rec.cashboxId,
+            expected_balance: rec.expectedBalance,
+            actual_balance: rec.actualBalance,
+            difference: rec.difference,
+            date,
+            notes: rec.notes || null,
+            created_by: createdBy || null
+        }));
+
+        const { data, error } = await supabase
+            .from('cashbox_reconciliations')
+            .insert(rowsToInsert)
+            .select();
+
+        if (error) throw error;
+        return data;
+    },
+
+    async getCashboxReconciliationHistory(cashboxId?: string) {
+        let query = supabase
+            .from('cashbox_reconciliations')
+            .select('*')
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false });
+
+        if (cashboxId) {
+            query = query.eq('cashbox_id', cashboxId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return (data ?? []).map((row: Record<string, unknown>) => ({
+            id: String(row.id),
+            cashboxId: String(row.cashbox_id),
+            expectedBalance: Number(row.expected_balance),
+            actualBalance: Number(row.actual_balance),
+            difference: Number(row.difference),
+            date: String(row.date),
+            notes: row.notes as string | undefined,
+            createdBy: row.created_by as string | undefined,
+            createdAt: row.created_at as string | undefined
+        })) as CashboxReconciliation[];
     }
 };

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Wallet, Plus, RefreshCw, Edit, TrendingUp, TrendingDown, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
+import { ArrowLeftRight, Wallet, Plus, RefreshCw, Edit, TrendingUp, TrendingDown, AlertTriangle, Clock, CheckCircle2, FileText, CheckCheck, History } from 'lucide-react';
 import clsx from 'clsx';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { financeService, type CashboxSummaryRow, type CashboxType, type Cashbox } from '../../services/financeService';
+import { financeService, type CashboxSummaryRow, type CashboxType, type Cashbox, type CashboxReconciliation } from '../../services/financeService';
+import CashboxStatementModal from './CashboxStatementModal';
+import MultiCashboxReconciliationModal from './MultiCashboxReconciliationModal';
 
 const cashboxTypeLabels: Record<CashboxType, string> = {
     cash: 'نقدي',
@@ -63,10 +65,16 @@ export default function CashboxPanel() {
     const [rows, setRows] = useState<CashboxSummaryRow[]>([]);
     const [totalExpected, setTotalExpected] = useState(0);
     const [currentMonthNetCashflow, setCurrentMonthNetCashflow] = useState(0);
-    const [daysSinceLastReconciliation, setDaysSinceLastReconciliation] = useState<number | null>(null);
-    const [lastReconciliationDate, setLastReconciliationDate] = useState<string | null>(null);
+    const [unreconciledCount, setUnreconciledCount] = useState(0);
+    const [oldestReconciliationDays, setOldestReconciliationDays] = useState<number | null>(null);
+    const [oldestReconciliationDate, setOldestReconciliationDate] = useState<string | null>(null);
+    const [allActiveReconciled, setAllActiveReconciled] = useState(false);
+    const [hasNeverReconciledActive, setHasNeverReconciledActive] = useState(false);
     const [transfers, setTransfers] = useState<Awaited<ReturnType<typeof financeService.getCashboxTransfers>>>([]);
+    const [reconciliationsHistory, setReconciliationsHistory] = useState<CashboxReconciliation[]>([]);
 
+    const [selectedCashboxForStatement, setSelectedCashboxForStatement] = useState<Cashbox | null>(null);
+    const [isMultiReconcileOpen, setIsMultiReconcileOpen] = useState(false);
 
     const [editingCashbox, setEditingCashbox] = useState<Cashbox | null>(null);
 
@@ -93,13 +101,20 @@ export default function CashboxPanel() {
     async function loadData() {
         setIsLoading(true);
         try {
-            const summary = await financeService.getCashboxSummary();
+            const [summary, history] = await Promise.all([
+                financeService.getCashboxSummary(),
+                financeService.getCashboxReconciliationHistory()
+            ]);
             setRows(summary.rows);
             setTotalExpected(summary.totalExpected);
             setCurrentMonthNetCashflow(summary.currentMonthNetCashflow);
-            setDaysSinceLastReconciliation(summary.daysSinceLastReconciliation);
-            setLastReconciliationDate(summary.lastReconciliationDate);
+            setUnreconciledCount(summary.unreconciledCount);
+            setOldestReconciliationDays(summary.oldestReconciliationDays);
+            setOldestReconciliationDate(summary.oldestReconciliationDate);
+            setAllActiveReconciled(summary.allActiveReconciled);
+            setHasNeverReconciledActive(summary.hasNeverReconciledActive);
             setTransfers(summary.transfers);
+            setReconciliationsHistory(history);
         } catch (error) {
             console.error('Error loading cashboxes:', error);
             toastError('حدث خطأ أثناء تحميل الخزينة');
@@ -270,22 +285,50 @@ export default function CashboxPanel() {
         <div className="space-y-6">
 
             {/* ⚠️ Reconciliation warning banner */}
-            {daysSinceLastReconciliation !== null && daysSinceLastReconciliation >= 7 && (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <AlertTriangle size={20} className="mt-0.5 flex-shrink-0 text-amber-600" />
-                    <div>
-                        <p className="font-black text-amber-800 text-sm">تذكير: لم تتم مطابقة الخزينة منذ {daysSinceLastReconciliation} يوم</p>
-                        <p className="text-xs text-amber-600 mt-0.5">آخر مطابقة: {lastReconciliationDate} — يُنصح بالمطابقة أسبوعياً على الأقل لضمان دقة الأرقام.</p>
+            {!allActiveReconciled && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-amber-300 bg-amber-50 p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle size={22} className="mt-0.5 flex-shrink-0 text-amber-600" />
+                        <div>
+                            <p className="font-black text-amber-900 text-sm">
+                                تنبيه المطابقة: يوجد {unreconciledCount} صندوق نشط بحاجة لمطابقة
+                            </p>
+                            <p className="text-xs text-amber-700 mt-0.5">
+                                {hasNeverReconciledActive 
+                                    ? 'يوجد صناديق نشطة لم تتم مطابقتها حتى الآن — يُنصح بإجراء جلسة مطابقة أسبوعية لضمان دقة الحسابات.'
+                                    : `أقدم صندوق لم يطابق منذ ${oldestReconciliationDays} يوم (${oldestReconciliationDate || ''}) — تجاوز الحد الأسبوعي الموصى به.`}
+                            </p>
+                        </div>
                     </div>
+                    <button
+                        onClick={() => setIsMultiReconcileOpen(true)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-700 shadow-sm transition-colors flex-shrink-0"
+                    >
+                        <CheckCheck size={16} />
+                        بدء جلسة مطابقة شاملة الآن
+                    </button>
                 </div>
             )}
-            {daysSinceLastReconciliation === null && (
-                <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <AlertTriangle size={20} className="mt-0.5 flex-shrink-0 text-amber-600" />
-                    <div>
-                        <p className="font-black text-amber-800 text-sm">لم تتم أي مطابقة للخزينة حتى الآن</p>
-                        <p className="text-xs text-amber-600 mt-0.5">ابدأ بمطابقة الصناديق من الجدول بالأسفل لضمان دقة الأرقام.</p>
+            {allActiveReconciled && (
+                <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <CheckCircle2 size={20} className="text-emerald-600 flex-shrink-0" />
+                        <div>
+                            <p className="font-black text-emerald-900 text-sm">
+                                كافة الصناديق النشطة ({activeCashboxes.length}) مطابقة ومحدثة
+                            </p>
+                            <p className="text-xs text-emerald-700 mt-0.5">
+                                تمت مطابقة جميع الخزائن والصناديق خلال آخر 7 أيام بنجاح.
+                            </p>
+                        </div>
                     </div>
+                    <button
+                        onClick={() => setIsMultiReconcileOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-50 transition-colors"
+                    >
+                        <CheckCheck size={14} />
+                        جلسة مطابقة جديدة
+                    </button>
                 </div>
             )}
 
@@ -329,48 +372,61 @@ export default function CashboxPanel() {
                 {/* Days since last reconciliation */}
                 <div className={clsx(
                     "rounded-xl border p-5 shadow-sm",
-                    daysSinceLastReconciliation === null ? "bg-rose-50/40 border-rose-100"
-                    : daysSinceLastReconciliation >= 7 ? "bg-amber-50/40 border-amber-100"
-                    : "bg-white border-slate-100"
+                    allActiveReconciled ? "bg-emerald-50/40 border-emerald-100"
+                    : hasNeverReconciledActive ? "bg-rose-50/40 border-rose-100"
+                    : "bg-amber-50/40 border-amber-100"
                 )}>
                     <div className={clsx(
                         "flex items-center gap-2 text-sm font-bold mb-2",
-                        daysSinceLastReconciliation === null ? "text-rose-600"
-                        : daysSinceLastReconciliation >= 7 ? "text-amber-600"
-                        : "text-slate-500"
+                        allActiveReconciled ? "text-emerald-700"
+                        : hasNeverReconciledActive ? "text-rose-600"
+                        : "text-amber-600"
                     )}>
                         <Clock size={18} />
-                        أيام منذ آخر مطابقة
+                        حالة مطابقة الصناديق
                     </div>
                     <p className={clsx(
                         "text-2xl font-black",
-                        daysSinceLastReconciliation === null ? "text-rose-700"
-                        : daysSinceLastReconciliation >= 7 ? "text-amber-700"
-                        : "text-emerald-700"
+                        allActiveReconciled ? "text-emerald-700"
+                        : hasNeverReconciledActive ? "text-rose-700"
+                        : "text-amber-700"
                     )}>
-                        {daysSinceLastReconciliation === null ? '—' : `${daysSinceLastReconciliation} يوم`}
+                        {allActiveReconciled ? 'مطابقة بالكامل ✅'
+                        : `${unreconciledCount} متأخرة`}
                     </p>
                     <p className="text-xs text-slate-400 mt-1">
-                        {daysSinceLastReconciliation === null ? 'لم تتم مطابقة بعد'
-                        : daysSinceLastReconciliation === 0 ? '✅ تمت اليوم'
-                        : daysSinceLastReconciliation >= 7 ? '⚠️ تجاوز الحد الأسبوعي'
-                        : `آخر مطابقة: ${lastReconciliationDate}`}
+                        {allActiveReconciled ? 'كافة الصناديق النشطة طوبقت مؤخراً'
+                        : oldestReconciliationDays !== null ? `أقدم مطابقة: منذ ${oldestReconciliationDays} يوم`
+                        : 'يوجد صناديق لم تُطابق أبداً'}
                     </p>
                 </div>
             </div>
 
-            <div className="flex justify-end">
-                <button onClick={loadData} disabled={isLoading} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
-                    <RefreshCw size={16} className={clsx(isLoading && 'animate-spin')} />
-                    تحديث
-                </button>
-            </div>
+            <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500 font-medium">
+                    💡 اضغط على أي صندوق في الجدول لفتح <b className="text-blue-700 font-bold">كشف الحساب التفصيلي</b> ومراجعة حركاته بدقة.
+                </p>
 
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setIsMultiReconcileOpen(true)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-black text-white hover:bg-emerald-700 shadow-sm transition-colors"
+                    >
+                        <CheckCheck size={16} />
+                        جلسة مطابقة شاملة لكل الخزائن
+                    </button>
+                    <button onClick={loadData} disabled={isLoading} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                        <RefreshCw size={16} className={clsx(isLoading && 'animate-spin')} />
+                        تحديث
+                    </button>
+                </div>
+            </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-slate-100">
+                    <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                         <h3 className="font-black text-slate-800">أرصدة الصناديق</h3>
+                        <span className="text-xs text-slate-400">انقر على الصف لعرض كشف الحساب</span>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-right">
@@ -382,15 +438,24 @@ export default function CashboxPanel() {
                                     <th className="p-3">خارج</th>
                                     <th className="p-3">تحويلات</th>
                                     <th className="p-3">الرصيد النظري</th>
+                                    <th className="p-3">حالة المطابقة</th>
                                     <th className="p-3">آخر فرق</th>
+                                    <th className="p-3 text-center">كشف الحساب</th>
                                     {isSuperAdmin && <th className="p-3">إجراء</th>}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                                 {rows.map(row => (
-                                    <tr key={row.cashbox.id} className={clsx(!row.cashbox.isActive && 'opacity-50')}>
+                                    <tr 
+                                        key={row.cashbox.id} 
+                                        onClick={() => setSelectedCashboxForStatement(row.cashbox)}
+                                        className={clsx(
+                                            "cursor-pointer hover:bg-blue-50/50 transition-colors group",
+                                            !row.cashbox.isActive && 'opacity-50'
+                                        )}
+                                    >
                                         <td className="p-3">
-                                            <div className="font-bold text-slate-800">{row.cashbox.name}</div>
+                                            <div className="font-bold text-slate-900 group-hover:text-blue-700 transition-colors">{row.cashbox.name}</div>
                                             <div className="mt-1 flex items-center gap-2">
                                                 <CashboxBadge type={row.cashbox.type} />
                                                 {row.cashbox.isSaving && <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">ادخار (Saving)</span>}
@@ -402,11 +467,45 @@ export default function CashboxPanel() {
                                         <td className="p-3 text-rose-700 font-bold">{formatCurrency(row.expenses + row.transferOut)}</td>
                                         <td className="p-3 text-slate-600">{formatCurrency(row.transferIn - row.transferOut)}</td>
                                         <td className="p-3 font-black text-slate-900">{formatCurrency(row.expectedBalance)}</td>
+                                        <td className="p-3">
+                                            {row.reconciliationStatus === 'today' && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
+                                                    <CheckCircle2 size={12} />
+                                                    اليوم
+                                                </span>
+                                            )}
+                                            {row.reconciliationStatus === 'recent' && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
+                                                    <CheckCircle2 size={12} />
+                                                    منذ {row.daysSinceLastReconciliation} أيام
+                                                </span>
+                                            )}
+                                            {row.reconciliationStatus === 'overdue' && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-700">
+                                                    <AlertTriangle size={12} />
+                                                    منذ {row.daysSinceLastReconciliation} يوم
+                                                </span>
+                                            )}
+                                            {row.reconciliationStatus === 'never' && (
+                                                <span className="inline-flex items-center rounded bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                                                    لم تطابق بعد
+                                                </span>
+                                            )}
+                                        </td>
                                         <td className={clsx('p-3 font-bold', (row.lastReconciliation?.difference || 0) === 0 ? 'text-emerald-700' : 'text-amber-700')}>
                                             {row.lastReconciliation ? formatCurrency(row.lastReconciliation.difference) : 'لم تتم'}
                                         </td>
+                                        <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                                            <button
+                                                onClick={() => setSelectedCashboxForStatement(row.cashbox)}
+                                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 shadow-sm hover:border-blue-400 hover:text-blue-700 hover:bg-blue-50/50 transition-colors"
+                                            >
+                                                <FileText size={13} className="text-blue-600" />
+                                                كشف الحساب
+                                            </button>
+                                        </td>
                                         {isSuperAdmin && (
-                                            <td className="p-3">
+                                            <td className="p-3" onClick={e => e.stopPropagation()}>
                                                 <div className="flex items-center gap-2">
                                                     <button onClick={() => handleStartEditCashbox(row.cashbox)} className="text-xs font-bold text-blue-600 hover:text-blue-700">
                                                         تعديل
@@ -423,7 +522,7 @@ export default function CashboxPanel() {
                                 ))}
                                 {rows.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="p-8 text-center text-slate-500">لم يتم إضافة صناديق بعد</td>
+                                        <td colSpan={10} className="p-8 text-center text-slate-500">لم يتم إضافة صناديق بعد</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -517,16 +616,25 @@ export default function CashboxPanel() {
                     <div className="flex items-center justify-between">
                         <h3 className="font-black text-slate-800 flex items-center gap-2">
                             <CheckCircle2 size={18} />
-                            مطابقة رصيد فعلي
+                            مطابقة رصيد فعلي (صندوق منفرد)
                         </h3>
-                        <button
-                            type="button"
-                            onClick={handleReconcileAll}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5 text-xs font-black text-emerald-700 hover:bg-emerald-100 transition-colors"
-                        >
-                            <CheckCircle2 size={13} />
-                            مطابقة الكل
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setIsMultiReconcileOpen(true)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-black text-white hover:bg-emerald-700 transition-colors"
+                            >
+                                <CheckCheck size={13} />
+                                مطابقة شاملة للجميع
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReconcileAll}
+                                className="inline-flex items-center gap-1 rounded-lg bg-slate-100 border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-200 transition-colors"
+                            >
+                                مطابقة تلقائية
+                            </button>
+                        </div>
                     </div>
                     <select required value={reconciliationForm.cashboxId} onChange={e => setReconciliationForm({ ...reconciliationForm, cashboxId: e.target.value })} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5">
                         <option value="">اختر صندوق</option>
@@ -542,8 +650,84 @@ export default function CashboxPanel() {
                         <input required type="date" value={reconciliationForm.date} onChange={e => setReconciliationForm({ ...reconciliationForm, date: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" />
                     </div>
                     <input value={reconciliationForm.notes} onChange={e => setReconciliationForm({ ...reconciliationForm, notes: e.target.value })} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" placeholder="ملاحظات المطابقة" />
-                    <button type="submit" className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-black text-white hover:bg-emerald-700">حفظ المطابقة</button>
+                    <button type="submit" className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-black text-white hover:bg-emerald-700">حفظ المطابقة لهذا الصندوق</button>
                 </form>
+            </div>
+
+            {/* Reconciliation History Table */}
+            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="font-black text-slate-800 flex items-center gap-2">
+                        <History size={18} className="text-indigo-600" />
+                        سجل المطابقات والجرد السابق
+                    </h3>
+                    <span className="text-xs text-slate-400">آخر {reconciliationsHistory.length} عملية جرد مسجلة</span>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-right">
+                        <thead className="bg-slate-50 text-slate-500 font-bold">
+                            <tr>
+                                <th className="p-3 w-32">التاريخ</th>
+                                <th className="p-3">الصندوق</th>
+                                <th className="p-3">الرصيد الدفتري</th>
+                                <th className="p-3">الرصيد الفعلي</th>
+                                <th className="p-3">الفرق</th>
+                                <th className="p-3">الملاحظات</th>
+                                <th className="p-3 text-center">كشف الحساب</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {reconciliationsHistory.slice(0, 15).map(rec => {
+                                const box = rows.find(r => r.cashbox.id === rec.cashboxId)?.cashbox;
+                                const diff = rec.difference;
+                                return (
+                                    <tr key={rec.id} className="hover:bg-slate-50/60 transition-colors">
+                                        <td className="p-3 font-mono text-slate-600">{rec.date}</td>
+                                        <td className="p-3">
+                                            <div className="font-bold text-slate-900">{box?.name || 'صندوق محذوف'}</div>
+                                            {box && <CashboxBadge type={box.type} />}
+                                        </td>
+                                        <td className="p-3 font-mono text-slate-700">{formatCurrency(rec.expectedBalance)}</td>
+                                        <td className="p-3 font-mono font-bold text-slate-900">{formatCurrency(rec.actualBalance)}</td>
+                                        <td className="p-3">
+                                            {diff === 0 ? (
+                                                <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
+                                                    <CheckCircle2 size={12} />
+                                                    مطابق (0 ج.م)
+                                                </span>
+                                            ) : diff > 0 ? (
+                                                <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 font-mono text-xs font-bold text-blue-800">
+                                                    فائض +{formatCurrency(diff)}
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center rounded bg-rose-100 px-2 py-0.5 font-mono text-xs font-bold text-rose-800">
+                                                    عجز {formatCurrency(diff)}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-slate-600 text-xs">{rec.notes || '-'}</td>
+                                        <td className="p-3 text-center">
+                                            {box && (
+                                                <button
+                                                    onClick={() => setSelectedCashboxForStatement(box)}
+                                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                                                >
+                                                    <FileText size={12} className="text-blue-600" />
+                                                    عرض
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                            {reconciliationsHistory.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="p-8 text-center text-slate-500">لا توجد مطابقات مسجلة بعد</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
@@ -580,6 +764,34 @@ export default function CashboxPanel() {
                     </table>
                 </div>
             </div>
+
+            {/* Cashbox Statement Modal */}
+            {selectedCashboxForStatement && (
+                <CashboxStatementModal
+                    cashbox={selectedCashboxForStatement}
+                    onClose={() => setSelectedCashboxForStatement(null)}
+                />
+            )}
+
+            {/* Multi-Cashbox Unified Reconciliation Modal */}
+            {isMultiReconcileOpen && (
+                <MultiCashboxReconciliationModal
+                    rows={rows}
+                    onClose={() => setIsMultiReconcileOpen(false)}
+                    onSuccess={loadData}
+                    onOpenTransfer={(fromId, toId, amount) => {
+                        setIsMultiReconcileOpen(false);
+                        setTransferForm({
+                            fromCashboxId: fromId,
+                            toCashboxId: toId,
+                            amount: amount.toString(),
+                            date: today,
+                            description: 'تسوية فروقات مطابقة'
+                        });
+                        window.scrollTo({ top: 800, behavior: 'smooth' });
+                    }}
+                />
+            )}
         </div>
     );
 }

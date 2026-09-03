@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { htmlToPdfPage, createPdf } from './pdfService';
+import JSZip from 'jszip';
 import type { LabInfo } from '../utils/finance';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { analyticsService } from './supabase/analyticsService';
@@ -15,7 +16,8 @@ import {
     isDoctorStatementIncluded,
     getDoctorReceivableAmount,
     getLabCostAmount,
-    getOfficialStatementDate
+    getOfficialStatementDate,
+    isNonProductiveOrder
 } from '../constants/orderLifecycle';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { getDoctorServicePrice } from '../lib/pricingUtils';
@@ -33,6 +35,8 @@ export interface ComprehensiveReportInput {
     preloadedDoctors?: Doctor[];
     preloadedSuppliers?: Supplier[];
     preloadedServices?: Service[];
+    returnDoc?: boolean;
+    customFileName?: string;
 }
 
 const fmt = (num: number | null | undefined, decimals = 0): string => {
@@ -96,11 +100,7 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
     const netMargin = deliveredRevenue > 0 ? (netProfit / deliveredRevenue) * 100 : 0;
     const opexRatio = deliveredRevenue > 0 ? (operatingExpenses / deliveredRevenue) * 100 : 0;
 
-    // Unit & Case Metrics
-    const totalUnits = allServicesData.reduce((sum, s) => sum + Number(s.count || 0), 0);
-    const avgUnitPrice = totalUnits > 0 ? deliveredRevenue / totalUnits : 0;
-
-    // Filter orders for the selected period
+    // Filter orders for the selected period (statement parity)
     const filteredOrders = orders.filter(o => {
         if (!isDoctorStatementIncluded(o)) return false;
         const orderDate = getOfficialStatementDate(o);
@@ -108,6 +108,15 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
     });
 
     const totalPeriodOrders = filteredOrders.length;
+
+    // Unit & Case Metrics (matches OrderAnalysisTab & StatementTab)
+    const calculatedUnits = filteredOrders.reduce((sum, o) => {
+        if (isNonProductiveOrder(o)) return sum;
+        const items = o.items || [];
+        return sum + (items.length > 0 ? items.reduce((s, it) => s + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0) : 0);
+    }, 0);
+    const totalUnits = calculatedUnits > 0 ? calculatedUnits : allServicesData.reduce((sum, s) => sum + Number(s.count || 0), 0);
+    const avgUnitPrice = totalUnits > 0 ? deliveredRevenue / totalUnits : 0;
 
     // Count manual orders in period
     let manualOrdersCount = 0;
@@ -1007,6 +1016,101 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
 
     const doc = createPdf();
     await htmlToPdfPage(doc, reportHtml);
-    const cleanPeriod = (dateRangeLabel || 'report').replace(/[/\\?%*:|"<>]/g, '-').trim();
+    if (input.returnDoc) {
+        return doc as any;
+    }
+    const cleanPeriod = (input.customFileName || dateRangeLabel || 'report').replace(/[/\\?%*:|"<>]/g, '-').trim();
     doc.save(`Comprehensive_Analytics_Report_${cleanPeriod}_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+export interface BatchMonthConfig {
+    year: number;
+    month: number;
+    nameAr: string;
+    startDate: string;
+    endDate: string;
+}
+
+export const TARGET_BATCH_MONTHS: BatchMonthConfig[] = [
+    { year: 2025, month: 7, nameAr: 'يوليو 2025', startDate: '2025-07-01', endDate: '2025-07-31' },
+    { year: 2025, month: 8, nameAr: 'أغسطس 2025', startDate: '2025-08-01', endDate: '2025-08-31' },
+    { year: 2025, month: 9, nameAr: 'سبتمبر 2025', startDate: '2025-09-01', endDate: '2025-09-30' },
+    { year: 2025, month: 10, nameAr: 'أكتوبر 2025', startDate: '2025-10-01', endDate: '2025-10-31' },
+    { year: 2025, month: 11, nameAr: 'نوفمبر 2025', startDate: '2025-11-01', endDate: '2025-11-30' },
+    { year: 2025, month: 12, nameAr: 'ديسمبر 2025', startDate: '2025-12-01', endDate: '2025-12-31' },
+    { year: 2026, month: 1, nameAr: 'يناير 2026', startDate: '2026-01-01', endDate: '2026-01-31' },
+    { year: 2026, month: 2, nameAr: 'فبراير 2026', startDate: '2026-02-01', endDate: '2026-02-28' },
+    { year: 2026, month: 3, nameAr: 'مارس 2026', startDate: '2026-03-01', endDate: '2026-03-31' },
+    { year: 2026, month: 4, nameAr: 'أبريل 2026', startDate: '2026-04-01', endDate: '2026-04-30' },
+    { year: 2026, month: 5, nameAr: 'مايو 2026', startDate: '2026-05-01', endDate: '2026-05-31' },
+    { year: 2026, month: 6, nameAr: 'يونيو 2026', startDate: '2026-06-01', endDate: '2026-06-30' },
+    { year: 2026, month: 7, nameAr: 'يوليو 2026', startDate: '2026-07-01', endDate: '2026-07-31' },
+    { year: 2026, month: 8, nameAr: 'أغسطس 2026', startDate: '2026-08-01', endDate: '2026-08-31' },
+];
+
+export async function generateBulkMonthlyComprehensiveReports(
+    options: {
+        preloadedOrders?: Order[];
+        preloadedTransactions?: Transaction[];
+        preloadedDoctors?: Doctor[];
+        preloadedSuppliers?: Supplier[];
+        preloadedServices?: Service[];
+        onProgress?: (current: number, total: number, monthName: string) => void;
+        downloadSeparateFiles?: boolean;
+    } = {}
+): Promise<void> {
+    const zip = new JSZip();
+    const total = TARGET_BATCH_MONTHS.length;
+
+    const [orders, transactions, doctors, suppliers, services] = await Promise.all([
+        options.preloadedOrders && options.preloadedOrders.length > 0 ? Promise.resolve(options.preloadedOrders) : db.getAllOrdersUnpaginated(),
+        options.preloadedTransactions && options.preloadedTransactions.length > 0 ? Promise.resolve(options.preloadedTransactions) : db.getTransactions(),
+        options.preloadedDoctors && options.preloadedDoctors.length > 0 ? Promise.resolve(options.preloadedDoctors) : db.getDoctors(),
+        options.preloadedSuppliers && options.preloadedSuppliers.length > 0 ? Promise.resolve(options.preloadedSuppliers) : db.getSuppliers(),
+        options.preloadedServices && options.preloadedServices.length > 0 ? Promise.resolve(options.preloadedServices) : db.getServices()
+    ]);
+
+    for (let i = 0; i < total; i++) {
+        const m = TARGET_BATCH_MONTHS[i];
+        if (options.onProgress) {
+            options.onProgress(i + 1, total, m.nameAr);
+        }
+
+        const dateRangeLabel = `${m.nameAr} (${m.year}-${String(m.month).padStart(2, '0')})`;
+        const monthNum = String(i + 1).padStart(2, '0');
+        const fileName = `${monthNum}_تقرير_شامل_${m.year}_${String(m.month).padStart(2, '0')}_${m.nameAr.replace(/\s+/g, '_')}.pdf`;
+
+        const doc: any = await generateComprehensiveAnalyticsPDF({
+            startDate: m.startDate,
+            endDate: m.endDate,
+            dateRangeLabel,
+            customFileName: fileName,
+            preloadedOrders: orders,
+            preloadedTransactions: transactions,
+            preloadedDoctors: doctors,
+            preloadedSuppliers: suppliers,
+            preloadedServices: services,
+            returnDoc: true
+        });
+
+        if (doc) {
+            const pdfBlob = doc.output('arraybuffer');
+            zip.file(fileName, pdfBlob);
+
+            if (options.downloadSeparateFiles) {
+                doc.save(fileName);
+                await new Promise(r => setTimeout(r, 400));
+            }
+        }
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `تقارير_شاملة_شهرياً_2025_07_إلى_2026_08.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 }

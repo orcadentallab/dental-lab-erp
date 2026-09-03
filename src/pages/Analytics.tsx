@@ -9,8 +9,10 @@ import React from 'react';
 import StatementTab from '../components/finance/StatementTab';
 import OrderAnalysisTab from '../components/finance/OrderAnalysisTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
-import { db, type Order, type Transaction, type Doctor, type Supplier, type Service } from '../services/db';
-import { formatOpenDateRangeLabel } from '../utils/dateRange';
+import { db, type Order, type Transaction, type Doctor, type Supplier, type Service, type ServiceFamily } from '../services/db';
+import { formatOpenDateRangeLabel, isDateInOpenRange } from '../utils/dateRange';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate, isNonProductiveOrder } from '../constants/orderLifecycle';
+import { getDoctorServicePrice } from '../lib/pricingUtils';
 import { generateComprehensiveAnalyticsPDF } from '../services/comprehensiveReportService';
 
 type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis' | 'order_analysis';
@@ -142,6 +144,7 @@ export default function Analytics() {
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [services, setServices] = useState<Service[]>([]);
+    const [serviceFamilies, setServiceFamilies] = useState<ServiceFamily[]>([]);
     const analysisDataRequested = useRef(false);
     const [analysisLoading, setAnalysisLoading] = useState(false);
 
@@ -161,19 +164,26 @@ export default function Analytics() {
             db.getTransactions(),
             db.getDoctors(),
             db.getSuppliers(),
-            db.getServices()
-        ]).then(([ordersData, txData, docs, sups, servs]) => {
+            db.getServices(),
+            db.getServiceFamilies()
+        ]).then(([ordersData, txData, docs, sups, servs, fams]) => {
             setOrders(ordersData);
             setTransactions(txData);
             setDoctors(docs);
             setSuppliers(sups);
             setServices(servs);
+            setServiceFamilies(fams || []);
         }).catch(err => {
             console.error('Failed to load analysis data:', err);
             analysisDataRequested.current = false;
             setLoadError(err instanceof Error ? err.message : 'تعذر تحميل بيانات التحليل');
         }).finally(() => setAnalysisLoading(false));
     }, []);
+
+    // Eager-load on mount in background so Overview and analysis tabs share identical statement ledger parity
+    useEffect(() => {
+        loadAnalysisData();
+    }, [loadAnalysisData]);
 
     useEffect(() => {
         if (['service_analysis', 'expense_analysis', 'order_analysis'].includes(activeTab)) loadAnalysisData();
@@ -463,6 +473,152 @@ export default function Analytics() {
         calculateStats();
     }, [calculateStats]);
 
+    // ── Unified Statement Parity (matches OrderAnalysisTab & StatementTab) ──
+    const statementOrders = useMemo(() => {
+        if (!orders || orders.length === 0) return null;
+        const start = startDate || '';
+        const end = endDate || '';
+        return orders.filter(o => {
+            if (!isDoctorStatementIncluded(o)) return false;
+            const orderDate = getOfficialStatementDate(o);
+            return isDateInOpenRange(orderDate, { start, end });
+        });
+    }, [orders, startDate, endDate]);
+
+    const statementMetrics = useMemo(() => {
+        if (!statementOrders) return null;
+        const orderCount = statementOrders.length;
+        let totalUnits = 0;
+        let cancelledCount = 0;
+        statementOrders.forEach(o => {
+            if (isNonProductiveOrder(o)) {
+                cancelledCount++;
+                return;
+            }
+            const items = o.items || [];
+            if (items.length > 0) {
+                totalUnits += items.reduce((sum, it) => sum + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
+            }
+        });
+        return { orderCount, totalUnits, cancelledCount };
+    }, [statementOrders]);
+
+    const derivedTopServices = useMemo(() => {
+        if (!statementOrders || statementOrders.length === 0) return null;
+
+        const svcMap = new Map<string, { count: number; revenue: number }>();
+
+        statementOrders.forEach(o => {
+            if (isNonProductiveOrder(o)) return;
+            const items = o.items || [];
+            if (items.length === 0) return;
+
+            const orderDoctor = doctors.find(d => d.id === o.doctorId);
+            const effectiveTotalPrice = getDoctorReceivableAmount(o);
+
+            const itemWeights: number[] = items.map(it => {
+                const cnt = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
+                if (it.price && it.price > 0) return it.price * cnt;
+                const sv = services.find(s => s.name === it.serviceType);
+                const catalogUnitPrice = getDoctorServicePrice(it.serviceType, sv, orderDoctor, doctors);
+                return catalogUnitPrice > 0 ? catalogUnitPrice * cnt : cnt;
+            });
+            const totalWeight = itemWeights.reduce((s, w) => s + w, 0);
+
+            items.forEach((it, idx) => {
+                const name = it.serviceType;
+                if (!name) return;
+                const cnt = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
+                const rev = totalWeight > 0 ? (effectiveTotalPrice * itemWeights[idx]) / totalWeight : 0;
+
+                const existing = svcMap.get(name) || { count: 0, revenue: 0 };
+                existing.count += cnt;
+                existing.revenue += rev;
+                svcMap.set(name, existing);
+            });
+        });
+
+        if (svcMap.size === 0) return null;
+
+        return Array.from(svcMap.entries())
+            .map(([name, data]) => ({ name, count: data.count, revenue: Math.round(data.revenue) }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+    }, [statementOrders, doctors, services]);
+
+    const derivedTopFamilies = useMemo<TopFamiliesResult | null>(() => {
+        if (!statementOrders || statementOrders.length === 0) return null;
+
+        const famMap = new Map<string, { name: string; color: string; count: number; revenue: number; isFamily: boolean }>();
+        let allocatedRevenue = 0;
+        let totalRev = 0;
+
+        statementOrders.forEach(o => {
+            if (isNonProductiveOrder(o)) return;
+            const items = o.items || [];
+            const effectiveTotalPrice = getDoctorReceivableAmount(o);
+            totalRev += effectiveTotalPrice;
+
+            if (items.length === 0) return;
+
+            const orderDoctor = doctors.find(d => d.id === o.doctorId);
+            const itemWeights: number[] = items.map(it => {
+                const cnt = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
+                if (it.price && it.price > 0) return it.price * cnt;
+                const sv = services.find(s => s.name === it.serviceType);
+                const catalogUnitPrice = getDoctorServicePrice(it.serviceType, sv, orderDoctor, doctors);
+                return catalogUnitPrice > 0 ? catalogUnitPrice * cnt : cnt;
+            });
+            const totalWeight = itemWeights.reduce((s, w) => s + w, 0);
+
+            items.forEach((it, idx) => {
+                const svcName = it.serviceType;
+                if (!svcName) return;
+                const cnt = Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1;
+                const rev = totalWeight > 0 ? (effectiveTotalPrice * itemWeights[idx]) / totalWeight : 0;
+                allocatedRevenue += rev;
+
+                const matchedService = services.find(s => s.name === svcName);
+                const familyId = matchedService?.familyId;
+                const matchedFamily = familyId ? serviceFamilies.find(f => f.id === familyId) : null;
+
+                const groupKey = matchedFamily ? matchedFamily.id : `service_${svcName}`;
+                const groupName = matchedFamily ? (matchedFamily.nameAr || svcName) : svcName;
+                const groupColor = matchedFamily?.color || 'emerald';
+                const isFamily = Boolean(matchedFamily);
+
+                const existing = famMap.get(groupKey) || { name: groupName, color: groupColor, count: 0, revenue: 0, isFamily };
+                existing.count += cnt;
+                existing.revenue += rev;
+                famMap.set(groupKey, existing);
+            });
+        });
+
+        if (famMap.size === 0) return null;
+
+        const sortedFamilies = Array.from(famMap.values())
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
+
+        const realFamilyCount = sortedFamilies.filter(f => f.isFamily).length;
+
+        return {
+            families: sortedFamilies,
+            familyCount: realFamilyCount,
+            totalRevenue: Math.round(totalRev),
+            allocatedRevenue: Math.round(allocatedRevenue),
+            itemlessRevenue: Math.max(0, Math.round(totalRev - allocatedRevenue)),
+        };
+    }, [statementOrders, doctors, services, serviceFamilies]);
+
+    const effectiveOrderCount = statementMetrics?.orderCount ?? stats.orderCount;
+    const effectiveTotalUnits = statementMetrics?.totalUnits ?? stats.totalUnits;
+    const effectiveAvgUnitPrice = effectiveTotalUnits > 0
+        ? Math.round(stats.deliveredRevenue / effectiveTotalUnits)
+        : 0;
+    const effectiveTopServices = derivedTopServices ?? topServices;
+    const effectiveTopFamilies = derivedTopFamilies ?? topFamilies;
+
     // Scroll position persistence across refreshes
     useEffect(() => {
         const key = 'analytics_scroll_y';
@@ -744,7 +900,7 @@ export default function Analytics() {
                             subtext="قيمة الأعمال المسلمة"
                             icon={TrendingUp}
                             type="revenue"
-                            percentage={stats.totalUnits > 0 ? stats.deliveredRevenue / stats.totalUnits : undefined}
+                            percentage={effectiveTotalUnits > 0 ? stats.deliveredRevenue / effectiveTotalUnits : undefined}
                             percentageLabel="ج.م/وحدة"
                             isPercentage={false}
                         />
@@ -826,7 +982,7 @@ export default function Analytics() {
                                 <p className="text-xl sm:text-2xl font-black text-orange-900">
                                     {stats.issueCount}
                                     <span className="text-xs font-normal text-orange-500 mr-1">
-                                        ({stats.orderCount > 0 ? ((stats.issueCount / stats.orderCount) * 100).toFixed(1) : 0}%)
+                                        ({effectiveOrderCount > 0 ? ((stats.issueCount / effectiveOrderCount) * 100).toFixed(1) : 0}%)
                                     </span>
                                 </p>
                                 <p className="text-[10px] text-orange-500 mt-0.5">
@@ -849,8 +1005,8 @@ export default function Analytics() {
                             <div className="flex-1 min-w-0">
                                 <p className="text-teal-600 text-xs font-bold mb-1">نسبة الإرجاع</p>
                                 <p className="text-xl sm:text-2xl font-black text-teal-900 truncate">
-                                    {stats.orderCount > 0
-                                        ? ((stats.rejectedCount / stats.orderCount) * 100).toFixed(1)
+                                    {effectiveOrderCount > 0
+                                        ? ((stats.rejectedCount / effectiveOrderCount) * 100).toFixed(1)
                                         : 0}%
                                 </p>
                                 <p className="text-[10px] text-teal-500 mt-0.5">{stats.rejectedCount} حالة (رفض دكتور + إعادة)</p>
@@ -863,7 +1019,7 @@ export default function Analytics() {
                     {(() => {
                         const netMargin = stats.deliveredRevenue > 0 ? (stats.netProfit / stats.deliveredRevenue) * 100 : 0;
                         const collectionRate = stats.deliveredRevenue > 0 ? (stats.totalRevenue / stats.deliveredRevenue) * 100 : 0;
-                        const problemRate = stats.orderCount > 0 ? (stats.issueCount / stats.orderCount) * 100 : 0;
+                        const problemRate = effectiveOrderCount > 0 ? (stats.issueCount / effectiveOrderCount) * 100 : 0;
                         const overdueShare = financialStats.totalReceivables > 0 ? (financialStats.aging90plus / financialStats.totalReceivables) * 100 : 0;
 
                         const issues: { text: string; severity: 'high' | 'med' }[] = [];
@@ -1069,7 +1225,7 @@ export default function Analytics() {
                     </div>
 
                     {/* Top Service Families Section */}
-                    {topFamilies.families.length > 0 && (
+                    {effectiveTopFamilies.families.length > 0 && (
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <div className="flex justify-between items-center mb-6">
                                 <div className="flex items-center gap-3">
@@ -1078,7 +1234,7 @@ export default function Analytics() {
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-lg text-slate-800">
-                                            {topFamilies.familyCount > 0 ? 'أكثر العوائل طلباً' : 'أكثر الخدمات طلباً (بدون عوائل)'}
+                                            {effectiveTopFamilies.familyCount > 0 ? 'أكثر العوائل طلباً' : 'أكثر الخدمات طلباً (بدون عوائل)'}
                                         </h3>
                                         <p className="text-slate-400 text-xs">تحليل تجميعي إجمالي بحسب عائلة الخدمة (بأثر رجعي)</p>
                                     </div>
@@ -1088,7 +1244,7 @@ export default function Analytics() {
                             {/* With no families configured the RPC falls back to raw service
                                 names. Useful, but it must not be presented as family analysis —
                                 otherwise the admin reads an unconfigured feature as a finished one. */}
-                            {topFamilies.familyCount === 0 && (
+                            {effectiveTopFamilies.familyCount === 0 && (
                                 <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
                                     <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-600" />
                                     <p className="text-xs font-semibold leading-relaxed text-amber-800">
@@ -1099,8 +1255,8 @@ export default function Analytics() {
                             )}
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                                {topFamilies.families.map((fam, idx) => {
-                                    const maxVal = topFamilies.families[0]?.count || 1;
+                                {effectiveTopFamilies.families.map((fam, idx) => {
+                                    const maxVal = effectiveTopFamilies.families[0]?.count || 1;
                                     const percent = (fam.count / maxVal) * 100;
                                     return (
                                         <div key={idx} className="group bg-slate-50 p-4 rounded-xl border border-slate-100 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all cursor-pointer">
@@ -1133,15 +1289,15 @@ export default function Analytics() {
                                 above. Stating that amount is what lets these figures be
                                 reconciled against the doctor statement instead of quietly
                                 falling ~10% short of it. */}
-                            {topFamilies.itemlessRevenue > 0 && (
+                            {effectiveTopFamilies.itemlessRevenue > 0 && (
                                 <p className="mt-4 border-t border-slate-100 pt-3 text-[11px] leading-relaxed text-slate-500">
                                     إجمالي إيراد الفترة{' '}
                                     <span className="font-mono font-bold text-slate-700">
-                                        {Math.round(topFamilies.totalRevenue).toLocaleString()} ج.م
+                                        {Math.round(effectiveTopFamilies.totalRevenue).toLocaleString()} ج.م
                                     </span>
                                     {' '}— منها{' '}
                                     <span className="font-mono font-bold text-amber-700">
-                                        {Math.round(topFamilies.itemlessRevenue).toLocaleString()} ج.م
+                                        {Math.round(effectiveTopFamilies.itemlessRevenue).toLocaleString()} ج.م
                                     </span>
                                     {' '}على حالات مفيهاش تفاصيل خدمات، فمش متوزّعة على أي عائلة.
                                 </p>
@@ -1164,8 +1320,8 @@ export default function Analytics() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                            {topServices.map((service, idx) => {
-                                const maxVal = topServices[0]?.count || 1;
+                            {effectiveTopServices.map((service, idx) => {
+                                const maxVal = effectiveTopServices[0]?.count || 1;
                                 const percent = (service.count / maxVal) * 100;
                                 return (
                                     <div key={idx} className="group bg-slate-50 p-4 rounded-xl border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all cursor-pointer">
@@ -1201,7 +1357,7 @@ export default function Analytics() {
                                     </div>
                                 );
                             })}
-                            {topServices.length === 0 && (
+                            {effectiveTopServices.length === 0 && (
                                 <div className="col-span-full text-center py-10 text-slate-400">لا توجد بيانات كافية للتحليل</div>
                             )}
                         </div>
@@ -1216,7 +1372,7 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <p className="text-indigo-600 text-xs font-bold uppercase mb-1">إجمالي الحالات</p>
-                            <p className="text-2xl font-black text-indigo-900">{stats.orderCount}</p>
+                            <p className="text-2xl font-black text-indigo-900">{effectiveOrderCount}</p>
                         </div>
                         <div className="bg-gradient-to-br from-teal-50 to-white p-5 rounded-xl border border-teal-100 text-center hover:shadow-md transition-shadow cursor-pointer">
                             <div className="flex justify-center mb-2">
@@ -1225,7 +1381,7 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <p className="text-teal-600 text-xs font-bold uppercase mb-1">إجمالي الوحدات</p>
-                            <p className="text-2xl font-black text-teal-900">{stats.totalUnits}</p>
+                            <p className="text-2xl font-black text-teal-900">{effectiveTotalUnits}</p>
                         </div>
                         <div className="bg-gradient-to-br from-blue-50 to-white p-5 rounded-xl border border-blue-100 text-center hover:shadow-md transition-shadow cursor-pointer">
                             <div className="flex justify-center mb-2">
@@ -1234,7 +1390,7 @@ export default function Analytics() {
                                 </div>
                             </div>
                             <p className="text-blue-600 text-xs font-bold uppercase mb-1">متوسط سعر الوحدة</p>
-                            <p className="text-2xl font-black text-blue-900">{stats.totalUnits > 0 ? Math.round(stats.deliveredRevenue / stats.totalUnits).toLocaleString() : 0}</p>
+                            <p className="text-2xl font-black text-blue-900">{effectiveAvgUnitPrice.toLocaleString()}</p>
                         </div>
                         <div className="bg-gradient-to-br from-red-50 to-white p-5 rounded-xl border border-red-100 text-center hover:shadow-md transition-shadow cursor-pointer"
                             title="رصيد حالي — مش بيتأثر بفلتر التاريخ فوق">

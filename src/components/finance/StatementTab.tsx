@@ -21,7 +21,7 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState, isNonProductiveOrder } from '../../constants/orderLifecycle';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 interface StatementTabProps {
@@ -56,6 +56,7 @@ interface ServiceStats {
     rejectedCases: number;
     rejectedCost: number;
     rejectionRate: number;
+    cancelledCases: number;
 }
 
 const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
@@ -184,6 +185,7 @@ export default function StatementTab({
             cost: number;
             rejectedCases: Set<string>;
             rejectedCost: number;
+            cancelledCases: Set<string>;
             doctorStats: Map<string, { rev: number; cases: Set<string> }>;
         }>();
 
@@ -193,6 +195,7 @@ export default function StatementTab({
 
             const orderDoctor = doctors.find(d => d.id === o.doctorId);
 
+            const isNonProductive = isNonProductiveOrder(o);
             const isLabRejected = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
             const isDoctorRejected = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
             const isRejected = isLabRejected || isDoctorRejected;
@@ -238,23 +241,30 @@ export default function StatementTab({
                     : 0;
 
                 if (!map.has(svcName)) {
-                    map.set(svcName, { cases: new Set(), units: 0, revenue: 0, cost: 0, rejectedCases: new Set(), rejectedCost: 0, doctorStats: new Map() });
+                    map.set(svcName, { cases: new Set(), units: 0, revenue: 0, cost: 0, rejectedCases: new Set(), rejectedCost: 0, cancelledCases: new Set(), doctorStats: new Map() });
                 }
                 const entry = map.get(svcName)!;
                 if (o.id) entry.cases.add(o.id);
-                entry.units += count;
+                // Non-productive cases (cancelled or lab rejected) did not produce work;
+                // do not count their units so they never dilute unit averages or margins.
+                if (!isNonProductive) {
+                    entry.units += count;
+                }
                 entry.revenue += itemRevenue;
                 entry.cost += itemCost;
                 if (isRejected && o.id) {
                     entry.rejectedCases.add(o.id);
                     entry.rejectedCost += itemCost;
                 }
+                if (isNonProductive && o.id) {
+                    entry.cancelledCases.add(o.id);
+                }
 
                 const drId = o.doctorId || '';
                 if (!entry.doctorStats.has(drId)) entry.doctorStats.set(drId, { rev: 0, cases: new Set() });
                 const ds = entry.doctorStats.get(drId)!;
                 ds.rev += itemRevenue;
-                if (o.id) ds.cases.add(o.id);
+                if (!isNonProductive && o.id) ds.cases.add(o.id);
             });
         });
 
@@ -286,6 +296,7 @@ export default function StatementTab({
                 rejectedCases: entry.rejectedCases.size,
                 rejectedCost: entry.rejectedCost,
                 rejectionRate: entry.cases.size > 0 ? (entry.rejectedCases.size / entry.cases.size) * 100 : 0,
+                cancelledCases: entry.cancelledCases.size,
             });
         });
 
@@ -406,9 +417,10 @@ export default function StatementTab({
                 // Cost per unit based on proportional share of effective order cost
                 const isCancelledExp = normalizeStatus(o.status) === 'cancelled' || getEffectiveIssueState(o) === 'cancelled';
                 const isLabRejectedExp = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
+                const isNonProductiveExp = isCancelledExp || isLabRejectedExp;
                 const isDoctorRejectedExp = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
 
-                const effectiveCostExp = (isCancelledExp || isLabRejectedExp)
+                const effectiveCostExp = isNonProductiveExp
                     ? 0
                     : isDoctorRejectedExp
                         ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
@@ -425,8 +437,10 @@ export default function StatementTab({
                     patientName: o.patientName,
                     doctorName: orderDocExp?.name || 'غير معروف',
                     teeth: Array.isArray(item.teethNumbers) ? item.teethNumbers.join(', ') : '',
-                    count,
-                    unitPrice: resolvedUnitPrice,
+                    count: isNonProductiveExp ? 0 : count,
+                    originalCount: count,
+                    isNonProductive: isNonProductiveExp,
+                    unitPrice: isNonProductiveExp ? 0 : resolvedUnitPrice,
                     totalPrice: itemRevExp,
                     costPerUnit,
                     totalCost: costPerUnit * count,
@@ -1093,6 +1107,13 @@ export default function StatementTab({
                                                                     </span>
                                                                 </div>
                                                             ) : null}
+                                                            {svc.cancelledCases > 0 ? (
+                                                                <div className="mt-1">
+                                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600" title="حالات ملغية/مرفوضة معملياً — مستبعدة من إجمالي الوحدات والمتوسطات">
+                                                                        ملغي ({svc.cancelledCases})
+                                                                    </span>
+                                                                </div>
+                                                            ) : null}
                                                         </td>
                                                         <td className="p-3 text-center">
                                                             <button onClick={() => setExpandedService(isExpanded ? null : svc.serviceName)}
@@ -1151,12 +1172,24 @@ export default function StatementTab({
                                                                                                 <td className="px-3 py-2.5 text-gray-800 font-medium">{item.doctorName}</td>
                                                                                                 <td className="px-3 py-2.5 text-gray-600">{item.patientName}</td>
                                                                                                 <td className="px-3 py-2.5 text-center text-gray-400 max-w-[90px] truncate">{item.teeth}</td>
-                                                                                                <td className="px-3 py-2.5 text-center font-bold text-teal-700">{item.count}</td>
+                                                                                                <td className="px-3 py-2.5 text-center font-bold text-teal-700">
+                                                                                                    {item.isNonProductive ? (
+                                                                                                        <span className="text-gray-400 font-normal" title="حالة غير منفذة — لا تُحتسب ضمن وحدات الإنتاج">
+                                                                                                            0 <span className="text-[10px] text-gray-400">({item.originalCount} ملغية)</span>
+                                                                                                        </span>
+                                                                                                    ) : item.count}
+                                                                                                </td>
                                                                                                 <td className="px-3 py-2.5 text-center">
-                                                                                                    <span className={clsx("font-medium", priceColor)}>
-                                                                                                        {Math.round(item.unitPrice).toLocaleString()} ج.م
-                                                                                                    </span>
-                                                                                                    {priceLabel}
+                                                                                                    {item.isNonProductive ? (
+                                                                                                        <span className="text-gray-300 font-bold">—</span>
+                                                                                                    ) : (
+                                                                                                        <>
+                                                                                                            <span className={clsx("font-medium", priceColor)}>
+                                                                                                                {Math.round(item.unitPrice).toLocaleString()} ج.م
+                                                                                                            </span>
+                                                                                                            {priceLabel}
+                                                                                                        </>
+                                                                                                    )}
                                                                                                 </td>
                                                                                                 <td className="px-3 py-2.5 text-center">
                                                                                                     {item.costPerUnit > 0

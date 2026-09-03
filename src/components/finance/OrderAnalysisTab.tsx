@@ -19,7 +19,7 @@ import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, isNonProductiveOrder } from '../../constants/orderLifecycle';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 export interface OrderAnalysisRow {
@@ -33,6 +33,8 @@ export interface OrderAnalysisRow {
     hasSupplier: boolean;
     serviceSummary: string;
     totalUnits: number;
+    rawUnits: number;
+    isNonProductive: boolean;
     /**
      * The order carries a receivable but no order_items — legacy Excel
      * imports whose sheets had no service columns. Kept in the table rather
@@ -227,7 +229,9 @@ export default function OrderAnalysisTab({
             const serviceSummary = hasNoItems
                 ? 'بدون تفاصيل خدمات'
                 : Array.from(new Set(items.map(it => it.serviceType))).join(' + ');
-            const totalUnits = items.reduce((sum, it) => sum + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
+            const isNonProductive = isNonProductiveOrder(o);
+            const rawUnits = items.reduce((sum, it) => sum + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0);
+            const totalUnits = isNonProductive ? 0 : rawUnits;
 
             // Manual reason details for tooltips
             const priceReasons: string[] = [];
@@ -251,6 +255,8 @@ export default function OrderAnalysisTab({
                 hasSupplier: Boolean(o.supplierId),
                 serviceSummary,
                 totalUnits,
+                rawUnits,
+                isNonProductive,
                 hasNoItems,
                 revenue,
                 cost,
@@ -299,6 +305,7 @@ export default function OrderAnalysisTab({
         const overallMargin = totalRevenue > 0 ? (totalGrossProfit / totalRevenue) * 100 : 0;
         const manualCount = filteredOrdersData.filter(x => x.isManual).length;
         const totalUnits = filteredOrdersData.reduce((s, x) => s + x.totalUnits, 0);
+        const cancelledCount = filteredOrdersData.filter(x => x.isNonProductive).length;
         const noItemsCount = filteredOrdersData.filter(x => x.hasNoItems).length;
         const noItemsRevenue = filteredOrdersData
             .filter(x => x.hasNoItems)
@@ -312,6 +319,7 @@ export default function OrderAnalysisTab({
             overallMargin,
             manualCount,
             totalUnits,
+            cancelledCount,
             noItemsCount,
             noItemsRevenue
         };
@@ -513,7 +521,12 @@ export default function OrderAnalysisTab({
                 <div className="bg-white p-4 rounded-2xl border border-teal-100 shadow-sm text-center">
                     <p className="text-[11px] font-bold text-teal-600 mb-1">إجمالي الأوردرات</p>
                     <p className="text-2xl sm:text-3xl font-black text-slate-800">{stats.totalOrders.toLocaleString()}</p>
-                    <p className="text-[10px] text-slate-400 mt-1">{stats.totalUnits.toLocaleString()} وحدة</p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                        {stats.totalUnits.toLocaleString()} وحدة
+                        {stats.cancelledCount > 0 && (
+                            <span className="text-slate-400 mr-1">({stats.cancelledCount} ملغية)</span>
+                        )}
+                    </p>
                 </div>
 
                 <div className="bg-white p-4 rounded-2xl border border-blue-100 shadow-sm text-center">
@@ -668,9 +681,11 @@ export default function OrderAnalysisTab({
                                         <td className="p-3 text-center">
                                             <span className={clsx(
                                                 "font-bold px-2 py-0.5 rounded-md",
-                                                o.hasNoItems ? "bg-amber-50 text-amber-600" : "bg-slate-100 text-slate-700"
+                                                o.hasNoItems ? "bg-amber-50 text-amber-600" : o.isNonProductive ? "bg-slate-50 text-slate-400" : "bg-slate-100 text-slate-700"
                                             )}>
-                                                {o.hasNoItems ? '—' : o.totalUnits}
+                                                {o.hasNoItems ? '—' : o.isNonProductive ? (
+                                                    <span title="حالة ملغية/مرفوضة معملياً — لا تُحتسب ضمن وحدات الإنتاج">0 ({o.rawUnits} ملغية)</span>
+                                                ) : o.totalUnits}
                                             </span>
                                         </td>
 
