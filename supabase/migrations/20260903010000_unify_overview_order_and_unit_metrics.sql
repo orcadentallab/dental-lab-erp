@@ -1,6 +1,17 @@
 -- =====================================================================
 -- Migration: Unify Overview Order & Unit Metrics with Statement Parity
 -- File: supabase/migrations/20260903010000_unify_overview_order_and_unit_metrics.sql
+--
+-- SUPERSEDED -- DO NOT READ THIS AS THE CURRENT BEHAVIOUR.
+-- Nothing this file defines survives in the database. It was applied, and one
+-- hour later 20260903030000 restored the audited receivables/payables sections
+-- and, in doing so, silently reinstated the OLD SECTION A1 -- undoing the
+-- statement parity this migration existed to create. The parity was re-applied
+-- properly, on top of the audited body, by
+-- 20260903050000_align_order_counts_with_statement_parity.sql, which is the
+-- file to read for how order counts are scoped today.
+--
+-- Kept in the chain only because it is already applied in production.
 -- =====================================================================
 
 BEGIN;

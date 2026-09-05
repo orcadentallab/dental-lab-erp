@@ -11,9 +11,9 @@ import OrderAnalysisTab from '../components/finance/OrderAnalysisTab';
 import DoctorReceivablesModal from '../components/finance/DoctorReceivablesModal';
 import { db, type Order, type Transaction, type Doctor, type Supplier, type Service, type ServiceFamily } from '../services/db';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../utils/dateRange';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getOfficialStatementDate, isNonProductiveOrder } from '../constants/orderLifecycle';
+import { isDoctorStatementIncluded, isClosedCaseInPeriod, getDoctorReceivableAmount, getOfficialStatementDate, isNonProductiveOrder, contributesProductiveUnits } from '../constants/orderLifecycle';
 import { getDoctorServicePrice } from '../lib/pricingUtils';
-import { generateComprehensiveAnalyticsPDF, generateBulkMonthlyComprehensiveReports } from '../services/comprehensiveReportService';
+import { generateComprehensiveAnalyticsPDF } from '../services/comprehensiveReportService';
 
 type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis' | 'order_analysis';
 
@@ -487,7 +487,9 @@ export default function Analytics() {
 
     const statementMetrics = useMemo(() => {
         if (!statementOrders) return null;
-        const orderCount = statementOrders.length;
+        // Orders still being reworked are on the statement but have not closed;
+        // counting them here would book the same case twice across periods.
+        const orderCount = statementOrders.filter(isClosedCaseInPeriod).length;
         let totalUnits = 0;
         let cancelledCount = 0;
         statementOrders.forEach(o => {
@@ -509,7 +511,7 @@ export default function Analytics() {
         const svcMap = new Map<string, { count: number; revenue: number }>();
 
         statementOrders.forEach(o => {
-            if (isNonProductiveOrder(o)) return;
+            if (!contributesProductiveUnits(o)) return;
             const items = o.items || [];
             if (items.length === 0) return;
 
@@ -554,7 +556,7 @@ export default function Analytics() {
         let totalRev = 0;
 
         statementOrders.forEach(o => {
-            if (isNonProductiveOrder(o)) return;
+            if (!contributesProductiveUnits(o)) return;
             const items = o.items || [];
             const effectiveTotalPrice = getDoctorReceivableAmount(o);
             totalRev += effectiveTotalPrice;
@@ -642,8 +644,6 @@ export default function Analytics() {
     }, [isLoading]); // restore after main data finishes loading
 
     const [isExportingReport, setIsExportingReport] = useState(false);
-    const [isBatchExporting, setIsBatchExporting] = useState(false);
-    const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; monthName: string }>({ current: 0, total: 14, monthName: '' });
 
     const handleExportComprehensiveReport = async () => {
         setIsExportingReport(true);
@@ -663,32 +663,6 @@ export default function Analytics() {
             alert('حدث خطأ أثناء استخراج التقرير الشامل. يرجى المحاولة مرة أخرى.');
         } finally {
             setIsExportingReport(false);
-        }
-    };
-
-    const handleExportAllMonths = async () => {
-        if (!confirm('هل تريد استخراج التقرير الشامل لجميع الشهور (14 شهراً من 7-2025 إلى 8-2026)؟\nسيتم تجهيز كل شهر في ملف منفصل وضغطهم في ملف ZIP واحد.')) {
-            return;
-        }
-        setIsBatchExporting(true);
-        setBatchProgress({ current: 1, total: 14, monthName: 'بدء التجهيز...' });
-        try {
-            await generateBulkMonthlyComprehensiveReports({
-                preloadedOrders: orders,
-                preloadedTransactions: transactions,
-                preloadedDoctors: doctors,
-                preloadedSuppliers: suppliers,
-                preloadedServices: services,
-                onProgress: (current, total, monthName) => {
-                    setBatchProgress({ current, total, monthName });
-                }
-            });
-            alert('تم استخراج جميع التقارير الـ 14 بنجاح وتم تحميل ملف ZIP المجمع!');
-        } catch (err) {
-            console.error('Failed to export batch reports:', err);
-            alert('حدث خطأ أثناء استخراج التقارير المجمعة. يرجى المحاولة مرة أخرى.');
-        } finally {
-            setIsBatchExporting(false);
         }
     };
 
@@ -768,7 +742,7 @@ export default function Analytics() {
                         {/* Compact PDF Export Button */}
                         <button
                             onClick={handleExportComprehensiveReport}
-                            disabled={isExportingReport || isBatchExporting}
+                            disabled={isExportingReport}
                             className="flex items-center gap-1.5 px-3 py-2.5 bg-blue-600/80 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-white/15 backdrop-blur-md shadow-sm"
                             title="تصدير تقرير شامل PDF للفترة المحددة"
                         >
@@ -784,58 +758,8 @@ export default function Analytics() {
                                 </>
                             )}
                         </button>
-
-                        {/* Batch Export Months Button (7-2025 to 8-2026) */}
-                        <button
-                            onClick={handleExportAllMonths}
-                            disabled={isBatchExporting || isExportingReport}
-                            className="flex items-center gap-1.5 px-3 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white rounded-xl text-xs font-black transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-white/20 shadow-md shadow-emerald-900/20"
-                            title="تصدير تقارير كل الشهور مجمعة (من 7-2025 إلى 8-2026) في ملف ZIP منفصل لكل شهر"
-                        >
-                            {isBatchExporting ? (
-                                <>
-                                    <RefreshCcw size={15} className="animate-spin" />
-                                    <span>جاري التجهيز ({batchProgress.current}/{batchProgress.total})...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Layers size={15} />
-                                    <span>تصدير كل الشهور (7-2025 لـ 8-2026)</span>
-                                </>
-                            )}
-                        </button>
                     </div>
                 </div>
-
-                {/* Batch Export Progress Modal */}
-                {isBatchExporting && (
-                    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
-                        <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-200">
-                            <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
-                                <RefreshCcw size={32} className="animate-spin" />
-                            </div>
-                            <h3 className="text-base font-black text-slate-800 mb-2">جاري استخراج التقارير الشاملة الشهرية</h3>
-                            <p className="text-xs text-slate-500 mb-4">
-                                يتم تجهيز ملف PDF مستقل لكل شهر وضغطه داخل ملف ZIP واحد (7-2025 إلى 8-2026).
-                            </p>
-                            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
-                                <div className="flex justify-between items-center text-xs font-bold text-slate-700 mb-2">
-                                    <span>{batchProgress.monthName}</span>
-                                    <span>{batchProgress.current} من {batchProgress.total}</span>
-                                </div>
-                                <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-                                        style={{ width: `${(batchProgress.current / batchProgress.total) * 100}%` }}
-                                    />
-                                </div>
-                            </div>
-                            <p className="text-[11px] text-slate-400">
-                                يرجى عدم إغلاق الصفحة حتى اكتمال التجهيز وبدء تحميل ملف الـ ZIP تلقائياً...
-                            </p>
-                        </div>
-                    </div>
-                )}
 
                 {/* Custom Date Inputs */}
                 {dateRange === 'custom' && (

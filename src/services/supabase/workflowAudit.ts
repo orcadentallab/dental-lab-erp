@@ -124,6 +124,7 @@ export async function buildWorkflowAuditRows(supabase: SupabaseClient): Promise<
         const { data, error } = await supabase
             .from('orders')
             .select('id, case_id, status, delivery_type, production_status, issue_state, actual_delivery_date, supplier_id, cost, status_history')
+            .order('id')
             .range(from, from + pageSize - 1);
         if (error) throw error;
         if (!data || data.length === 0) break;

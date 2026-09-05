@@ -17,7 +17,8 @@ import {
     getDoctorReceivableAmount,
     getLabCostAmount,
     getOfficialStatementDate,
-    isNonProductiveOrder
+    isNonProductiveOrder,
+    contributesProductiveUnits
 } from '../constants/orderLifecycle';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { getDoctorServicePrice } from '../lib/pricingUtils';
@@ -111,7 +112,7 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
 
     // Unit & Case Metrics (matches OrderAnalysisTab & StatementTab)
     const calculatedUnits = filteredOrders.reduce((sum, o) => {
-        if (isNonProductiveOrder(o)) return sum;
+        if (!contributesProductiveUnits(o)) return sum;
         const items = o.items || [];
         return sum + (items.length > 0 ? items.reduce((s, it) => s + (Array.isArray(it.teethNumbers) ? it.teethNumbers.length : 1), 0) : 0);
     }, 0);
@@ -171,7 +172,7 @@ export async function generateComprehensiveAnalyticsPDF(input: ComprehensiveRepo
     }>();
 
     filteredOrders.forEach(o => {
-        if (isNonProductiveOrder(o)) return;
+        if (!contributesProductiveUnits(o)) return;
         const items = o.items as any[];
         if (!items || items.length === 0) return;
         const orderDoctor = doctors.find(d => d.id === o.doctorId);

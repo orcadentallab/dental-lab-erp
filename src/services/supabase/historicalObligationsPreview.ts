@@ -418,6 +418,7 @@ export async function previewHistoricalObligationsBackfill(
         )
         .in('status', PREVIEW_CANDIDATE_STATUSES)
         .order('created_at', { ascending: false })
+        .order('id')
         .range(from, to);
 
     const search = params.search?.trim();

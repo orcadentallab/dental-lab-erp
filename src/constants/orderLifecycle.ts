@@ -287,6 +287,21 @@ export function getLabCostAmount(order: LifecycleOrder): number {
 }
 
 /**
+ * Whether the order actually CLOSED in its statement period.
+ *
+ * Everything on the doctor statement is settled except one status: an order
+ * sitting in "Returned for Adjustments" went back to the bench and will be
+ * delivered again. It stays visible on the statement, but counting it as a
+ * closed case would book it twice -- once here at zero, and again in the
+ * period it is finally delivered in. It belongs to work in progress until
+ * then. Mirrors SECTION A1 of get_analytics_summary_privileged_20260801.
+ */
+export function isClosedCaseInPeriod(order: LifecycleOrder): boolean {
+    if (!isDoctorStatementIncluded(order)) return false;
+    return normalizeStatus(order.status) !== 'returned for adjustments';
+}
+
+/**
  * Orders that were never produced/worked on and must not enter into
  * productive unit counts, work volume, or price/cost average calculations.
  *
@@ -301,13 +316,32 @@ export function isNonProductiveOrder(order: LifecycleOrder): boolean {
     return status === 'cancelled' || issue === 'cancelled' || status === 'lab rejected' || issue === 'lab_rejected';
 }
 
+/**
+ * A case that was handed to the doctor but carries no price at all.
+ *
+ * Its units are real work, but pricing them at zero drags the average selling
+ * price per unit down and reads as a discount the lab never gave. So the case
+ * still counts as a delivered case; only the per-unit averages skip it.
+ */
+export function isZeroValueDelivery(order: LifecycleOrder): boolean {
+    if (isNonProductiveOrder(order)) return false;
+    const status = normalizeStatus(order.status);
+    if (status !== 'delivered' && status !== 'completed') return false;
+    return Math.max(0, order.totalPrice || 0) === 0;
+}
+
+/** Whether the order's units belong in unit counts and per-unit averages. */
+export function contributesProductiveUnits(order: LifecycleOrder): boolean {
+    return !isNonProductiveOrder(order) && !isZeroValueDelivery(order);
+}
+
 export function getProductiveItemUnitCount(order: LifecycleOrder, item: { teethNumbers?: unknown } | null | undefined): number {
-    if (isNonProductiveOrder(order)) return 0;
+    if (!contributesProductiveUnits(order)) return 0;
     return Array.isArray(item?.teethNumbers) ? item.teethNumbers.length : 1;
 }
 
 export function getOrderProductiveUnits(order: LifecycleOrder): number {
-    if (isNonProductiveOrder(order)) return 0;
+    if (!contributesProductiveUnits(order)) return 0;
     const items = (order.items || []) as Array<{ teethNumbers?: unknown }>;
     if (items.length === 0) return 0;
     return items.reduce((sum, it) => sum + (Array.isArray(it?.teethNumbers) ? it.teethNumbers.length : 1), 0);

@@ -426,6 +426,7 @@ export const financeService = {
                 .select('*')
                 .order('date', { ascending: false })
                 .order('created_at', { ascending: false })
+                .order('id')
                 .range(from, from + pageSize - 1);
 
             if (error) throw error;
@@ -489,6 +490,7 @@ export const financeService = {
                 .select('*')
                 .order('date', { ascending: false })
                 .order('created_at', { ascending: false })
+                .order('id')
                 .range(from, from + pageSize - 1);
 
             if (error) throw error;
@@ -566,6 +568,7 @@ export const financeService = {
                 const { data, error } = await supabase
                     .from('transactions')
                     .select('id, type, amount, cashbox_id, is_system_generated_fee, date, entity_id, entity_type, category')
+                    .order('id')
                     .range(from, from + pageSize - 1);
 
                 if (error) throw error;
@@ -629,8 +632,12 @@ export const financeService = {
             let daysSinceReconciliation: number | null = null;
             let reconciliationStatus: 'today' | 'recent' | 'overdue' | 'never' = 'never';
             if (lastRec?.date) {
-                const recDate = new Date(lastRec.date);
-                const diffMs = now.getTime() - recDate.getTime();
+                // 'YYYY-MM-DD' parses as UTC midnight, which shifts the day
+                // count against a local `now`. Compare local calendar days.
+                const [y, m, d] = lastRec.date.split('-').map(Number);
+                const recDate = new Date(y, (m || 1) - 1, d || 1);
+                const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const diffMs = startOfToday.getTime() - recDate.getTime();
                 daysSinceReconciliation = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
                 if (daysSinceReconciliation === 0) reconciliationStatus = 'today';
                 else if (daysSinceReconciliation <= 7) reconciliationStatus = 'recent';
@@ -765,6 +772,7 @@ export const financeService = {
                     .eq('cashbox_id', cashboxId)
                     .order('date', { ascending: true })
                     .order('created_at', { ascending: true })
+                    .order('id')
                     .range(from, from + pageSize - 1);
 
                 if (error) throw error;

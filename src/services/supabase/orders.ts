@@ -1265,6 +1265,7 @@ export async function getOrders(
     // Apply ordering and pagination
     query = query
         .order('created_at', { ascending: false })
+        .order('id')
         .range(from, to);
 
     const { data, error, count } = await query;
@@ -1304,6 +1305,7 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
             .or(`status.not.in.("Delivered","Completed","Cancelled"),created_at.gte.${dateLimit}`)
             .or('is_archived.eq.false,is_archived.is.null')
             .order('created_at', { ascending: false })
+            .order('id')
             .range(from, from + pageSize - 1);
 
         if (error) {
@@ -1337,6 +1339,7 @@ export async function getOrdersWithComments(): Promise<Order[]> {
             .or('is_deleted.eq.false,is_deleted.is.null')
             .or('is_archived.eq.false,is_archived.is.null')
             .order('created_at', { ascending: false })
+            .order('id')
             .range(from, from + pageSize - 1);
 
         if (error) {
@@ -1379,7 +1382,8 @@ export async function getDesignerDashboardOrders(designerId?: string): Promise<O
             .eq('workflow_type', 'split')
             .not('status', 'in', '("Delivered","Completed","Doctor Rejected","Lab Rejected","Cancelled")')
             .or('is_archived.eq.false,is_archived.is.null')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .order('id');
 
         if (designerId) {
             query = query.eq('designer_id', designerId);
@@ -1575,6 +1579,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
             .from('orders')
             .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, is_redo, original_order_id, production_status, issue_state, order_items(product_type, teeth_numbers)')
             .order('created_at', { ascending: false })
+            .order('id')
             .range(from, from + limit - 1);
 
         if (error) throw ErrorHandler.handle(error, 'getOrdersForFinanceSummary');
@@ -1658,7 +1663,8 @@ export async function fetchFullEntityStatement(
             .from('orders')
             .select('*, order_items(*), order_comments(*)')
             .or('is_deleted.eq.false,is_deleted.is.null')
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .order('id');
 
         if (entityType === 'doctor') {
             orderQuery = entityIdsToFetch.length > 1
@@ -1689,7 +1695,8 @@ export async function fetchFullEntityStatement(
         let txQuery = supabase
             .from('transactions')
             .select('*')
-            .order('date', { ascending: false });
+            .order('date', { ascending: false })
+            .order('id');
 
         txQuery = entityType === 'doctor' && entityIdsToFetch.length > 1
             ? txQuery.in('entity_id', entityIdsToFetch)

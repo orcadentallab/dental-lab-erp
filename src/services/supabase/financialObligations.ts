@@ -483,6 +483,7 @@ export async function getFinancialObligationsReview(
 
     const { data, error, count } = await query
         .order('created_at', { ascending: false })
+        .order('id')
         .range(from, to);
 
     if (error) {

@@ -335,7 +335,7 @@ export async function previewFinancialReconciliation(
         const limit = 1000;
         let hasMore = true;
         while (hasMore) {
-            const { data, error } = await supabase.from(table).select(selectFields).range(from, from + limit - 1);
+            const { data, error } = await supabase.from(table).select(selectFields).order('id').range(from, from + limit - 1);
             if (error) throw error;
             allData = allData.concat((data || []) as unknown as T[]);
             if (!data || data.length < limit) {

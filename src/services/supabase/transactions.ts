@@ -67,6 +67,7 @@ export async function getTransactions(): Promise<Transaction[]> {
             .from('transactions')
             .select('*')
             .order('date', { ascending: false })
+            .order('id')
             .range(from, from + limit - 1);
 
         if (error) {
@@ -107,6 +108,7 @@ export async function getTransactionsForFinanceSummary(): Promise<Partial<Transa
             .from('transactions')
             .select('id, entity_id, entity_type, type, amount, date')
             .order('date', { ascending: false })
+            .order('id')
             .range(from, from + limit - 1);
 
         if (error) throw ErrorHandler.handle(error, 'getTransactionsForFinanceSummary');
