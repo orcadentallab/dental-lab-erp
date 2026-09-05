@@ -42,48 +42,61 @@ INSERT INTO public.doctors (
 
 SET LOCAL session_replication_role = replica;
 
+-- issue_state 'cancelled' must carry its settled-at-zero fields:
+-- orders_zero_issue_financial_fields_check enforces them, and the trigger that
+-- normally fills them in is off while session_replication_role = replica.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
     delivery_date, actual_delivery_date, cost, production_status, issue_state,
-    is_archived, created_at
+    is_archived, created_at,
+    rejection_doctor_decision, rejected_doctor_amount,
+    rejection_financial_review_status, rejected_lab_cost, rejected_designer_cost,
+    rejected_lab_cost_status, rejected_designer_cost_status,
+    first_delivered_at
 ) VALUES
     -- (1) Scheduled June, actually delivered in the July window. Counts in July.
     ('40000000-0000-0000-0000-000000000501', 'CNT-LATE-DELIVERY',
      '10000000-0000-0000-0000-000000000501', 'Delivered late', '[]',
      1000, 'A1', 'Delivered', DATE '2026-06-20', DATE '2026-07-10', 400,
-     'final_delivered', 'none', FALSE, TIMESTAMPTZ '2026-06-01 09:00+03'),
+     'final_delivered', 'none', FALSE, TIMESTAMPTZ '2026-06-01 09:00+03',
+     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
 
     -- (2) Scheduled inside the July window but actually delivered in August.
     --     Must NOT count in July.
     ('40000000-0000-0000-0000-000000000502', 'CNT-SLIPPED-OUT',
      '10000000-0000-0000-0000-000000000501', 'Slipped to August', '[]',
      1000, 'A1', 'Delivered', DATE '2026-07-20', DATE '2026-08-05', 400,
-     'final_delivered', 'none', FALSE, TIMESTAMPTZ '2026-07-01 09:00+03'),
+     'final_delivered', 'none', FALSE, TIMESTAMPTZ '2026-07-01 09:00+03',
+     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
 
     -- (3) Archived, cancelled, settled inside the window. Still a real order.
     ('40000000-0000-0000-0000-000000000503', 'CNT-ARCHIVED-CANCELLED',
      '10000000-0000-0000-0000-000000000501', 'Archived cancelled', '[]',
-     1000, 'A1', 'Cancelled', DATE '2026-07-15', NULL, 400,
-     'not_started', 'cancelled', TRUE, TIMESTAMPTZ '2026-07-02 09:00+03'),
+     1000, 'A1', 'Cancelled', DATE '2026-07-15', NULL, 0,
+     'not_started', 'cancelled', TRUE, TIMESTAMPTZ '2026-07-02 09:00+03',
+     'zero', 0, 'resolved', 0, 0, 'not_applicable', 'not_applicable', NULL),
 
     -- (4) Archived, doctor-rejected and financially settled inside the window.
     ('40000000-0000-0000-0000-000000000504', 'CNT-ARCHIVED-REJECTED',
      '10000000-0000-0000-0000-000000000501', 'Archived rejected', '[]',
      1000, 'A1', 'Doctor Rejected', DATE '2026-07-16', DATE '2026-07-16', 400,
-     'final_delivered', 'doctor_rejected', TRUE, TIMESTAMPTZ '2026-07-03 09:00+03'),
+     'final_delivered', 'doctor_rejected', TRUE, TIMESTAMPTZ '2026-07-03 09:00+03',
+     NULL, NULL, NULL, NULL, NULL, NULL, NULL, TIMESTAMPTZ '2026-07-16 12:00+03'),
 
     -- (6) Sent back to the bench inside the window. On the statement, but not
     --     closed -- it will be delivered again later.
     ('40000000-0000-0000-0000-000000000506', 'CNT-REWORK',
      '10000000-0000-0000-0000-000000000501', 'Back on the bench', '[]',
      800, 'A1', 'Returned for Adjustments', DATE '2026-07-18', NULL, 300,
-     'in_production', 'none', FALSE, TIMESTAMPTZ '2026-07-06 09:00+03'),
+     'in_production', 'none', FALSE, TIMESTAMPTZ '2026-07-06 09:00+03',
+     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
 
     -- (5) Still in production, created inside the window. Pipeline, not settled.
     ('40000000-0000-0000-0000-000000000505', 'CNT-IN-PROGRESS',
      '10000000-0000-0000-0000-000000000501', 'Still running', '[]',
      1000, 'A1', 'Under Production', DATE '2026-07-25', NULL, 400,
-     'in_production', 'none', FALSE, TIMESTAMPTZ '2026-07-05 09:00+03');
+     'in_production', 'none', FALSE, TIMESTAMPTZ '2026-07-05 09:00+03',
+     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
 
 UPDATE public.orders
    SET rejection_doctor_decision = 'custom_amount', rejected_doctor_amount = 300

@@ -22,24 +22,29 @@ INSERT INTO public.doctors (
 -- used in on_hold_retirement.test.sql / the earlier analytics test.
 SET LOCAL session_replication_role = replica;
 
+-- first_delivered_at is set here, not left NULL: a doctor rejection is a
+-- POST-delivery issue, and orders_issue_timing_v2_check enforces that once
+-- workflow_issue_v2_enforce is on (it has been since 20260812001000). The
+-- constraint is checked on the inserted row itself, so bypassing the triggers
+-- above does not bypass it.
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
     delivery_date, cost, production_status, issue_state,
-    rejection_doctor_decision, rejected_doctor_amount
+    rejection_doctor_decision, rejected_doctor_amount, first_delivered_at
 ) VALUES
     (
         '40000000-0000-0000-0000-000000000401', 'PARITY-DECIDED-REJECT',
         '10000000-0000-0000-0000-000000000401', 'Decided rejection', '[]',
         1000, 'A1', 'Doctor Rejected', CURRENT_DATE, 400,
         'final_delivered', 'doctor_rejected',
-        'custom_amount', 400
+        'custom_amount', 400, timezone('utc', now())
     ),
     (
         '40000000-0000-0000-0000-000000000402', 'PARITY-UNDECIDED-REJECT',
         '10000000-0000-0000-0000-000000000401', 'Undecided rejection', '[]',
         1000, 'A1', 'Doctor Rejected', CURRENT_DATE, 400,
         'final_delivered', 'doctor_rejected',
-        NULL, NULL
+        NULL, NULL, timezone('utc', now())
     );
 
 SET LOCAL session_replication_role = origin;

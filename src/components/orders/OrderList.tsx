@@ -8,6 +8,20 @@ import OrderCard from './OrderCard';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import IssueCauseFields from './IssueCauseFields';
 import { issueCauseLabel, getStageForCause } from '../../constants/issueCauses';
+import { AppError } from '../../lib/errorHandler';
+
+// The lab-rejection RPCs raise plain English exceptions. Surface the one guard
+// users actually hit — an order past design submission or final delivery can
+// only be a doctor rejection — in Arabic, and fall back to the raw message so
+// nothing else fails silently.
+function labRejectErrorMessage(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error);
+    if (raw.includes('only allowed before design submission')) {
+        return 'مينفعش رفض معمل بعد تسليم التصميم أو تسليم الحالة للطبيب. المسار الصح هنا هو "مرتجع طبيب".';
+    }
+    if (error instanceof AppError && error.userMessage) return error.userMessage;
+    return raw || 'حصل خطأ أثناء تسجيل رفض المعمل.';
+}
 
 interface OrderListProps {
     orders: Order[];
@@ -47,6 +61,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const [labRejectStage, setLabRejectStage] = useState('');
     const [labRejectNotes, setLabRejectNotes] = useState('');
     const [labRejectSubmitting, setLabRejectSubmitting] = useState(false);
+    const [labRejectError, setLabRejectError] = useState('');
 
     const resetLabRejectModal = useCallback(() => {
         setLabRejectModal(null);
@@ -54,6 +69,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
         setLabRejectStage('');
         setLabRejectNotes('');
         setLabRejectSubmitting(false);
+        setLabRejectError('');
     }, []);
 
     // Filter/Privacy Logic
@@ -241,6 +257,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const handleConfirmLabReject = useCallback(async () => {
         if (!labRejectModal || !labRejectCause) return;
         setLabRejectSubmitting(true);
+        setLabRejectError('');
         try {
             // p_reason is required by the RPC; fall back to the cause label
             // when the optional notes field was left empty.
@@ -255,6 +272,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
             resetLabRejectModal();
         } catch (error) {
             console.error('Error rejecting order from tech status:', error);
+            setLabRejectError(labRejectErrorMessage(error));
             setLabRejectSubmitting(false);
         }
     }, [labRejectModal, labRejectCause, labRejectStage, labRejectNotes, onStatusChange, resetLabRejectModal]);
@@ -428,6 +446,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 onConfirm={handleConfirmLabReject}
                 onCancel={resetLabRejectModal}
             >
+                {labRejectError && (
+                    <div className="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300">
+                        {labRejectError}
+                    </div>
+                )}
                 <IssueCauseFields
                     issueContext="lab_rejection"
                     causeCategory={labRejectCause}

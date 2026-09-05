@@ -46,6 +46,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
                 return;
             }
 
+            // SECURITY: A deactivated account is not an account. The Users
+            // screen's active switch wrote is_active for months while nothing
+            // read it here, so switched-off people -- an admin among them --
+            // kept signing in. The database refuses them everything now
+            // (get_my_role() returns NULL for them), but stopping at the door
+            // is the difference between "locked out" and "signed in to an
+            // application where every screen is mysteriously empty".
+            if (profile.is_active === false) {
+                await supabase.auth.signOut();
+                setUser(null);
+                return;
+            }
+
             const newUser: User = {
                 id: profile.id,
                 username: profile.username,
