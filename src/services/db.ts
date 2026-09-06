@@ -179,7 +179,8 @@ export interface User {
     username: string;
     email?: string;
     // password removed - using Supabase Auth only
-    role: 'admin' | 'lab' | 'technician' | 'representative' | 'accountant' | 'designer' | 'doctor';
+    role: 'admin' | 'lab' | 'technician' | 'production_manager' | 'coordinator'
+        | 'representative' | 'accountant' | 'designer' | 'doctor';
     name: string;
     entityId?: string;
     // Payroll Info (for Representatives)
@@ -943,6 +944,26 @@ class MockDB {
     ): Promise<{ data: Order[]; count: number }> {
         const { getOrders } = await import('./supabase/orders');
         return getOrders(page, limit, filters);
+    }
+
+    /**
+     * What a person sold in a month ('YYYY-MM'): how many cases carry their
+     * name and what those cases are worth. Reported figure only -- commission
+     * is no longer part of salaryDue, and this is what the employee screens
+     * show in its place.
+     */
+    /** Same figures as getRepresentativeMonthlySales, for every person at once. */
+    async getMonthlySalesByRepresentative(period: string): Promise<Record<string, { count: number; value: number }>> {
+        const { getMonthlySalesByRepresentative } = await import('./supabase/orders');
+        return getMonthlySalesByRepresentative(period);
+    }
+
+    async getRepresentativeMonthlySales(
+        representativeId: string,
+        period: string
+    ): Promise<{ count: number; value: number }> {
+        const { getRepresentativeMonthlySales } = await import('./supabase/orders');
+        return getRepresentativeMonthlySales(representativeId, period);
     }
 
     /**

@@ -115,7 +115,11 @@ describe('Employee Financial Calculations - Consolidated & Isolated Tests', () =
         expect(stats.netBalance).toBe(5000); // 5000 - 0 = 5000
     });
 
-    // 6. Manual Commissions Addition
+    // 6. Manual commissions are paid, and only ever manual.
+    //
+    // Nothing computes this figure -- it is zero until somebody types it, and
+    // the month's sales panel exists to inform that decision, not to make it.
+    // Once typed, it is owed like any other line on the salary.
     it('adds manual commissions to salary due', () => {
         const commissions: EmployeeCommission[] = [
             {
@@ -131,6 +135,15 @@ describe('Employee Financial Calculations - Consolidated & Isolated Tests', () =
         // Salary Due = 5000 (base) + 1500 (commission) = 6500
         expect(stats.salaryDue).toBe(6500);
         expect(stats.netBalance).toBe(6500);
+        expect(stats.monthlyCommissions).toBe(1500);
+    });
+
+    // 6b. And zero when nobody typed anything -- the default that makes the
+    // figure a decision rather than an accrual.
+    it('leaves commission at zero when none was entered', () => {
+        const stats = getEmployeeFinanceStats(mockUser, selectedMonth, [], [], [], []);
+        expect(stats.monthlyCommissions).toBe(0);
+        expect(stats.salaryDue).toBe(5000);
     });
 
     // 7. Overdue Advance Warning
@@ -188,6 +201,7 @@ describe('Employee Financial Calculations - Consolidated & Isolated Tests', () =
 
         // Salary Due = 5000 (base) + 1000 (commission) + 300 (bonus) - 100 (deduction) = 6200
         expect(stats.salaryDue).toBe(6200);
+        expect(stats.monthlyCommissions).toBe(1000);
         // Outstanding Advances = 500
         expect(stats.outstandingAdvances).toBe(500);
         // Outstanding Custody = 400 (ignores c2 and c3 item-only custodies)

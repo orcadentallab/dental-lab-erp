@@ -238,7 +238,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
             },
             {
                 id: 'report.designerStats', labelAr: 'إنتاجية الفريق', labelEn: 'Team Productivity',
-                path: '/designer-stats', capability: 'view_reports',
+                path: '/designer-stats', capability: 'view_production_reports',
                 aliases: ['المصممين', 'الإنتاجية', 'productivity', 'designers'],
             },
         ],
@@ -556,11 +556,18 @@ export function getLandingRoute(user: User | null | undefined): string {
 
     switch (user.role) {
         // The floor is the technician's whole job, and the board is where
-        // the lab reads the state of the floor.
+        // the production manager reads the state of it.
         case 'technician':
-        case 'lab':
+        case 'production_manager':
             return '/production/board';
+        // 'lab' is an external supplier. It has no floor to land on, and its
+        // orders view is the only screen scoped to it.
+        case 'lab':
+            return '/orders';
+        // The coordinator's day starts on the money, like the accountant's:
+        // collection is the half of the job with deadlines attached.
         case 'accountant':
+        case 'coordinator':
             return '/finance';
         case 'designer':
             return '/orders';
@@ -621,9 +628,14 @@ export const QUICK_ACTIONS: QuickAction[] = [
 
 export const DEFAULT_FAVOURITES: Record<string, string[]> = {
     admin: ['orders', 'production', 'finance'],
-    lab: ['production.board', 'orders'],
+    // The external lab has its own orders and its own statement. The board
+    // stopped being reachable for it in 20260905050000.
+    lab: ['orders', 'finance.accounts'],
     technician: ['production.myTasks', 'production.board'],
+    production_manager: ['production.board', 'production.myTasks', 'orders'],
     accountant: ['finance.caseRegistration', 'finance.aging', 'finance.accounts'],
+    // The coordinator's two jobs, in the order the day tends to demand them.
+    coordinator: ['finance.caseRegistration', 'orders', 'doctors'],
     representative: ['orders', 'doctors'],
     designer: ['orders', 'production.myTasks'],
     doctor: [],

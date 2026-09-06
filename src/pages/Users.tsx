@@ -9,6 +9,12 @@ import { DUAL_ROLE_DESIGNER_PERMISSION, FIXED_SALARY_DESIGNER_PERMISSION, getUse
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 import { useToast } from '../context/ToastContext';
 
+type StatusFilter = 'active' | 'inactive' | 'all';
+
+function isStatusFilter(value: string): value is StatusFilter {
+    return value === 'active' || value === 'inactive' || value === 'all';
+}
+
 export default function Users() {
     const { success: toastSuccess, error: toastError } = useToast();
     const [users, setUsers] = useState<User[]>([]);
@@ -32,14 +38,29 @@ export default function Users() {
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState(''); // Only for creating new users
-    const [role, setRole] = useState<'admin' | 'lab' | 'technician' | 'representative' | 'accountant' | 'designer' | 'doctor' | 'other'>('lab');
+    const [role, setRole] = useState<'admin' | 'lab' | 'technician' | 'production_manager' | 'coordinator' | 'representative' | 'accountant' | 'designer' | 'doctor' | 'other'>('lab');
     const [entityId, setEntityId] = useState(''); // For linking to Supplier
     const [baseSalary, setBaseSalary] = useState(''); // New State for Payroll
     const [unitRate, setUnitRate] = useState(''); // New State for Designers
     const [worksAsDesigner, setWorksAsDesigner] = useState(false);
     const [isActive, setIsActive] = useState(true);
     const [showAsEmployee, setShowAsEmployee] = useState(false);
+    // Defaults to 'active'. Deactivated accounts are kept forever -- they
+    // carry order history and comments that must not be rewritten -- so the
+    // list would otherwise grow a permanent tail of people who cannot sign
+    // in. They are one dropdown away, not hidden.
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
     const [designerServicePrices, setDesignerServicePrices] = useState<Record<string, number>>({});
+    const visibleUsers = useMemo(
+        () => users.filter(user => {
+            const isActiveUser = user.isActive !== false;
+            if (statusFilter === 'active') return isActiveUser;
+            if (statusFilter === 'inactive') return !isActiveUser;
+            return true;
+        }),
+        [users, statusFilter]
+    );
+
     const visibleSuppliers = useMemo(
         () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === entityId),
         [suppliers, entityId]
@@ -129,12 +150,19 @@ export default function Users() {
             setIsActive(user.isActive !== false);
             // showAsEmployee: explicit true/false override, else infer from role/employeeType
             const explicitFlag = user.customPermissions?.showAsEmployee;
-            if (typeof explicitFlag === 'boolean') {
+            if (['lab', 'doctor'].includes(user.role)) {
+                // A stored `true` on one of these is stale data, not a choice --
+                // the flag used to be offered for every role. Ignore it rather
+                // than surface a ticked box for something that cannot apply.
+                setShowAsEmployee(false);
+            } else if (typeof explicitFlag === 'boolean') {
                 setShowAsEmployee(explicitFlag);
             } else {
                 setShowAsEmployee(
-                    ['representative', 'accountant', 'technician'].includes(user.role) ||
-                    ['sales_rep', 'accountant', 'admin', 'other'].includes(user.employeeType || '')
+                    !['lab', 'doctor'].includes(user.role) && (
+                        ['representative', 'accountant', 'technician'].includes(user.role) ||
+                        ['sales_rep', 'accountant', 'admin', 'other'].includes(user.employeeType || '')
+                    )
                 );
             }
             setDesignerServicePrices(user.designerServicePrices || {});
@@ -173,7 +201,10 @@ export default function Users() {
 
             // Persist the showAsEmployee flag explicitly so it overrides the legacy role-based inference
             if (username !== 'admin') {
-                nextCustomPermissions.showAsEmployee = role === 'other' ? true : showAsEmployee;
+                nextCustomPermissions.showAsEmployee =
+                    role === 'lab' || role === 'doctor' ? false
+                    : role === 'other' ? true
+                    : showAsEmployee;
             }
 
             if ((role === 'representative' || role === 'admin') && worksAsDesigner) {
@@ -332,15 +363,30 @@ export default function Users() {
                     <h1 className="text-2xl font-bold text-gray-800">إدارة المستخدمين والصلاحيات</h1>
                     {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري التحميل...</span>}
                 </div>
-                {isAdmin && (
-                    <button
-                        onClick={() => handleOpenModal()}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition"
+                <div className="flex items-center gap-3">
+                    <select
+                        value={statusFilter}
+                        onChange={e => {
+                            const next = e.target.value;
+                            if (isStatusFilter(next)) setStatusFilter(next);
+                        }}
+                        aria-label="تصفية حسب الحالة"
+                        className="bg-white border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
-                        <Plus size={20} />
-                        <span>مستخدم جديد</span>
-                    </button>
-                )}
+                        <option value="active">فعال فقط</option>
+                        <option value="inactive">غير فعال فقط</option>
+                        <option value="all">الكل</option>
+                    </select>
+                    {isAdmin && (
+                        <button
+                            onClick={() => handleOpenModal()}
+                            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-xl hover:bg-blue-700 transition"
+                        >
+                            <Plus size={20} />
+                            <span>مستخدم جديد</span>
+                        </button>
+                    )}
+                </div>
             </div>
             
 
@@ -358,7 +404,20 @@ export default function Users() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {users.map(user => (
+                        {/* Without this an empty filter reads as a broken page
+                            rather than as a filter that matched nothing. */}
+                        {!isLoading && visibleUsers.length === 0 && (
+                            <tr>
+                                <td colSpan={5} className="p-8 text-center text-sm text-gray-500">
+                                    {statusFilter === 'active'
+                                        ? 'مفيش مستخدمين فعالين. جرّب «الكل» لو بتدوّر على حساب موقوف.'
+                                        : statusFilter === 'inactive'
+                                            ? 'مفيش مستخدمين موقوفين.'
+                                            : 'مفيش مستخدمين.'}
+                                </td>
+                            </tr>
+                        )}
+                        {visibleUsers.map(user => (
                             <tr key={user.id} className="hover:bg-gray-50">
                                 <td className="p-4 font-bold text-gray-800 flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
@@ -476,6 +535,9 @@ export default function Users() {
                                         if (
                                             val === 'admin' ||
                                             val === 'lab' ||
+                                            val === 'technician' ||
+                                            val === 'production_manager' ||
+                                            val === 'coordinator' ||
                                             val === 'representative' ||
                                             val === 'accountant' ||
                                             val === 'designer' ||
@@ -489,6 +551,8 @@ export default function Users() {
                                     <option value="admin">مدير نظام (Admin)</option>
                                     <option value="lab">معمل خارجي (Lab)</option>
                                     <option value="technician">فني إنتاج (Technician)</option>
+                                    <option value="production_manager">مدير إنتاج (Production Manager)</option>
+                                    <option value="coordinator">منسق عام (Coordinator)</option>
                                     <option value="representative">مندوب (Representative)</option>
                                     <option value="accountant">محاسب (Accountant)</option>
                                     <option value="designer">مصمم (Designer)</option>
@@ -602,8 +666,11 @@ export default function Users() {
                                 )
                             ) : null}
 
-                            {/* إظهار كموظف */}
-                            {username !== 'admin' && (
+                            {/* إظهار كموظف -- only for people we actually pay.
+                                An external lab is a supplier and a doctor is a
+                                client; neither has a salary, a custody or an
+                                advance, so the question does not apply. */}
+                            {username !== 'admin' && role !== 'lab' && role !== 'doctor' && (
                                 <label className="flex items-start gap-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200 cursor-pointer">
                                     <input
                                         type="checkbox"

@@ -19,7 +19,7 @@ import clsx from 'clsx';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
-import { isDesignerUser, isRepresentativeUser } from '../lib/userRoles';
+import { isDesignerUser, canBeOrderRepresentative } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
@@ -888,7 +888,7 @@ export default function Orders() {
                                         </select>
                                         <select aria-label="المندوب" value={representativeFilter} onChange={(e) => setRepresentativeFilter(e.target.value)} className={mobileFilterControlClass}>
                                             <option value="">كل المناديب</option>
-                                            {users.filter(u => isRepresentativeUser(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                                            {users.filter(u => canBeOrderRepresentative(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                                         </select>
                                     </>
                                 )}
@@ -1132,7 +1132,7 @@ export default function Orders() {
                                                 className={filterSelectClass(Boolean(representativeFilter))}
                                             >
                                                 <option value="">كل المناديب</option>
-                                                {users.filter(u => isRepresentativeUser(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
+                                                {users.filter(u => canBeOrderRepresentative(u)).map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                                             </select>
                                             <ChevronDown className={filterChevronClass(Boolean(representativeFilter))} />
                                         </div>

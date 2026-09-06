@@ -8,7 +8,13 @@ import type { Order } from '../services/db';
 import type { ProductionStatus, IssueState } from '../constants/workflow';
 
 // ─── Roles ───────────────────────────────────────────────────────────────────
-export const WORKFLOW_ROLES = ['admin', 'lab', 'accountant', 'designer', 'representative', 'doctor'] as const;
+// 'lab' is still listed because the six external-lab rows still hold the role
+// and this type narrows `user.role`. What changed is that it no longer carries
+// production authority -- see canChangeProductionStatus below.
+export const WORKFLOW_ROLES = [
+    'admin', 'lab', 'accountant', 'designer', 'representative', 'doctor',
+    'production_manager', 'coordinator',
+] as const;
 export type WorkflowRole = typeof WORKFLOW_ROLES[number];
 
 // ─── Representative audit-gated allow-list (WF-1) ────────────────
@@ -161,6 +167,21 @@ export function canEditOrderField(
         return guard({ productionStatus, issueState, workflowType });
     }
 
+    // The production manager inherits what 'lab' was actually doing here. The
+    // deny list is unchanged: planning the floor never required touching a
+    // price, a doctor or a representative.
+    if (role === 'production_manager') {
+        if (field === 'issue_state' && LAB_BLOCKED_ISSUE_STATES.includes(issueState)) return false;
+        if (LAB_DENY_FIELDS.has(field)) return false;
+        return true;
+    }
+
+    // 'lab' keeps this branch on purpose. It is an external supplier, not a
+    // person on the floor, and the six rows holding the role still have
+    // orders and obligations attached to them. Removing the branch would
+    // change how their historical records read; removing their PRODUCTION
+    // authority is done above, by not giving them the production_manager
+    // branch, and in the database by can_work_production().
     if (role === 'lab') {
         if (field === 'issue_state' && LAB_BLOCKED_ISSUE_STATES.includes(issueState)) return false;
         if (LAB_DENY_FIELDS.has(field)) return false;
@@ -173,6 +194,19 @@ export function canEditOrderField(
 
     if (role === 'accountant') {
         return ACCOUNTANT_ALLOW_FIELDS.has(field);
+    }
+
+    // Plan section 4.3: the coordinator edits the union of what a
+    // representative may edit under audit and what an accountant may edit.
+    // The representative half stays state-guarded -- inheriting the fields
+    // without the guards would let a coordinator reprice a delivered case,
+    // which is the thing those guards exist to stop.
+    if (role === 'coordinator') {
+        if (ACCOUNTANT_ALLOW_FIELDS.has(field)) return true;
+        if (!isRepAuditedField(field)) return false;
+        const guard = REP_FIELD_STATE_GUARDS[field];
+        if (!guard) return false;
+        return guard({ productionStatus, issueState, workflowType });
     }
 
     if (role === 'doctor') return false;
@@ -199,7 +233,10 @@ export function canChangeProductionStatus(
     } = {}
 ): boolean {
     if (role === 'admin') return true;
-    if (role !== 'lab') return false; // Only admin and lab can change production status
+    // Was 'lab'. The database comment on 20260821006000 said outright that
+    // "'lab' is the production manager" -- this is that role under its own
+    // name. 'lab' means external supplier and now moves nothing.
+    if (role !== 'production_manager') return false;
 
     // If issueState is on_hold or returned, we can resume to in_production
     if (issueState === 'returned') {
@@ -284,9 +321,13 @@ export function canChangeIssueState(
     if (targetIssueState === 'on_hold') return false;
 
     if (role === 'admin') return true;
-    if (role !== 'lab') return false;
+    // Was 'lab'; see canChangeProductionStatus. The coordinator is pointedly
+    // NOT here: plan section 4.3 keeps issue transitions with the people who
+    // cause them, not with the person relaying the news.
+    if (role !== 'production_manager') return false;
 
-    // Lab can use none ↔ returned and can release a historical on_hold row.
+    // The production manager can use none ↔ returned and can release a
+    // historical on_hold row.
     return (
         (currentIssueState === 'none' && targetIssueState === 'returned') ||
         ((currentIssueState === 'returned' || currentIssueState === 'on_hold') && targetIssueState === 'none')

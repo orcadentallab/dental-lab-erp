@@ -81,11 +81,11 @@ function App() {
                   />
 
                   <Route element={<ProtectedRoute />}>
-                    <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'representative', 'accountant', 'designer']} />}>
+                    <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer']} />}>
                       <Route element={<DashboardLayout />}>
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/orders" element={<Orders />} />
-                        <Route element={<ProtectedRoute allowedRoles={['admin', 'representative']} />}>
+                        <Route element={<ProtectedRoute allowedRoles={['admin', 'representative', 'coordinator']} />}>
                           <Route path="/doctors" element={<Doctors />} />
                         </Route>
                         {/* Retention reads the whole client base's activity and
@@ -106,20 +106,20 @@ function App() {
 
                   {/* Production floor. The technician role exists only here:
                       everything else in the app stays closed to it. */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'designer']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'technician', 'production_manager', 'designer']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/my-tasks" element={<MyTasks />} />
                     </Route>
                   </Route>
 
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'technician', 'production_manager', 'coordinator']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/board" element={<ProductionBoard />} />
                       <Route path="/production/shadow" element={<ShadowReport />} />
                     </Route>
                   </Route>
 
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'accountant']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'technician', 'production_manager', 'accountant', 'coordinator']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/external" element={<ExternalWorkOrders />} />
                       <Route path="/inventory" element={<InventoryDashboard />} />
@@ -127,8 +127,10 @@ function App() {
                     </Route>
                   </Route>
 
-                  {/* Editing a route changes how every future case is built. */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                  {/* Editing a route changes how every future case is built.
+                      Decision 2 opens it to the production manager: the chain
+                      of stages is the thing that job exists to design. */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'production_manager']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/routes" element={<RouteEditor />} />
                       <Route path="/settings/work-calendar" element={<WorkCalendarSettings />} />
@@ -136,21 +138,21 @@ function App() {
                   </Route>
 
                   {/* Accounts: Shared + Designer */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'technician', 'representative', 'designer']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'coordinator', 'lab', 'technician', 'production_manager', 'representative', 'designer']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/accounts" element={<Accounts />} />
                     </Route>
                   </Route>
 
                   {/* Settings: No Designer */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'lab', 'technician', 'representative']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'coordinator', 'lab', 'technician', 'production_manager', 'representative']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/settings" element={<Settings />} />
                     </Route>
                   </Route>
 
                   {/* Staff Affairs: Admin, Accountant, Representative */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'representative']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'coordinator', 'representative']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/employees" element={<Employees />} />
                       <Route path="/employees/:id" element={<EmployeeDetail />} />
@@ -158,8 +160,11 @@ function App() {
                     </Route>
                   </Route>
 
-                  {/* Admin & Accountant Only */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant']} />}>
+                  {/* Admin, Accountant & Coordinator. Section 4.3 gives the
+                      coordinator the accountant's screens in full -- pricing a
+                      case and recording what was collected on it are the two
+                      halves of the same conversation with a doctor. */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'coordinator']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/finance" element={<Finance />} />
                       <Route path="/suppliers" element={<Suppliers />} />
@@ -168,6 +173,14 @@ function App() {
                       <Route path="/financial-review" element={<FinancialReview />} />
                       <Route path="/statements" element={<Statements />} />
                       <Route path="/aging-report" element={<AgingReport />} />
+                    </Route>
+                  </Route>
+
+                  {/* Capacity, bottlenecks and supplier lead times: how a
+                      production manager plans a week (section 4.2). */}
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'production_manager']} />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/designer-stats" element={<DesignerStats />} />
                     </Route>
                   </Route>
 
@@ -180,7 +193,6 @@ function App() {
                       <Route path="/services" element={<ServicesPage />} />
                       <Route path="/issues-report" element={<IssuesReport />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
-                      <Route path="/designer-stats" element={<DesignerStats />} />
                       <Route path="/reports/profitability" element={<DoctorServiceProfitability />} />
                       <Route path="/reports/production-costing" element={<ProductionCostingReport />} />
                       <Route path="/reports/cashflow" element={<CashFlow />} />

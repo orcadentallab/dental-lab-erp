@@ -25,7 +25,11 @@ export const Shipments: React.FC = () => {
   const { success: toastSuccess, error: toastError, warning: toastWarning } = useToast();
   const { user } = useAuth();
   const role = user?.role;
-  const isAuthorized = ['admin', 'lab', 'accountant'].includes(role || '');
+  // Decision 4: shipping is shared, so a courier hand-off never waits on one
+  // person being at their desk. 'lab' drops off -- it was the production
+  // manager under the wrong name, and an external supplier never dispatched
+  // our shipments.
+  const isAuthorized = ['admin', 'production_manager', 'coordinator', 'accountant'].includes(role || '');
 
   // State
   const [activeTab, setActiveTab] = useState<'ready' | 'active' | 'delivered'>('ready');

@@ -15,19 +15,20 @@
 --      PERMISSIONS but keeps both roles -- the six external-lab rows must keep
 --      validating, and 'accountant' stays as a standalone hiring option
 --      (decision 5). Every existing role is asserted individually.
---   3. A STEP THAT IS NOT INERT. The whole reason this is a separate migration
---      is that it grants nothing. If anything in it started referencing the
---      new roles, the "revert step 1 freely" property is gone. The last two
---      assertions hold that line: after step 1, no policy and no function may
---      mention either new role. THESE TWO TESTS ARE EXPECTED TO FAIL WHEN
---      STEP 2 LANDS -- that is their job. Delete them there, deliberately,
---      rather than weakening them.
+--   3. A STEP THAT IS NOT INERT. Step 1 granted nothing, and two assertions
+--      here held that line by requiring that no policy and no function
+--      mentioned either new role. Step 2a (20260905030000) grants the
+--      coordinator the accountant's scope, so those two were removed there
+--      as planned -- they had done their job, which was to keep step 1
+--      revertible on its own. What the coordinator can actually DO is
+--      asserted in coordinator_inherits_accountant.test.sql; this file is
+--      back to being only about the vocabulary.
 
 BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(12);
+SELECT plan(10);
 
 -- ─── Every role in the vocabulary is insertable ──────────────────────────
 -- One assertion per value rather than a loop: a loop reports "some role
@@ -88,26 +89,6 @@ SELECT throws_ok(
     '23514',
     NULL,
     'an unlisted role is still refused -- the CHECK was widened, not dropped');
-
--- ─── Step 1 is inert ─────────────────────────────────────────────────────
--- Nothing may grant the new roles anything yet. Step 2 makes both of these
--- fail on purpose; remove them there.
-
-SELECT is(
-    (SELECT count(*) FROM pg_policies
-     WHERE schemaname = 'public'
-       AND (coalesce(qual, '') || coalesce(with_check, ''))
-           ~ '''(production_manager|coordinator)'''),
-    0::bigint,
-    'step 1 grants nothing: no RLS policy references the new roles');
-
-SELECT is(
-    (SELECT count(*) FROM pg_proc p
-     JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'public' AND p.prokind = 'f'
-       AND pg_get_functiondef(p.oid) ~ '''(production_manager|coordinator)'''),
-    0::bigint,
-    'step 1 grants nothing: no function references the new roles');
 
 SELECT * FROM finish();
 ROLLBACK;

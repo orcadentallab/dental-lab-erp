@@ -14,8 +14,13 @@
 --      nobody has laid out, catastrophic for one somebody just emptied. On the
 --      DEFAULT route it would put every unmapped order (today: all of them)
 --      onto the full in-house chain, for work that never enters the building.
---   3. ONLY ADMINS EDIT ROUTES. A technician who can rewrite the route can
---      rewrite what everybody else is asked to do.
+--   3. NOT EVERYONE EDITS ROUTES. A technician who can rewrite the route can
+--      rewrite what everybody else is asked to do. Since 20260905050000 the
+--      production manager may edit them too (plan decision 2) -- designing
+--      the chain of stages is what that job is -- so the refusal message now
+--      names two roles and these patterns match on the shared tail rather
+--      than on 'admin' specifically. The technician is still refused, which
+--      is what these two assertions are actually about.
 --   4. THE STEP'S IDENTITY REACHES THE RUN. variant_label and allowed_roles
 --      existed on the step since 20260823002000 but nothing copied them onto
 --      the run, so the technician's card never showed which resin to load and
@@ -80,12 +85,12 @@ SELECT throws_like(
     format($$SELECT public.save_route_steps(
         'a1000000-0000-0000-0000-000000000001',
         '[{"stage_id":"%s"}]'::jsonb)$$, (SELECT id FROM public.production_stages WHERE code = 'design')),
-    '%admin role required%',
+    '%role required%',
     'a technician cannot rewrite a route');
 
 SELECT throws_like(
     $$SELECT public.create_production_stage('Sneaky stage')$$,
-    '%admin role required%',
+    '%role required%',
     'a technician cannot add a stage to the catalogue');
 
 RESET ROLE;

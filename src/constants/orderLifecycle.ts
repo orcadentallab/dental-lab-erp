@@ -410,7 +410,11 @@ export function canAutoCloseOrder(orderFinancialState: OrderFinancialState): boo
 export function canTransitionTo(order: LifecycleOrder, targetStatus: ProductionStatus): boolean {
     const current = getProductionStatus(order);
     const issueState = getEffectiveIssueState(order);
-    return canChangeProductionStatus('lab', current, targetStatus, issueState, {
+    // Was 'lab'. This asks "is this transition legal at all", not "may the
+    // current user do it", so it passes the role that owns production --
+    // which is now the production manager. Left as 'lab' it would answer
+    // false for every transition, silently freezing the board.
+    return canChangeProductionStatus('production_manager', current, targetStatus, issueState, {
         workflowType: order.workflowType,
         deliveryType: order.deliveryType,
         designUrl: order.designUrl || order.design_url,

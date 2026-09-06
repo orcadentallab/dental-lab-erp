@@ -6,6 +6,15 @@ export interface EmployeeFinanceStats {
     approvedExpenses: number;
     salaryPaid: boolean;
     salaryDue: number;
+    /**
+     * Commission recorded for the month, and part of salaryDue.
+     *
+     * Nothing computes this. It is zero until somebody types a figure into
+     * the commission form, which is the whole design: the number is a
+     * decision, not a total that accrues from sales on its own. Once typed,
+     * it is owed like any other line on the salary.
+     */
+    monthlyCommissions: number;
     netBalance: number;
     hasOverdueItems: boolean; // Overdue if pending advance or open custody > 30 days
 }
@@ -38,7 +47,13 @@ export function getEmployeeFinanceStats(
     );
     const approvedExpenses = userApprovedExpenses.reduce((sum, t) => sum + t.amount, 0);
 
-    // 4. Commissions for selected month
+    // 4. Commissions recorded for the selected month.
+    //
+    // Manual by design and zero by default: no trigger, no rule, nothing that
+    // turns sales into a commission figure on its own. Somebody decides the
+    // number and types it. Once they have, it is part of the salary like any
+    // other line -- the sales panel beside it is the evidence behind that
+    // decision, not a second calculation of it.
     const userCommissions = commissions.filter(c => c.employeeId === user.id && c.period === selectedMonth);
     const monthlyCommissions = userCommissions.reduce((sum, c) => sum + c.amount, 0);
 
@@ -100,6 +115,7 @@ export function getEmployeeFinanceStats(
         approvedExpenses,
         salaryPaid,
         salaryDue,
+        monthlyCommissions,
         netBalance,
         hasOverdueItems
     };

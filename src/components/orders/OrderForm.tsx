@@ -10,7 +10,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
-import { isDesignerUser, isRepresentativeUser, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
+import { isDesignerUser, isRepresentativeUser, canBeOrderRepresentative, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
 import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
 import { canEditOrderField, type WorkflowRole } from '../../lib/workflowPermissions';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
@@ -343,7 +343,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
                 const designersData = usersData.filter(u => isDesignerUser(u));
                 setSuppliers(suppliersData);
-                setRepresentatives(usersData.filter(u => isRepresentativeUser(u)));
+                setRepresentatives(usersData.filter(u => canBeOrderRepresentative(u)));
                 setDesigners(designersData);
 
 
@@ -421,7 +421,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     setManualDesignPrice(null);
                 }
 
-                // Auto-set representativeId for representatives creating new orders
+                // Auto-set representativeId for representatives creating new orders.
+                // isRepresentativeUser, NOT canBeOrderRepresentative: a
+                // coordinator appears in the picker above but is never stamped
+                // here. They register cases on behalf of whoever owns the
+                // doctor, so the name is chosen, not assumed.
                 if (!initialData && user && isRepresentativeUser(user)) {
                     const currentRep = usersData.find(u => u.id === user!.id);
                     if (currentRep) {

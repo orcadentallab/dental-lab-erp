@@ -8,7 +8,11 @@ export const UserSchema = z.object({
     email: z.string().email('البريد الإلكتروني غير صحيح').min(5, 'البريد الإلكتروني قصير جداً').max(255, 'البريد الإلكتروني طويل جداً'),
     password: z.string().min(6, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل')
         .optional(), // Optional for updates
-    role: z.enum(['admin', 'lab', 'representative', 'accountant', 'designer', 'doctor']),
+    // Mirrors users_role_check. 'technician' was missing here since that role
+    // was added in 20260821006000, so the Users screen could never save one;
+    // it goes back in alongside the two new roles.
+    role: z.enum(['admin', 'lab', 'technician', 'production_manager', 'coordinator',
+                  'representative', 'accountant', 'designer', 'doctor']),
     name: z.string().min(2, 'الاسم يجب أن يكون من حرفين على الأقل').max(200, 'الاسم طويل جداً'),
     entityId: z.string().uuid().optional().nullable(),
     baseSalary: z.number().min(0, 'الراتب الأساسي لا يمكن أن يكون أقل من صفر').optional().nullable(),

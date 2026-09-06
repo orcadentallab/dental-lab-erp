@@ -36,6 +36,8 @@ export default function EmployeeDetail() {
     const [commissions, setCommissions] = useState<EmployeeCommission[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
+    // Reported alongside the salary, never inside it -- see the sales panel.
+    const [monthlySales, setMonthlySales] = useState({ count: 0, value: 0 });
     const [isLoading, setIsLoading] = useState(true);
 
     const [selectedMonth, setSelectedMonth] = useState(monthParam || new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -157,6 +159,20 @@ export default function EmployeeDetail() {
             transactions
         );
     }, [employee, selectedMonth, advances, custodies, commissions, transactions]);
+
+    // How many cases carry this person's name this month. Counted server-side
+    // so a busy rep's orders never cross the wire just to produce one number.
+    useEffect(() => {
+        let cancelled = false;
+        if (!employee || employee.employeeType !== 'sales_rep') {
+            setMonthlySales({ count: 0, value: 0 });
+            return;
+        }
+        db.getRepresentativeMonthlySales(employee.id, selectedMonth)
+            .then(s => { if (!cancelled) setMonthlySales(s); })
+            .catch(() => { if (!cancelled) setMonthlySales({ count: 0, value: 0 }); });
+        return () => { cancelled = true; };
+    }, [employee, selectedMonth]);
 
     // Get current month adjustments (bonuses/deductions) for display
     const monthlyAdjustments = useMemo(() => {
@@ -379,7 +395,11 @@ export default function EmployeeDetail() {
                 type: 'expense',
                 amount: stats.salaryDue,
                 category: EXPENSE_CATEGORY.salaries,
-                description: `راتب شهر ${selectedMonth} - ${employee.name} (أساسي: ${employee.baseSalary || 0} - عمولة: ${commissions.filter(c => c.period === selectedMonth).reduce((sum, c) => sum + c.amount, 0)} - منح: ${activeBonuses.reduce((sum, b) => sum + b.amount, 0)} - خصومات: ${activeDeductions.reduce((sum, d) => sum + d.amount, 0)})${adjustmentsDesc}`,
+                // The breakdown names every component of the amount, commission
+                // included -- salaryDue is base + commission + bonuses -
+                // deductions. A component missing here is a payment nobody can
+                // reconstruct later.
+                description: `راتب شهر ${selectedMonth} - ${employee.name} (أساسي: ${employee.baseSalary || 0} - عمولة: ${stats.monthlyCommissions} - منح: ${activeBonuses.reduce((sum, b) => sum + b.amount, 0)} - خصومات: ${activeDeductions.reduce((sum, d) => sum + d.amount, 0)})${adjustmentsDesc}`,
                 date: today,
                 entityId: employee.id,
                 entityType: 'general',
@@ -732,9 +752,11 @@ export default function EmployeeDetail() {
                         </div>
                         {isSalesRep && (
                             <div className="flex justify-between text-sm py-1 border-b border-gray-50">
-                                <span className="text-gray-500">العمولة اليدوية لشهر {selectedMonth}</span>
+                                <span className="text-gray-500">
+                                    العمولة اليدوية لشهر {selectedMonth}
+                                </span>
                                 <span className="font-semibold text-green-600">
-                                    + {formatCurrency(commissions.filter(c => c.period === selectedMonth).reduce((sum, c) => sum + c.amount, 0))}
+                                    + {formatCurrency(stats.monthlyCommissions)}
                                 </span>
                             </div>
                         )}
@@ -751,6 +773,36 @@ export default function EmployeeDetail() {
                             <span className="text-brand-blue">{formatCurrency(stats.salaryDue)}</span>
                         </div>
                     </div>
+
+                    {/* Sales sit outside the salary box because they are not a
+                        component of it. Nothing here computes a commission --
+                        the figure above starts at zero and somebody types it.
+                        This is the evidence they type it from. */}
+                    {isSalesRep && (
+                        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-semibold text-gray-700">
+                                    مبيعات شهر {selectedMonth}
+                                </span>
+                                <span className="text-xs text-gray-500">لتقدير العمولة</span>
+                            </div>
+                            <div className="mt-2 flex justify-between text-sm">
+                                <span className="text-gray-500">عدد الحالات المسجّلة باسمه</span>
+                                <span className="font-semibold text-gray-900">{monthlySales.count}</span>
+                            </div>
+                            <div className="mt-1 flex justify-between text-sm">
+                                <span className="text-gray-500">قيمة الحالات</span>
+                                <span className="font-semibold text-gray-900">
+                                    {formatCurrency(monthlySales.value)}
+                                </span>
+                            </div>
+                            <p className="mt-2 text-xs text-gray-500 leading-5">
+                                القيمة دي إجمالي أسعار الحالات، من غير الملغي والمرفوض معمليًا.
+                                السيستم مش بيحسب عمولة من الأرقام دي — بتبدأ صفر، وتتحدّد يدويًا
+                                من زرار العمولة وساعتها بتتضاف للراتب.
+                            </p>
+                        </div>
+                    )}
 
                     {isAdminOrAccountant && (
                         <div className="flex gap-3 pt-3">

@@ -1327,6 +1327,100 @@ export async function getDashboardActiveOrders(): Promise<Order[]> {
  * Used by Dashboard to show comment alerts.
  * Looks at recent orders (last 60 days) with comments in order_comments table.
  */
+/**
+ * What a person sold in a month: how many cases carry their name, and what
+ * those cases are worth.
+ *
+ * Reported, never payable. Commission stopped being folded into salaryDue
+ * because a manually typed number should not become money owed on its own;
+ * this is what replaced it on screen -- a record of what the month actually
+ * contained.
+ *
+ * `period` is 'YYYY-MM'. The window is [first of that month, first of the
+ * next), on created_at: a case belongs to the month it was taken, not the
+ * month it happened to be delivered.
+ *
+ * Cancelled and lab-rejected cases are excluded from BOTH figures. Those are
+ * cases nobody ever worked, and the house rule is that they carry no revenue
+ * and no cost. Note that total_price is NOT zeroed on those rows -- the
+ * normalize trigger only clears the rejection fields -- so summing without
+ * this filter would credit somebody for work that never happened.
+ *
+ * doctor_rejected cases are KEPT: the case was made and delivered, and what
+ * is owed on it is settled separately through the rejection review.
+ *
+ * Only one numeric column crosses the wire, so a busy month stays cheap.
+ */
+export async function getRepresentativeMonthlySales(
+    representativeId: string,
+    period: string
+): Promise<{ count: number; value: number }> {
+    const empty = { count: 0, value: 0 };
+    if (!/^\d{4}-\d{2}$/.test(period)) return empty;
+
+    const [year, month] = period.split('-').map(Number);
+    const start = `${period}-01`;
+    const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
+    const end = `${nextMonth}-01`;
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select('total_price')
+        .eq('representative_id', representativeId)
+        .gte('created_at', start)
+        .lt('created_at', end)
+        .not('issue_state', 'in', '("cancelled","lab_rejected")');
+
+    if (error) throw ErrorHandler.handle(error, 'getRepresentativeMonthlySales');
+    if (!data) return empty;
+
+    return {
+        count: data.length,
+        value: data.reduce((sum, row) => sum + Number(row.total_price ?? 0), 0),
+    };
+}
+
+/**
+ * The same month's sales, for everybody at once.
+ *
+ * The employees list shows a row per person; asking per row would be one
+ * round trip each. This is one query, grouped in memory, keyed by
+ * representative id.
+ *
+ * Filters match getRepresentativeMonthlySales exactly -- if these two ever
+ * disagree, the list and the profile will quietly show different numbers for
+ * the same person, which is worse than either being wrong on its own.
+ */
+export async function getMonthlySalesByRepresentative(
+    period: string
+): Promise<Record<string, { count: number; value: number }>> {
+    if (!/^\d{4}-\d{2}$/.test(period)) return {};
+
+    const [year, month] = period.split('-').map(Number);
+    const start = `${period}-01`;
+    const nextMonth = month === 12 ? `${year + 1}-01` : `${year}-${String(month + 1).padStart(2, '0')}`;
+    const end = `${nextMonth}-01`;
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select('representative_id, total_price')
+        .not('representative_id', 'is', null)
+        .gte('created_at', start)
+        .lt('created_at', end)
+        .not('issue_state', 'in', '("cancelled","lab_rejected")');
+
+    if (error) throw ErrorHandler.handle(error, 'getMonthlySalesByRepresentative');
+
+    const out: Record<string, { count: number; value: number }> = {};
+    for (const row of data ?? []) {
+        const id = row.representative_id as string;
+        if (!out[id]) out[id] = { count: 0, value: 0 };
+        out[id].count += 1;
+        out[id].value += Number(row.total_price ?? 0);
+    }
+    return out;
+}
+
 export async function getOrdersWithComments(): Promise<Order[]> {
     const allData: DbOrderWithRelations[] = [];
     const pageSize = 1000;

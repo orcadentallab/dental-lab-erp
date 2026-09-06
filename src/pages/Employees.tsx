@@ -35,6 +35,10 @@ export default function Employees() {
     const [advances, setAdvances] = useState<EmployeeAdvance[]>([]);
     const [custodies, setCustodies] = useState<EmployeeCustody[]>([]);
     const [commissions, setCommissions] = useState<EmployeeCommission[]>([]);
+    // Sales per person for the selected month. One query for the whole list,
+    // keyed by representative id -- the evidence behind a commission figure,
+    // not a second calculation of it.
+    const [salesByRep, setSalesByRep] = useState<Record<string, { count: number; value: number }>>({});
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
     const [selectedCashboxId, setSelectedCashboxId] = useState('');
@@ -115,6 +119,16 @@ export default function Employees() {
             toastError('حدث خطأ أثناء تحميل البيانات');
         }
     }, [toastError]);
+
+    // Reloads on month change; the list is small and the query is one round
+    // trip, so there is nothing to memoise beyond that.
+    useEffect(() => {
+        let cancelled = false;
+        db.getMonthlySalesByRepresentative(selectedMonth)
+            .then(m => { if (!cancelled) setSalesByRep(m); })
+            .catch(() => { if (!cancelled) setSalesByRep({}); });
+        return () => { cancelled = true; };
+    }, [selectedMonth]);
 
     useEffect(() => {
         if (currentUser && currentUser.role === 'representative') {
@@ -749,6 +763,7 @@ export default function Employees() {
                                 <th className="p-4">اسم الموظف</th>
                                 <th className="p-4">النوع الوظيفي</th>
                                 <th className="p-4">حالة الراتب ({selectedMonth})</th>
+                                <th className="p-4">مبيعات الشهر</th>
                                 <th className="p-4">إجمالي السلف القائمة</th>
                                 <th className="p-4">إجمالي العهدة القائمة</th>
                                 <th className="p-4">المصاريف المعتمدة</th>
@@ -797,6 +812,20 @@ export default function Employees() {
                                                         <XCircle className="h-3.5 w-3.5" />
                                                         قيد الانتظار
                                                     </span>
+                                                )}
+                                            </td>
+                                            <td className="p-4">
+                                                {user.employeeType === 'sales_rep' ? (
+                                                    <div className="leading-5">
+                                                        <span className="font-semibold text-gray-900">
+                                                            {formatCurrency(salesByRep[user.id]?.value || 0)}
+                                                        </span>
+                                                        <span className="block text-xs text-gray-500">
+                                                            {salesByRep[user.id]?.count || 0} حالة
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-gray-400 text-xs">-</span>
                                                 )}
                                             </td>
                                             <td className="p-4 text-red-600 font-semibold">

@@ -35,35 +35,35 @@ function makeUser(role: Role, overrides: Partial<User> = {}): User {
  * and not here, the mismatch tests below are the ones that fail.
  */
 const ROUTE_ROLES: Record<string, Role[]> = {
-    '/dashboard': ['admin', 'lab', 'technician', 'representative', 'accountant', 'designer'],
-    '/orders': ['admin', 'lab', 'technician', 'representative', 'accountant', 'designer'],
-    '/doctors': ['admin', 'representative'],
+    '/dashboard': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
+    '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
+    '/doctors': ['admin', 'representative', 'coordinator'],
     '/doctors/retention': ['admin'],
-    '/production/my-tasks': ['admin', 'lab', 'technician', 'designer'],
-    '/production/board': ['admin', 'lab', 'technician'],
-    '/production/shadow': ['admin', 'lab', 'technician'],
-    '/production/external': ['admin', 'lab', 'technician', 'accountant'],
-    '/inventory': ['admin', 'lab', 'technician', 'accountant'],
-    '/production/shipments': ['admin', 'lab', 'technician', 'accountant'],
-    '/production/routes': ['admin'],
-    '/settings/work-calendar': ['admin'],
-    '/accounts': ['admin', 'accountant', 'lab', 'technician', 'representative', 'designer'],
-    '/settings': ['admin', 'accountant', 'lab', 'technician', 'representative'],
-    '/employees': ['admin', 'accountant', 'representative'],
-    '/finance': ['admin', 'accountant'],
-    '/suppliers': ['admin', 'accountant'],
-    '/case-registration': ['admin', 'accountant'],
-    '/balance-snapshot': ['admin', 'accountant'],
-    '/financial-review': ['admin', 'accountant'],
-    '/statements': ['admin', 'accountant'],
-    '/aging-report': ['admin', 'accountant'],
+    '/production/my-tasks': ['admin', 'technician', 'production_manager', 'designer'],
+    '/production/board': ['admin', 'technician', 'production_manager', 'coordinator'],
+    '/production/shadow': ['admin', 'technician', 'production_manager', 'coordinator'],
+    '/production/external': ['admin', 'technician', 'production_manager', 'accountant', 'coordinator'],
+    '/inventory': ['admin', 'technician', 'production_manager', 'accountant', 'coordinator'],
+    '/production/shipments': ['admin', 'technician', 'production_manager', 'accountant', 'coordinator'],
+    '/production/routes': ['admin', 'production_manager'],
+    '/designer-stats': ['admin', 'production_manager'],
+    '/settings/work-calendar': ['admin', 'production_manager'],
+    '/accounts': ['admin', 'accountant', 'coordinator', 'lab', 'technician', 'production_manager', 'representative', 'designer'],
+    '/settings': ['admin', 'accountant', 'coordinator', 'lab', 'technician', 'production_manager', 'representative'],
+    '/employees': ['admin', 'accountant', 'coordinator', 'representative'],
+    '/finance': ['admin', 'accountant', 'coordinator'],
+    '/suppliers': ['admin', 'accountant', 'coordinator'],
+    '/case-registration': ['admin', 'accountant', 'coordinator'],
+    '/balance-snapshot': ['admin', 'accountant', 'coordinator'],
+    '/financial-review': ['admin', 'accountant', 'coordinator'],
+    '/statements': ['admin', 'accountant', 'coordinator'],
+    '/aging-report': ['admin', 'accountant', 'coordinator'],
     '/analytics': ['admin'],
     '/ai-analytics': ['admin'],
     '/users': ['admin'],
     '/services': ['admin'],
     '/issues-report': ['admin'],
     '/marketing-analytics': ['admin'],
-    '/designer-stats': ['admin'],
     '/reports/profitability': ['admin'],
     '/reports/production-costing': ['admin'],
     '/reports/cashflow': ['admin'],
@@ -72,7 +72,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/doctor/account': ['doctor'],
 };
 
-const ERP_ROLES: Role[] = ['admin', 'lab', 'technician', 'representative', 'accountant', 'designer'];
+const ERP_ROLES: Role[] = ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'];
 
 describe('navigation registry covers the routes', () => {
     it('every guarded route is reachable from the registry', () => {
@@ -271,10 +271,29 @@ describe('landing routes', () => {
 });
 
 describe('capabilities', () => {
-    it('the technician mirrors the lab', () => {
-        const lab = getCapabilities(makeUser('lab'));
+    // Was "the technician mirrors the lab". Since 20260905050000 the floor
+    // belongs to the production manager, and the two are deliberately NOT
+    // identical any more: route editing and the production reports are the
+    // manager's, not the technician's. What must still hold is that the
+    // technician's set is a strict subset -- anything it gains that the
+    // manager lacks is a hole.
+    it('the technician is the production manager minus the supervisory grants', () => {
+        const manager = getCapabilities(makeUser('production_manager'));
         const technician = getCapabilities(makeUser('technician'));
-        expect(Array.from(technician).sort()).toEqual(Array.from(lab).sort());
+        for (const cap of technician) expect(manager.has(cap)).toBe(true);
+        expect(manager.has('manage_production_routes')).toBe(true);
+        expect(technician.has('manage_production_routes')).toBe(false);
+        expect(technician.has('view_reports')).toBe(false);
+    });
+
+    // 'lab' is an external supplier: its own orders, its own statement, its
+    // own profile. If this set ever grows, something has confused the
+    // supplier with the floor again.
+    it('the external lab keeps only its own four screens', () => {
+        const lab = getCapabilities(makeUser('lab'));
+        expect(Array.from(lab).sort()).toEqual(
+            ['view_accounts', 'view_dashboard', 'view_orders', 'view_settings'].sort()
+        );
     });
 
     it('a profile-only employee has no ERP navigation', () => {
