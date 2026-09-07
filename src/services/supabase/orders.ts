@@ -980,6 +980,8 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         deliveryDate: dbOrder.delivery_date,
         cost: dbOrder.cost,
         manualCost: dbOrder.manual_cost ?? undefined,
+        labCost: dbOrder.lab_cost ?? undefined,
+        designerCost: dbOrder.designer_cost ?? undefined,
         stlUrl: dbOrder.stl_url || undefined,
         imagesUrl: dbOrder.images_url || undefined,
         supplierId: dbOrder.supplier_id || undefined,
@@ -1046,6 +1048,8 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         delivery_date: order.deliveryDate,
         cost: order.cost,
         manual_cost: order.manualCost ?? null,
+        ...(order.labCost !== undefined ? { lab_cost: order.labCost } : {}),
+        ...(order.designerCost !== undefined ? { designer_cost: order.designerCost } : {}),
         stl_url: order.stlUrl || null,
         images_url: order.imagesUrl || null,
         supplier_id: order.supplierId || null,
@@ -1671,7 +1675,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     while (hasMore) {
         const { data, error } = await supabase
             .from('orders')
-            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, is_redo, original_order_id, production_status, issue_state, order_items(product_type, teeth_numbers)')
+            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, status, total_price, cost, lab_cost, designer_cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, is_redo, original_order_id, production_status, issue_state, order_items(product_type, teeth_numbers)')
             .order('created_at', { ascending: false })
             .order('id')
             .range(from, from + limit - 1);

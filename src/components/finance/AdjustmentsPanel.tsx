@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import DateField from '../../components/ui/DateField';
 import { financeService, type Adjustment } from '../../services/financeService';
 import { db, type Doctor, type Supplier, type User } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
@@ -402,10 +403,10 @@ export default function AdjustmentsPanel() {
 
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">التاريخ</label>
-                        <Input
-                            type="date"
+                        <DateField
                             value={newAdj.date}
-                            onChange={e => setNewAdj({ ...newAdj, date: e.target.value })}
+                            onChange={date => setNewAdj({ ...newAdj, date })}
+                            ariaLabel="التاريخ"
                             required
                         />
                     </div>

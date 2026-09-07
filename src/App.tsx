@@ -166,7 +166,17 @@ function App() {
                       halves of the same conversation with a doctor. */}
                   <Route element={<ProtectedRoute allowedRoles={['admin', 'accountant', 'coordinator']} />}>
                     <Route element={<DashboardLayout />}>
-                      <Route path="/finance" element={<Finance />} />
+                      {/* Bare /finance was the whole page's address before it
+                          split into tabs; it now redirects to the first one
+                          so old links and bookmarks keep landing somewhere.
+                          Cash Boxes and Capital & Assets are admin-only tabs
+                          (view_cashboxes/view_capital), so they get their own
+                          guard below rather than sharing this one -- a route
+                          guard that let the accountant in would disagree with
+                          the registry capability WorkspaceTabs checks. */}
+                      <Route path="/finance" element={<Navigate to="/finance/transactions" replace />} />
+                      <Route path="/finance/transactions" element={<Finance />} />
+                      <Route path="/finance/ledgers" element={<Finance />} />
                       <Route path="/suppliers" element={<Suppliers />} />
                       <Route path="/case-registration" element={<CaseRegistration />} />
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
@@ -187,6 +197,12 @@ function App() {
                   {/* Admin Only Routes */}
                   <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                     <Route element={<DashboardLayout />}>
+                      {/* Two Finance tabs (view_cashboxes/view_capital) that
+                          stay admin-only same as before this split, when
+                          Finance.tsx gated both panels on user.role === 'admin'
+                          internally instead of at the route. */}
+                      <Route path="/finance/cashboxes" element={<Finance />} />
+                      <Route path="/finance/capital" element={<Finance />} />
                       <Route path="/analytics" element={<Analytics />} />
                       <Route path="/ai-analytics" element={<AIAnalytics />} />
                       <Route path="/users" element={<UsersPage />} />

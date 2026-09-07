@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { EMPLOYEE_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory, type ExpenseCategory } from '../constants/expenseCategories';
+import DateField from '../components/ui/DateField';
 
 export default function EmployeeDetail() {
     const { id } = useParams<{ id: string }>();
@@ -1312,12 +1313,12 @@ export default function EmployeeDetail() {
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">التاريخ</label>
-                                <input
-                                    type="date"
+                                <DateField
                                     required
+                                    clearable={false}
                                     value={newAdvance.date}
-                                    onChange={(e) => setNewAdvance(prev => ({ ...prev, date: e.target.value }))}
-                                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                    onChange={date => setNewAdvance(prev => ({ ...prev, date }))}
+                                    ariaLabel="تاريخ السلفة"
                                 />
                             </div>
                             <div className="flex gap-3 justify-end pt-3">
@@ -1374,12 +1375,12 @@ export default function EmployeeDetail() {
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">تاريخ التسليم</label>
-                                <input
-                                    type="date"
+                                <DateField
                                     required
+                                    clearable={false}
                                     value={newCustody.dateGiven}
-                                    onChange={(e) => setNewCustody(prev => ({ ...prev, dateGiven: e.target.value }))}
-                                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                    onChange={dateGiven => setNewCustody(prev => ({ ...prev, dateGiven }))}
+                                    ariaLabel="تاريخ التسليم"
                                 />
                             </div>
                             <div>
@@ -1436,12 +1437,12 @@ export default function EmployeeDetail() {
                                 </div>
                                 <div>
                                     <label className="block text-xs font-semibold text-gray-600 mb-1">التاريخ</label>
-                                    <input
-                                        type="date"
+                                    <DateField
                                         required
+                                        clearable={false}
                                         value={newCommission.date}
-                                        onChange={(e) => setNewCommission(prev => ({ ...prev, date: e.target.value }))}
-                                        className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                        onChange={date => setNewCommission(prev => ({ ...prev, date }))}
+                                        ariaLabel="تاريخ العمولة"
                                     />
                                 </div>
                             </div>
@@ -1511,12 +1512,12 @@ export default function EmployeeDetail() {
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">التاريخ *</label>
-                                <input
-                                    type="date"
+                                <DateField
                                     required
+                                    clearable={false}
                                     value={newExpense.date}
-                                    onChange={(e) => setNewExpense(prev => ({ ...prev, date: e.target.value }))}
-                                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                    onChange={date => setNewExpense(prev => ({ ...prev, date }))}
+                                    ariaLabel="تاريخ المصروف"
                                 />
                             </div>
                             <div className="flex gap-3 justify-end pt-3">

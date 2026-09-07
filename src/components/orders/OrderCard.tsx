@@ -25,6 +25,7 @@ import ProductionStatusBadge from './ProductionStatusBadge';
 import IssueStateBadge from './IssueStateBadge';
 import CaseLocationChip from './CaseLocationChip';
 import { getEffectiveProductionStatus, getEffectiveIssueState, getCaseLocation } from '../../constants/orderLifecycle';
+import { getLabCostMetadata } from '../../constants/financialObligations';
 import WorkflowActionBar from './WorkflowActionBar';
 import type { RejectionFinancialContext } from '../../constants/rejectionFinancialDecision';
 
@@ -214,7 +215,10 @@ function OrderCard({
         ?.text.match(/السبب:\s*([^—]+)/)?.[1]?.trim();
     const displayDate = getOrderCardDisplayDate(order);
     const hasManualLabCost = order.manualCost !== null && order.manualCost !== undefined;
-    const displayedLabCost = order.manualCost ?? order.cost ?? 0;
+    const isSalariedDesigner = Boolean(order.designerId && designerFixedSalary[order.designerId] === true);
+    // order.cost bundles the design price for split cases with a per-piece designer,
+    // so the milling-only figure has to come from the shared lab-cost resolver.
+    const displayedLabCost = getLabCostMetadata(order, isSalariedDesigner).cost;
     const hasManualDesignCost = order.manualDesignPrice !== null && order.manualDesignPrice !== undefined;
     const displayedDesignCost = order.manualDesignPrice ?? order.designPrice ?? 0;
     const showDesignerCost = Boolean(order.designerId && designerFixedSalary[order.designerId] === false);

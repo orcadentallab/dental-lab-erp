@@ -4,6 +4,7 @@ import clsx from 'clsx';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { financeService, type CashboxSummaryRow, type CashboxType, type Cashbox, type CashboxReconciliation } from '../../services/financeService';
+import DateField from '../ui/DateField';
 import CashboxStatementModal from './CashboxStatementModal';
 import MultiCashboxReconciliationModal from './MultiCashboxReconciliationModal';
 
@@ -542,7 +543,7 @@ export default function CashboxPanel() {
                         </select>
                         <div className="grid grid-cols-2 gap-3">
                             <input required type="number" min="0" step="0.01" value={newCashbox.openingBalance} onChange={e => setNewCashbox({ ...newCashbox, openingBalance: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" placeholder="رصيد البداية" />
-                            <input required type="date" value={newCashbox.openingDate} onChange={e => setNewCashbox({ ...newCashbox, openingDate: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" />
+                            <DateField required value={newCashbox.openingDate} onChange={openingDate => setNewCashbox({ ...newCashbox, openingDate })} ariaLabel="تاريخ الافتتاح" clearable={false} />
                         </div>
                         <div className="space-y-2">
                             <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
@@ -606,7 +607,7 @@ export default function CashboxPanel() {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                         <input required type="number" min="0.01" step="0.01" value={transferForm.amount} onChange={e => setTransferForm({ ...transferForm, amount: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" placeholder="المبلغ" />
-                        <input required type="date" value={transferForm.date} onChange={e => setTransferForm({ ...transferForm, date: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" />
+                        <DateField required value={transferForm.date} onChange={date => setTransferForm({ ...transferForm, date })} ariaLabel="تاريخ التحويل" clearable={false} />
                     </div>
                     <input value={transferForm.description} onChange={e => setTransferForm({ ...transferForm, description: e.target.value })} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" placeholder="بيان التحويل" />
                     <button type="submit" className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-black text-white hover:bg-blue-700">تسجيل التحويل</button>
@@ -647,7 +648,7 @@ export default function CashboxPanel() {
                     )}
                     <div className="grid grid-cols-2 gap-3">
                         <input required type="number" min="0" step="0.01" value={reconciliationForm.actualBalance} onChange={e => setReconciliationForm({ ...reconciliationForm, actualBalance: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" placeholder="الرصيد الفعلي" />
-                        <input required type="date" value={reconciliationForm.date} onChange={e => setReconciliationForm({ ...reconciliationForm, date: e.target.value })} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5" />
+                        <DateField required value={reconciliationForm.date} onChange={date => setReconciliationForm({ ...reconciliationForm, date })} ariaLabel="تاريخ المطابقة" clearable={false} />
                     </div>
                     <input value={reconciliationForm.notes} onChange={e => setReconciliationForm({ ...reconciliationForm, notes: e.target.value })} className="w-full rounded-lg border border-slate-200 bg-slate-50 p-2.5" placeholder="ملاحظات المطابقة" />
                     <button type="submit" className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-black text-white hover:bg-emerald-700">حفظ المطابقة لهذا الصندوق</button>

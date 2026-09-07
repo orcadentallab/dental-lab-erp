@@ -26,6 +26,51 @@ export interface ReportDateRangeState {
 
 const fmt = (d: Date) => format(d, 'yyyy-MM-dd');
 
+/**
+ * The preset arithmetic on its own, so anything that offers the same buttons
+ * (DateRangeField's popover, for one) computes the identical range instead of
+ * reimplementing "آخر 30 يوم" slightly differently. `custom` has no arithmetic —
+ * its bounds come from the user — so it answers with an empty range.
+ */
+export function computeReportRange(
+    preset: ReportDateRangePreset,
+    today: Date = new Date()
+): { startDate: string; endDate: string } {
+    switch (preset) {
+        case 'today':
+            return { startDate: fmt(today), endDate: fmt(today) };
+        case 'week': {
+            const start = new Date(today);
+            start.setDate(today.getDate() - 7);
+            return { startDate: fmt(start), endDate: fmt(today) };
+        }
+        case 'month': {
+            const start = new Date(today);
+            start.setDate(today.getDate() - 30);
+            return { startDate: fmt(start), endDate: fmt(today) };
+        }
+        case 'current_month':
+            return { startDate: fmt(startOfMonth(today)), endDate: fmt(endOfMonth(today)) };
+        case 'prev_month': {
+            const d = subMonths(today, 1);
+            return { startDate: fmt(startOfMonth(d)), endDate: fmt(endOfMonth(d)) };
+        }
+        case 'prev_prev_month': {
+            const d = subMonths(today, 2);
+            return { startDate: fmt(startOfMonth(d)), endDate: fmt(endOfMonth(d)) };
+        }
+        case 'year':
+            return {
+                startDate: fmt(new Date(today.getFullYear(), 0, 1)),
+                endDate: fmt(new Date(today.getFullYear(), 11, 31)),
+            };
+        case 'all':
+        case 'custom':
+        default:
+            return { startDate: '', endDate: '' };
+    }
+}
+
 export function useReportDateRange(defaultPreset: ReportDateRangePreset = 'current_month'): ReportDateRangeState {
     const [preset, setPreset] = useState<ReportDateRangePreset>(defaultPreset);
     const [customStart, setCustomStart] = useState('');
@@ -35,41 +80,7 @@ export function useReportDateRange(defaultPreset: ReportDateRangePreset = 'curre
         if (preset === 'custom') {
             return { startDate: customStart, endDate: customEnd };
         }
-
-        const today = new Date();
-
-        switch (preset) {
-            case 'today':
-                return { startDate: fmt(today), endDate: fmt(today) };
-            case 'week': {
-                const start = new Date(today);
-                start.setDate(today.getDate() - 7);
-                return { startDate: fmt(start), endDate: fmt(today) };
-            }
-            case 'month': {
-                const start = new Date(today);
-                start.setDate(today.getDate() - 30);
-                return { startDate: fmt(start), endDate: fmt(today) };
-            }
-            case 'current_month':
-                return { startDate: fmt(startOfMonth(today)), endDate: fmt(endOfMonth(today)) };
-            case 'prev_month': {
-                const d = subMonths(today, 1);
-                return { startDate: fmt(startOfMonth(d)), endDate: fmt(endOfMonth(d)) };
-            }
-            case 'prev_prev_month': {
-                const d = subMonths(today, 2);
-                return { startDate: fmt(startOfMonth(d)), endDate: fmt(endOfMonth(d)) };
-            }
-            case 'year':
-                return {
-                    startDate: fmt(new Date(today.getFullYear(), 0, 1)),
-                    endDate: fmt(new Date(today.getFullYear(), 11, 31)),
-                };
-            case 'all':
-            default:
-                return { startDate: '', endDate: '' };
-        }
+        return computeReportRange(preset);
     }, [preset, customStart, customEnd]);
 
     return { preset, setPreset, customStart, customEnd, setCustomStart, setCustomEnd, startDate, endDate };

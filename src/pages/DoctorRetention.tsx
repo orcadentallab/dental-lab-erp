@@ -7,6 +7,7 @@ import {
   HelpCircle, RefreshCw, X, Filter, ArrowUpDown
 } from 'lucide-react';
 import clsx from 'clsx';
+import DateField from '../components/ui/DateField';
 
 // SWR Cache to prevent reload spinners on tab/page switch
 let cachedActivityData: DoctorActivityRow[] | null = null;
@@ -884,11 +885,10 @@ export default function DoctorRetention() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-500 mb-1">تاريخ المتابعة القادمة (اختياري)</label>
-                <input
-                  type="date"
+                <DateField
                   value={nextFollowUpDate}
-                  onChange={(e) => setNextFollowUpDate(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl focus:outline-none focus:border-indigo-500 text-sm text-left"
+                  onChange={setNextFollowUpDate}
+                  ariaLabel="تاريخ المتابعة القادمة"
                 />
               </div>
 

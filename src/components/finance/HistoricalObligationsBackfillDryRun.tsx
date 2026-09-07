@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search } from 'lucide-react';
 import clsx from 'clsx';
 import { db, type HistoricalObligationsBackfillActionRow, type HistoricalObligationsBackfillBatchResult } from '../../services/db';
+import DateRangeField from '../ui/DateRangeField';
 
 type EntityTypeFilter = 'all' | 'doctor' | 'external_lab';
 type ReasonFilter = 'all' | 'missing_doctor_receivable' | 'missing_external_lab_payable' | 'missing_external_lab_issue_settlement';
@@ -176,8 +177,14 @@ export default function HistoricalObligationsBackfillDryRun() {
                     <select aria-label="سبب التجهيز" value={reason} onChange={event => resetReason(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
                         {Object.entries(reasonLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                    <input aria-label="من تاريخ" type="date" value={dateFrom} onChange={event => resetToFirstPage(setDateFrom)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
-                    <input aria-label="إلى تاريخ" type="date" value={dateTo} onChange={event => resetToFirstPage(setDateTo)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+                    <DateRangeField
+                        start={dateFrom}
+                        end={dateTo}
+                        onChange={({ start, end }) => {
+                            resetToFirstPage(setDateFrom)(start);
+                            resetToFirstPage(setDateTo)(end);
+                        }}
+                    />
                     <select aria-label="عدد النتائج" value={pageSize} onChange={event => handlePageSizeChange(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm">
                         <option value={25}>25</option>
                         <option value={50}>50</option>

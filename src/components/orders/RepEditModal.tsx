@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, AlertTriangle, Save, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import DateField from '../ui/DateField';
 import { Card } from '../ui/Card';
 import { db } from '../../services/db';
 import type { Order, Supplier, User, Service, ServiceFamily, Doctor } from '../../services/db';
@@ -475,7 +476,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                 price: it.price
             }));
 
-            changes.cost = calculateOrderCost(
+            const automaticCost = calculateOrderCost(
                 order.workflowType || 'full',
                 currentItems,
                 services,
@@ -486,12 +487,37 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
             );
 
             if (order.workflowType === 'split') {
-                changes.designPrice = calculateAutomaticDesignPrice(
+                const automaticDesignPrice = calculateAutomaticDesignPrice(
                     currentItems,
                     services,
                     designers,
                     designerId
                 );
+                // The designer can change in this very edit, so the salary rule
+                // is read off the designer being assigned, not the old one.
+                const isSalaried = hasCustomPermission(
+                    designers.find(d => d.id === designerId),
+                    FIXED_SALARY_DESIGNER_PERMISSION
+                );
+
+                // A manually entered price is a deliberate decision. Re-pricing
+                // the items or switching supplier re-derives the automatic
+                // figures, but it must not silently discard an override that is
+                // still meant to stand. A salaried designer is the one
+                // exception: they earn nothing per case either way.
+                const effectiveDesignPrice = order.manualDesignPrice ?? automaticDesignPrice;
+                const automaticMilling = automaticCost - (isSalaried ? 0 : automaticDesignPrice);
+                const effectiveMilling = order.manualCost ?? automaticMilling;
+
+                changes.designPrice = effectiveDesignPrice;
+                // Only cost is sent. lab_cost/designer_cost are not on the
+                // representative's audited-field whitelist and must not be:
+                // that list is a permissions surface, not a plumbing detail.
+                // The phase 3 reconciler re-derives the split from cost, which
+                // is exactly the legacy direction it still supports.
+                changes.cost = effectiveMilling + (isSalaried ? 0 : effectiveDesignPrice);
+            } else {
+                changes.cost = order.manualCost ?? automaticCost;
             }
         }
 
@@ -612,10 +638,10 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
 
                             <div>
                                 <label className="block text-sm font-medium text-surface-700 mb-1">تاريخ التسليم</label>
-                                <Input
-                                    type="date"
+                                <DateField
                                     value={deliveryDate}
-                                    onChange={(e) => setDeliveryDate(e.target.value)}
+                                    onChange={setDeliveryDate}
+                                    ariaLabel="تاريخ التسليم"
                                     disabled={!isFieldEnabled('delivery_date')}
                                 />
                             </div>

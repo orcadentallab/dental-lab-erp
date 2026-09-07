@@ -6,6 +6,8 @@ import { ISSUE_CAUSE, responsibleStageLabel } from '../constants/issueCauses';
 import { analyticsService, type SupplierIssuePerformance } from '../services/supabase/analyticsService';
 import { useReportDateRange } from '../hooks/useReportDateRange';
 import ReportDateRangeFilter from '../components/reports/ReportDateRangeFilter';
+import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../lib/userRoles';
+import { getLabCostMetadata } from '../constants/financialObligations';
 
 // Issue type display config, ordered by business severity (owner,
 // 2026-08-17) rather than registration order — severe first, so the cards
@@ -455,7 +457,11 @@ export default function IssuesReport() {
                                     const doctorName = order?.doctorId ? (doctors.find(d => d.id === order.doctorId)?.name || 'غير معروف') : '—';
                                     const designerName = order?.designerId ? (users.find(u => u.id === order.designerId)?.name || 'غير معروف') : '—';
                                     const supplierName = order?.supplierId ? (suppliers.find(s => s.id === order.supplierId)?.name || 'غير معروف') : '—';
-                                    const labCost = order ? (order.manualCost ?? order.cost ?? 0) : 0;
+                                    const orderDesigner = order?.designerId ? users.find(u => u.id === order.designerId) : undefined;
+                                    // order.cost bundles the design price for split cases with a per-piece designer.
+                                    const labCost = order
+                                        ? getLabCostMetadata(order, orderDesigner ? hasCustomPermission(orderDesigner, FIXED_SALARY_DESIGNER_PERMISSION) : false).cost
+                                        : 0;
                                     // Show rejection cost only for doctor_rejected (has financial impact)
                                     const showRejCost = issue.issueType === 'doctor_rejected';
 

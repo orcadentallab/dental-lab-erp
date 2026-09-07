@@ -56,6 +56,8 @@ export interface DbOrder {
     delivery_date: string;
     cost: number;
     manual_cost?: number | null;
+    lab_cost?: number;
+    designer_cost?: number;
     stl_url?: string | null;
     images_url?: string | null;
     supplier_id?: string | null;

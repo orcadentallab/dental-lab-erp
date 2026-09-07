@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { db, type Order, type EntityBillingSettings, type AgingBuckets, type AgingBucketKey, type Doctor, type Supplier, type User, type Transaction } from '../services/db';
 import { matchArabic } from '../lib/searchUtils';
+import DateField from '../components/ui/DateField';
 import { calculateDueDate, BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import { getLabCostMetadata } from '../constants/financialObligations';
@@ -10,7 +11,7 @@ import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Clock, Search, Calendar, AlertTriangle, 
+    Clock, Search, AlertTriangle, 
     CheckCircle2, DollarSign, ArrowLeftRight,
     Users, Factory, Palette, Phone, ScissorsLineDashed
 } from 'lucide-react';
@@ -924,15 +925,14 @@ export default function AgingReport() {
 
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-slate-400 whitespace-nowrap">تاريخ التقرير:</span>
-                    <div className="relative w-full">
-                        <Calendar className="absolute right-3 top-2.5 text-slate-400" size={14} />
-                        <input
-                            type="date"
-                            value={asOfDate}
-                            onChange={(e) => setAsOfDate(e.target.value || todayDateString())}
-                            className="w-full text-xs pr-9 pl-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-300 font-mono"
-                        />
-                    </div>
+                    <DateField
+                        value={asOfDate}
+                        onChange={value => setAsOfDate(value || todayDateString())}
+                        ariaLabel="تاريخ التقرير"
+                        size="sm"
+                        clearable={false}
+                        className="w-full"
+                    />
                 </div>
             </div>
 
@@ -1366,12 +1366,12 @@ export default function AgingReport() {
                             {/* Date */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">تاريخ التسوية <span className="text-red-500">*</span></label>
-                                <input
-                                    type="date"
+                                <DateField
                                     required
+                                    clearable={false}
                                     value={adjModal.date}
-                                    onChange={e => setAdjModal(m => ({ ...m, date: e.target.value }))}
-                                    className="w-full text-sm px-3 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-400 font-mono"
+                                    onChange={date => setAdjModal(m => ({ ...m, date }))}
+                                    ariaLabel="تاريخ التسوية"
                                 />
                             </div>
 

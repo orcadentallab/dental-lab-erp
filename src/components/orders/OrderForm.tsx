@@ -6,6 +6,7 @@ import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, Do
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
+import DateField from '../ui/DateField';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
@@ -597,7 +598,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 deliveryDate,
                 createdAt: new Date(receivedDate).toISOString(),
                 totalPrice: total,
+                // The form knows both components directly, so it records them
+                // and lets the database add them up. cost is sent too and must
+                // agree; it is the same sum by construction.
                 cost: finalCost,
+                labCost: workflowType === 'split'
+                    ? ((isAdmin && manualCost !== null) ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier))
+                    : finalCost,
+                designerCost: workflowType === 'split' && !isSalaried ? totalDesignPrice : 0,
                 manualCost: (isAdmin && manualCost !== null) ? manualCost : null,
                 workflowType,
                 designerId: workflowType === 'split' ? designerId : undefined,
@@ -620,7 +628,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     };
 
     const sidebarCardClass = "p-3.5 bg-white border border-surface-100 shadow-sm";
-    const fieldClass = "h-10 w-full rounded-lg border border-surface-200 bg-white px-3 text-base font-bold text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 sm:h-9 sm:text-sm";
     const selectClass = "h-10 w-full rounded-lg border border-surface-200 bg-white px-3 text-base text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 sm:h-9 sm:text-sm";
     const segmentWrapClass = "grid grid-cols-2 rounded-lg border border-surface-200 bg-surface-50 p-0.5";
     const segmentButtonClass = "h-7 rounded-md text-xs font-bold transition-all";
@@ -1004,24 +1011,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         <div className="grid grid-cols-2 gap-2.5">
                             <div>
                                 <label className="text-[10px] font-bold text-surface-500 block mb-1">تاريخ الاستلام</label>
-                                <input
-                                    title="Received Date"
-                                    aria-label="Received Date"
-                                    type="date"
-                                    className={fieldClass}
+                                <DateField
+                                    ariaLabel="تاريخ الاستلام"
+                                    size="sm"
                                     value={receivedDate}
-                                    onChange={(e) => setReceivedDate(e.target.value)}
+                                    onChange={setReceivedDate}
                                 />
                             </div>
                             <div>
                                 <label className="text-[10px] font-bold text-surface-500 block mb-1">موعد التسليم</label>
-                                <input
-                                    title="Delivery Date"
-                                    aria-label="Delivery Date"
-                                    type="date"
-                                    className={fieldClass}
+                                <DateField
+                                    ariaLabel="موعد التسليم"
+                                    size="sm"
                                     value={deliveryDate}
-                                    onChange={(e) => setDeliveryDate(e.target.value)}
+                                    onChange={setDeliveryDate}
                                     disabled={isFieldDisabled('delivery_date')}
                                 />
                             </div>

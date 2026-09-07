@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type Service } from '../services/db';
 import { ArrowRight, Search, FileSpreadsheet, Filter, Building2, User as UserIcon, Truck, Calendar, TrendingUp, TrendingDown, Wallet, ArrowUpDown, ChevronUp, ChevronDown, FileText, FileDown, Receipt, Phone } from 'lucide-react';
 import clsx from 'clsx';
+import DateRangeField from '../components/ui/DateRangeField';
 import { exportToExcel, exportToExcelWithHeaders } from '../lib/exportUtils';
 import { statementService, type StatementResult } from '../services/statementService';
 import { generateDoctorStatementPDF, generateBulkStatementsPDF, generateCasesInvoicePDF, generateCasesInvoiceExcel, type CasesInvoiceItem } from '../services/pdfService';
@@ -1566,24 +1567,15 @@ export default function Accounts() {
                     </div>
 
                     {timeFilter === 'all' && (
-                        <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 p-1.5 sm:w-auto sm:flex-nowrap">
-                            <span className="w-full px-2 text-sm font-medium text-gray-500 sm:w-auto">تاريخ مخصص:</span>
-                            <input
-                                type="date"
-                                value={dateRange.start}
-                                onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm sm:flex-none"
-                                aria-label="Start Date"
-                            />
-                            <span className="text-gray-400">إلى</span>
-                            <input
-                                type="date"
-                                value={dateRange.end}
-                                onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                                className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-sm sm:flex-none"
-                                aria-label="End Date"
-                            />
-                        </div>
+                        <DateRangeField
+                            start={dateRange.start}
+                            end={dateRange.end}
+                            onChange={({ start, end }) => setDateRange(prev => ({ ...prev, start, end }))}
+                            size="sm"
+                            // The preset pills beside it already cover these.
+                            presets={false}
+                            className="w-full sm:w-auto"
+                        />
                     )}
                 </div>
 
@@ -2061,22 +2053,13 @@ export default function Accounts() {
             {/* Custom Date Range (shown when not using presets) */}
             {timeFilter === 'all' && (
                 <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-xl border border-gray-100 print-hidden">
-                    <Calendar size={18} className="text-gray-400" />
                     <span className="text-sm text-gray-500 font-medium">تاريخ مخصص:</span>
-                    <input
-                        type="date"
-                        value={dateRange.start}
-                        onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                        className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2"
-                        aria-label="Start Date"
-                    />
-                    <span className="text-gray-400">إلى</span>
-                    <input
-                        type="date"
-                        value={dateRange.end}
-                        onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                        className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2"
-                        aria-label="End Date"
+                    <DateRangeField
+                        start={dateRange.start}
+                        end={dateRange.end}
+                        onChange={({ start, end }) => setDateRange(prev => ({ ...prev, start, end }))}
+                        // The preset pills above already cover these.
+                        presets={false}
                     />
                     {activeTab === 'doctors' && doctors.find(d => d.id === selectedEntityId)?.isCenter && (
                         <>

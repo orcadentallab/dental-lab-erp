@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import clsx from 'clsx';
 import { db, type AllocationPreviewResult, type Doctor, type Supplier } from '../../services/db';
+import DateField from '../ui/DateField';
 
 type EntityType = 'doctor' | 'external_lab';
 
@@ -158,13 +159,11 @@ export default function AllocationPreviewPanel({ doctors, suppliers }: Allocatio
 
                     <div>
                         <label className="block text-sm font-bold text-gray-700 mb-2">تاريخ الدفعة</label>
-                        <input
-                            aria-label="تاريخ الدفعة"
-                            type="date"
+                        <DateField
+                            ariaLabel="تاريخ الدفعة"
                             value={paymentDate}
                             disabled={includeNotDue}
-                            onChange={event => setPaymentDate(event.target.value)}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm disabled:opacity-50"
+                            onChange={setPaymentDate}
                         />
                     </div>
 

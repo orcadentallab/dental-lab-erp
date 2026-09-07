@@ -22,6 +22,7 @@ import {
 import clsx from 'clsx';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
 import { EMPLOYEE_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory, type ExpenseCategory } from '../constants/expenseCategories';
+import DateField from '../components/ui/DateField';
 
 export default function Employees() {
     const { user: currentUser } = useAuth();
@@ -1176,12 +1177,12 @@ export default function Employees() {
                             </div>
                             <div>
                                 <label className="block text-xs font-semibold text-gray-600 mb-1">التاريخ *</label>
-                                <input
-                                    type="date"
+                                <DateField
                                     required
+                                    clearable={false}
                                     value={newExpense.date}
-                                    onChange={(e) => setNewExpense(prev => ({ ...prev, date: e.target.value }))}
-                                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-blue"
+                                    onChange={date => setNewExpense(prev => ({ ...prev, date }))}
+                                    ariaLabel="تاريخ المصروف"
                                 />
                             </div>
                             <div className="flex gap-3 justify-end pt-3">

@@ -51,7 +51,10 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/accounts': ['admin', 'accountant', 'coordinator', 'lab', 'technician', 'production_manager', 'representative', 'designer'],
     '/settings': ['admin', 'accountant', 'coordinator', 'lab', 'technician', 'production_manager', 'representative'],
     '/employees': ['admin', 'accountant', 'coordinator', 'representative'],
-    '/finance': ['admin', 'accountant', 'coordinator'],
+    '/finance/transactions': ['admin', 'accountant', 'coordinator'],
+    '/finance/ledgers': ['admin', 'accountant', 'coordinator'],
+    '/finance/cashboxes': ['admin'],
+    '/finance/capital': ['admin'],
     '/suppliers': ['admin', 'accountant', 'coordinator'],
     '/case-registration': ['admin', 'accountant', 'coordinator'],
     '/balance-snapshot': ['admin', 'accountant', 'coordinator'],
@@ -161,17 +164,20 @@ describe('visibility never disagrees with authorization', () => {
 
     it('a workspace owner does not also get the standalone fallback entry', () => {
         const adminIds = visibleSidebarEntries(getCapabilities(makeUser('admin'))).map(e => e.id);
-        expect(adminIds).not.toContain('accounts');
         expect(adminIds).not.toContain('externalWork');
-
-        // The lab has no finance workspace, so Accounts stays a real entry.
-        const labIds = visibleSidebarEntries(getCapabilities(makeUser('lab'))).map(e => e.id);
-        expect(labIds).toContain('accounts');
 
         // The accountant has no production workspace but does need External Work.
         const accountantIds = visibleSidebarEntries(getCapabilities(makeUser('accountant'))).map(e => e.id);
         expect(accountantIds).toContain('externalWork');
-        expect(accountantIds).not.toContain('accounts');
+    });
+
+    it('the accounts workspace is its own sidebar entry for everyone with view_accounts', () => {
+        // Accounts stopped being a Finance fallback -- it is a peer area, so
+        // every role that can read /accounts sees it, finance workspace or not.
+        for (const role of ['admin', 'lab', 'accountant'] as Role[]) {
+            const ids = visibleSidebarEntries(getCapabilities(makeUser(role))).map(e => e.id);
+            expect(ids, role).toContain('accounts');
+        }
     });
 
     it('balance snapshot is reachable -- it used to be authorised but hidden', () => {
@@ -181,11 +187,11 @@ describe('visibility never disagrees with authorization', () => {
         expect(caps.has(review!.capability)).toBe(true);
     });
 
-    it('doctor retention is admin-only, and the rep keeps the directory', () => {
-        const retention = WORKSPACES.directory.find(tab => tab.id === 'doctors.retention');
+    it('doctor retention is admin-only, and the rep keeps its own accounts tab', () => {
+        const retention = WORKSPACES.accounts.find(tab => tab.id === 'doctors.retention');
         const rep = getCapabilities(makeUser('representative'));
         expect(rep.has(retention!.capability)).toBe(false);
-        expect(rep.has('view_doctors')).toBe(true);
+        expect(rep.has('view_accounts')).toBe(true);
         expect(getCapabilities(makeUser('admin')).has(retention!.capability)).toBe(true);
     });
 
@@ -194,8 +200,10 @@ describe('visibility never disagrees with authorization', () => {
             .filter(tab => getCapabilities(makeUser(role)).has(tab.capability))
             .map(tab => tab.id);
 
-        expect(tabsFor('admin')).toEqual(['doctors', 'doctors.retention', 'employees', 'suppliers']);
-        // The rep has no suppliers and no retention; the accountant no doctors.
+        // Retention moved to the accounts workspace, so admin's directory is
+        // down to three tabs now.
+        expect(tabsFor('admin')).toEqual(['doctors', 'employees', 'suppliers']);
+        // The rep has no suppliers; the accountant no doctors.
         expect(tabsFor('representative')).toEqual(['doctors', 'employees']);
         expect(tabsFor('accountant')).toEqual(['employees', 'suppliers']);
         expect(tabsFor('designer')).toEqual([]);
@@ -226,11 +234,13 @@ describe('active state', () => {
     });
 
     it('a workspace tab lights up its parent sidebar entry', () => {
-        expect(activeSidebarEntry('/aging-report')?.id).toBe('finance');
+        // Aging, Balance Snapshot and Retention moved from Finance/Directory
+        // into the Accounts workspace.
+        expect(activeSidebarEntry('/aging-report')?.id).toBe('accounts');
         expect(activeSidebarEntry('/balance-snapshot')?.id).toBe('finance');
         expect(activeSidebarEntry('/production/my-tasks')?.id).toBe('production');
         expect(activeSidebarEntry('/suppliers')?.id).toBe('directory');
-        expect(activeSidebarEntry('/doctors/retention')?.id).toBe('directory');
+        expect(activeSidebarEntry('/doctors/retention')?.id).toBe('accounts');
         expect(activeSidebarEntry('/settings/work-calendar')?.id).toBe('system');
         expect(activeSidebarEntry('/users')?.id).toBe('system');
         expect(activeSidebarEntry('/services')?.id).toBe('system');
@@ -325,9 +335,11 @@ describe('capabilities', () => {
 });
 
 describe('the sidebar stays small', () => {
-    it('an admin sees at most 7 entries, down from 28', () => {
+    it('an admin sees at most 8 entries, down from 28', () => {
+        // Was 7 before the Accounts workspace split off of Finance -- one
+        // more top-level area, still nowhere near the original 28.
         const caps = getCapabilities(makeUser('admin'));
-        expect(visibleSidebarEntries(caps).length).toBeLessThanOrEqual(7);
+        expect(visibleSidebarEntries(caps).length).toBeLessThanOrEqual(8);
     });
 
     it('the Directory area is one entry, not one per list', () => {
@@ -338,7 +350,8 @@ describe('the sidebar stays small', () => {
             expect(ids).not.toContain(gone);
         }
         // ...and every one of those lists is still reachable as a tab.
-        expect(WORKSPACES.directory.filter(tab => caps.has(tab.capability))).toHaveLength(4);
+        // Retention lives in the accounts workspace now, not here.
+        expect(WORKSPACES.directory.filter(tab => caps.has(tab.capability))).toHaveLength(3);
     });
 
     it('the System area is one entry, not one per admin page', () => {
@@ -362,10 +375,15 @@ describe('the sidebar stays small', () => {
     });
 
     it('no role has to scroll a menu', () => {
+        // The accountant and coordinator both have view_finance, so Accounts
+        // used to be suppressed as Finance's fallback for them. Now that it
+        // is a standing peer area instead of a fallback, those two roles see
+        // one more top-level entry than before -- still nowhere near a
+        // scrolling menu.
         for (const role of ERP_ROLES) {
             const caps = getCapabilities(makeUser(role));
             expect(visibleSidebarEntries(caps).length,
-                `${role} menu length`).toBeLessThanOrEqual(8);
+                `${role} menu length`).toBeLessThanOrEqual(9);
         }
     });
 

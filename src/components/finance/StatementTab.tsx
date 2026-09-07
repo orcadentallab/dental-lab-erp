@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useMemo, useEffect } from 'react';
+import DateRangeField from '../ui/DateRangeField';
 import {
     FileText,
     Download,
@@ -703,15 +704,13 @@ export default function StatementTab({
                     {!usesExternalDates && timeFilter === 'custom' && (
                         <div className="space-y-1.5 col-span-1 lg:col-span-2">
                             <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">من - إلى</label>
-                            <div className="flex gap-2">
-                                <input type="date" aria-label="من" value={customDateRange.start}
-                                    onChange={e => setCustomDateRange(p => ({ ...p, start: e.target.value }))}
-                                    className="w-full bg-white border border-gray-200 text-sm rounded-lg p-2.5" />
-                                <span className="self-center text-gray-400">–</span>
-                                <input type="date" aria-label="إلى" value={customDateRange.end}
-                                    onChange={e => setCustomDateRange(p => ({ ...p, end: e.target.value }))}
-                                    className="w-full bg-white border border-gray-200 text-sm rounded-lg p-2.5" />
-                            </div>
+                            <DateRangeField
+                                start={customDateRange.start}
+                                end={customDateRange.end}
+                                onChange={({ start, end }) => setCustomDateRange(p => ({ ...p, start, end }))}
+                                // The dropdown above already offers the presets.
+                                presets={false}
+                            />
                             <p className="mt-1 text-[11px] text-gray-400">
                                 يمكن ترك أي طرف فارغًا ليبقى النطاق مفتوحًا.
                             </p>

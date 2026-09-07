@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
 import { db, type FinancialObligationReviewItem, type FinancialObligationsReviewParams } from '../../services/db';
+import DateRangeField from '../ui/DateRangeField';
 
 const PAGE_SIZE = 25;
 
@@ -220,8 +221,16 @@ export default function FinancialObligationsReview() {
                     >
                         {Object.entries(triggerTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
-                    <input aria-label="من تاريخ الإنشاء" type="date" value={createdFrom} onChange={event => resetToFirstPage(setCreatedFrom)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
-                    <input aria-label="إلى تاريخ الإنشاء" type="date" value={createdTo} onChange={event => resetToFirstPage(setCreatedTo)(event.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm" />
+                    <DateRangeField
+                        start={createdFrom}
+                        end={createdTo}
+                        onChange={({ start, end }) => {
+                            resetToFirstPage(setCreatedFrom)(start);
+                            resetToFirstPage(setCreatedTo)(end);
+                        }}
+                        startLabel="من الإنشاء"
+                        endLabel="إلى"
+                    />
                 </div>
             </div>
 

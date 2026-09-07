@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import DateRangeField from '../components/ui/DateRangeField';
 import {
     approveFinancialSnapshot,
     buildFinancialSnapshotPayload,
@@ -239,24 +240,15 @@ export default function FinancialReview() {
                 <>
                     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                         <div className="grid gap-3 md:grid-cols-4">
-                            <label className="text-sm font-medium text-gray-700">
-                                من
-                                <input
-                                    type="date"
-                                    value={periodStart}
-                                    onChange={event => setPeriodStart(event.target.value)}
-                                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2"
+                            <div className="md:col-span-2">
+                                <span className="text-sm font-medium text-gray-700">الفترة</span>
+                                <DateRangeField
+                                    start={periodStart}
+                                    end={periodEnd}
+                                    onChange={({ start, end }) => { setPeriodStart(start); setPeriodEnd(end); }}
+                                    className="mt-1"
                                 />
-                            </label>
-                            <label className="text-sm font-medium text-gray-700">
-                                إلى
-                                <input
-                                    type="date"
-                                    value={periodEnd}
-                                    onChange={event => setPeriodEnd(event.target.value)}
-                                    className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2"
-                                />
-                            </label>
+                            </div>
                             <label className="text-sm font-medium text-gray-700 md:col-span-2">
                                 اسم النسخة
                                 <input

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { financeService, type CashboxSummaryRow } from '../../services/financeService';
+import DateField from '../ui/DateField';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
@@ -243,12 +244,14 @@ export default function MultiCashboxReconciliationModal({
                             <div className="flex items-center gap-2">
                                 <Calendar size={16} className="text-slate-500" />
                                 <label className="text-xs font-bold text-slate-700">تاريخ المطابقة:</label>
-                                <input
-                                    type="date"
+                                <DateField
                                     required
                                     value={reconciliationDate}
-                                    onChange={e => setReconciliationDate(e.target.value)}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 focus:border-emerald-500 focus:outline-none"
+                                    onChange={setReconciliationDate}
+                                    ariaLabel="تاريخ المطابقة"
+                                    size="sm"
+                                    clearable={false}
+                                    className="w-40"
                                 />
                             </div>
                         </div>

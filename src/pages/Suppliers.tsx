@@ -21,6 +21,11 @@ export default function Suppliers() {
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [typeFilter, setTypeFilter] = useState<'all' | 'external_lab' | 'material_vendor' | 'courier'>('all');
+    // Defaults to 'active'. Deactivated suppliers (the point of the toggle
+    // below the card) are kept forever for their order and financial
+    // history, so without this the list grows a permanent tail of labs
+    // nobody sends work to any more. Same convention as the Users page.
+    const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
     // Form State
     const [formData, setFormData] = useState<{
@@ -138,11 +143,16 @@ export default function Suppliers() {
 
     const filteredSuppliers = useMemo(() => {
         return suppliers.filter(s => {
-            if (typeFilter === 'all') return true;
-            const currentType = s.supplierType || 'external_lab';
-            return currentType === typeFilter;
+            if (typeFilter !== 'all') {
+                const currentType = s.supplierType || 'external_lab';
+                if (currentType !== typeFilter) return false;
+            }
+            const isActiveSupplier = s.isActive !== false;
+            if (statusFilter === 'active') return isActiveSupplier;
+            if (statusFilter === 'inactive') return !isActiveSupplier;
+            return true;
         });
-    }, [suppliers, typeFilter]);
+    }, [suppliers, typeFilter, statusFilter]);
 
     return (
         <div className="p-6 space-y-6" dir="rtl">
@@ -214,7 +224,48 @@ export default function Suppliers() {
                     <Truck className="w-3.5 h-3.5" />
                     شركات شحن ({suppliers.filter(s => s.supplierType === 'courier').length})
                 </button>
+                <span className="w-px h-5 bg-gray-200 mx-1" />
+                <button
+                    onClick={() => setStatusFilter('active')}
+                    className={`px-3 py-1.5 rounded-lg font-medium ${
+                        statusFilter === 'active'
+                            ? 'bg-gray-800 text-white font-bold'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                    فعال فقط ({suppliers.filter(s => s.isActive !== false).length})
+                </button>
+                <button
+                    onClick={() => setStatusFilter('inactive')}
+                    className={`px-3 py-1.5 rounded-lg font-medium ${
+                        statusFilter === 'inactive'
+                            ? 'bg-gray-800 text-white font-bold'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                    غير فعال ({suppliers.filter(s => s.isActive === false).length})
+                </button>
+                <button
+                    onClick={() => setStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg font-medium ${
+                        statusFilter === 'all'
+                            ? 'bg-gray-800 text-white font-bold'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                >
+                    الكل
+                </button>
             </div>
+
+            {!isLoading && filteredSuppliers.length === 0 && (
+                <div className="bg-white rounded-2xl border border-gray-100 p-10 text-center text-sm text-gray-500">
+                    {statusFilter === 'active'
+                        ? 'مفيش موردين فعالين في التصنيف ده. جرّب «الكل» لو بتدوّر على مورد موقوف.'
+                        : statusFilter === 'inactive'
+                            ? 'مفيش موردين موقوفين في التصنيف ده.'
+                            : 'مفيش موردين في التصنيف ده.'}
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredSuppliers.map(supplier => {

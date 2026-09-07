@@ -19,28 +19,59 @@ import { DateFilter, filterEntries, calculateTotal } from '../components/finance
 import type { FilterType } from '../components/finance/FinanceFilters';
 import { useToast } from '../context/ToastContext';
 import { isDesignerUser } from '../lib/userRoles';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import CashboxPanel from '../components/finance/CashboxPanel';
 import { ALL_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory } from '../constants/expenseCategories';
+import DateField from '../components/ui/DateField';
+
+type ActiveTab = 'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments' | 'obligations' | 'allocationPreview' | 'historicalObligationsPreview' | 'historicalBackfillDryRun' | 'cashboxes';
+
+/**
+ * Finance is now a route per top-level tab (WORKSPACES.finance in
+ * navigation.ts), each rendered by the shared WorkspaceTabs bar in the
+ * layout rather than by a tab strip this page used to draw itself. The
+ * :section param picks which group of sub-tabs is live; the sub-tab
+ * itself (e.g. expenses vs revenue) stays local state, since it was never
+ * its own destination.
+ */
+const SECTION_TABS: Record<string, ActiveTab[]> = {
+    transactions: ['expenses', 'revenue'],
+    ledgers: ['doctors', 'suppliers', 'designers', 'adjustments', 'obligations', 'allocationPreview', 'historicalObligationsPreview', 'historicalBackfillDryRun'],
+    cashboxes: ['cashboxes'],
+    capital: ['capital'],
+};
 
 export default function Finance() {
     const { user } = useAuth();
     const { success: toastSuccess, error: toastError } = useToast();
     const [searchParams] = useSearchParams();
     const isDev = searchParams.get('dev') === 'true';
+    // /finance/transactions, /finance/ledgers, /finance/cashboxes and
+    // /finance/capital each route to this same component -- the four
+    // separate <Route> entries in App.tsx exist so Cash Boxes and Capital
+    // can carry their own admin-only guard, not because this page needs
+    // params. The last path segment is the section either way.
+    const { pathname } = useLocation();
+    const section = pathname.split('/').pop() || 'transactions';
+    const navigate = useNavigate();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const todayDate = new Date().toISOString().split('T')[0];
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'expenses' | 'revenue' | 'doctors' | 'suppliers' | 'designers' | 'capital' | 'adjustments' | 'obligations' | 'allocationPreview' | 'historicalObligationsPreview' | 'historicalBackfillDryRun' | 'cashboxes'>('expenses');
-    const [hasInitializedTab, setHasInitializedTab] = useState(false);
-    
+    const sectionTabs = SECTION_TABS[section] || SECTION_TABS.transactions;
+    const [activeTab, setActiveTab] = useState<ActiveTab>(sectionTabs[0]);
+
+    // An unknown :section (or one this role cannot open) sends the visitor
+    // back to the tab everyone with view_finance can reach, instead of a
+    // blank page. Switching sections resets the sub-tab to that section's
+    // default rather than keeping a stale one from the previous section.
     useEffect(() => {
-        if (user && !hasInitializedTab) {
-            const isAdmin = user.role === 'admin' || user.username === 'admin';
-            setActiveTab(isAdmin ? 'cashboxes' : 'expenses');
-            setHasInitializedTab(true);
+        if (!SECTION_TABS[section]) {
+            navigate('/finance/transactions', { replace: true });
+            return;
         }
-    }, [user, hasInitializedTab]);
+        setActiveTab(prev => (sectionTabs.includes(prev) ? prev : sectionTabs[0]));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [section]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [orders, setOrders] = useState<Order[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
@@ -496,67 +527,13 @@ export default function Finance() {
                 </div>
             )}
 
-            {/* Modern Navigation Tabs */}
-            {/* Modern Navigation Tabs - Restructured for cleanliness */}
-            <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-gray-100 overflow-x-auto mb-6">
-                <div className="flex gap-1 min-w-max justify-center">
-                    {(() => {
-                        const allTabs = [
-                            { id: 'daily_tx', label: 'المعاملات اليومية', icon: '💰', adminOnly: false, internalOnly: false, adminOrAccountant: false },
-                            { id: 'accounts', label: 'الحسابات', icon: '👥', adminOnly: false, internalOnly: false, adminOrAccountant: false },
-                            { id: 'cashboxes', label: 'الخزائن والصناديق', icon: '💼', adminOnly: true, internalOnly: false, adminOrAccountant: false },
-                            { id: 'obligations', label: 'مراجعة الالتزامات المالية', icon: '📋', adminOnly: false, internalOnly: true, adminOrAccountant: false },
-                            { id: 'allocation_preview', label: 'معاينة توزيع الدفعات', icon: '🧾', adminOnly: false, internalOnly: true, adminOrAccountant: false },
-                            { id: 'historical_obligations_preview', label: 'معاينة الالتزامات القديمة', icon: '🗂️', adminOnly: false, internalOnly: true, adminOrAccountant: false },
-                            { id: 'historical_backfill_dry_run', label: 'تجربة تجهيز الالتزامات القديمة', icon: '🧪', adminOnly: false, internalOnly: true, adminOrAccountant: false },
-                            { id: 'reports', label: 'رأس المال والأصول', icon: '🏦', adminOnly: true, internalOnly: false, adminOrAccountant: false },
-                        ] as const;
-
-                        const tabs = allTabs.filter(t =>
-                            (!t.adminOnly || user?.role === 'admin' || user?.username === 'admin')
-                            && (!t.internalOnly || (['admin', 'accountant'].includes(user?.role || '') && isDev))
-                            && (!t.adminOrAccountant || ['admin', 'accountant'].includes(user?.role || ''))
-                        );
-
-                        return tabs.map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => {
-                                    // Map high-level tabs to specific active views
-                                    if (tab.id === 'daily_tx') setActiveTab('expenses'); // default sub-tab
-                                    if (tab.id === 'accounts') setActiveTab('doctors'); // default sub-tab
-                                    if (tab.id === 'cashboxes') setActiveTab('cashboxes');
-                                    if (tab.id === 'obligations') setActiveTab('obligations');
-                                    if (tab.id === 'allocation_preview') setActiveTab('allocationPreview');
-                                    if (tab.id === 'historical_obligations_preview') setActiveTab('historicalObligationsPreview');
-                                    if (tab.id === 'historical_backfill_dry_run') setActiveTab('historicalBackfillDryRun');
-                                    if (tab.id === 'reports') setActiveTab('capital'); // default sub-tab
-                                }}
-                                className={clsx(
-                                    "px-6 py-3 rounded-xl text-sm font-bold transition-all duration-200 flex items-center gap-2",
-                                    (
-                                        (tab.id === 'daily_tx' && ['expenses', 'revenue'].includes(activeTab)) ||
-                                        (tab.id === 'accounts' && ['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab)) ||
-                                        (tab.id === 'cashboxes' && activeTab === 'cashboxes') ||
-                                        (tab.id === 'obligations' && activeTab === 'obligations') ||
-                                        (tab.id === 'allocation_preview' && activeTab === 'allocationPreview') ||
-                                        (tab.id === 'historical_obligations_preview' && activeTab === 'historicalObligationsPreview') ||
-                                        (tab.id === 'historical_backfill_dry_run' && activeTab === 'historicalBackfillDryRun') ||
-                                        (tab.id === 'reports' && ['capital'].includes(activeTab))
-                                    )
-                                        ? `bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200`
-                                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-50"
-                                )}
-                            >
-                                <span>{tab.icon}</span>
-                                {tab.label}
-                            </button>
-                        ));
-                    })()}
-                </div>
-            </div>
-
-            {/* Sub-navigation based on main category */}
+            {/* The top-level tab bar used to live here (المعاملات اليومية،
+                الحسابات، الخزائن، رأس المال...). It is now WORKSPACES.finance
+                in navigation.ts, rendered once by WorkspaceTabs in the
+                layout -- so it carries a real URL per tab, and every other
+                workspace gets the same tab bar for free. What is left below
+                is the sub-navigation *within* the section the URL selected:
+                these were never their own destinations. */}
             {['expenses', 'revenue'].includes(activeTab) && (
                 <div className="flex justify-center gap-2 mb-6">
                     <button onClick={() => setActiveTab('expenses')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'expenses' ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>المصروفات</button>
@@ -564,7 +541,7 @@ export default function Finance() {
                 </div>
             )}
 
-            {['doctors', 'suppliers', 'designers', 'adjustments'].includes(activeTab) && (
+            {['doctors', 'suppliers', 'designers', 'adjustments', 'obligations', 'allocationPreview', 'historicalObligationsPreview', 'historicalBackfillDryRun'].includes(activeTab) && (
                 <div className="flex justify-center flex-wrap gap-2 mb-6">
                     <button onClick={() => setActiveTab('doctors')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'doctors' ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الأطباء</button>
                     <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'suppliers' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الموردين</button>
@@ -572,13 +549,16 @@ export default function Finance() {
                     {['admin', 'accountant'].includes(user?.role || '') && (
                         <button onClick={() => setActiveTab('adjustments')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'adjustments' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>القيود والتسويات</button>
                     )}
-                </div>
-            )}
-
-            {['capital'].includes(activeTab) && (
-                <div className="flex justify-center flex-wrap gap-2 mb-6">
-                    {user?.username === 'admin' && (
-                        <button onClick={() => setActiveTab('capital')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'capital' ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>رأس المال والأصول</button>
+                    {/* Dev-only debug panels for the obligations migration,
+                        gated the same way they always were: ?dev=true and
+                        admin/accountant. */}
+                    {['admin', 'accountant'].includes(user?.role || '') && isDev && (
+                        <>
+                            <button onClick={() => setActiveTab('obligations')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'obligations' ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>📋 مراجعة الالتزامات المالية</button>
+                            <button onClick={() => setActiveTab('allocationPreview')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'allocationPreview' ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>🧾 معاينة توزيع الدفعات</button>
+                            <button onClick={() => setActiveTab('historicalObligationsPreview')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'historicalObligationsPreview' ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>🗂️ معاينة الالتزامات القديمة</button>
+                            <button onClick={() => setActiveTab('historicalBackfillDryRun')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'historicalBackfillDryRun' ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>🧪 تجربة تجهيز الالتزامات القديمة</button>
+                        </>
                     )}
                 </div>
             )}
@@ -597,7 +577,7 @@ export default function Finance() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ المصروف (الدفع الفعلي)</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                                        <DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">الشهر المالي المستحق (لتوزيع الأرباح)</label>
@@ -719,7 +699,7 @@ export default function Finance() {
                             <form onSubmit={handleAddRevenue} className="space-y-5">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ الإيراد</label>
-                                    <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 transition-all" />
+                                    <DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ (ج.م)</label>
@@ -811,7 +791,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" />
+                                        <DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>
@@ -910,7 +890,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-teal-500" />
+                                        <DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>
@@ -1006,7 +986,7 @@ export default function Finance() {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">التاريخ</label>
-                                        <input aria-label="تاريخ المعاملة" required type="date" max={todayDate} value={transactionDate} onChange={e => setTransactionDate(e.target.value)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-500" />
+                                        <DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ</label>

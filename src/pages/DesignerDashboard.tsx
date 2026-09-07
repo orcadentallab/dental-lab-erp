@@ -14,6 +14,7 @@ import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
+import DateRangeField from '../components/ui/DateRangeField';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
@@ -569,27 +570,11 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                         </select>
                     )}
 
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <input
-                                type="date"
-                                value={dateRange.start}
-                                aria-label="تاريخ البداية"
-                                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
-                        </div>
-                        <span className="text-gray-400">-</span>
-                        <div className="relative">
-                            <input
-                                type="date"
-                                value={dateRange.end}
-                                aria-label="تاريخ النهاية"
-                                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                                className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                            />
-                        </div>
-                    </div>
+                    <DateRangeField
+                        start={dateRange.start}
+                        end={dateRange.end}
+                        onChange={({ start, end }) => setDateRange({ ...dateRange, start, end })}
+                    />
                 </div>
             </div>
 

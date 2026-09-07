@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import DateField from '../../components/ui/DateField';
 import { Trash, Save, Coins, Building } from 'lucide-react';
 import { financeService, type CapitalEntry, type FixedAsset } from '../../services/financeService';
 import { useAuth } from '../../context/AuthContext';
@@ -151,10 +152,10 @@ export default function FinancialSetup() {
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <Input
-                                type="date"
+                            <DateField
                                 value={newCapital.date}
-                                onChange={e => setNewCapital({ ...newCapital, date: e.target.value })}
+                                onChange={date => setNewCapital({ ...newCapital, date })}
+                                ariaLabel="تاريخ رأس المال"
                                 required
                             />
                             <Input
@@ -210,10 +211,10 @@ export default function FinancialSetup() {
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
-                            <Input
-                                type="date"
+                            <DateField
                                 value={newAsset.purchase_date}
-                                onChange={e => setNewAsset({ ...newAsset, purchase_date: e.target.value })}
+                                onChange={purchase_date => setNewAsset({ ...newAsset, purchase_date })}
+                                ariaLabel="تاريخ الشراء"
                                 required
                             />
                             <Input

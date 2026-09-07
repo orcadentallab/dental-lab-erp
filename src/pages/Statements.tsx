@@ -4,6 +4,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type EntityBillingSettings } from '../services/db';
 import { financeService, type Adjustment } from '../services/financeService';
+import DateRangeField from '../components/ui/DateRangeField';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
@@ -844,15 +845,15 @@ export default function StatementsPage() {
                         <AnimatePresence>
                             {timeFilter === 'custom' && (
                                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                                    <div className="flex gap-2 pt-1">
-                                        <div className="flex-1">
-                                            <label className="text-[10px] text-slate-400 font-semibold block mb-1">من</label>
-                                            <input type="date" value={customRange.start} onChange={e => setCustomRange(p => ({ ...p, start: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-400" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <label className="text-[10px] text-slate-400 font-semibold block mb-1">إلى</label>
-                                            <input type="date" value={customRange.end} onChange={e => setCustomRange(p => ({ ...p, end: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal-400" />
-                                        </div>
+                                    <div className="pt-1">
+                                        <DateRangeField
+                                            start={customRange.start}
+                                            end={customRange.end}
+                                            onChange={({ start, end }) => setCustomRange(p => ({ ...p, start, end }))}
+                                            size="sm"
+                                            // The preset pills above already cover these.
+                                            presets={false}
+                                        />
                                     </div>
                                 </motion.div>
                             )}

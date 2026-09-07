@@ -85,26 +85,34 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             aliases: ['معمل خارجي', 'outsourced', 'external lab'],
         },
     ],
+    // Finance used to be one page with an internal tab bar (Overview) that
+    // multiplexed six unrelated screens behind a single route. Each screen
+    // is now its own tab -- the URL is the selected state, so back, refresh
+    // and bookmarks all work, and a role missing a capability never sees a
+    // tab it cannot open.
     finance: [
         {
-            id: 'finance.overview', labelAr: 'نظرة عامة', labelEn: 'Overview',
-            path: '/finance', capability: 'view_finance',
-            aliases: ['المالية', 'الخزنة', 'المصروفات', 'finance', 'treasury'],
+            id: 'finance.transactions', labelAr: 'المصروفات والإيرادات', labelEn: 'Expenses & Revenue',
+            path: '/finance/transactions', capability: 'view_finance',
+            // Bare /finance is the old address for this whole page; it keeps
+            // resolving here so old links and bookmarks still land somewhere.
+            matches: ['/finance'],
+            aliases: ['المصروفات', 'الايرادات', 'المعاملات اليومية', 'expenses', 'revenue'],
         },
         {
-            id: 'finance.accounts', labelAr: 'كشف الحساب', labelEn: 'Accounts',
-            path: '/accounts', capability: 'view_accounts',
-            aliases: ['الحسابات', 'كشوف', 'statement', 'ledger'],
+            id: 'finance.ledgers', labelAr: 'حركات تحصيل وسداد', labelEn: 'Collections & Payments',
+            path: '/finance/ledgers', capability: 'view_finance',
+            aliases: ['حسابات الأطباء', 'حسابات الموردين', 'حسابات المصممين', 'التحصيل', 'السداد', 'ledgers', 'collections', 'payments'],
         },
         {
-            id: 'finance.statements', labelAr: 'الفواتير', labelEn: 'Invoices',
-            path: '/statements', capability: 'view_finance',
-            aliases: ['فاتورة', 'invoice', 'billing'],
+            id: 'finance.cashboxes', labelAr: 'الخزينة', labelEn: 'Cash Boxes',
+            path: '/finance/cashboxes', capability: 'view_cashboxes',
+            aliases: ['الخزائن', 'الصناديق', 'cashbox', 'treasury'],
         },
         {
-            id: 'finance.aging', labelAr: 'أعمار الديون', labelEn: 'Collections',
-            path: '/aging-report', capability: 'view_finance',
-            aliases: ['التحصيل', 'المتأخرات', 'aging', 'debt', 'collections'],
+            id: 'finance.capital', labelAr: 'رأس المال والأصول', labelEn: 'Capital & Assets',
+            path: '/finance/capital', capability: 'view_capital',
+            aliases: ['رأس المال', 'الأصول', 'capital', 'assets'],
         },
         {
             id: 'finance.review', labelAr: 'المراجعة', labelEn: 'Review',
@@ -121,6 +129,31 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             aliases: ['تسجيل الحالات', 'غير مسجلة', 'unregistered', 'case registration'],
         },
     ],
+    // The client-side counterpart to Finance: everything about a doctor's
+    // account rather than the lab's own money. Split out on its own so
+    // neither workspace's tab bar has to carry ten destinations at once.
+    accounts: [
+        {
+            id: 'finance.accounts', labelAr: 'كشف الحساب', labelEn: 'Accounts',
+            path: '/accounts', capability: 'view_accounts',
+            aliases: ['الحسابات', 'كشوف', 'statement', 'ledger'],
+        },
+        {
+            id: 'finance.statements', labelAr: 'الفواتير', labelEn: 'Invoices',
+            path: '/statements', capability: 'view_client_accounts',
+            aliases: ['فاتورة', 'invoice', 'billing'],
+        },
+        {
+            id: 'finance.aging', labelAr: 'أعمار الديون', labelEn: 'Collections',
+            path: '/aging-report', capability: 'view_client_accounts',
+            aliases: ['التحصيل', 'المتأخرات', 'aging', 'debt', 'collections'],
+        },
+        {
+            id: 'doctors.retention', labelAr: 'المتابعة والتنشيط', labelEn: 'Retention',
+            path: '/doctors/retention', capability: 'view_doctor_retention',
+            aliases: ['الاستبقاء', 'تنشيط الأطباء', 'retention', 'reactivation'],
+        },
+    ],
     // The address book used to be three sidebar rows -- Doctors, Staff and
     // Suppliers -- for three lists nobody opens in the same minute. As tabs
     // they cost one row, and every role still gets a usable bar: the rep sees
@@ -134,11 +167,6 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             id: 'doctors', labelAr: 'الأطباء', labelEn: 'Doctors',
             path: '/doctors', capability: 'view_doctors',
             aliases: ['العملاء', 'doctors', 'clients'],
-        },
-        {
-            id: 'doctors.retention', labelAr: 'المتابعة والتنشيط', labelEn: 'Retention',
-            path: '/doctors/retention', capability: 'view_doctor_retention',
-            aliases: ['الاستبقاء', 'تنشيط الأطباء', 'retention', 'reactivation'],
         },
         {
             id: 'employees', labelAr: 'الموظفين', labelEn: 'Staff',
@@ -283,17 +311,21 @@ export const SIDEBAR: SidebarEntry[] = [
     },
     {
         id: 'finance', labelAr: 'المالية', labelEn: 'Finance',
-        path: '/finance', capability: 'view_finance', section: 'operations',
+        path: '/finance/transactions', capability: 'view_finance', section: 'operations',
         workspace: 'finance', badge: 'unregisteredCases',
-        aliases: ['الحسابات', 'الخزنة', 'finance', 'accounting'],
+        aliases: ['الخزنة', 'المصروفات', 'finance', 'accounting'],
     },
     {
-        // Roles without a finance workspace still need their statements, so
-        // the same route surfaces as a top-level entry for them instead.
-        id: 'accounts', labelAr: 'كشف الحساب', labelEn: 'Accounts',
+        // The client-side counterpart to Finance. Every internal role that
+        // can read its own ledger gets this entry on 'view_accounts' alone;
+        // the accountant/coordinator/admin additionally see Invoices and
+        // Collections as extra tabs (view_client_accounts), and the admin
+        // sees Retention on top of that -- WorkspaceTabs hides the bar
+        // entirely for a role that only ever gets the one tab.
+        id: 'accounts', labelAr: 'الحسابات', labelEn: 'Accounts',
         path: '/accounts', capability: 'view_accounts', section: 'operations',
-        fallbackFor: 'finance',
-        aliases: ['حسابي', 'كشوف', 'statement', 'ledger'],
+        workspace: 'accounts',
+        aliases: ['كشف الحساب', 'الفواتير', 'أعمار الديون', 'حسابي', 'كشوف', 'statement', 'ledger'],
     },
     {
         id: 'inventory', labelAr: 'المخزن والخامات', labelEn: 'Inventory',
@@ -568,7 +600,7 @@ export function getLandingRoute(user: User | null | undefined): string {
         // collection is the half of the job with deadlines attached.
         case 'accountant':
         case 'coordinator':
-            return '/finance';
+            return '/finance/transactions';
         case 'designer':
             return '/orders';
         default:
@@ -604,9 +636,11 @@ export const QUICK_ACTIONS: QuickAction[] = [
     },
     {
         // Finance has no deep link that opens a payment form, so this stops
-        // at the page rather than promising a form it cannot open.
+        // at the tab rather than promising a form it cannot open. Ledgers
+        // is the payments/collections tab, closer to the verb than the
+        // Expenses & Revenue tab that /finance used to redirect to.
         id: 'action.recordPayment', labelAr: 'تسجيل دفعة', labelEn: 'Record Payment',
-        path: '/finance', capability: 'view_finance', groupAr: 'المالية',
+        path: '/finance/ledgers', capability: 'view_finance', groupAr: 'المالية',
     },
     {
         id: 'action.registerCase', labelAr: 'تسجيل حالة', labelEn: 'Register Case',

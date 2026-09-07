@@ -4,10 +4,11 @@ import { useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
 import OrderBoard from '../components/orders/OrderBoard';
 import OrderForm from '../components/orders/OrderForm';
+import DateRangeField from '../components/ui/DateRangeField';
 
 import { db } from '../services/db';
 import type { Order, Doctor, Supplier, User } from '../services/db';
-import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Calendar, Filter, User as UserIcon, ChevronDown, LayoutList, Columns } from 'lucide-react';
+import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Filter, User as UserIcon, ChevronDown, LayoutList, Columns } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { exportToExcelWithHeaders } from '../lib/exportUtils';
@@ -842,10 +843,11 @@ export default function Orders() {
                             </div>
 
                             <div className="space-y-3 p-4 pb-6">
-                                <div className="grid grid-cols-2 gap-2">
-                                    <input type="date" aria-label="من تاريخ" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={mobileFilterControlClass} />
-                                    <input type="date" aria-label="إلى تاريخ" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={mobileFilterControlClass} />
-                                </div>
+                                <DateRangeField
+                                    start={startDate}
+                                    end={endDate}
+                                    onChange={({ start, end }) => { setStartDate(start); setEndDate(end); }}
+                                />
                                 <select aria-label="الحالة" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={mobileFilterControlClass}>
                                     <option value="">كل الحالات</option>
                                     <option value="New Case">New Case</option>
@@ -973,26 +975,13 @@ export default function Orders() {
                             </div>
 
                             {/* Date Range (Moved to Top) */}
-                            <div className="flex items-center bg-surface-50 ring-1 ring-surface-200 rounded-lg px-2 group hover:bg-white transition-colors h-9 flex-shrink-0 w-full sm:w-auto">
-                                <Calendar className="h-3.5 w-3.5 text-surface-400 mr-2 flex-shrink-0" />
-                                <input
-                                    type="date"
-                                    title="Start Date"
-                                    aria-label="Start Date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400 w-24 sm:w-28 min-w-0"
-                                />
-                                <span className="text-surface-300 mx-1">/</span>
-                                <input
-                                    type="date"
-                                    title="End Date"
-                                    aria-label="End Date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="bg-transparent border-none p-1.5 text-xs outline-none text-surface-600 font-medium placeholder-surface-400 w-24 sm:w-28 min-w-0"
-                                />
-                            </div>
+                            <DateRangeField
+                                start={startDate}
+                                end={endDate}
+                                onChange={({ start, end }) => { setStartDate(start); setEndDate(end); }}
+                                size="sm"
+                                className="w-full flex-shrink-0 sm:w-auto"
+                            />
 
                             {/* Checkbox 1 (Top Left) */}
                             <div className="hidden lg:flex items-center min-w-[110px] justify-end">

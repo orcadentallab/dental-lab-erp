@@ -35,6 +35,7 @@ import {
     isAccountingRegistrationCandidate,
 } from '../constants/accountingRegistration';
 import type { AccountingReviewType } from '../services/db';
+import DateRangeField from '../components/ui/DateRangeField';
 
 const normalizeArabic = (text: string) => {
     if (!text) return '';
@@ -473,25 +474,12 @@ export default function CaseRegistration() {
                     </select>
                 </div>
 
-                <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 mb-2 mr-1">من تاريخ</label>
-                    <input
-                        type="date"
-                        title="من تاريخ"
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 text-sm"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                    />
-                </div>
-
-                <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-400 mb-2 mr-1">إلى تاريخ</label>
-                    <input
-                        type="date"
-                        title="إلى تاريخ"
-                        className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500/20 text-sm"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
+                <div className="md:col-span-4">
+                    <label className="block text-xs font-bold text-slate-400 mb-2 mr-1">الفترة</label>
+                    <DateRangeField
+                        start={dateFrom}
+                        end={dateTo}
+                        onChange={({ start, end }) => { setDateFrom(start); setDateTo(end); }}
                     />
                 </div>
             </div>

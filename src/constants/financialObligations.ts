@@ -106,8 +106,27 @@ export function getLabCostMetadata(order: CandidateOrder, isSalariedDesigner = f
     const manualCost = order.manualCost ?? null;
     const defaultCost = order.defaultCost ?? null;
 
+    // Since 20260907000000 the milling-only figure is stored on the order, so
+    // there is nothing left to derive. costSource is still resolved the old way,
+    // because it describes WHERE the number came from and lands in the
+    // obligation metadata; only the amount comes from the column. The
+    // derivations below survive as the fallback for orders read through a
+    // projection that does not select lab_cost.
+    const storedLabCost = order.labCost ?? null;
+
     if (manualCost !== null) {
-        return { cost: manualCost, manualCost, defaultCost, costSource: 'manual' };
+        return { cost: storedLabCost ?? manualCost, manualCost, defaultCost, costSource: 'manual' };
+    }
+
+    if (storedLabCost !== null) {
+        return {
+            cost: storedLabCost,
+            manualCost,
+            defaultCost,
+            costSource: order.workflowType === 'split' || defaultCost === null || rawCost === defaultCost
+                ? 'default'
+                : 'legacy_manual_inferred',
+        };
     }
 
     if (order.workflowType === 'split') {

@@ -2,6 +2,7 @@ import { Calendar } from 'lucide-react';
 import clsx from 'clsx';
 import { format, subMonths } from 'date-fns';
 import type { ReportDateRangeState, ReportDateRangePreset } from '../../hooks/useReportDateRange';
+import DateRangeField from '../ui/DateRangeField';
 
 const PRESET_ORDER: ReportDateRangePreset[] = [
     'today', 'week', 'month', 'current_month', 'prev_month', 'prev_prev_month', 'year', 'all',
@@ -63,28 +64,18 @@ export default function ReportDateRangeFilter({ state }: { state: ReportDateRang
             </button>
 
             {state.preset === 'custom' && (
-                <div className="flex flex-wrap items-center gap-2">
-                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-                        <span className="text-[10px] text-slate-400">من</span>
-                        <input
-                            type="date"
-                            value={state.customStart}
-                            onChange={e => state.setCustomStart(e.target.value)}
-                            className="text-xs outline-none bg-transparent"
-                            aria-label="من تاريخ"
-                        />
-                    </div>
-                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
-                        <span className="text-[10px] text-slate-400">إلى</span>
-                        <input
-                            type="date"
-                            value={state.customEnd}
-                            onChange={e => state.setCustomEnd(e.target.value)}
-                            className="text-xs outline-none bg-transparent"
-                            aria-label="إلى تاريخ"
-                        />
-                    </div>
-                </div>
+                <DateRangeField
+                    start={state.customStart}
+                    end={state.customEnd}
+                    onChange={({ start, end }) => {
+                        state.setCustomStart(start);
+                        state.setCustomEnd(end);
+                    }}
+                    size="sm"
+                    // The preset buttons are already sitting right next to it.
+                    presets={false}
+                    className="w-[22rem] max-w-full"
+                />
             )}
         </div>
     );

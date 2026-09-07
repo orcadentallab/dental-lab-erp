@@ -267,6 +267,9 @@ export interface Order {
     deliveryDate: string;
     cost: number;
     manualCost?: number | null;
+    // Stored components of cost since 20260907000000: cost = labCost + designerCost.
+    labCost?: number;
+    designerCost?: number;
     stlUrl?: string; // stlUrl / scanUrl
     imagesUrl?: string; // Photos URL
     supplierId?: string; // Optional: Assigned External Lab

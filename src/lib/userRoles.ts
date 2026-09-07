@@ -81,7 +81,16 @@ export type Capability =
     | 'view_my_tasks'
     | 'manage_production_routes'
     | 'view_finance'
+    /** Admin-only tabs inside the Finance workspace: cash boxes and the
+     *  capital/assets ledger. Split out of view_finance so the accountant
+     *  and coordinator get the workspace without those two panels. */
+    | 'view_cashboxes'
+    | 'view_capital'
     | 'view_accounts'
+    /** The client-accounts area (statements, aging, retention) as its own
+     *  workspace -- separate from view_accounts, which is the single
+     *  /accounts route every internal role can read for its own ledger. */
+    | 'view_client_accounts'
     | 'view_external_work'
     | 'view_doctors'
     | 'view_doctor_retention'
@@ -178,14 +187,25 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
         caps.add('manage_inventory');
     }
     if (isAdmin || hasRepScope) caps.add('view_doctors');
-    // The directory is the rep's working tool; retention is not. It reads
-    // the whole client base's activity and the follow-up log -- who went
-    // quiet, who is worth chasing -- which is a management decision, so
-    // the tab and its route are admin-only.
+    // Retention moved out of the directory into the client-accounts
+    // workspace (it reads the whole client base's activity and the
+    // follow-up log -- a management decision), but it stays admin-only.
     if (isAdmin) caps.add('view_doctor_retention');
     if (isAdmin || hasAccountantScope) {
         caps.add('view_finance');
         caps.add('view_suppliers');
+        // Statements, aging and retention: the client-side counterpart to
+        // Finance, split into its own workspace so the tab bar does not
+        // carry ten destinations at once.
+        caps.add('view_client_accounts');
+    }
+    // Cash boxes and the capital/assets ledger are the two Finance tabs
+    // that touch the company's own money rather than a client's or
+    // supplier's account, so they stay admin-only same as before this
+    // split (Finance.tsx previously gated both on user.role === 'admin').
+    if (isAdmin) {
+        caps.add('view_cashboxes');
+        caps.add('view_capital');
     }
     if (isAdmin || hasAccountantScope || hasRepScope) caps.add('view_staff');
     // No role owns the whole address book -- the rep has doctors and staff,

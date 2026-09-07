@@ -41,6 +41,7 @@ import {
     TrendingDown,
     SlidersHorizontal,
 } from 'lucide-react';
+import DateField from '../../components/ui/DateField';
 
 const CATEGORY_LABELS: Record<MaterialCategory, string> = {
     zirconia: 'زيركونيا (Zirconia)',
@@ -1041,12 +1042,13 @@ export default function InventoryDashboard() {
                                 </div>
                                 <div>
                                     <label className="block font-bold text-slate-700 mb-1">تاريخ الشراء</label>
-                                    <input
-                                        type="date"
+                                    <DateField
                                         required
+                                        clearable={false}
                                         value={purchaseForm.purchaseDate}
-                                        onChange={e => setPurchaseForm(f => ({ ...f, purchaseDate: e.target.value }))}
-                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs"
+                                        onChange={purchaseDate => setPurchaseForm(f => ({ ...f, purchaseDate }))}
+                                        ariaLabel="تاريخ الشراء"
+                                        size="sm"
                                     />
                                 </div>
                             </div>

@@ -37,8 +37,11 @@ export function getCurrentAccountingSnapshot(order: Order): AccountingOrderSnaps
         // A doctor rejection is zero unless an explicit financial decision
         // recorded a doctor amount; never fall back to the order total.
         saleAmount: zeroImpact ? 0 : (rejected ? (order.rejectedDoctorAmount ?? 0) : order.totalPrice),
-        labCost: zeroImpact ? 0 : (rejected ? (order.rejectedLabCost ?? 0) : (order.manualCost ?? order.cost ?? 0)),
-        designCost: zeroImpact ? 0 : (rejected ? (order.rejectedDesignerCost ?? 0) : (order.manualDesignPrice ?? order.designPrice ?? 0)),
+        // Mirrors build_order_accounting_snapshot. The stored components are
+        // authoritative; the old derivations remain only as a fallback for
+        // orders read through a projection that does not select them.
+        labCost: zeroImpact ? 0 : (rejected ? (order.rejectedLabCost ?? 0) : (order.labCost ?? order.manualCost ?? order.cost ?? 0)),
+        designCost: zeroImpact ? 0 : (rejected ? (order.rejectedDesignerCost ?? 0) : (order.designerCost ?? order.manualDesignPrice ?? order.designPrice ?? 0)),
         doctorId: order.doctorId || null,
         supplierId: order.supplierId || null,
         designerId: order.designerId || null,

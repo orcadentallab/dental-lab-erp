@@ -4,6 +4,7 @@ import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
 import { X, Check, Building2, User as UserIcon, ArrowRight } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import DateField from '../ui/DateField';
 import { useDialogBehavior } from '../../hooks/useDialogBehavior';
 
 interface AcceptOrderModalProps {
@@ -217,24 +218,24 @@ export default function AcceptOrderModal({
                     <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
                         <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1">تاريخ الاستلام</label>
-                            <input
-                                title="Received Date"
-                                type="date"
+                            <DateField
                                 required
+                                clearable={false}
                                 value={receivedDate}
-                                onChange={e => setReceivedDate(e.target.value)}
-                                className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-base sm:text-xs font-bold"
+                                onChange={setReceivedDate}
+                                ariaLabel="تاريخ الاستلام"
+                                size="sm"
                             />
                         </div>
                         <div>
                             <label className="block text-[10px] font-bold text-gray-500 mb-1">تاريخ التسليم المتوقع</label>
-                            <input
-                                title="Delivery Date"
-                                type="date"
+                            <DateField
                                 required
+                                clearable={false}
                                 value={deliveryDate}
-                                onChange={e => setDeliveryDate(e.target.value)}
-                                className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-base sm:text-xs font-bold"
+                                onChange={setDeliveryDate}
+                                ariaLabel="تاريخ التسليم المتوقع"
+                                size="sm"
                             />
                         </div>
                     </div>

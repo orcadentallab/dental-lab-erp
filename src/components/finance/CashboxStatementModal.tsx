@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { financeService, type Cashbox, type CashboxStatement } from '../../services/financeService';
+import DateRangeField from '../ui/DateRangeField';
 
 interface CashboxStatementModalProps {
     cashbox: Cashbox | null;
@@ -285,21 +286,15 @@ export default function CashboxStatementModal({ cashbox, onClose }: CashboxState
                         </select>
 
                         {datePreset === 'custom' && (
-                            <div className="flex items-center gap-1.5">
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={e => setStartDate(e.target.value)}
-                                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
-                                />
-                                <span className="text-xs text-slate-400">إلى</span>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={e => setEndDate(e.target.value)}
-                                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700"
-                                />
-                            </div>
+                            <DateRangeField
+                                start={startDate}
+                                end={endDate}
+                                onChange={({ start, end }) => { setStartDate(start); setEndDate(end); }}
+                                size="sm"
+                                // The preset dropdown beside it already covers these.
+                                presets={false}
+                                className="w-[21rem] max-w-full"
+                            />
                         )}
 
                         {/* Type Filter */}

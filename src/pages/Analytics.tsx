@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { subMonths, startOfMonth, endOfMonth, format } from 'date-fns';
 import { analyticsService, EMPTY_TOP_FAMILIES, type TopFamiliesResult } from '../services/supabase/analyticsService';
 import ReportsHub from '../components/ReportsHub';
+import DateRangeField from '../components/ui/DateRangeField';
 import { FileText, TrendingUp, Zap, ArrowDownRight, Wallet, Activity, CreditCard, PiggyBank, Package, BarChart3, Users, DollarSign, RefreshCcw, ArrowUpRight, Receipt, TrendingDown, Banknote, Calendar, Award, AlertTriangle, Layers, Download } from 'lucide-react';
 import clsx from 'clsx';
 import React from 'react';
@@ -764,28 +765,19 @@ export default function Analytics() {
                 {/* Custom Date Inputs */}
                 {dateRange === 'custom' && (
                     <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300 relative z-10">
-                        <div className="flex flex-wrap gap-4">
-                            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
-                                <label className="text-xs text-slate-400">من</label>
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={e => setCustomStartDate(e.target.value)}
-                                    className="bg-transparent border-none text-white text-sm outline-none"
-                                    aria-label="Start Date"
-                                />
-                            </div>
-                            <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/10">
-                                <label className="text-xs text-slate-400">إلى</label>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={e => setCustomEndDate(e.target.value)}
-                                    className="bg-transparent border-none text-white text-sm outline-none"
-                                    aria-label="End Date"
-                                />
-                            </div>
-                        </div>
+                        <DateRangeField
+                            start={startDate}
+                            end={endDate}
+                            onChange={({ start, end }) => {
+                                setCustomStartDate(start);
+                                setCustomEndDate(end);
+                            }}
+                            // Sits on the dark hero header, unlike every other page.
+                            tone="dark"
+                            // The preset pills above already cover these.
+                            presets={false}
+                            className="w-[24rem] max-w-full"
+                        />
                         <p className="mt-2 text-[11px] text-slate-400">
                             اترك «من» فارغًا للبحث من أول السجلات، أو اترك «إلى» فارغًا للبحث حتى آخر السجلات.
                         </p>

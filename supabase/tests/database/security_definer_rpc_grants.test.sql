@@ -144,7 +144,12 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     ('public.get_cutover_boundary()',                                           'wrapper',    true),
     ('public.capture_cutover_baseline(date,date,text)',                         'wrapper',    true),
     -- added by 20260827006000 (operational warnings)
-    ('public.get_open_system_warnings(integer)',                                'wrapper',    true);
+    ('public.get_open_system_warnings(integer)',                                'wrapper',    true),
+    -- adopted by 20260907020000: existed in production outside the chain
+    -- (same situation get_doctor_receivables_breakdown was in), EXECUTE was
+    -- still open to PUBLIC/anon. The admin check lives inside the function
+    -- itself, so it is a single wrapper, not a wrapper/privileged pair.
+    ('public.admin_reset_password(uuid,text)',                                  'wrapper',    true);
 
 -- ─── 1. Sanity: the catalog is populated ────────────────────────────────
 -- Without this, every assertion below could pass vacuously (e.g. if the
