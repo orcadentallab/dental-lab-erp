@@ -22,10 +22,19 @@ CREATE TABLE IF NOT EXISTS public._cost_split_preflight (
     phase       text        NOT NULL,
     metric      text        NOT NULL,
     value       numeric,
-    cutoff      timestamptz NOT NULL,
+    cutoff      timestamptz,
     captured_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (phase, metric)
 );
+
+-- CREATE TABLE IF NOT EXISTS does nothing when the table is already there, so
+-- an earlier capture that predates the cutoff column would leave it missing
+-- and the INSERT below would fail. Bring any existing table up to shape.
+-- cutoff stays nullable for exactly this reason: rows captured before the
+-- column existed cannot be given one retroactively.
+ALTER TABLE public._cost_split_preflight ADD COLUMN IF NOT EXISTS cutoff      timestamptz;
+ALTER TABLE public._cost_split_preflight ADD COLUMN IF NOT EXISTS captured_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public._cost_split_preflight ADD COLUMN IF NOT EXISTS value       numeric;
 
 -- This table holds aggregate balances per doctor, per external lab and per
 -- designer. It lives in the public schema, so PostgREST would otherwise expose
