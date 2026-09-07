@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS public._cost_split_preflight (
     PRIMARY KEY (phase, metric)
 );
 
+-- This table holds aggregate balances per doctor, per external lab and per
+-- designer. It lives in the public schema, so PostgREST would otherwise expose
+-- it to anyone holding an anon or authenticated key. RLS with no policies at
+-- all denies every such client; the SQL editor runs as postgres, which
+-- bypasses RLS, so the steps below still work. Dropping the table in STEP 4
+-- removes the exposure entirely.
+ALTER TABLE public._cost_split_preflight ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public._cost_split_preflight FROM anon, authenticated;
+
 INSERT INTO public._cost_split_preflight (phase, metric, value, cutoff)
 WITH cut AS (SELECT now() AS ts),
 scoped AS (
