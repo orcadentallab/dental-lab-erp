@@ -42,6 +42,22 @@
 
 SET LOCAL session_replication_role = replica;
 
+-- SET LOCAL is a no-op outside a transaction block: Postgres warns and leaves
+-- the setting alone.  If the deploy path runs this file statement-by-statement
+-- instead of as one transaction, the 25 triggers on public.orders would fire
+-- for the backfill below -- re-opening every registered order for accounting
+-- review and churning obligations.  Fail loudly here instead of quietly doing
+-- the damage.
+DO $guard$
+BEGIN
+    IF current_setting('session_replication_role') <> 'replica' THEN
+        RAISE EXCEPTION
+            'session_replication_role is %, not replica: this migration must run inside a single transaction. Deploy it with a transactional runner (supabase db push) rather than statement-by-statement.',
+            current_setting('session_replication_role');
+    END IF;
+END;
+$guard$;
+
 UPDATE public.orders
    SET cost          = 160.00,
        lab_cost      = 100.00,
