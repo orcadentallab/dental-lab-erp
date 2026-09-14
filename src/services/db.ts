@@ -987,6 +987,11 @@ class MockDB {
         return getOrdersForAccountingRegistration();
     }
 
+    async getUnregisteredCasesCount(): Promise<number> {
+        const { getUnregisteredCasesCount } = await import('./supabase/orders');
+        return getUnregisteredCasesCount();
+    }
+
     /**
      * Dedicated heavy fetch for Full Exports.
      * Fetches virtually unlimited orders (up to 20,000 safety limit).

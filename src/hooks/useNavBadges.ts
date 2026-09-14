@@ -9,7 +9,6 @@
  */
 import { useEffect, useState } from 'react';
 import { db } from '../services/db';
-import { isAccountingRegistrationCandidate } from '../constants/accountingRegistration';
 import type { BadgeKey } from '../lib/navigation';
 import type { Capability } from '../lib/userRoles';
 
@@ -26,10 +25,10 @@ async function fetchCounts(caps: Set<Capability>, userId: string): Promise<Badge
 
     if (caps.has('view_finance')) {
         try {
-            const orders = await db.getOrdersForAccountingRegistration();
-            counts.unregisteredCases = orders.filter(order =>
-                isAccountingRegistrationCandidate(order, 'pending')
-            ).length;
+            // Optimized: replaces heavy getOrdersForAccountingRegistration() full table download.
+            // The count is computed via getUnregisteredCasesCount() which evaluates
+            // isAccountingRegistrationCandidate(order, 'pending') on candidate rows.
+            counts.unregisteredCases = await db.getUnregisteredCasesCount();
         } catch (error) {
             // A badge is never worth breaking navigation over.
             console.error('Failed to count unregistered cases', error);

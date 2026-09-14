@@ -183,18 +183,18 @@ export default function DashboardNew() {
                     db.getUsers(),
                     db.getDoctors(),
                     contactService.getInquiries('new').catch(() => [] as ContactInquiry[]),
-                    db.getOrdersWithComments().catch(() => [] as Order[]),
                 ] as const;
 
                 const [ordersData, suppliersData, usersData, doctorsData, inquiriesData, commentOrdersData, pendingProposalsData, appliedEditsData, commentMarksData] =
                     user?.role === 'admin'
                         ? await Promise.all([
                             ...baseRequests,
+                            db.getOrdersWithComments().catch(() => [] as Order[]),
                             db.getPendingOrderEditProposals().catch(() => [] as OrderEvent[]),
                             db.getUnreviewedOrderEdits().catch(() => [] as OrderEvent[]),
                             db.getDashboardReviewMarks('comment').catch(() => [] as string[]),
-                        ] as const)
-                        : [...await Promise.all(baseRequests), [], [], []] as const;
+                        ])
+                        : [...await Promise.all(baseRequests), [] as Order[], [] as OrderEvent[], [] as OrderEvent[], [] as string[]];
 
                 // Apply role-based filtering
                 let filteredOrders = ordersData;
