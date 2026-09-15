@@ -19,6 +19,7 @@ export interface Doctor {
     parentId?: string; // Link to parent Medical Center
     hasBranches?: boolean; // True if doctor/center has branches
     branches?: DoctorBranch[];
+    labInstructions?: string;
 }
 
 export interface ServiceFamily {
@@ -348,9 +349,10 @@ export interface Order {
     rejectedLabCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     rejectedDesignerCostStatus?: import('../constants/rejectionFinancialDecision').RejectionPartyCostStatus;
     // WF-1: shadow workflow columns. Optional for backwards-compat with all
-    // existing call sites; finance helpers do not depend on these yet.
+    // existing call sites; finance logic does not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    routeOverrideId?: string | null;
 }
 
 export interface DoctorOrderSummary {
@@ -476,7 +478,14 @@ export interface FinancialObligation {
     entityType: 'doctor' | 'external_lab' | 'designer';
     entityId: string;
     direction: 'receivable' | 'payable';
-    triggerType: 'doctor_delivered' | 'external_lab_ready' | 'external_lab_issue_settlement' | 'designer_approved' | 'manual_adjustment';
+    triggerType:
+        | 'doctor_delivered'
+        | 'external_lab_ready'
+        | 'external_lab_issue_settlement'
+        | 'designer_approved'
+        | 'designer_issue_settlement'
+        | 'manual_adjustment'
+        | 'external_stage_returned';
     triggerStatus?: string | null;
     triggerDate: string;
     dueDate: string;
@@ -932,6 +941,9 @@ class MockDB {
         limit: number = 50,
         filters: {
             status?: string;
+            productionStatus?: string;
+            productionStageId?: string;
+            issueState?: string;
             startDate?: string;
             endDate?: string;
             doctorId?: string;

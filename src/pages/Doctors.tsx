@@ -21,6 +21,7 @@ interface DoctorForm {
     isCenter: boolean;
     parentId: string | undefined;
     hasBranches: boolean;
+    labInstructions: string;
 }
 
 
@@ -47,7 +48,8 @@ export default function Doctors() {
         customPrices: {},
         isCenter: false,
         parentId: '',
-        hasBranches: false
+        hasBranches: false,
+        labInstructions: ''
     });
     const [childDoctors, setChildDoctors] = useState<{ id?: string, name: string, phone: string, doctorCode?: string }[]>([]);
     const [branches, setBranches] = useState<import('../services/db').DoctorBranch[]>([]);
@@ -85,7 +87,7 @@ export default function Doctors() {
 
     const openAddModal = () => {
         setEditingId(null);
-        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined, hasBranches: false });
+        setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined, hasBranches: false, labInstructions: '' });
         setChildDoctors([{ name: '', phone: '' }]);
         setBranches([]);
         setError(null);
@@ -105,7 +107,8 @@ export default function Doctors() {
             customPrices: doc.customPrices || {},
             isCenter: doc.isCenter || false,
             parentId: doc.parentId || undefined,
-            hasBranches: doc.hasBranches || false
+            hasBranches: doc.hasBranches || false,
+            labInstructions: doc.labInstructions || ''
         });
         setBranches(doc.branches || []);
         
@@ -220,7 +223,7 @@ export default function Doctors() {
 
             setShowModal(false);
             setEditingId(null);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined, hasBranches: false });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', customPrices: {}, isCenter: false, parentId: undefined, hasBranches: false, labInstructions: '' });
             setChildDoctors([]);
             setBranches([]);
 
@@ -523,6 +526,20 @@ export default function Doctors() {
                                     className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                     value={newDoctor.address}
                                     onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-1">
+                                    تعليمات دائمة للمعمل (تظهر للفنيين في كل حالات هذا الطبيب)
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    aria-label="تعليمات دائمة للمعمل"
+                                    placeholder="مثال: يفضل المقاسات بـ margin بارز، عدم استخدام سبيسر عالي، شطف الحواف دايماً..."
+                                    className="w-full p-2 border border-indigo-200 dark:border-indigo-800 rounded-lg focus:ring-2 focus:ring-indigo-500 dark:bg-gray-700 dark:text-white text-sm"
+                                    value={newDoctor.labInstructions}
+                                    onChange={e => setNewDoctor({ ...newDoctor, labInstructions: e.target.value })}
                                 />
                             </div>
 

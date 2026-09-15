@@ -45,6 +45,11 @@ export const ORDER_EVENT_TYPES = {
     finalizationStarted: 'finalization_started',
     tryInReady: 'try_in_ready',
     orderFieldChanged: 'order_field_changed',
+    // ─── Production Stage Events (Phase W Layer 0 Z7) ───
+    stageStarted: 'stage_started',
+    stageCompleted: 'stage_completed',
+    stageFailed: 'stage_failed',
+    stageBlocked: 'stage_blocked',
 } as const;
 
 export type OrderEventType = typeof ORDER_EVENT_TYPES[keyof typeof ORDER_EVENT_TYPES];

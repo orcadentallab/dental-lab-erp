@@ -51,7 +51,8 @@ export const DoctorSchema = z.object({
         name: z.string().min(1, 'اسم الفرع مطلوب'),
         address: z.string().optional().or(z.literal('')),
         phone: z.string().optional().or(z.literal(''))
-    })).optional().nullable()
+    })).optional().nullable(),
+    labInstructions: z.string().max(2000).optional().nullable().or(z.literal(''))
 });
 
 export const DoctorCreateSchema = DoctorSchema;
@@ -113,7 +114,8 @@ export const OrderSchema = z.object({
         createdAt: z.string()
     }).optional().nullable(),
     isRedo: z.boolean().default(false),
-    originalOrderId: z.string().uuid().optional().nullable()
+    originalOrderId: z.string().uuid().optional().nullable(),
+    routeOverrideId: z.string().uuid().optional().nullable()
 });
 
 export const OrderCreateSchema = OrderSchema.omit({ id: true });

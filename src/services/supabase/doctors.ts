@@ -20,6 +20,7 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
         parentId: dbDoctor.parent_id || undefined,
         hasBranches: dbDoctor.has_branches || false,
         branches: dbDoctor.branches ? (dbDoctor.branches as import('../db').DoctorBranch[]) : undefined,
+        labInstructions: dbDoctor.lab_instructions || undefined,
     };
 }
 
@@ -38,6 +39,7 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
         parent_id: doctor.parentId || null,
         has_branches: doctor.hasBranches || false,
         branches: doctor.branches ? (doctor.branches as unknown as DbDoctorInsert['branches']) : null,
+        lab_instructions: doctor.labInstructions || null,
     };
 }
 

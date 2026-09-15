@@ -49,20 +49,19 @@ const calculateOrderCost = (
     designerId: string
 ) => {
     if (workflowType === 'full') {
+        if (!selectedSupplier) return 0;
         return items.reduce((sum, item) => {
             const count = item.teethNumbers ? item.teethNumbers.length : 0;
             const svc = services.find(s => s.name === item.serviceType);
             let unitCost = svc ? svc.costPrice : 0;
-            if (selectedSupplier) {
-                const sup = suppliers.find(s => s.id === selectedSupplier);
-                if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
-            }
+            const sup = suppliers.find(s => s.id === selectedSupplier);
+            if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
             return sum + (unitCost * count);
         }, 0);
     }
 
     const designer = designers.find(d => d.id === designerId);
-    const sup = suppliers.find(s => s.id === selectedSupplier);
+    const sup = selectedSupplier ? suppliers.find(s => s.id === selectedSupplier) : null;
     return items.reduce((sum, item) => {
         const count = item.teethNumbers && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
         const svc = services.find(s => s.name === item.serviceType);
@@ -72,9 +71,11 @@ const calculateOrderCost = (
         const isSalaried = hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION);
         const dCost = isSalaried ? 0 : designUnitCost * count;
         let mCost = 0;
-        if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
-        else if (svc?.millingPrice) mCost = svc.millingPrice * count;
-        else if (svc) mCost = (svc.costPrice * 0.5) * count;
+        if (selectedSupplier) {
+            if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+            else if (svc?.millingPrice) mCost = svc.millingPrice * count;
+            else if (svc) mCost = (svc.costPrice * 0.5) * count;
+        }
         return sum + dCost + mCost;
     }, 0);
 };

@@ -24,7 +24,9 @@ export const OBLIGATION_TRIGGER_TYPES = {
     externalLabReady: 'external_lab_ready',
     externalLabIssueSettlement: 'external_lab_issue_settlement',
     designerApproved: 'designer_approved',
+    designerIssueSettlement: 'designer_issue_settlement',
     manualAdjustment: 'manual_adjustment',
+    externalStageReturned: 'external_stage_returned',
 } as const;
 
 export type ObligationTriggerType = typeof OBLIGATION_TRIGGER_TYPES[keyof typeof OBLIGATION_TRIGGER_TYPES];

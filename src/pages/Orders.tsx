@@ -24,6 +24,7 @@ import { isDesignerUser, canBeOrderRepresentative } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
+import { getStages, getActiveStagesForOrders, type ProductionStage, type ActiveOrderStage } from '../services/supabase/production';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import RepEditModal from '../components/orders/RepEditModal';
@@ -65,6 +66,8 @@ export default function Orders() {
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [users, setUsers] = useState<User[]>([]);
+    const [stages, setStages] = useState<ProductionStage[]>([]);
+    const [activeStages, setActiveStages] = useState<Record<string, ActiveOrderStage>>({});
 
     // Pagination state
     const [currentPage, setCurrentPage] = useState(() => {
@@ -79,6 +82,7 @@ export default function Orders() {
     const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') || '');
     const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || '');
     const [productionStatusFilter, setProductionStatusFilter] = useState(() => searchParams.get('productionStatus') || '');
+    const [productionStageFilter, setProductionStageFilter] = useState(() => searchParams.get('productionStage') || '');
     const [issueStateFilter, setIssueStateFilter] = useState(() => searchParams.get('issueState') || '');
     const [doctorFilter, setDoctorFilter] = useState(() => searchParams.get('doctor') || '');
     const [supplierFilter, setSupplierFilter] = useState(() => searchParams.get('supplier') || '');
@@ -123,6 +127,7 @@ export default function Orders() {
         const filters: {
             status?: string;
             productionStatus?: string;
+            productionStageId?: string;
             issueState?: string;
             startDate?: string;
             endDate?: string;
@@ -137,6 +142,7 @@ export default function Orders() {
 
         if (statusFilter) filters.status = statusFilter;
         if (productionStatusFilter) filters.productionStatus = productionStatusFilter;
+        if (productionStageFilter) filters.productionStageId = productionStageFilter;
         if (issueStateFilter) filters.issueState = issueStateFilter;
         if (startDate) filters.startDate = startDate;
         if (endDate) filters.endDate = endDate;
@@ -161,6 +167,17 @@ export default function Orders() {
             const ordersResult = await db.getOrders(page, PAGE_SIZE, filters);
             setOrders(ordersResult.data);
             setTotalCount(ordersResult.count);
+            if (ordersResult.data.length > 0) {
+                try {
+                    const activeMap = await getActiveStagesForOrders(ordersResult.data.map(o => o.id));
+                    setActiveStages(activeMap);
+                } catch (e) {
+                    console.error('Error loading active stage runs:', e);
+                    setActiveStages({});
+                }
+            } else {
+                setActiveStages({});
+            }
         } catch (error) {
             console.error('Error loading data:', error);
         } finally {
@@ -171,14 +188,20 @@ export default function Orders() {
     // Initial Load of Aux Data (once on mount - fast)
     useEffect(() => {
         const loadAux = async () => {
-            const [docs, sups, usrs] = await Promise.all([
-                db.getDoctors(),
-                db.getSuppliers(),
-                db.getUsers()
-            ]);
-            setDoctors(docs);
-            setSuppliers(sups);
-            setUsers(usrs);
+            try {
+                const [docs, sups, usrs, stgs] = await Promise.all([
+                    db.getDoctors(),
+                    db.getSuppliers(),
+                    db.getUsers(),
+                    getStages().catch(() => []),
+                ]);
+                setDoctors(docs);
+                setSuppliers(sups);
+                setUsers(usrs);
+                setStages((stgs || []).filter(s => s.isActive));
+            } catch (err) {
+                console.error('Error loading aux data in Orders:', err);
+            }
         };
         loadAux();
     }, []);
@@ -196,6 +219,7 @@ export default function Orders() {
         setOrDelete('q', searchQuery);
         setOrDelete('status', statusFilter);
         setOrDelete('productionStatus', productionStatusFilter);
+        setOrDelete('productionStage', productionStageFilter);
         setOrDelete('issueState', issueStateFilter);
         setOrDelete('doctor', doctorFilter);
         setOrDelete('supplier', supplierFilter);
@@ -211,7 +235,7 @@ export default function Orders() {
         if (nextParams.toString() !== searchParams.toString()) {
             setSearchParams(nextParams, { replace: true });
         }
-    }, [searchQuery, statusFilter, productionStatusFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams]);
+    }, [searchQuery, statusFilter, productionStatusFilter, productionStageFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams]);
 
     useEffect(() => {
         const { modal, orderId } = initialModalRef.current;
@@ -265,7 +289,7 @@ export default function Orders() {
         }, 150);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [statusFilter, productionStatusFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]);
+    }, [statusFilter, productionStatusFilter, productionStageFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, hideDelivered, showArchived]);
 
     // Page change handler
     const handlePageChange = (page: number) => {
@@ -290,16 +314,18 @@ export default function Orders() {
 
     const handleCreateOrder = async (orderData: Omit<Order, 'id' | 'createdAt'>) => {
         try {
-            await db.addOrder(orderData, {
+            const created = await db.addOrder(orderData, {
                 userId: user?.id,
                 actorRole: user?.role,
             });
             setIsFormOpen(false);
             clearOpenOrderParams();
             await refreshOrders();
+            return created;
         } catch (error) {
             console.error('Error creating order:', error);
             toastError(error instanceof Error ? error.message : 'حدث خطأ أثناء إنشاء الطلب');
+            throw error;
         }
     };
 
@@ -1035,13 +1061,31 @@ export default function Orders() {
                                         onChange={(e) => setProductionStatusFilter(e.target.value)}
                                         className={filterSelectClass(Boolean(productionStatusFilter), true)}
                                     >
-                                        <option value="">مرحلة الإنتاج</option>
+                                        <option value="">حالة سير العمل</option>
                                         {PRODUCTION_STATUSES.map(s => (
                                             <option key={s} value={s}>{PRODUCTION_STATUS_LABELS_AR[s]}</option>
                                         ))}
                                     </select>
                                     <Filter className={filterIconClass(Boolean(productionStatusFilter))} />
                                     <ChevronDown className={filterChevronClass(Boolean(productionStatusFilter), true)} />
+                                </div>
+
+                                {/* Active Production Stage Filter */}
+                                <div className="col-span-1 relative group">
+                                    <select
+                                        title="Production Stage Filter"
+                                        aria-label="Filter by Production Stage"
+                                        value={productionStageFilter}
+                                        onChange={(e) => setProductionStageFilter(e.target.value)}
+                                        className={filterSelectClass(Boolean(productionStageFilter), true)}
+                                    >
+                                        <option value="">مرحلة الإنتاج (البنش)</option>
+                                        {stages.map(stg => (
+                                            <option key={stg.id} value={stg.id}>{stg.nameAr}</option>
+                                        ))}
+                                    </select>
+                                    <Filter className={filterIconClass(Boolean(productionStageFilter))} />
+                                    <ChevronDown className={filterChevronClass(Boolean(productionStageFilter), true)} />
                                 </div>
 
                                 {/* Issue State Filter (WF-4) */}
@@ -1177,6 +1221,7 @@ export default function Orders() {
                     onRedo={(order) => setRedoOrder(order)}
                     onExportInvoice={handleExportInvoice}
                     currentUser={user || undefined}
+                    activeStages={activeStages}
                 />
             ) : (
                 <OrderBoard

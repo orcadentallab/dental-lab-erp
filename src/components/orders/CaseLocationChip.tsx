@@ -35,13 +35,20 @@ const LOCATION_COLORS: Record<CaseLocation, string> = {
 
 interface Props {
     location: CaseLocation;
+    stageName?: string | null;
+    stageSince?: string | null;
 }
 
-export default function CaseLocationChip({ location }: Props) {
+export default function CaseLocationChip({ location, stageName, stageSince }: Props) {
+    let label = LOCATION_LABELS[location];
+    if (location === 'internal_production' && stageName) {
+        label = `قسم الإنتاج (${stageName}${stageSince ? ' — ' + stageSince : ''})`;
+    }
+
     return (
         <span className={`inline-flex items-center gap-0.5 text-[10px] font-semibold ${LOCATION_COLORS[location]}`}>
             <MapPin size={10} />
-            {LOCATION_LABELS[location]}
+            {label}
         </span>
     );
 }

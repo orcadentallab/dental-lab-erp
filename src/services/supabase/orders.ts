@@ -1031,6 +1031,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         // WF-1 shadow workflow columns (default to 'not_started'/'none' if absent).
         productionStatus: dbOrder.production_status || undefined,
         issueState: dbOrder.issue_state || undefined,
+        routeOverrideId: dbOrder.route_override_id || undefined,
     };
 }
 
@@ -1090,6 +1091,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
         // on these in WF-1.
         ...(order.productionStatus ? { production_status: order.productionStatus } : {}),
         ...(order.issueState ? { issue_state: order.issueState } : {}),
+        route_override_id: order.routeOverrideId || null,
     };
 }
 
@@ -1097,6 +1099,7 @@ function orderToDb(order: Omit<Order, 'id' | 'createdAt'>): DbOrderInsert {
 export interface OrderFilters {
     status?: string;
     productionStatus?: string;
+    productionStageId?: string;
     issueState?: string;
     startDate?: string; // YYYY-MM-DD
     endDate?: string;   // YYYY-MM-DD
@@ -1168,6 +1171,26 @@ export async function getOrders(
 
     if (filters.productionStatus) {
         query = query.eq('production_status', filters.productionStatus);
+    }
+
+    if (filters.productionStageId) {
+        const { data: stageRuns } = await supabase
+            .from('production_stage_runs')
+            .select('production_jobs!inner(order_id)')
+            .eq('stage_id', filters.productionStageId)
+            .in('status', ['ready', 'in_progress', 'waiting_external']);
+
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const orderIds = Array.from(new Set(
+            (stageRuns as any[])?.map(r => r.production_jobs?.order_id).filter(Boolean) || []
+        ));
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+
+        if (orderIds.length > 0) {
+            query = query.in('id', orderIds);
+        } else {
+            query = query.eq('id', '00000000-0000-0000-0000-000000000000');
+        }
     }
 
     if (filters.issueState) {

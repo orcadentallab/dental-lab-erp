@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { db, type Doctor, type Order, type Service, type ServiceFamily, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
-import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock, Sparkles, Loader2, Printer } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
@@ -16,6 +16,7 @@ import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pric
 import { canEditOrderField, type WorkflowRole } from '../../lib/workflowPermissions';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import type { ProductionStatus, IssueState } from '../../constants/workflow';
+import { getEffectiveRouteStages, type EffectiveRouteStage } from '../../services/supabase/production';
 
 interface OrderFormProps {
     onCancel: () => void;
@@ -35,6 +36,9 @@ interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
 
 import { DoctorSelect } from './DoctorSelect';
 import CaseAttachments from './CaseAttachments';
+import CaseSlipPrint from './CaseSlipPrint';
+import { uploadCaseFilesBatch } from '../../lib/storage';
+import { capacityService } from '../../services/supabase/capacityService';
 
 const calculateOrderCost = (
     workflowType: 'full' | 'split',
@@ -46,20 +50,19 @@ const calculateOrderCost = (
     designerId: string
 ) => {
     if (workflowType === 'full') {
+        if (!selectedSupplier) return 0;
         return items.reduce((sum, item) => {
             const count = item.teethNumbers ? item.teethNumbers.length : 0;
             const svc = services.find(s => s.name === item.serviceType);
             let unitCost = svc ? svc.costPrice : 0;
-            if (selectedSupplier) {
-                const sup = suppliers.find(s => s.id === selectedSupplier);
-                if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
-            }
+            const sup = suppliers.find(s => s.id === selectedSupplier);
+            if (sup?.customPrices?.[item.serviceType] !== undefined) unitCost = sup.customPrices[item.serviceType];
             return sum + (unitCost * count);
         }, 0);
     }
 
     const designer = designers.find(d => d.id === designerId);
-    const sup = suppliers.find(s => s.id === selectedSupplier);
+    const sup = selectedSupplier ? suppliers.find(s => s.id === selectedSupplier) : null;
     return items.reduce((sum, item) => {
         const count = item.teethNumbers && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
         const svc = services.find(s => s.name === item.serviceType);
@@ -70,9 +73,11 @@ const calculateOrderCost = (
         const isSalaried = hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION);
         const dCost = isSalaried ? 0 : designUnitCost * count;
         let mCost = 0;
-        if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
-        else if (svc?.millingPrice) mCost = svc.millingPrice * count;
-        else if (svc) mCost = (svc.costPrice * 0.5) * count;
+        if (selectedSupplier) {
+            if (sup?.millingPrices?.[item.serviceType] !== undefined) mCost = sup.millingPrices[item.serviceType] * count;
+            else if (svc?.millingPrice) mCost = svc.millingPrice * count;
+            else if (svc) mCost = (svc.costPrice * 0.5) * count;
+        }
         return sum + dCost + mCost;
     }, 0);
 };
@@ -83,6 +88,7 @@ const calculateAutomaticMillingPrice = (
     suppliers: Supplier[],
     selectedSupplier: string
 ) => {
+    if (!selectedSupplier) return 0;
     const sup = suppliers.find(s => s.id === selectedSupplier);
     return items.reduce((sum, item) => {
         const count = item.teethNumbers && item.teethNumbers.length > 0 ? item.teethNumbers.length : 1;
@@ -94,6 +100,7 @@ const calculateAutomaticMillingPrice = (
         return sum + mCost;
     }, 0);
 };
+
 
 const calculateAutomaticDesignPrice = (
     items: FormOrderItem[],
@@ -144,12 +151,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [stlUrl, setStlUrl] = useState(initialData?.stlUrl || '');
     const [imagesUrl, setImagesUrl] = useState(initialData?.imagesUrl || '');
     const [discount, setDiscount] = useState(initialData?.discount || 0);
+    const [stagedInstructionFiles, setStagedInstructionFiles] = useState<File[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
+    const [showSlipPrint, setShowSlipPrint] = useState(false);
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
-    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined as string | undefined });
+    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined as string | undefined, labInstructions: '' });
     const [doctorError, setDoctorError] = useState<string | null>(null);
 
     // Quick Add Branch State
@@ -199,7 +208,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 setSelectedChildDoctorId('');
             }
             setShowDoctorModal(false);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined, labInstructions: '' });
         } catch (err) {
             console.error('Add Doctor Error:', err);
             setDoctorError('حدث خطأ غير متوقع أثناء الحفظ.');
@@ -265,9 +274,22 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [deliveryDate, setDeliveryDate] = useState(initialData?.deliveryDate || getDefaultDate());
     const [instructions, setInstructions] = useState(initialData?.instructions || '');
     const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || '');
+    const [executionMode, setExecutionMode] = useState<'internal' | 'external'>(
+        initialData?.supplierId ? 'external' : 'internal'
+    );
+    const [isEstimatingDate, setIsEstimatingDate] = useState(false);
+    const [dateEstimateInfo, setDateEstimateInfo] = useState<{
+        date: string;
+        confidence: 'high' | 'moderate' | 'default_estimate';
+        days: number | null;
+    } | null>(null);
     const [representativeId, setRepresentativeId] = useState(initialData?.representativeId || '');
+    const [routeStagesPreview, setRouteStagesPreview] = useState<EffectiveRouteStage[]>([]);
+    const [isLoadingRouteStages, setIsLoadingRouteStages] = useState(false);
 
-    const [workflowType, setWorkflowType] = useState<'full' | 'split'>(initialData?.workflowType || 'full');
+    const [workflowType, setWorkflowType] = useState<'full' | 'split'>(
+        initialData?.workflowType || (initialData?.supplierId ? 'full' : 'split')
+    );
     const [designerId, setDesignerId] = useState(initialData?.designerId || '');
 
     const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(initialData?.deliveryType || 'Final');
@@ -314,6 +336,52 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === selectedSupplier),
         [suppliers, selectedSupplier]
     );
+
+    const unroutedItems = useMemo(() => {
+        if (executionMode !== 'internal') return [];
+        return items.filter(item => {
+            if (!item.serviceType) return false;
+            const svc = services.find(s => s.name === item.serviceType);
+            if (!svc) return false;
+            const hasRoute = Boolean(
+                svc.routeId || (svc.familyId && families.find(f => f.id === svc.familyId)?.defaultRouteId)
+            );
+            return !hasRoute;
+        });
+    }, [executionMode, items, services, families]);
+
+    const handleEstimateDeliveryDate = async () => {
+        if (items.length === 0 || !items[0].serviceType) {
+            toastError('يرجى اختيار خدمة أولاً لحساب موعد التسليم المقترح');
+            return;
+        }
+        const primaryItem = items[0];
+        const svc = services.find(s => s.name === primaryItem.serviceType);
+        if (!svc) {
+            toastError('الخدمة المختارة غير معرفة في قائمة الخدمات');
+            return;
+        }
+        const totalUnits = items.reduce((sum, item) => sum + (item.teethNumbers?.length || 1), 0);
+        setIsEstimatingDate(true);
+        try {
+            const estimate = await capacityService.estimateDeliveryTime(svc.id, totalUnits);
+            if (estimate?.estimated_delivery_date) {
+                setDeliveryDate(estimate.estimated_delivery_date);
+                setDateEstimateInfo({
+                    date: estimate.estimated_delivery_date,
+                    confidence: estimate.confidence_level,
+                    days: estimate.estimated_calendar_days,
+                });
+            } else {
+                toastError('تعذر احتساب الموعد، لم يتم ضبط تقويم العمل');
+            }
+        } catch (err: any) {
+            console.error('Failed to estimate delivery date:', err);
+            toastError('حدث خطأ أثناء احتساب موعد التسليم المقترح');
+        } finally {
+            setIsEstimatingDate(false);
+        }
+    };
 
     useEffect(() => {
         setInstructions(initialData?.instructions || '');
@@ -512,9 +580,50 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const currentDesigner = designers.find(d => d.id === designerId);
     const isSalaried = hasCustomPermission(currentDesigner, FIXED_SALARY_DESIGNER_PERMISSION);
 
+    const effectiveWorkflowType: 'full' | 'split' = executionMode === 'internal' ? 'split' : workflowType;
+
     const calculateAutomaticCost = () => {
-        return calculateOrderCost(workflowType, items, services, suppliers, selectedSupplier, designers, designerId);
+        return calculateOrderCost(effectiveWorkflowType, items, services, suppliers, selectedSupplier, designers, designerId);
     };
+
+    const getServiceRouteId = (serviceName: string): string | null => {
+        const svc = services.find(s => s.name === serviceName);
+        if (!svc) return null;
+        if (svc.routeId) return svc.routeId;
+        if (svc.familyId) {
+            const fam = families.find(f => f.id === svc.familyId);
+            if (fam?.defaultRouteId) return fam.defaultRouteId;
+        }
+        return null;
+    };
+
+    const primaryServiceName = items[0]?.serviceType;
+    const primaryRouteId = useMemo(() => {
+        if (executionMode !== 'internal' || !primaryServiceName) return null;
+        return getServiceRouteId(primaryServiceName);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [executionMode, primaryServiceName, services, families]);
+
+    useEffect(() => {
+        if (!primaryRouteId) {
+            setRouteStagesPreview([]);
+            return;
+        }
+        let active = true;
+        setIsLoadingRouteStages(true);
+        getEffectiveRouteStages(primaryRouteId)
+            .then(stgs => {
+                if (active) setRouteStagesPreview(stgs);
+            })
+            .catch(err => {
+                console.error('Failed to load effective route stages:', err);
+                if (active) setRouteStagesPreview([]);
+            })
+            .finally(() => {
+                if (active) setIsLoadingRouteStages(false);
+            });
+        return () => { active = false; };
+    }, [primaryRouteId]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -546,11 +655,28 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
             return;
         }
 
+        if (executionMode === 'external' && !selectedSupplier) {
+            toastError('يرجى اختيار المعمل الخارجي المنفذ');
+            return;
+        }
+
+        if (executionMode === 'internal') {
+            const unroutedServices = items
+                .map(i => i.serviceType)
+                .filter(st => Boolean(st) && !getServiceRouteId(st));
+
+            if (unroutedServices.length > 0) {
+                const unique = Array.from(new Set(unroutedServices));
+                toastError(`الخدمة (${unique.join('، ')}) لسه مالهاش مسار داخلي. يرجى ربط الخدمة بمسار إنتاج أولاً أو اختيار معمل خارجي.`);
+                return;
+            }
+        }
+
         const calculatedCost = calculateAutomaticCost();
 
         let totalDesignPrice = 0;
         let finalCost = calculatedCost;
-        if (workflowType === 'split') {
+        if (effectiveWorkflowType === 'split') {
             if (isAdmin && manualDesignPrice !== null) {
                 totalDesignPrice = manualDesignPrice;
             } else {
@@ -602,26 +728,37 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 // and lets the database add them up. cost is sent too and must
                 // agree; it is the same sum by construction.
                 cost: finalCost,
-                labCost: workflowType === 'split'
+                labCost: effectiveWorkflowType === 'split'
                     ? ((isAdmin && manualCost !== null) ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier))
                     : finalCost,
-                designerCost: workflowType === 'split' && !isSalaried ? totalDesignPrice : 0,
+                designerCost: effectiveWorkflowType === 'split' && !isSalaried ? totalDesignPrice : 0,
                 manualCost: (isAdmin && manualCost !== null) ? manualCost : null,
-                workflowType,
-                designerId: workflowType === 'split' ? designerId : undefined,
-                designStatus: initialData ? initialData.designStatus : (workflowType === 'split' ? 'pending' : undefined),
-                designPrice: workflowType === 'split' ? totalDesignPrice : 0,
-                manualDesignPrice: workflowType === 'split' ? manualDesignPrice : null,
+                workflowType: effectiveWorkflowType,
+                designerId: effectiveWorkflowType === 'split' ? designerId : undefined,
+                designStatus: initialData ? initialData.designStatus : (effectiveWorkflowType === 'split' ? 'pending' : undefined),
+                designPrice: effectiveWorkflowType === 'split' ? totalDesignPrice : 0,
+                manualDesignPrice: effectiveWorkflowType === 'split' ? manualDesignPrice : null,
                 discount,
                 priority: (isUrgent ? 'Urgent' : 'Normal') as 'Urgent' | 'Normal',
                 deliveryType,
                 needsDesignReview: initialData?.needsDesignReview || false,
                 isUrgent,
-                supplierId: selectedSupplier || undefined,
+                supplierId: executionMode === 'external' ? (selectedSupplier || undefined) : undefined,
                 representativeId: representativeId || undefined,
                 comments: initialData?.comments || []
             };
-            await onSubmit(payload);
+            const result = await onSubmit(payload);
+            const createdOrderId = result?.id || initialData?.id;
+            if (createdOrderId && stagedInstructionFiles.length > 0) {
+                try {
+                    await uploadCaseFilesBatch(stagedInstructionFiles, {
+                        orderId: createdOrderId,
+                        kind: 'instruction',
+                    });
+                } catch (attachErr) {
+                    console.error('Failed to upload staged instruction attachments:', attachErr);
+                }
+            }
         } finally {
             setIsSubmitting(false);
         }
@@ -655,6 +792,17 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             {visibleRepresentatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
                         </select>
                     </div>
+                    {initialData && (
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => setShowSlipPrint(true)}
+                            className="flex items-center gap-1.5 text-xs text-slate-700 border-slate-300 flex-1 sm:flex-initial"
+                        >
+                            <Printer size={15} />
+                            <span>ورقة الحالة</span>
+                        </Button>
+                    )}
                     <Button type="button" variant="ghost" disabled={isSubmitting} className="text-surface-500 flex-1 sm:flex-initial" onClick={onCancel}>
                         <span>{readOnly ? 'إغلاق' : 'إلغاء'}</span>
                     </Button>
@@ -944,10 +1092,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
                             </div>
                         </Card>
-                        <Card className="p-0 overflow-hidden bg-white border border-surface-100 shadow-sm">
+                        <Card className="p-0 overflow-hidden bg-white border border-surface-100 shadow-sm flex flex-col">
+                            {finalDoctor?.labInstructions && (
+                                <div className="p-3 bg-indigo-50/80 border-b border-indigo-100 text-xs text-indigo-900">
+                                    <span className="font-bold block mb-1">تعليمات الطبيب الدائمة للمعمل:</span>
+                                    <p className="whitespace-pre-wrap">{finalDoctor.labInstructions}</p>
+                                </div>
+                            )}
                             <textarea
                                 className="w-full h-full p-4 bg-white text-sm outline-none resize-none min-h-[5rem] focus:ring-2 focus:ring-primary-500/20"
-                                placeholder="ملاحظات فنية إضافية للمعمل..."
+                                placeholder="ملاحظات فنية إضافية للحالة للمعمل..."
                                 value={instructions}
                                 onChange={(e) => {
                                     const val = e.target.value;
@@ -968,21 +1122,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 disabled={isFieldDisabled('instructions')}
                             />
 
-                            {/* Photos that go with the instructions. Shown only
-                                once the case has an id: an attachment belongs
-                                to an order, and an unsaved order has none yet.
-                                These are what the technician sees on the task
-                                card before starting. */}
-                            {initialData?.id && (
-                                <div className="p-3 border-t border-surface-100">
-                                    <CaseAttachments
-                                        orderId={initialData.id}
-                                        kind="instruction"
-                                        canUpload={!isFieldDisabled('instructions')}
-                                        label="صور مع التعليمات — الفني هيشوفها قبل ما يبدأ"
-                                    />
-                                </div>
-                            )}
+                            {/* Photos that go with the instructions.
+                                For existing orders: uploads directly to orderId.
+                                For new orders: stages files locally with thumbnail preview, and uploads on submit.
+                                These are what the technician sees on the task card before starting. */}
+                            <div className="p-3 border-t border-surface-100">
+                                <CaseAttachments
+                                    orderId={initialData?.id}
+                                    kind="instruction"
+                                    canUpload={!isFieldDisabled('instructions')}
+                                    stagedFiles={stagedInstructionFiles}
+                                    onStagedFilesChange={setStagedInstructionFiles}
+                                    label="صور مع التعليمات — الفني هيشوفها قبل ما يبدأ"
+                                />
+                            </div>
                         </Card>
                     </div>
                 </div>
@@ -1019,14 +1172,49 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-bold text-surface-500 block mb-1">موعد التسليم</label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-bold text-surface-500 block">موعد التسليم</label>
+                                    {!readOnly && (
+                                        <button
+                                            type="button"
+                                            onClick={handleEstimateDeliveryDate}
+                                            disabled={isEstimatingDate || isFieldDisabled('delivery_date')}
+                                            className="text-[10px] text-primary-600 hover:text-primary-700 font-bold flex items-center gap-1 hover:underline disabled:opacity-50"
+                                            title="حساب موعد التسليم المقترح آلياً بناءً على طاقة المعمل والتاريخ"
+                                        >
+                                            {isEstimatingDate ? (
+                                                <Loader2 size={10} className="animate-spin" />
+                                            ) : (
+                                                <Sparkles size={10} />
+                                            )}
+                                            <span>حساب المقترح</span>
+                                        </button>
+                                    )}
+                                </div>
                                 <DateField
                                     ariaLabel="موعد التسليم"
                                     size="sm"
                                     value={deliveryDate}
-                                    onChange={setDeliveryDate}
+                                    onChange={(val) => {
+                                        setDeliveryDate(val);
+                                        setDateEstimateInfo(null);
+                                    }}
                                     disabled={isFieldDisabled('delivery_date')}
                                 />
+                                {dateEstimateInfo && (
+                                    <div className="mt-1 text-[10px] text-primary-700 bg-primary-50 border border-primary-100 rounded px-1.5 py-0.5 flex items-center justify-between">
+                                        <span>
+                                            {dateEstimateInfo.confidence === 'high'
+                                                ? 'ثقة عالية'
+                                                : dateEstimateInfo.confidence === 'moderate'
+                                                ? 'ثقة متوسطة'
+                                                : 'تقدير افتراضي'}
+                                        </span>
+                                        {dateEstimateInfo.days !== null && (
+                                            <span>({dateEstimateInfo.days} يوم)</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                         <div className={clsx(segmentWrapClass, "mt-3")}>
@@ -1035,7 +1223,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         </div>
                     </Card>
 
-                    {/* Workflow */}
+                    {/* Workflow & Execution */}
                     <Card className={sidebarCardClass}>
                         <h3 className="font-bold text-surface-700 text-sm mb-2.5 flex items-center gap-2">
                             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
@@ -1043,41 +1231,188 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             </span>
                             تنفيذ العمل
                         </h3>
-                        <div className={clsx(segmentWrapClass, "mb-3")}>
-                            <button type="button" onClick={() => setWorkflowType('full')} disabled={isFieldDisabled('workflow_type')} className={clsx(segmentButtonClass, workflowType === 'full' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Full Lab</button>
-                            <button type="button" onClick={() => setWorkflowType('split')} disabled={isFieldDisabled('workflow_type')} className={clsx(segmentButtonClass, workflowType === 'split' ? 'bg-primary-100 text-primary-700 shadow-sm' : 'text-surface-500 hover:text-surface-700')}>Split</button>
+
+                        {/* Execution Mode: Internal Lab vs External Lab */}
+                        <div className="mb-3">
+                            <label className="text-[10px] font-bold text-surface-500 block mb-1">جهة التنفيذ</label>
+                            <div className={segmentWrapClass}>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setExecutionMode('internal');
+                                        setSelectedSupplier('');
+                                    }}
+                                    disabled={isFieldDisabled('supplier_id')}
+                                    className={clsx(
+                                        segmentButtonClass,
+                                        executionMode === 'internal'
+                                            ? 'bg-primary-600 text-white shadow-sm'
+                                            : 'text-surface-600 hover:text-surface-900'
+                                    )}
+                                >
+                                    معمل داخلي
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setExecutionMode('external')}
+                                    disabled={isFieldDisabled('supplier_id')}
+                                    className={clsx(
+                                        segmentButtonClass,
+                                        executionMode === 'external'
+                                            ? 'bg-primary-600 text-white shadow-sm'
+                                            : 'text-surface-600 hover:text-surface-900'
+                                    )}
+                                >
+                                    معمل خارجي
+                                </button>
+                            </div>
                         </div>
 
-                        {workflowType === 'split' ? (
-                            <div className="space-y-3 animate-in slide-in-from-top-2 fade-in">
-                                <select title="Designer" aria-label="Select Designer" className={selectClass} value={designerId} onChange={e => setDesignerId(e.target.value)} disabled={isFieldDisabled('designer_id')}>
-                                    <option value="">اختر المصمم...</option>
-                                    {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                </select>
-                                <select
-                                    title="Supplier (Split)"
-                                    aria-label="Select Supplier for Split Workflow"
-                                    className={selectClass}
-                                    value={selectedSupplier}
-                                    onChange={e => setSelectedSupplier(e.target.value)}
-                                    disabled={isFieldDisabled('supplier_id')}
-                                >
-                                    <option value="">اختر المعمل...</option>
-                                    {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
-                            </div>
+                        {/* Execution Mode Specific Controls */}
+                        {executionMode === 'internal' ? (
+                            <>
+                                {/* Internal Lab: Design is always assigned internally */}
+                                <div className="mb-3 space-y-1">
+                                    <label className="text-[10px] font-bold text-surface-500 block">المصمم المخصص للحالة</label>
+                                    <select
+                                        title="Designer"
+                                        aria-label="Select Designer"
+                                        className={selectClass}
+                                        value={designerId}
+                                        onChange={e => setDesignerId(e.target.value)}
+                                        disabled={isFieldDisabled('designer_id')}
+                                    >
+                                        <option value="">اختر المصمم...</option>
+                                        {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="rounded-lg bg-emerald-50/60 border border-emerald-200/60 p-2 text-center text-xs text-emerald-800 font-medium">
+                                    يتم التصميم والتصنيع بالكامل داخل المعمل
+                                </div>
+
+                                {/* Route Steps Preview (Phase B2) */}
+                                {isLoadingRouteStages && (
+                                    <div className="mt-2 text-center text-[11px] text-surface-400">
+                                        جاري تحميل خطوات المسار…
+                                    </div>
+                                )}
+                                {!isLoadingRouteStages && routeStagesPreview.length > 0 && (
+                                    <div className="mt-2.5 p-2 rounded-lg bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700">
+                                        <span className="text-[10px] font-bold text-surface-500 block mb-1.5">
+                                            خطوات مسار الإنتاج:
+                                        </span>
+                                        <div className="flex items-center gap-1 flex-wrap text-xs">
+                                            {routeStagesPreview.map((stg, idx) => (
+                                                <span key={stg.stageId + '-' + idx} className="inline-flex items-center gap-1">
+                                                    <span className={clsx(
+                                                        "px-2 py-0.5 rounded text-[10px] font-medium border",
+                                                        stg.execution === 'external'
+                                                            ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"
+                                                            : "bg-white text-surface-700 border-surface-200 dark:bg-surface-700 dark:text-surface-200 dark:border-surface-600"
+                                                    )}>
+                                                        {stg.nameAr}
+                                                        {stg.execution === 'external' && <span className="text-[9px] text-amber-600 font-bold mr-1">(خارجي)</span>}
+                                                    </span>
+                                                    {idx < routeStagesPreview.length - 1 && (
+                                                        <span className="text-surface-400 text-[10px]">←</span>
+                                                    )}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         ) : (
-                            <select
-                                title="Supplier (Full)"
-                                aria-label="Select Supplier for Full Lab Workflow"
-                                className={selectClass}
-                                value={selectedSupplier}
-                                onChange={e => setSelectedSupplier(e.target.value)}
-                                disabled={isFieldDisabled('supplier_id')}
-                            >
-                                <option value="">-- معمل داخلي (أفتراضي) --</option>
-                                {visibleSuppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
-                            </select>
+                            <>
+                                {/* External Lab: Workflow Type (Full Lab vs Split) */}
+                                <div className="mb-3">
+                                    <label className="text-[10px] font-bold text-surface-500 block mb-1">نوع سير العمل الخارجي</label>
+                                    <div className={segmentWrapClass}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setWorkflowType('full')}
+                                            disabled={isFieldDisabled('workflow_type')}
+                                            className={clsx(
+                                                segmentButtonClass,
+                                                workflowType === 'full'
+                                                    ? 'bg-primary-100 text-primary-700 shadow-sm'
+                                                    : 'text-surface-500 hover:text-surface-700'
+                                            )}
+                                        >
+                                            حالة كاملة (Full Lab)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setWorkflowType('split')}
+                                            disabled={isFieldDisabled('workflow_type')}
+                                            className={clsx(
+                                                segmentButtonClass,
+                                                workflowType === 'split'
+                                                    ? 'bg-primary-100 text-primary-700 shadow-sm'
+                                                    : 'text-surface-500 hover:text-surface-700'
+                                            )}
+                                        >
+                                            تصميم عندنا (Split)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Designer select when external split workflow */}
+                                {workflowType === 'split' && (
+                                    <div className="mb-3 space-y-1">
+                                        <label className="text-[10px] font-bold text-surface-500 block">المصمم (المسؤول عن التصميم)</label>
+                                        <select
+                                            title="Designer"
+                                            aria-label="Select Designer"
+                                            className={selectClass}
+                                            value={designerId}
+                                            onChange={e => setDesignerId(e.target.value)}
+                                            disabled={isFieldDisabled('designer_id')}
+                                        >
+                                            <option value="">اختر المصمم...</option>
+                                            {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Supplier select for External execution mode */}
+                                <div className="space-y-1 animate-in fade-in">
+                                    <label className="text-[10px] font-bold text-surface-500 block">
+                                        المعمل الخارجي المنفذ <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        title="المعمل الخارجي"
+                                        aria-label="Select External Lab"
+                                        className={clsx(
+                                            selectClass,
+                                            !selectedSupplier && hasTriedSubmit && "border-red-500 bg-red-50/20"
+                                        )}
+                                        value={selectedSupplier}
+                                        onChange={e => setSelectedSupplier(e.target.value)}
+                                        disabled={isFieldDisabled('supplier_id')}
+                                    >
+                                        <option value="">اختر المعمل الخارجي...</option>
+                                        {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                    </select>
+                                    {!selectedSupplier && hasTriedSubmit && (
+                                        <p className="text-[10px] text-red-600 font-bold">يرجى اختيار المعمل الخارجي</p>
+                                    )}
+                                </div>
+                            </>
+                        )}
+
+                        {/* Unrouted items alert for Internal mode */}
+                        {unroutedItems.length > 0 && (
+                            <div className="mt-2.5 rounded-lg border border-amber-200 bg-amber-50/80 p-2.5 text-xs text-amber-800">
+                                <div className="flex items-center gap-1.5 font-bold mb-1 text-amber-900">
+                                    <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                                    <span>تنبيه: خدمات بدون مسار إنتاج مخصص</span>
+                                </div>
+                                <p className="leading-relaxed text-[11px] text-amber-700">
+                                    الخدمة <span className="font-bold">({unroutedItems.map(i => i.serviceType).join('، ')})</span> غير مربوطة بمسار إنتاج مخصص وستعتمد على المسار الافتراضي.
+                                </p>
+                            </div>
                         )}
                     </Card>
 
@@ -1107,7 +1442,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         </div>
 
                         {/* Admin-only: Lab and Designer Cost Split */}
-                        {isAdmin && workflowType === 'split' && (
+                        {isAdmin && effectiveWorkflowType === 'split' && (
                             <div className="mt-4 border-t border-white/10 pt-4">
                                 <div className="mb-4">
                                     <div className="flex items-center justify-between">
@@ -1191,7 +1526,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         )}
 
                         {/* Admin-only: Manual Cost Override (Full Workflow) */}
-                        {isAdmin && workflowType === 'full' && (
+                        {isAdmin && effectiveWorkflowType === 'full' && (
                             <div className="mt-4 border-t border-white/10 pt-4">
                                 <div className="mb-4">
                                     <div className="flex items-center justify-between">
@@ -1263,7 +1598,19 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             </div>
 
                             {!newDoctor.parentId && (
-                                <Input label="العنوان" required placeholder="القاهرة، مصر" value={newDoctor.address} onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })} />
+                                <>
+                                    <Input label="العنوان" required placeholder="القاهرة، مصر" value={newDoctor.address} onChange={e => setNewDoctor({ ...newDoctor, address: e.target.value })} />
+                                    <div>
+                                        <label className="block text-xs font-bold text-surface-600 mb-1">تعليمات دائمة للمعمل (اختياري)</label>
+                                        <textarea
+                                            rows={2}
+                                            placeholder="تعليمات خاصة بالفنيين..."
+                                            className="w-full p-2 border border-surface-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-primary-500/20"
+                                            value={newDoctor.labInstructions}
+                                            onChange={e => setNewDoctor({ ...newDoctor, labInstructions: e.target.value })}
+                                        />
+                                    </div>
+                                </>
                             )}
 
                             <Button onClick={handleAddDoctorFull} className="w-full mt-2">
@@ -1298,6 +1645,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         </div>
                     </Card>
                 </div>
+            )}
+
+            {showSlipPrint && initialData && (
+                <CaseSlipPrint
+                    order={initialData}
+                    doctor={doctors.find(d => d.id === initialData.doctorId)}
+                    onClose={() => setShowSlipPrint(false)}
+                />
             )}
         </form>
     );

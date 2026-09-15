@@ -166,7 +166,11 @@ export default function IssuesReport() {
         return issues.filter(issue => {
             const order = issue.order;
             if (designerFilter !== 'all' && order?.designerId !== designerFilter) return false;
-            if (supplierFilter !== 'all' && order?.supplierId !== supplierFilter) return false;
+            if (supplierFilter === 'internal') {
+                if (order?.supplierId) return false;
+            } else if (supplierFilter !== 'all' && order?.supplierId !== supplierFilter) {
+                return false;
+            }
             return true;
         });
     }, [issues, designerFilter, supplierFilter]);
@@ -245,7 +249,8 @@ export default function IssuesReport() {
                     onChange={(e) => setSupplierFilter(e.target.value)}
                     className="px-3 py-2 border border-surface-200 rounded-lg text-sm bg-white"
                 >
-                    <option value="all">كل المعامل الخارجية</option>
+                    <option value="all">كل المعامل (داخلي وخارجي)</option>
+                    <option value="internal">المعمل الداخلي فقط</option>
                     {suppliers.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -456,7 +461,7 @@ export default function IssuesReport() {
                                     const order = issue.order;
                                     const doctorName = order?.doctorId ? (doctors.find(d => d.id === order.doctorId)?.name || 'غير معروف') : '—';
                                     const designerName = order?.designerId ? (users.find(u => u.id === order.designerId)?.name || 'غير معروف') : '—';
-                                    const supplierName = order?.supplierId ? (suppliers.find(s => s.id === order.supplierId)?.name || 'غير معروف') : '—';
+                                    const supplierName = order?.supplierId ? (suppliers.find(s => s.id === order.supplierId)?.name || 'غير معروف') : 'معمل داخلي';
                                     const orderDesigner = order?.designerId ? users.find(u => u.id === order.designerId) : undefined;
                                     // order.cost bundles the design price for split cases with a per-piece designer.
                                     const labCost = order

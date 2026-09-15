@@ -41,6 +41,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/doctors/retention': ['admin'],
     '/production/my-tasks': ['admin', 'technician', 'production_manager', 'designer'],
     '/production/board': ['admin', 'technician', 'production_manager', 'coordinator'],
+    '/production/machines': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/shadow': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/external': ['admin', 'technician', 'production_manager', 'accountant', 'coordinator'],
     '/inventory': ['admin', 'technician', 'production_manager', 'accountant', 'coordinator'],

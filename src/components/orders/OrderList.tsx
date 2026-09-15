@@ -37,9 +37,16 @@ interface OrderListProps {
     onAccept?: (order: Order) => void;
     onRedo?: (order: Order) => void;
     currentUser?: any; // Avoiding strict type for now to prevent import cycles, but ideally User
+    activeStages?: Record<string, {
+        stageId: string;
+        stageCode: string;
+        stageName: string;
+        status: string;
+        since: string | null;
+    }>;
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, onRedo, currentUser, onExportInvoice }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, onRedo, currentUser, onExportInvoice, activeStages }: OrderListProps) {
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [fullDoctors, setFullDoctors] = useState<any[]>([]); // Store full objects to resolve parent relationships
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
@@ -345,6 +352,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         isHighlighted={highlightedOrderId === order.id}
                         onAccept={onAccept}
                         currentUser={currentUser}
+                        activeStage={activeStages?.[order.id]}
                     />
                 ))
             )}

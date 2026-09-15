@@ -16,10 +16,10 @@ import {
     uploadCaseFile, getAttachments, getSignedUrls,
     ACCEPTED_TYPES, type AttachmentKind, type CaseAttachment,
 } from '../../lib/storage';
-import { Camera, Loader2, FileText } from 'lucide-react';
+import { Camera, Loader2, FileText, X } from 'lucide-react';
 
 interface Props {
-    orderId: string;
+    orderId?: string;
     kind: AttachmentKind;
     /** Ties the file to one step (QC evidence) rather than to the case. */
     stageRunId?: string;
@@ -29,18 +29,39 @@ interface Props {
     /** Opens the camera straight away on a phone or tablet. */
     useCamera?: boolean;
     compact?: boolean;
+    stagedFiles?: File[];
+    onStagedFilesChange?: (files: File[]) => void;
 }
 
 export default function CaseAttachments({
     orderId, kind, stageRunId, canUpload = false, label, useCamera = false, compact = false,
+    stagedFiles = [], onStagedFilesChange,
 }: Props) {
     const [items, setItems] = useState<CaseAttachment[]>([]);
     const [urls, setUrls] = useState<Record<string, string>>({});
+    const [stagedPreviews, setStagedPreviews] = useState<{ file: File; url: string; isPdf: boolean }[]>([]);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
+    // Sync staged previews
+    useEffect(() => {
+        if (!orderId) {
+            const previews = stagedFiles.map(file => ({
+                file,
+                url: URL.createObjectURL(file),
+                isPdf: file.type === 'application/pdf',
+            }));
+            setStagedPreviews(previews);
+
+            return () => {
+                previews.forEach(p => URL.revokeObjectURL(p.url));
+            };
+        }
+    }, [stagedFiles, orderId]);
+
     const load = useCallback(async () => {
+        if (!orderId) return;
         try {
             const rows = await getAttachments(orderId, kind);
             setItems(rows);
@@ -55,6 +76,15 @@ export default function CaseAttachments({
     const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
         if (files.length === 0) return;
+
+        // If no orderId, stage files locally for later upload on save
+        if (!orderId) {
+            if (onStagedFilesChange) {
+                onStagedFilesChange([...stagedFiles, ...files]);
+            }
+            if (inputRef.current) inputRef.current.value = '';
+            return;
+        }
 
         setBusy(true);
         setError(null);
@@ -72,7 +102,15 @@ export default function CaseAttachments({
         }
     };
 
-    if (items.length === 0 && !canUpload) return null;
+    const removeStagedFile = (index: number) => {
+        if (onStagedFilesChange) {
+            const next = [...stagedFiles];
+            next.splice(index, 1);
+            onStagedFilesChange(next);
+        }
+    };
+
+    if (items.length === 0 && stagedFiles.length === 0 && !canUpload) return null;
 
     const size = compact ? 'w-14 h-14' : 'w-20 h-20';
 
@@ -111,6 +149,27 @@ export default function CaseAttachments({
                         </a>
                     );
                 })}
+
+                {/* Staged local previews (before order is saved) */}
+                {stagedPreviews.map((p, idx) => (
+                    <div key={idx} className={`${size} rounded-lg overflow-hidden border border-indigo-300 relative bg-slate-50 group`}>
+                        {p.isPdf ? (
+                            <span className="w-full h-full flex items-center justify-center text-slate-500">
+                                <FileText className="w-6 h-6" />
+                            </span>
+                        ) : (
+                            <img src={p.url} alt={p.file.name} className="w-full h-full object-cover" />
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => removeStagedFile(idx)}
+                            className="absolute top-0.5 right-0.5 bg-red-600/80 hover:bg-red-600 text-white rounded-full p-0.5 shadow-sm"
+                            title="حذف"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
+                    </div>
+                ))}
 
                 {canUpload && (
                     <>

@@ -43,6 +43,7 @@ const Shipments = lazy(() => import('./pages/production/Shipments'));
 const ProductionCostingReport = lazy(() => import('./pages/reports/ProductionCostingReport'));
 const WorkCalendarSettings = lazy(() => import('./pages/settings/WorkCalendarSettings'));
 const ShadowReport = lazy(() => import('./pages/production/ShadowReport'));
+const Machines = lazy(() => import('./pages/production/Machines'));
 import { ThemeProvider } from './context/ThemeContext';
 import { LanguageProvider } from './context/LanguageContext';
 import { ToastProvider } from './context/ToastContext';
@@ -115,6 +116,7 @@ function App() {
                   <Route element={<ProtectedRoute allowedRoles={['admin', 'technician', 'production_manager', 'coordinator']} />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/board" element={<ProductionBoard />} />
+                      <Route path="/production/machines" element={<Machines />} />
                       <Route path="/production/shadow" element={<ShadowReport />} />
                     </Route>
                   </Route>

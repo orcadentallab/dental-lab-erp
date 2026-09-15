@@ -101,34 +101,78 @@ export default function ProductionBoard() {
 
             <div className="flex gap-4 overflow-x-auto pb-4">
                 {columns.map((stage) => {
-                    const items = runs.filter((r) => r.stageId === stage.id);
+                    const sortedItems = [...runs.filter((r) => r.stageId === stage.id)].sort((a, b) => {
+                        // 1. in_progress first
+                        const inProgress = (r: StageRunCard) => (r.status === 'in_progress' ? 0 : 1);
+                        if (inProgress(a) !== inProgress(b)) return inProgress(a) - inProgress(b);
+
+                        // 2. Urgent first
+                        const urgent = (r: StageRunCard) => (r.priority === 'Urgent' ? 0 : 1);
+                        if (urgent(a) !== urgent(b)) return urgent(a) - urgent(b);
+
+                        // 3. nearest delivery date
+                        const due = (r: StageRunCard) => r.deliveryDate ?? '9999-12-31';
+                        if (due(a) !== due(b)) return due(a) < due(b) ? -1 : 1;
+
+                        // 4. oldest queued first
+                        return (a.queuedAt ?? '') < (b.queuedAt ?? '') ? -1 : 1;
+                    });
+
+                    const totalUnits = sortedItems.reduce((sum, r) => sum + (r.unitsIn || 0), 0);
+                    const isOverCapacity = Boolean(stage.dailyCapacityUnits && totalUnits > stage.dailyCapacityUnits);
+
                     return (
-                        <div key={stage.id} className="min-w-[260px] w-[260px] flex-shrink-0">
-                            <div className="flex items-center justify-between mb-2 px-1">
-                                <h2 className="font-bold text-slate-700">{stage.nameAr}</h2>
-                                <span className="text-xs px-2 py-1 rounded-lg bg-slate-100 text-slate-600">
-                                    {items.length}
-                                </span>
+                        <div key={stage.id} className="min-w-[270px] w-[270px] flex-shrink-0">
+                            <div className={`flex items-center justify-between mb-2 px-2 py-1.5 rounded-xl border ${
+                                isOverCapacity ? 'bg-red-50 border-red-200' : 'bg-slate-50/80 border-slate-200'
+                            }`}>
+                                <div>
+                                    <h2 className="font-bold text-slate-800 text-sm">{stage.nameAr}</h2>
+                                    {stage.dailyCapacityUnits ? (
+                                        <div className="text-[10px] text-slate-500 font-semibold">
+                                            السعة: {totalUnits} / {stage.dailyCapacityUnits} وحدة
+                                        </div>
+                                    ) : (
+                                        <div className="text-[10px] text-slate-400 font-medium">
+                                            {totalUnits} وحدة
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    {isOverCapacity && (
+                                        <span className="text-[10px] font-bold text-red-700 bg-red-100 px-1.5 py-0.5 rounded">
+                                            حِمل زائد
+                                        </span>
+                                    )}
+                                    <span className="text-xs px-2 py-0.5 rounded-lg bg-white border border-slate-200 font-bold text-slate-700">
+                                        {sortedItems.length}
+                                    </span>
+                                </div>
                             </div>
 
                             <div className="space-y-2">
-                                {items.length === 0 && (
+                                {sortedItems.length === 0 && (
                                     <div className="text-xs text-slate-400 text-center py-6 border border-dashed border-slate-200 rounded-xl">
                                         فاضية
                                     </div>
                                 )}
 
-                                {items.map((r) => {
+                                {sortedItems.map((r) => {
                                     const isStale = (ageHours(r.queuedAt) ?? 0) > STALE_HOURS;
+                                    const isExternal = r.execution === 'external';
                                     return (
                                         <div
                                             key={r.id}
-                                            className={`bg-white rounded-xl border p-3 space-y-1 ${
-                                                isStale ? 'border-amber-400' : 'border-slate-200'
+                                            className={`rounded-xl border p-3 space-y-1.5 shadow-sm transition-all ${
+                                                isExternal
+                                                    ? 'bg-sky-50/30 border-sky-200'
+                                                    : isStale
+                                                    ? 'bg-amber-50/20 border-amber-300'
+                                                    : 'bg-white border-slate-200'
                                             }`}
                                         >
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-bold text-slate-800 text-sm">
+                                                <span className="font-bold text-slate-900 text-sm">
                                                     {r.caseId}
                                                 </span>
                                                 <span className={`text-xs ${isStale ? 'text-amber-700 font-bold' : 'text-slate-400'}`}>
@@ -136,31 +180,37 @@ export default function ProductionBoard() {
                                                 </span>
                                             </div>
 
-                                            <div className="text-xs text-slate-500 truncate">
-                                                د. {r.doctorName} · {r.unitsIn} وحدة
+                                            <div className="text-xs text-slate-600 truncate">
+                                                د. {r.doctorName} · <span className="font-bold text-slate-800">{r.unitsIn} وحدة</span>
                                             </div>
+
+                                            {r.deliveryDate && (
+                                                <div className="text-[11px] text-slate-500 font-mono">
+                                                    التسليم: {new Date(r.deliveryDate).toLocaleDateString('ar-EG')}
+                                                </div>
+                                            )}
 
                                             <div className="flex flex-wrap gap-1 pt-1">
                                                 {r.priority === 'Urgent' && (
-                                                    <Tag className="bg-red-100 text-red-700">مستعجل</Tag>
+                                                    <Tag className="bg-red-100 text-red-700 font-bold">مستعجل</Tag>
                                                 )}
                                                 {r.isRework && (
                                                     <Tag className="bg-amber-100 text-amber-800">إعادة</Tag>
                                                 )}
                                                 {r.status === 'in_progress' && (
-                                                    <Tag className="bg-emerald-100 text-emerald-700">
+                                                    <Tag className="bg-emerald-100 text-emerald-700 font-bold">
                                                         {r.assigneeName ?? 'شغّالة'}
                                                     </Tag>
                                                 )}
-                                                {r.execution === 'external' && (
-                                                    <Tag className="bg-sky-100 text-sky-800">
-                                                        <Building2 className="w-3 h-3 inline" />{' '}
-                                                        {r.supplierName ?? 'خارجي'}
+                                                {isExternal && (
+                                                    <Tag className="bg-sky-100 text-sky-800 font-bold">
+                                                        <Building2 className="w-3 h-3 inline mr-0.5" />
+                                                        {r.supplierName ? `معمل: ${r.supplierName}` : 'معمل خارجي'}
                                                     </Tag>
                                                 )}
                                                 {r.blockedReason && (
-                                                    <Tag className="bg-orange-100 text-orange-800">
-                                                        <AlertTriangle className="w-3 h-3 inline" /> موقوفة
+                                                    <Tag className="bg-orange-100 text-orange-800 font-bold">
+                                                        <AlertTriangle className="w-3 h-3 inline mr-0.5" /> موقوفة
                                                     </Tag>
                                                 )}
                                             </div>

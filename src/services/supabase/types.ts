@@ -15,6 +15,7 @@ export interface DbDoctor {
     parent_id?: string | null;
     has_branches?: boolean;
     branches?: { id: string; name: string; address: string; phone: string }[] | null;
+    lab_instructions?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -105,6 +106,7 @@ export interface DbOrder {
     // WF-1: shadow workflow columns (added by migration 086).
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    route_override_id?: string | null;
 }
 
 export interface DbTransaction {

@@ -59,10 +59,13 @@ export const ProductionCostingReport: React.FC = () => {
   const [overheadRuns, setOverheadRuns] = useState<OverheadAllocationRun[]>([]);
   const [stages, setStages] = useState<Array<{ id: string; name_ar: string }>>([]);
 
-  // Modal: Add Labor Rate
+  // Modal: Add Rate
   const [isRateModalOpen, setIsRateModalOpen] = useState(false);
+  const [technicians, setTechnicians] = useState<{ id: string; name: string }[]>([]);
   const [newStageId, setNewStageId] = useState('');
+  const [newEmployeeId, setNewEmployeeId] = useState('');
   const [newRate, setNewRate] = useState('');
+  const [newEffectiveFrom, setNewEffectiveFrom] = useState(() => new Date().toISOString().split('T')[0]);
 
   // Modal: Freeze Overhead
   const [isOverheadModalOpen, setIsOverheadModalOpen] = useState(false);
@@ -85,14 +88,16 @@ export const ProductionCostingReport: React.FC = () => {
         const res = await costingService.getTechnicianMaterialEfficiency(startDate, endDate);
         setEfficiencyReport(res);
       } else if (activeTab === 'settings') {
-        const [ratesRes, overheadRes, stagesRes] = await Promise.all([
+        const [ratesRes, overheadRes, stagesRes, usersRes] = await Promise.all([
           costingService.getLaborRates(),
           costingService.getOverheadRuns(),
-          supabase.from('production_stages').select('id, name_ar').order('sequence')
+          supabase.from('production_stages').select('id, name_ar').order('sequence'),
+          supabase.from('users').select('id, name, role').order('name')
         ]);
         setLaborRates(ratesRes);
         setOverheadRuns(overheadRes);
         setStages(stagesRes.data || []);
+        setTechnicians((usersRes.data || []).map(u => ({ id: u.id, name: u.name })));
       }
     } catch (err: unknown) {
       console.error('Failed to load costing report data:', err);
@@ -147,11 +152,18 @@ export const ProductionCostingReport: React.FC = () => {
     if (!newStageId || !newRate) return;
 
     try {
-      await costingService.setLaborRate(newStageId, parseFloat(newRate));
+      await costingService.setLaborRate(
+        newStageId,
+        parseFloat(newRate),
+        newEmployeeId || null,
+        newEffectiveFrom || undefined
+      );
       toastSuccess('تم حفظ أجر المرحلة بنجاح');
       setIsRateModalOpen(false);
       setNewStageId('');
+      setNewEmployeeId('');
       setNewRate('');
+      setNewEffectiveFrom(new Date().toISOString().split('T')[0]);
       loadTabData();
     } catch (err: unknown) {
       console.error('Failed to save rate:', err);
@@ -823,6 +835,23 @@ export const ProductionCostingReport: React.FC = () => {
               </div>
 
               <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  الفني (اختياري)
+                </label>
+                <select
+                  value={newEmployeeId}
+                  onChange={e => setNewEmployeeId(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl"
+                >
+                  <option value="">الافتراضي لجميع الفنيين</option>
+                  {technicians.map(tech => (
+                    <option key={tech.id} value={tech.id}>{tech.name}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">اتركه كـ «الافتراضي» إذا كان الأجر موحداً لكافة الفنيين</p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">الأجر للوحدة الواحدة (ج.م)</label>
                 <input
                   type="number"
@@ -832,6 +861,16 @@ export const ProductionCostingReport: React.FC = () => {
                   placeholder="25.00"
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl"
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">ساري من تاريخ</label>
+                <DateField
+                  value={newEffectiveFrom}
+                  onChange={setNewEffectiveFrom}
+                  ariaLabel="تاريخ السريان"
+                  clearable={false}
                 />
               </div>
 

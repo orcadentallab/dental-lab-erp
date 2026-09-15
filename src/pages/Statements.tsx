@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { isDateInOpenRange } from '../utils/dateRange';
+import { supabase } from '../lib/supabase';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,19 +181,44 @@ export default function StatementsPage() {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     });
     const [selectedBillingSettings, setSelectedBillingSettings] = useState<EntityBillingSettings | null>(null);
+    const [externalSteps, setExternalSteps] = useState<Array<{
+        id: string;
+        supplierId: string;
+        agreedCost: number;
+        date: string;
+        units: number;
+        stageName: string;
+        caseId: string;
+        patientName: string;
+        orderId: string;
+    }>>([]);
 
     // ─ Load data
     useEffect(() => {
         const load = async () => {
             setLoading(true);
             try {
-                const [o, t, doc, sup, usr, adj] = await Promise.all([
+                const [o, t, doc, sup, usr, adj, ewoRes] = await Promise.all([
                     db.getOrdersForFinanceSummary(),
                     db.getTransactionsForFinanceSummary(),
                     db.getDoctors(),          // ALL doctors including children (parentId set)
                     db.getSuppliers(),
                     db.getUsers(),
                     financeService.getAdjustments(),
+                    supabase
+                        .from('external_work_orders')
+                        .select(`
+                            id, stage_run_id, supplier_id, agreed_cost, sent_at, returned_at, status, units,
+                            production_stage_runs:stage_run_id (
+                                id, name_override,
+                                production_stages:stage_id ( name_ar ),
+                                production_jobs:job_id (
+                                    order_id,
+                                    orders:order_id ( id, case_id, patient_name, is_deleted )
+                                )
+                            )
+                        `)
+                        .in('status', ['returned'])
                 ]);
                 setOrders(Array.isArray(o) ? o as Order[] : []);
                 setTransactions(Array.isArray(t) ? t as Transaction[] : []);
@@ -200,6 +226,37 @@ export default function StatementsPage() {
                 setSuppliers(Array.isArray(sup) ? sup : []);
                 setDesigners((Array.isArray(usr) ? usr : []).filter(isDesignerUser));
                 setAdjustments(Array.isArray(adj) ? adj : []);
+
+                const rawEwo = ewoRes.data || [];
+                const parsedSteps: Array<{
+                    id: string;
+                    supplierId: string;
+                    agreedCost: number;
+                    date: string;
+                    units: number;
+                    stageName: string;
+                    caseId: string;
+                    patientName: string;
+                    orderId: string;
+                }> = [];
+                for (const row of rawEwo) {
+                    const run = row.production_stage_runs as any;
+                    const job = run?.production_jobs as any;
+                    const order = job?.orders as any;
+                    if (order?.is_deleted) continue;
+                    parsedSteps.push({
+                        id: row.id,
+                        supplierId: row.supplier_id,
+                        agreedCost: Number(row.agreed_cost) || 0,
+                        date: (row.returned_at || row.sent_at || '').split('T')[0],
+                        units: row.units || 1,
+                        stageName: run?.name_override || run?.production_stages?.name_ar || 'مرحلة خارجية',
+                        caseId: order?.case_id || '—',
+                        patientName: order?.patient_name || '—',
+                        orderId: order?.id || run?.job_id || row.id
+                    });
+                }
+                setExternalSteps(parsedSteps);
             } catch (e) {
                 console.error('Statements load error:', e);
             } finally {
@@ -353,6 +410,12 @@ export default function StatementsPage() {
                 workMap.set(o.supplierId, (workMap.get(o.supplierId) ?? 0) + cost);
                 countMap.set(o.supplierId, (countMap.get(o.supplierId) ?? 0) + 1);
             }
+            for (const step of externalSteps) {
+                if (!step.supplierId) continue;
+                if (!inRange(step.date)) continue;
+                workMap.set(step.supplierId, (workMap.get(step.supplierId) ?? 0) + step.agreedCost);
+                countMap.set(step.supplierId, (countMap.get(step.supplierId) ?? 0) + 1);
+            }
             for (const t of transactions) {
                 if ((t.entityType !== 'supplier' && t.entityType) || t.type !== 'expense' || !t.entityId) continue;
                 if (!inRange(t.date)) continue;
@@ -408,7 +471,7 @@ export default function StatementsPage() {
         }
 
         return [];
-    }, [loading, activeTab, orders, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, showAllOrders]);
+    }, [loading, activeTab, orders, externalSteps, transactions, adjustments, primaryDoctors, suppliers, designers, dateRange, doctorParentById, showAllOrders]);
 
     const totalBalance = useMemo(() => summaries.reduce((s, e) => s + e.balance, 0), [summaries]);
     const filtered = useMemo(() => {
@@ -493,6 +556,19 @@ export default function StatementsPage() {
                     status: o.status
                 });
             }
+            for (const step of externalSteps) {
+                if (step.supplierId !== selectedId) continue;
+                if (!inRange(step.date)) continue;
+                lines.push({
+                    id: step.id,
+                    date: step.date,
+                    description: `حالة #${step.caseId} — ${step.patientName} (خطوة خارجية: ${step.stageName})`,
+                    type: 'debit',
+                    amount: step.agreedCost,
+                    services: `خطوة خارجية (${step.units} وحدة)`,
+                    status: 'مكتملة'
+                });
+            }
             for (const t of transactions) {
                 if ((t.entityType !== 'supplier' && t.entityType) || t.type !== 'expense' || t.entityId !== selectedId) continue;
                 if (!inRange(t.date)) continue;
@@ -552,7 +628,7 @@ export default function StatementsPage() {
             running += l.type === 'debit' ? l.amount : -l.amount;
             return { ...l, runningBalance: running };
         });
-    }, [selectedId, activeTab, viewMode, orders, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, showAllOrders, getDoctorStatementRedoDisplay]);
+    }, [selectedId, activeTab, viewMode, orders, externalSteps, transactions, adjustments, doctorParentById, doctorById, designers, dateRange, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Invoice lines (فاتورة شهرية) ─────────────────────────────────────────
 
@@ -653,6 +729,22 @@ export default function StatementsPage() {
                     });
                 }
             }
+            for (const step of externalSteps) {
+                if (step.supplierId !== selectedId) continue;
+                if (step.date < monthStart) {
+                    openingDebit += step.agreedCost;
+                } else if (step.date <= monthEnd) {
+                    monthOrders.push({
+                        id: step.id,
+                        date: step.date,
+                        description: `حالة #${step.caseId} — ${step.patientName} (خطوة خارجية: ${step.stageName})`,
+                        type: 'debit',
+                        amount: step.agreedCost,
+                        services: `خطوة خارجية (${step.units} وحدة)`,
+                        status: 'مكتملة'
+                    });
+                }
+            }
             for (const t of transactions) {
                 if ((t.entityType !== 'supplier' && t.entityType) || t.type !== 'expense' || t.entityId !== selectedId) continue;
                 const tDate = t.date.split('T')[0];
@@ -723,7 +815,7 @@ export default function StatementsPage() {
         const totalDue = openingBalance + monthTotal;
 
         return { openingBalance, monthOrders, monthTotal, totalDue, monthStart, monthEnd };
-    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
+    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, externalSteps, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Selected entity info ───────────────────────────────────────────────────
 

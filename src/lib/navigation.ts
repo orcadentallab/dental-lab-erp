@@ -84,6 +84,16 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             path: '/production/external', capability: 'view_external_work',
             aliases: ['معمل خارجي', 'outsourced', 'external lab'],
         },
+        {
+            id: 'production.machines', labelAr: 'الأجهزة والأعطال', labelEn: 'Machines & Downtime',
+            path: '/production/machines', capability: 'view_production',
+            aliases: ['الأجهزة', 'الماكينات', 'الأعطال', 'الصيانة', 'machines', 'downtime'],
+        },
+        {
+            id: 'production.reports', labelAr: 'تقارير الإنتاج', labelEn: 'Production Reports',
+            path: '/designer-stats', capability: 'view_production_reports',
+            aliases: ['تقارير الإنتاج', 'الطاقة والاختناقات', 'إنتاجية المعمل', 'production reports'],
+        },
     ],
     // Finance used to be one page with an internal tab bar (Overview) that
     // multiplexed six unrelated screens behind a single route. Each screen

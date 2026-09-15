@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db, type User, type EmployeeAdvance, type EmployeeCustody, type EmployeeCommission, type Transaction } from '../services/db';
 import { financeService, type Cashbox } from '../services/financeService';
+import { capacityService } from '../services/supabase/capacityService';
 import { getEmployeeFinanceStats } from '../utils/employeeFinance';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -39,6 +40,11 @@ export default function EmployeeDetail() {
     const [cashboxes, setCashboxes] = useState<Cashbox[]>([]);
     // Reported alongside the salary, never inside it -- see the sales panel.
     const [monthlySales, setMonthlySales] = useState({ count: 0, value: 0 });
+    const [technicianProductivity, setTechnicianProductivity] = useState<{
+        runs: number;
+        units: number;
+    } | null>(null);
+    const [pieceRateRate, setPieceRateRate] = useState<number>(10);
     const [isLoading, setIsLoading] = useState(true);
 
     const [selectedMonth, setSelectedMonth] = useState(monthParam || new Date().toISOString().slice(0, 7)); // YYYY-MM
@@ -172,6 +178,38 @@ export default function EmployeeDetail() {
         db.getRepresentativeMonthlySales(employee.id, selectedMonth)
             .then(s => { if (!cancelled) setMonthlySales(s); })
             .catch(() => { if (!cancelled) setMonthlySales({ count: 0, value: 0 }); });
+        return () => { cancelled = true; };
+    }, [employee, selectedMonth]);
+
+    // Technician completed units and stages for the selected month (Piece-rate / productivity)
+    useEffect(() => {
+        let cancelled = false;
+        if (!employee || employee.role !== 'technician') {
+            setTechnicianProductivity(null);
+            return;
+        }
+        const [year, month] = selectedMonth.split('-');
+        const lastDay = new Date(Number(year), Number(month), 0).getDate();
+        const startDate = `${selectedMonth}-01`;
+        const endDate = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+
+        capacityService.getTeamProductivity(startDate, endDate)
+            .then(rep => {
+                if (cancelled) return;
+                const member = rep.team_productivity?.find(m => m.user_id === employee.id);
+                if (member) {
+                    setTechnicianProductivity({
+                        runs: member.total_runs_completed || 0,
+                        units: member.total_units_passed || 0,
+                    });
+                } else {
+                    setTechnicianProductivity({ runs: 0, units: 0 });
+                }
+            })
+            .catch((err) => {
+                console.warn('[EmployeeDetail] failed to load technician productivity', err);
+                if (!cancelled) setTechnicianProductivity(null);
+            });
         return () => { cancelled = true; };
     }, [employee, selectedMonth]);
 
@@ -801,6 +839,74 @@ export default function EmployeeDetail() {
                                 القيمة دي إجمالي أسعار الحالات، من غير الملغي والمرفوض معمليًا.
                                 السيستم مش بيحسب عمولة من الأرقام دي — بتبدأ صفر، وتتحدّد يدويًا
                                 من زرار العمولة وساعتها بتتضاف للراتب.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Technician piece-rate production for the month:
+                        Shows completed runs & units. Optional and manually editable:
+                        can add a bonus/incentive with an agreed rate per unit. */}
+                    {employee.role === 'technician' && (
+                        <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold text-indigo-900 flex items-center gap-1.5">
+                                    <Award className="w-4 h-4 text-indigo-600" />
+                                    إنتاج القطعة لشهر {selectedMonth}
+                                </span>
+                                <span className="text-xs text-indigo-600 bg-indigo-100/70 px-2 py-0.5 rounded-full font-medium">
+                                    خطوات منجزة
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-sm pt-1">
+                                <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                                    <span className="text-xs text-gray-500 block">المراحل المكتملة</span>
+                                    <span className="text-base font-bold text-gray-900">
+                                        {technicianProductivity ? technicianProductivity.runs : '...'} مرحلة
+                                    </span>
+                                </div>
+                                <div className="bg-white p-2 rounded-lg border border-indigo-100">
+                                    <span className="text-xs text-gray-500 block">الوحدات السليمة</span>
+                                    <span className="text-base font-bold text-indigo-700">
+                                        {technicianProductivity ? technicianProductivity.units : '...'} وحدة
+                                    </span>
+                                </div>
+                            </div>
+
+                            {isAdminOrAccountant && technicianProductivity && technicianProductivity.units > 0 && (
+                                <div className="pt-2 border-t border-indigo-100 flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                                        <span>سعر الوحدة:</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.5"
+                                            value={pieceRateRate}
+                                            onChange={(e) => setPieceRateRate(Number(e.target.value))}
+                                            className="w-16 px-1.5 py-1 border border-indigo-200 rounded bg-white text-center font-bold text-indigo-900"
+                                            placeholder="ج/وحدة"
+                                        />
+                                        <span>= <b>{(pieceRateRate * technicianProductivity.units).toLocaleString()} ج</b></span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setAdjustmentType('bonus');
+                                            setNewAdjustment({
+                                                amount: String(pieceRateRate * technicianProductivity.units),
+                                                description: `حافز إنتاج قطعة لشهر ${selectedMonth} (${technicianProductivity.units} وحدة × ${pieceRateRate} ج)`,
+                                            });
+                                            setIsAdjustmentModalOpen(true);
+                                        }}
+                                        className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-md font-bold transition-colors shadow-sm"
+                                    >
+                                        إدراج كحافز في الراتب
+                                    </button>
+                                </div>
+                            )}
+
+                            <p className="text-[11px] text-gray-500 leading-4">
+                                يُحسب عدد الوحدات تلقائياً من مهام الإنتاج المسلّمة بنجاح في هذا الشهر. الإدراج اختياري وقابل للتعديل يدوياً قبل الاعتماد.
                             </p>
                         </div>
                     )}

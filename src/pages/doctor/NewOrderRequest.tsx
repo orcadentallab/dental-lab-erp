@@ -8,6 +8,8 @@ import { Card } from '../../components/ui/Card';
 import { Box, Plus, Trash2, Link as LinkIcon, Image, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
+import CaseAttachments from '../../components/orders/CaseAttachments';
+import { uploadCaseFilesBatch } from '../../lib/storage';
 
 interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
     teethNumbers: string;
@@ -30,6 +32,7 @@ export default function NewOrderRequest() {
     const [stlUrl, setStlUrl] = useState('');
     const [imagesUrl, setImagesUrl] = useState('');
     const [instructions, setInstructions] = useState('');
+    const [stagedInstructionFiles, setStagedInstructionFiles] = useState<File[]>([]);
 
     // Items
     const [items, setItems] = useState<FormOrderItem[]>([{ serviceType: '', teethNumbers: '', price: 0 }]);
@@ -110,7 +113,7 @@ export default function NewOrderRequest() {
 
             const orderTotal = calculateTotal();
 
-            await db.createMyDoctorOrderRequest({
+            const createdOrderId = await db.createMyDoctorOrderRequest({
                 patientName,
                 items: items.map(i => {
                     const service = services.find(s => s.name === i.serviceType);
@@ -127,6 +130,18 @@ export default function NewOrderRequest() {
                 deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default 3 days
                 totalPrice: orderTotal,
             });
+
+            if (createdOrderId && stagedInstructionFiles.length > 0) {
+                try {
+                    await uploadCaseFilesBatch(stagedInstructionFiles, {
+                        orderId: createdOrderId,
+                        kind: 'instruction',
+                    });
+                } catch (attachErr) {
+                    console.error('Failed to upload staged instruction attachments:', attachErr);
+                }
+            }
+
             toastSuccess('تم إرسال الطلب بنجاح. سيتم مراجعته من قبل المعمل.');
             navigate('/doctor/my-orders');
         } catch (error) {
@@ -266,10 +281,17 @@ export default function NewOrderRequest() {
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-2">ملاحظات إضافية</label>
                             <textarea
-                                className="w-full h-32 p-3 border border-gray-200 rounded-lg resize-none outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm"
+                                className="w-full h-32 p-3 border border-gray-200 rounded-lg resize-none outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm mb-3"
                                 placeholder="أي تفاصيل إضافية للمعمل..."
                                 value={instructions}
                                 onChange={e => setInstructions(e.target.value)}
+                            />
+                            <CaseAttachments
+                                kind="instruction"
+                                canUpload
+                                stagedFiles={stagedInstructionFiles}
+                                onStagedFilesChange={setStagedInstructionFiles}
+                                label="صور ومرفقات مع الحالة (معاينة قبل الإرسال)"
                             />
                         </div>
                     </div>

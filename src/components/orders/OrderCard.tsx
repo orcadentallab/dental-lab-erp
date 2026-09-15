@@ -52,10 +52,28 @@ interface OrderCardProps {
     onDelete?: (order: Order) => void;
     isHighlighted?: boolean;
     onAccept?: (order: Order) => void;
-    // onPrint removed
     onExportInvoice?: (order: Order) => void;
+    activeStage?: {
+        stageId: string;
+        stageCode: string;
+        stageName: string;
+        status: string;
+        since: string | null;
+    };
 
     currentUser?: any;
+}
+
+function formatStageDuration(since: string | null): string {
+    if (!since) return '';
+    const diffMs = Date.now() - new Date(since).getTime();
+    if (diffMs < 0) return '';
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins} د`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} س`;
+    const days = Math.floor(hours / 24);
+    return `${days} يوم`;
 }
 
 function OrderCard({
@@ -81,6 +99,7 @@ function OrderCard({
     onRedo,
     // onPrint removed
     onExportInvoice,
+    activeStage,
 
     currentUser
 }: OrderCardProps) {
@@ -539,11 +558,30 @@ function OrderCard({
                                     <div className="flex items-center gap-1 flex-wrap mt-1">
                                         <ProductionStatusBadge status={getEffectiveProductionStatus(order)} />
                                         <IssueStateBadge state={getEffectiveIssueState(order)} />
-                                        <CaseLocationChip location={getCaseLocation(
-                                            getEffectiveProductionStatus(order),
-                                            getEffectiveIssueState(order),
-                                            { workflowType: order.workflowType, supplierId: order.supplierId }
-                                        )} />
+                                        <CaseLocationChip
+                                            location={getCaseLocation(
+                                                getEffectiveProductionStatus(order),
+                                                getEffectiveIssueState(order),
+                                                { workflowType: order.workflowType, supplierId: order.supplierId }
+                                            )}
+                                            stageName={activeStage?.stageName}
+                                            stageSince={formatStageDuration(activeStage?.since ?? null)}
+                                        />
+                                        {activeStage && (
+                                            <span
+                                                className={clsx(
+                                                    "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border",
+                                                    activeStage.status === 'in_progress'
+                                                        ? "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
+                                                        : activeStage.status === 'waiting_external'
+                                                        ? "bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+                                                        : "bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800"
+                                                )}
+                                                title={`مرحلة الإنتاج الحالية: ${activeStage.stageName}`}
+                                            >
+                                                {activeStage.stageName}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>

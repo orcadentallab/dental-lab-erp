@@ -38,6 +38,10 @@ const EVENT_LABELS: Record<string, string> = {
     order_reopened: 'تم إعادة فتح الأوردر',
     issue_state_corrected: 'تم تصحيح حالة المشكلة',
     delivery_date_repaired: 'تم تصحيح تاريخ التسليم',
+    stage_started: 'بدء مرحلة إنتاج',
+    stage_completed: 'اكتمال مرحلة إنتاج',
+    stage_failed: 'رسوب في مرحلة إنتاج',
+    stage_blocked: 'تعطّل مرحلة إنتاج',
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -47,6 +51,9 @@ const ROLE_LABELS: Record<string, string> = {
     designer: 'مصمم',
     lab: 'معمل خارجي',
     doctor: 'طبيب',
+    technician: 'فني معمل',
+    production_manager: 'مدير إنتاج',
+    coordinator: 'منسق عام',
 };
 
 const SEVERITY_STYLES = {

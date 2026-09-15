@@ -100,6 +100,17 @@ export async function uploadCaseFile(
     return toAttachment(data);
 }
 
+/**
+ * Uploads multiple files in parallel for an order (e.g. after newly creating an order).
+ */
+export async function uploadCaseFilesBatch(
+    files: File[],
+    opts: { orderId: string; kind: AttachmentKind; stageRunId?: string },
+): Promise<CaseAttachment[]> {
+    if (!files.length) return [];
+    return Promise.all(files.map(f => uploadCaseFile(f, opts)));
+}
+
 export async function getAttachments(
     orderId: string,
     kind?: AttachmentKind,

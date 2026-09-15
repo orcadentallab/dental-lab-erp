@@ -18,13 +18,16 @@ import { useAuth } from '../../context/AuthContext';
 import { refreshNavBadges } from '../../hooks/useNavBadges';
 import { useToast } from '../../context/ToastContext';
 import {
+    Disc, ChevronUp, ChevronDown, RefreshCw, Layers, CheckCircle2, Play, Star, Clock, Check
+} from 'lucide-react';
+import {
     getMyTasks, startStageRun, completeStageRun, blockStageRun,
     type StageRunCard, type BlockReason,
 } from '../../services/supabase/production';
 import { ISSUE_CAUSE } from '../../constants/issueCauses';
 import CaseAttachments from '../../components/orders/CaseAttachments';
-import { Play, Check, RefreshCw, Clock, Star, Layers, Disc, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { materialService, type MaterialBatch } from '../../services/supabase/materialService';
+import { getMachines, type Machine } from '../../services/supabase/machines';
 
 const BLOCK_REASONS: { code: BlockReason; label: string }[] = [
     { code: 'machine_down', label: 'الجهاز واقف' },
@@ -60,10 +63,13 @@ export default function MyTasks() {
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState<string | null>(null);
     const [failFor, setFailFor] = useState<StageRunCard | null>(null);
+    const [failedUnitsCount, setFailedUnitsCount] = useState<number>(1);
     const [blockFor, setBlockFor] = useState<StageRunCard | null>(null);
     const [openBatches, setOpenBatches] = useState<MaterialBatch[]>([]);
     const [sealedBatches, setSealedBatches] = useState<MaterialBatch[]>([]);
     const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
+    const [machines, setMachines] = useState<Machine[]>([]);
+    const [pickMachineFor, setPickMachineFor] = useState<{ task: StageRunCard; availableMachines: Machine[] } | null>(null);
 
     const loadBatches = useCallback(async () => {
         try {
@@ -78,11 +84,13 @@ export default function MyTasks() {
     const load = useCallback(async () => {
         if (!user?.id) return;
         try {
-            const [taskList] = await Promise.all([
+            const [taskList, machineList] = await Promise.all([
                 getMyTasks(user.id),
+                getMachines().catch((): Machine[] => []),
                 loadBatches()
             ]);
             setTasks(taskList);
+            setMachines(machineList);
             refreshNavBadges();
         } catch (e) {
             console.error('[MyTasks] load failed', e);
@@ -133,6 +141,30 @@ export default function MyTasks() {
         } finally {
             setBusyId(null);
         }
+    };
+
+    const handleStartTask = (t: StageRunCard) => {
+        // Find active machines configured for this stage
+        const stageMachines = machines.filter(m => m.stageId === t.stageId && m.isActive && m.status !== 'retired');
+
+        // Rule 1: 0 machines -> start directly without any prompt (0 extra clicks)
+        if (stageMachines.length === 0) {
+            void run(t.id, () => startStageRun(t.id), 'بدأت الشغل');
+            return;
+        }
+
+        // Rule 2: exactly 1 machine -> auto-assign machine_id (0 extra clicks)
+        if (stageMachines.length === 1) {
+            const onlyMachine = stageMachines[0];
+            if (onlyMachine.status === 'down') {
+                toastError(`تنبيه: الجهاز "${onlyMachine.nameAr}" مسجل كمتوقف/معطل حالياً!`);
+            }
+            void run(t.id, () => startStageRun(t.id, onlyMachine.id), `بدأت الشغل (${onlyMachine.nameAr})`);
+            return;
+        }
+
+        // Rule 3: > 1 machine -> prompt selection so technician taps the one in use
+        setPickMachineFor({ task: t, availableMachines: stageMachines });
     };
 
     if (loading) {
@@ -295,6 +327,13 @@ export default function MyTasks() {
                                     {t.services.length > 0 && <span>{t.services.join('، ')}</span>}
                                 </div>
 
+                                {t.doctorLabInstructions && (
+                                    <div className="text-xs text-indigo-900 bg-indigo-50 border border-indigo-100 rounded-lg p-2 mt-1">
+                                        <span className="font-bold block mb-0.5">تعليمات الطبيب الدائمة للمعمل:</span>
+                                        {t.doctorLabInstructions}
+                                    </div>
+                                )}
+
                                 {t.instructions && (
                                     <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-2 mt-1">
                                         {t.instructions}
@@ -355,7 +394,7 @@ export default function MyTasks() {
                                 {t.status === 'ready' && (
                                     <button
                                         disabled={busyId === t.id}
-                                        onClick={() => void run(t.id, () => startStageRun(t.id), 'بدأت الشغل')}
+                                        onClick={() => handleStartTask(t)}
                                         className="flex items-center justify-center gap-2 px-5 py-4 rounded-xl bg-brand-blue text-white font-bold text-lg disabled:opacity-50"
                                     >
                                         <Play className="w-5 h-5" /> ابدأ
@@ -372,7 +411,10 @@ export default function MyTasks() {
                                             <Check className="w-5 h-5" /> خلصت
                                         </button>
                                         <button
-                                            onClick={() => setFailFor(t)}
+                                            onClick={() => {
+                                                setFailFor(t);
+                                                setFailedUnitsCount(1);
+                                            }}
                                             className="px-4 py-2 rounded-xl border border-amber-300 text-amber-800 text-sm"
                                         >
                                             فيه وحدة باظت
@@ -395,6 +437,29 @@ export default function MyTasks() {
             {/* The one mandatory input in the whole flow: why a unit failed. */}
             {failFor && (
                 <Modal title={`إيه اللي حصل في ${failFor.caseId}؟`} onClose={() => setFailFor(null)}>
+                    {failFor.unitsIn > 1 && (
+                        <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                                عدد الوحدات التالفة / الراسبة (من إجمالي {failFor.unitsIn} وحدة):
+                            </label>
+                            <div className="flex items-center gap-3">
+                                <input
+                                    type="number"
+                                    min={1}
+                                    max={failFor.unitsIn}
+                                    value={failedUnitsCount}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value, 10);
+                                        setFailedUnitsCount(isNaN(val) ? 1 : Math.min(failFor.unitsIn, Math.max(1, val)));
+                                    }}
+                                    className="w-24 px-3 py-1.5 text-center text-sm font-bold bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                />
+                                <span className="text-xs text-slate-500">
+                                    (الوحدات السليمة التي ستمر: {Math.max(0, failFor.unitsIn - failedUnitsCount)})
+                                </span>
+                            </div>
+                        </div>
+                    )}
                     <p className="text-sm text-slate-500 mb-3">
                         اختار السبب — ده الرقم اللي هيقول لنا نصلّح إيه.
                     </p>
@@ -404,11 +469,13 @@ export default function MyTasks() {
                                 key={code}
                                 onClick={() => {
                                     const target = failFor;
+                                    const actualFailed = target.unitsIn > 1 ? Math.min(target.unitsIn, Math.max(1, failedUnitsCount)) : 1;
+                                    const actualPassed = Math.max(0, target.unitsIn - actualFailed);
                                     setFailFor(null);
                                     void run(target.id,
                                         () => completeStageRun(target.id, {
-                                            unitsPassed: Math.max(target.unitsIn - 1, 0),
-                                            unitsFailed: 1,
+                                            unitsPassed: actualPassed,
+                                            unitsFailed: actualFailed,
                                             causeCode: code,
                                         }),
                                         'اتسجّلت وراحت لإعادة الشغل');
@@ -444,6 +511,50 @@ export default function MyTasks() {
                     <p className="text-xs text-slate-400 mt-3">
                         وقت الوقفة بسبب عطل بيتحسب على الجهاز، مش عليك.
                     </p>
+                </Modal>
+            )}
+
+            {/* Quick machine selector when stage has multiple active machines */}
+            {pickMachineFor && (
+                <Modal title={`اختر الجهاز المستخدم لمرحلة ${pickMachineFor.task.stageNameAr}`} onClose={() => setPickMachineFor(null)}>
+                    <p className="text-sm text-slate-500 mb-3">
+                        اضغط على الجهاز اللي شغال عليه دلوقتي:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {pickMachineFor.availableMachines.map((m) => {
+                            const isDown = m.status === 'down';
+                            return (
+                                <button
+                                    key={m.id}
+                                    disabled={isDown}
+                                    onClick={() => {
+                                        const target = pickMachineFor.task;
+                                        setPickMachineFor(null);
+                                        void run(target.id, () => startStageRun(target.id, m.id), `بدأت الشغل (${m.nameAr})`);
+                                    }}
+                                    className={`p-4 rounded-xl text-right border transition-all flex flex-col justify-between ${
+                                        isDown
+                                            ? 'bg-slate-50 border-slate-200 opacity-50 cursor-not-allowed'
+                                            : 'bg-white border-slate-200 hover:border-primary-500 hover:bg-primary-50/50 shadow-sm'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-slate-900 text-base">{m.nameAr}</span>
+                                        <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-bold">{m.code}</span>
+                                    </div>
+                                    {isDown ? (
+                                        <span className="text-xs text-red-600 font-bold mt-2 flex items-center gap-1">
+                                            متوقف / معطل
+                                        </span>
+                                    ) : (
+                                        <span className="text-xs text-emerald-600 font-semibold mt-2">
+                                            جاهز للعمل
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </Modal>
             )}
         </div>

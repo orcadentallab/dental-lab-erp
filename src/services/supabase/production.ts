@@ -43,6 +43,7 @@ export interface ProductionStage {
     isBatchStage: boolean;
     defaultCondition: Record<string, unknown> | null;
     requiredFields: string[];
+    dailyCapacityUnits?: number | null;
     isActive: boolean;
 }
 
@@ -129,6 +130,7 @@ export interface StageRunCard {
     orderId: string;
     caseId: string;
     doctorName: string;
+    doctorLabInstructions: string | null;
     patientName: string;
     shade: string | null;
     instructions: string | null;
@@ -191,6 +193,7 @@ export async function getStages(): Promise<ProductionStage[]> {
         isBatchStage: r.is_batch_stage as boolean,
         defaultCondition: (r.default_condition as Record<string, unknown>) ?? null,
         requiredFields: (r.required_fields as string[]) ?? [],
+        dailyCapacityUnits: (r.daily_capacity_units as number) ?? null,
         isActive: r.is_active as boolean,
     }));
 }
@@ -467,7 +470,7 @@ const RUN_CARD_SELECT = `
         orders (
             case_id, patient_name, shade, instructions, design_url, stl_url,
             images_url, delivery_date,
-            doctors ( name ),
+            doctors ( name, lab_instructions ),
             order_items ( product_type, teeth_numbers )
         )
     )
@@ -485,6 +488,7 @@ function toCard(r: any): StageRunCard {
         orderId: job.order_id,
         caseId: order.case_id ?? '—',
         doctorName: order.doctors?.name ?? '—',
+        doctorLabInstructions: order.doctors?.lab_instructions ?? null,
         patientName: order.patient_name ?? '—',
         shade: order.shade ?? null,
         instructions: order.instructions ?? null,
@@ -568,10 +572,42 @@ export async function getMyTasks(userId: string): Promise<StageRunCard[]> {
 
     const myRole = (me?.role as string) ?? '';
 
+    // RULE 4: In qc_gate stages, prevent self-inspection if other qualified staff exist.
+    const disallowedRunIds = new Set<string>();
+    const qcReadyRuns = runs.filter((r) => r.advanceMode === 'qc_gate' && r.status === 'ready');
+    if (qcReadyRuns.length > 0) {
+        const { count: otherTechCount } = await supabase
+            .from('users')
+            .select('id', { count: 'exact', head: true })
+            .in('role', ['technician', 'production_manager'])
+            .neq('id', userId);
+
+        if ((otherTechCount ?? 0) > 0) {
+            const jobIds = Array.from(new Set(qcReadyRuns.map((r) => r.jobId)));
+            const { data: prevRuns } = await supabase
+                .from('production_stage_runs')
+                .select('job_id, seq, assignee_id')
+                .in('job_id', jobIds)
+                .eq('status', 'done');
+
+            if (prevRuns && prevRuns.length > 0) {
+                for (const qr of qcReadyRuns) {
+                    const matchingPrevs = prevRuns
+                        .filter((p) => p.job_id === qr.jobId && p.seq < qr.seq)
+                        .sort((a, b) => b.seq - a.seq);
+                    if (matchingPrevs.length > 0 && matchingPrevs[0].assignee_id === userId) {
+                        disallowedRunIds.add(qr.id);
+                    }
+                }
+            }
+        }
+    }
+
     return runs
         .filter((r) => r.execution === 'internal')
         .filter((r) => r.drivenBy === 'my_tasks')
         .filter((r) => r.allowedRoles.length === 0 || r.allowedRoles.includes(myRole))
+        .filter((r) => !disallowedRunIds.has(r.id))
         .sort((a, b) => {
             const mine = (r: StageRunCard) =>
                 r.status === 'in_progress' && r.assigneeId === userId ? 0 : 1;
@@ -639,11 +675,22 @@ export async function materializeJob(orderId: string, routeId?: string): Promise
     return data as string;
 }
 
+export async function reassignOrderRoute(orderId: string, newRouteId: string, notes?: string): Promise<string> {
+    const { data, error } = await supabase.rpc('reassign_order_route', {
+        p_order_id: orderId,
+        p_new_route_id: newRouteId,
+        p_notes: notes ?? null,
+    });
+    if (error) throw ErrorHandler.handle(error, 'reassignOrderRoute');
+    return data as string;
+}
+
 // ─── External work orders ────────────────────────────────────────────────
 
 export interface ExternalWorkOrderRow {
     id: string;
     stageRunId: string;
+    orderId?: string;
     supplierId: string;
     supplierName: string;
     caseId: string;
@@ -667,7 +714,7 @@ export async function getExternalWorkOrders(onlyOpen = true): Promise<ExternalWo
             suppliers ( name ),
             production_stage_runs (
                 production_stages:stage_id ( name_ar ),
-                production_jobs ( orders ( case_id, doctors ( name ) ) )
+                production_jobs ( order_id, orders ( id, case_id, doctors ( name ) ) )
             )
         `)
         .order('sent_at', { ascending: false });
@@ -681,6 +728,7 @@ export async function getExternalWorkOrders(onlyOpen = true): Promise<ExternalWo
     return ((data || []) as any[]).map((r) => ({
         id: r.id,
         stageRunId: r.stage_run_id,
+        orderId: r.production_stage_runs?.production_jobs?.order_id || r.production_stage_runs?.production_jobs?.orders?.id || undefined,
         supplierId: r.supplier_id,
         supplierName: r.suppliers?.name ?? '—',
         caseId: r.production_stage_runs?.production_jobs?.orders?.case_id ?? '—',
@@ -725,6 +773,63 @@ export async function receiveExternalWorkOrder(
     });
     if (error) throw ErrorHandler.handle(error, 'receiveExternalWorkOrder');
     return data;
+}
+
+/**
+ * Phase D5: Record an external lab defect settlement/deduction.
+ * Automatically deducts the amount from the supplier's balance (via adjustments)
+ * and logs the financial obligation settlement row.
+ */
+export async function recordExternalWorkOrderSettlement(params: {
+    workOrderId: string;
+    stageRunId: string;
+    orderId?: string;
+    supplierId: string;
+    deductionAmount: number;
+    reason: string;
+    caseId?: string;
+    stageNameAr?: string;
+}): Promise<void> {
+    const today = new Date().toISOString().split('T')[0];
+    const notes = `تسوية عيب تصنيع خطوة خارجية - حالة #${params.caseId ?? ''} (${params.stageNameAr ?? ''}): ${params.reason}`;
+
+    // 1. Record adjustment for supplier balance and statements (charge = deduction from supplier)
+    const { error: adjErr } = await supabase.from('adjustments').insert({
+        entity_type: 'supplier',
+        entity_id: params.supplierId,
+        amount: params.deductionAmount,
+        type: 'charge',
+        date: today,
+        reason: notes,
+    });
+    if (adjErr) throw ErrorHandler.handle(adjErr, 'recordExternalWorkOrderSettlement:adjustment');
+
+    // 2. If orderId exists, record financial obligation settlement
+    if (params.orderId) {
+        await supabase.from('financial_obligations').insert({
+            order_id: params.orderId,
+            stage_run_id: params.stageRunId,
+            entity_type: 'external_lab',
+            entity_id: params.supplierId,
+            direction: 'receivable',
+            trigger_type: 'external_lab_issue_settlement',
+            trigger_status: 'settled',
+            trigger_date: today,
+            due_date: today,
+            gross_amount: params.deductionAmount,
+            adjustment_amount: 0,
+            net_amount: params.deductionAmount,
+            status: 'unpaid',
+            source: 'order',
+            notes,
+            metadata: {
+                work_order_id: params.workOrderId,
+                reason: params.reason,
+            },
+        }).then(({ error }) => {
+            if (error) console.warn('[production] non-blocking financial_obligations insert error:', error);
+        });
+    }
 }
 
 // ─── Shadow readiness ────────────────────────────────────────────────────
@@ -779,4 +884,54 @@ export async function getShadowReport(): Promise<ShadowRow[]> {
         agrees: r.agrees,
     }));
     /* eslint-enable @typescript-eslint/no-explicit-any */
+}
+
+export interface ActiveOrderStage {
+    orderId: string;
+    stageId: string;
+    stageCode: string;
+    stageName: string;
+    status: StageRunStatus;
+    since: string | null;
+}
+
+export async function getActiveStagesForOrders(orderIds: string[]): Promise<Record<string, ActiveOrderStage>> {
+    if (!orderIds || orderIds.length === 0) return {};
+
+    const { data, error } = await supabase
+        .from('production_stage_runs')
+        .select(`
+            id, status, queued_at, started_at, name_override,
+            production_stages:stage_id ( id, code, name_ar ),
+            production_jobs!inner ( order_id )
+        `)
+        .in('status', ['ready', 'in_progress', 'waiting_external'])
+        .in('production_jobs.order_id', orderIds);
+
+    if (error) {
+        console.error('Error fetching active stages for orders:', error);
+        return {};
+    }
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const result: Record<string, ActiveOrderStage> = {};
+    for (const row of (data as any[]) || []) {
+        const orderId = row.production_jobs?.order_id;
+        if (!orderId) continue;
+        const stage = row.production_stages;
+        const stageName = row.name_override || stage?.name_ar || '';
+        const since = row.started_at || row.queued_at || null;
+        if (!result[orderId] || row.status === 'in_progress') {
+            result[orderId] = {
+                orderId,
+                stageId: stage?.id || '',
+                stageCode: stage?.code || '',
+                stageName,
+                status: row.status,
+                since,
+            };
+        }
+    }
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    return result;
 }

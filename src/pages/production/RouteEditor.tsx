@@ -32,7 +32,7 @@ import {
     type ProductionRoute, type ProductionStage, type RouteStep,
     type EffectiveRouteStage, type Execution, type DrivenBy, type ServiceRouteLink,
 } from '../../services/supabase/production';
-import { db, type ServiceFamily } from '../../services/db';
+import { db, type ServiceFamily, type Supplier } from '../../services/db';
 import {
     Plus, ArrowLeft, Building2, Home, ShieldCheck, Layers, ChevronUp, ChevronDown,
     Trash2, Save, Undo2, Pencil, X, AlertTriangle,
@@ -135,6 +135,7 @@ export default function RouteEditor() {
     const [picking, setPicking] = useState(false);
     const [services, setServices] = useState<ServiceRouteLink[]>([]);
     const [families, setFamilies] = useState<ServiceFamily[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
 
     const route = routes.find((r) => r.id === routeId);
@@ -148,12 +149,19 @@ export default function RouteEditor() {
     // ── loading ──────────────────────────────────────────────────────────
 
     useEffect(() => {
-        Promise.all([getRoutes(), getStages(), getServicesForRouting(), db.getServiceFamilies()])
-            .then(([r, s, sv, fam]) => {
+        Promise.all([
+            getRoutes(),
+            getStages(),
+            getServicesForRouting(),
+            db.getServiceFamilies(),
+            db.getSuppliers(),
+        ])
+            .then(([r, s, sv, fam, sup]) => {
                 setRoutes(r);
                 setStages(s);
                 setServices(sv);
                 setFamilies(fam);
+                setSuppliers(sup);
                 setRouteId((prev) => prev ?? r.find((x) => !x.isFallback)?.id ?? r[0]?.id ?? null);
             })
             .catch((e) => {
@@ -496,7 +504,17 @@ export default function RouteEditor() {
                                                         ? 'bg-sky-100 text-sky-800'
                                                         : 'bg-emerald-100 text-emerald-800'
                                                 }`}>
-                                                    {execution === 'external' ? 'خارجي' : 'داخلي'}
+                                                    {execution === 'external' ? (
+                                                        <>
+                                                            <span>خارجي</span>
+                                                            {step.supplierOverride && (
+                                                                <span> · {suppliers.find(s => s.id === step.supplierOverride)?.name}</span>
+                                                            )}
+                                                            {step.standardCostPerUnit != null && (
+                                                                <span> · {step.standardCostPerUnit} ج</span>
+                                                            )}
+                                                        </>
+                                                    ) : 'داخلي'}
                                                 </span>
                                                 <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600">
                                                     {step.allowedRoles.length === 0
@@ -678,7 +696,48 @@ export default function RouteEditor() {
                                                         متتحسبش مرتين.
                                                     </span>
                                                 </label>
+                                            </div>
 
+                                            {execution === 'external' && (
+                                                <div className="grid sm:grid-cols-2 gap-3 p-2.5 rounded-lg bg-sky-50/60 border border-sky-100">
+                                                    <label className="block">
+                                                        <span className="text-sky-900 font-medium block mb-1">
+                                                            المعمل الخارجي المنفذ للخطوة
+                                                        </span>
+                                                        <select
+                                                            value={step.supplierOverride ?? ''}
+                                                            onChange={(e) => patchStep(step.key, {
+                                                                supplierOverride: e.target.value || null,
+                                                            })}
+                                                            className="w-full border border-sky-200 rounded-lg px-2 py-1.5 bg-white text-xs"
+                                                        >
+                                                            <option value="">— غير محدد (يتم تحديده عند الإرسال) —</option>
+                                                            {suppliers.filter(s => s.isActive !== false).map((s) => (
+                                                                <option key={s.id} value={s.id}>{s.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+
+                                                    <label className="block">
+                                                        <span className="text-sky-900 font-medium block mb-1">
+                                                            سعر الوحدة الافتراضي للمعمل (ج)
+                                                        </span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="any"
+                                                            placeholder="0.00"
+                                                            value={step.standardCostPerUnit ?? ''}
+                                                            onChange={(e) => patchStep(step.key, {
+                                                                standardCostPerUnit: e.target.value === '' ? null : Number(e.target.value),
+                                                            })}
+                                                            className="w-full border border-sky-200 rounded-lg px-2 py-1.5 bg-white text-xs"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            )}
+
+                                            <div className="grid sm:grid-cols-2 gap-3">
                                                 <label className="block">
                                                     <span className="text-slate-500 block mb-1">
                                                         الخطوة دي بتظهر إمتى
@@ -706,6 +765,26 @@ export default function RouteEditor() {
                                                             </option>
                                                         )}
                                                     </select>
+                                                </label>
+
+                                                <label className="block">
+                                                    <span className="text-slate-500 block mb-1">
+                                                        مجموعة التوازي (اختياري)
+                                                    </span>
+                                                    <input
+                                                        type="number"
+                                                        min="1"
+                                                        max="10"
+                                                        placeholder="مثلاً: 1 (للخطوات التي تعمل معاً)"
+                                                        value={step.parallelGroup ?? ''}
+                                                        onChange={(e) => patchStep(step.key, {
+                                                            parallelGroup: e.target.value === '' ? null : Math.max(1, parseInt(e.target.value, 10)),
+                                                        })}
+                                                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-xs"
+                                                    />
+                                                    <span className="text-[10px] text-slate-400 block mt-1">
+                                                        الخطوات اللي واخدة نفس الرقم بتمشي بالتوازي مش ورا بعض.
+                                                    </span>
                                                 </label>
                                             </div>
 
@@ -818,6 +897,11 @@ export default function RouteEditor() {
                                     {s.appliesWhen && (
                                         <span className="text-[10px] px-2 py-0.5 rounded bg-purple-100 text-purple-800">
                                             بشرط
+                                        </span>
+                                    )}
+                                    {s.parallelGroup !== null && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+                                            توازي {s.parallelGroup}
                                         </span>
                                     )}
                                 </div>

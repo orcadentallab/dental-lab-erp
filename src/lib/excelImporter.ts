@@ -383,12 +383,8 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                                 }
                                 itemCost = supplierUnitCost * toothCount;
                             } else {
-                                // If no supplier, check system cost
-                                const normalizedServiceSearch = normalizeArabic(serviceName);
-                                const matchedService = services.find(s => normalizeArabic(s.name) === normalizedServiceSearch);
-                                if (matchedService) {
-                                    itemCost = (matchedService.costPrice || 0) * toothCount;
-                                }
+                                // Internal order (no supplier): cost is 0 so no phantom supplier obligation is created
+                                itemCost = 0;
                             }
 
                             calculatedCost += itemCost;
