@@ -121,6 +121,7 @@ export default function DashboardNew() {
     const [designerRejectStage, setDesignerRejectStage] = useState('');
     const [designerRejectNotes, setDesignerRejectNotes] = useState('');
     const [designerRejectSubmitting, setDesignerRejectSubmitting] = useState(false);
+    const [designerFeedbackDetails, setDesignerFeedbackDetails] = useState<Record<string, { orderId: string; reason: string; causeCategory?: string | null; responsibleStage?: string | null }>>({});
     const [contactInquiries, setContactInquiries] = useState<ContactInquiry[]>([]);
     const [ordersWithComments, setOrdersWithComments] = useState<Order[]>([]);
     const [bottleneckStage, setBottleneckStage] = useState<string | null>(null);
@@ -387,6 +388,45 @@ export default function DashboardNew() {
     const needsAttentionOrders = orders.filter(o =>
         o.technicianStatus === 'PMMA_First'
     );
+
+    // Fetch designer feedback details (reason / cause) for designerFeedbackOrders
+    useEffect(() => {
+        const feedbackOrderIds = designerFeedbackOrders.map(o => o.id);
+        if (feedbackOrderIds.length === 0) {
+            setDesignerFeedbackDetails({});
+            return;
+        }
+
+        let isMounted = true;
+        db.getDesignerFeedbackDetails(feedbackOrderIds)
+            .then(details => {
+                if (isMounted) {
+                    setDesignerFeedbackDetails(details);
+                }
+            })
+            .catch(err => {
+                console.error('Failed to load designer feedback details:', err);
+            });
+
+        return () => {
+            isMounted = false;
+        };
+    }, [orders]);
+
+    useEffect(() => {
+        if (activeModal === 'designer-feedback') {
+            const feedbackOrderIds = designerFeedbackOrders.map(o => o.id);
+            if (feedbackOrderIds.length > 0) {
+                db.getDesignerFeedbackDetails(feedbackOrderIds)
+                    .then(details => {
+                        setDesignerFeedbackDetails(prev => ({ ...prev, ...details }));
+                    })
+                    .catch(err => {
+                        console.error('Failed to reload designer feedback details:', err);
+                    });
+            }
+        }
+    }, [activeModal]);
 
     // Orders from Doctors needing review
     const doctorRequests = orders.filter(o => o.status === 'Pending Review');
@@ -748,6 +788,7 @@ export default function DashboardNew() {
     };
 
     const handleRejectDesignerCase = (order: Order) => {
+        const feedback = designerFeedbackDetails[order.id];
         // Extract last designer comment to show as context only -- the
         // recorded cause/stage now always comes from the explicit dropdown
         // in the modal below, never guessed from this comment text.
@@ -757,13 +798,14 @@ export default function DashboardNew() {
         const lastDesignerComment = [...designerComments].sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )[0];
-        const designerReason = lastDesignerComment?.text
-            ? lastDesignerComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '')
-            : 'رفض من قبل المصمم';
+        const designerReason = feedback?.reason
+            || (lastDesignerComment?.text
+                ? lastDesignerComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '')
+                : 'رفض من قبل المصمم');
 
         setDesignerRejectOrder({ order, designerReason });
-        setDesignerRejectCause('');
-        setDesignerRejectStage('');
+        setDesignerRejectCause(feedback?.causeCategory || '');
+        setDesignerRejectStage(feedback?.responsibleStage || (feedback?.causeCategory ? getStageForCause('lab_rejection', feedback.causeCategory) : ''));
         setDesignerRejectNotes('');
 
         // Prefill from what the designer picked when they requested this
@@ -771,17 +813,22 @@ export default function DashboardNew() {
         // Pending requests from before this feature existed carry no stored
         // cause -- resolves to null and the fields stay empty, same as
         // before (the confirm button is disabled until a cause is chosen).
-        void (async () => {
-            try {
-                const pending = await db.getPendingDesignerRejectionCause(order.id);
-                if (pending?.causeCategory) {
-                    setDesignerRejectCause(pending.causeCategory);
-                    setDesignerRejectStage(pending.responsibleStage || getStageForCause('lab_rejection', pending.causeCategory));
+        if (!feedback?.causeCategory) {
+            void (async () => {
+                try {
+                    const pending = await db.getPendingDesignerRejectionCause(order.id);
+                    if (pending?.causeCategory) {
+                        setDesignerRejectCause(pending.causeCategory);
+                        setDesignerRejectStage(pending.responsibleStage || getStageForCause('lab_rejection', pending.causeCategory));
+                    }
+                    if (pending?.reason && !feedback?.reason) {
+                        setDesignerRejectOrder(prev => prev ? { ...prev, designerReason: pending.reason! } : null);
+                    }
+                } catch (error) {
+                    console.error('Error loading pending designer rejection cause:', error);
                 }
-            } catch (error) {
-                console.error('Error loading pending designer rejection cause:', error);
-            }
-        })();
+            })();
+        }
     };
 
     const resetDesignerRejectModal = () => {
@@ -1756,8 +1803,10 @@ export default function DashboardNew() {
                 showDoctor
             >
                 {designerFeedbackOrders.map(order => {
+                    const feedback = designerFeedbackDetails[order.id];
                     const designerReasonComment = [...(order.comments || [])].reverse().find(c => c.text.includes('[رفض المصمم]') || c.text.includes('[طلب تفاصيل]'));
-                    const designerReasonText = designerReasonComment ? designerReasonComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '') : 'لم يتم توضيح سبب محدد.';
+                    const designerReasonText = feedback?.reason
+                        || (designerReasonComment ? designerReasonComment.text.replace(/\[(رفض المصمم|طلب تفاصيل)\]:?\s*/, '') : 'لم يتم توضيح سبب محدد.');
 
                     return (
                         <OrderListItem

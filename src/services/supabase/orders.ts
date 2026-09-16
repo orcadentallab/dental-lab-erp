@@ -3397,6 +3397,17 @@ export async function requestDesignerRejection(
         p_responsible_stage: responsibleStage || null,
     });
     if (error) throw ErrorHandler.handle(error, 'requestDesignerRejectionV2');
+
+    // Also insert comment into order_comments so the rejection reason is visible in comments history everywhere
+    try {
+        await supabase.from('order_comments').insert({
+            order_id: orderId,
+            content: `[رفض المصمم]: ${reason.trim()}`,
+            user_name: 'المصمم',
+        });
+    } catch (commentErr) {
+        console.warn('Could not insert order comment for designer rejection:', commentErr);
+    }
 }
 
 /**
@@ -3409,10 +3420,10 @@ export async function requestDesignerRejection(
  */
 export async function getPendingDesignerRejectionCause(
     orderId: string,
-): Promise<{ causeCategory: string | null; responsibleStage: string | null } | null> {
+): Promise<{ causeCategory: string | null; responsibleStage: string | null; reason?: string | null } | null> {
     const { data, error } = await supabase
         .from('order_events')
-        .select('metadata')
+        .select('metadata, reason, notes')
         .eq('order_id', orderId)
         .eq('event_type', 'designer_rejection_requested')
         .eq('approval_status', 'pending')
@@ -3422,11 +3433,98 @@ export async function getPendingDesignerRejectionCause(
     if (error) throw ErrorHandler.handle(error, 'getPendingDesignerRejectionCause');
     if (!data) return null;
     const metadata = (data.metadata || {}) as Record<string, unknown>;
+    const reasonText = (data.reason as string) || (data.notes as string) || null;
     return {
         causeCategory: (metadata.causeCategory as string) || null,
         responsibleStage: (metadata.responsibleStage as string) || null,
+        reason: reasonText,
     };
 }
+
+export interface DesignerFeedbackDetail {
+    orderId: string;
+    reason: string;
+    causeCategory?: string | null;
+    responsibleStage?: string | null;
+}
+
+/**
+ * Fetches the designer's reason/notes and cause for orders requiring designer feedback
+ * (Rejected or NeedDetails). Queries order_events first (for pending designer rejections),
+ * then falls back to order_comments (for NeedDetails or designer notes).
+ */
+export async function getDesignerFeedbackDetails(orderIds: string[]): Promise<Record<string, DesignerFeedbackDetail>> {
+    if (!orderIds || orderIds.length === 0) return {};
+    const validIds = Array.from(new Set(orderIds)).filter(id => id && typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (validIds.length === 0) return {};
+
+    const result: Record<string, DesignerFeedbackDetail> = {};
+
+    // 1. Query pending designer rejection requests from order_events
+    const { data: events, error: eventsError } = await supabase
+        .from('order_events')
+        .select('order_id, reason, notes, metadata, created_at')
+        .in('order_id', validIds)
+        .eq('event_type', 'designer_rejection_requested')
+        .eq('approval_status', 'pending')
+        .order('created_at', { ascending: false });
+
+    if (!eventsError && events) {
+        for (const ev of events) {
+            if (!ev.order_id || result[ev.order_id]) continue;
+            const meta = (ev.metadata || {}) as Record<string, unknown>;
+            const text = (ev.reason || ev.notes || '').trim();
+            if (text) {
+                result[ev.order_id] = {
+                    orderId: ev.order_id,
+                    reason: text,
+                    causeCategory: (meta.causeCategory as string) || null,
+                    responsibleStage: (meta.responsibleStage as string) || null,
+                };
+            }
+        }
+    }
+
+    // 2. Query order_comments for any orders that still need reasons (or NeedDetails)
+    const missingOrderIds = validIds.filter(id => !result[id]);
+    if (missingOrderIds.length > 0) {
+        const { data: comments, error: commentsError } = await supabase
+            .from('order_comments')
+            .select('order_id, content, created_at')
+            .in('order_id', missingOrderIds)
+            .order('created_at', { ascending: false });
+
+        if (!commentsError && comments) {
+            for (const c of comments) {
+                if (!c.order_id || result[c.order_id]) continue;
+                const content = (c.content || '').trim();
+                if (content.includes('[رفض المصمم]') || content.includes('[طلب تفاصيل]') || content.includes('[قرار المصمم')) {
+                    const cleanReason = content.replace(/\[(رفض المصمم|طلب تفاصيل|قرار المصمم[^\]]*)\]:?\s*/, '').trim();
+                    if (cleanReason) {
+                        result[c.order_id] = {
+                            orderId: c.order_id,
+                            reason: cleanReason,
+                        };
+                    }
+                }
+            }
+            // Fallback to most recent comment if no tagged comment found
+            for (const c of comments) {
+                if (!c.order_id || result[c.order_id]) continue;
+                const cleanReason = (c.content || '').trim();
+                if (cleanReason) {
+                    result[c.order_id] = {
+                        orderId: c.order_id,
+                        reason: cleanReason,
+                    };
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
 
 export async function getMyDoctorOrders(): Promise<DoctorOrderSummary[]> {
     const { data, error } = await supabase.rpc('get_my_doctor_orders_v2');

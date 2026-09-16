@@ -1220,9 +1220,16 @@ class MockDB {
 
     async getPendingDesignerRejectionCause(
         orderId: string,
-    ): Promise<{ causeCategory: string | null; responsibleStage: string | null } | null> {
+    ): Promise<{ causeCategory: string | null; responsibleStage: string | null; reason?: string | null } | null> {
         const { getPendingDesignerRejectionCause } = await import('./supabase/orders');
         return getPendingDesignerRejectionCause(orderId);
+    }
+
+    async getDesignerFeedbackDetails(
+        orderIds: string[],
+    ): Promise<Record<string, { orderId: string; reason: string; causeCategory?: string | null; responsibleStage?: string | null }>> {
+        const { getDesignerFeedbackDetails } = await import('./supabase/orders');
+        return getDesignerFeedbackDetails(orderIds);
     }
 
     async reviewDesignerRejection(
