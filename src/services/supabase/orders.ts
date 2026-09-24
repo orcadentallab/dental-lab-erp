@@ -3632,6 +3632,21 @@ export async function reviewDesignerRejection(
         p_responsible_stage: responsibleStage || null,
     });
     if (error) throw ErrorHandler.handle(error, 'reviewDesignerRejectionV2');
+
+    // Self-healing / safety net: if action === 'reject', ensure that the order is actually
+    // no longer in Rejected/NeedDetails technicianStatus in case a database RPC short-circuited
+    // on stale event-history idempotency before migration update.
+    if (action === 'reject') {
+        const check = await getOrder(orderId);
+        if (check && (check.technicianStatus === 'Rejected' || check.technicianStatus === 'NeedDetails')) {
+            await updateOrder(orderId, {
+                technicianStatus: 'Approved',
+                designStatus: 'in_progress',
+                status: 'Under Design',
+                productionStatus: 'designing',
+            }, { allowStatusChange: true });
+        }
+    }
 }
 
 export async function rejectOrderFromTechStatus(

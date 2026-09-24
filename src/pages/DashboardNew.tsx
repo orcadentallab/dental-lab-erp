@@ -773,6 +773,7 @@ export default function DashboardNew() {
     const handleReturnToDesigner = async (order: Order) => {
         try {
             await db.reviewDesignerRejection(order.id, 'reject', 'تم رفض طلب الرفض وإرجاع الحالة للمصمم');
+            sessionStorage.removeItem(DASHBOARD_CACHE_KEY);
             const updatedOrder = await db.getOrder(order.id);
             if (updatedOrder) {
                 setOrders(prev => prev.map(o => o.id === order.id ? updatedOrder : o));
@@ -783,7 +784,7 @@ export default function DashboardNew() {
             }
         } catch (error) {
             console.error('Error returning order to designer:', error);
-            toast.error('حدث خطأ أثناء إرجاع الحالة');
+            toast.error(ErrorHandler.getUserMessage(error));
         }
     };
 
@@ -849,6 +850,7 @@ export default function DashboardNew() {
             const reason = designerRejectNotes.trim() || issueCauseLabel(designerRejectCause);
             const stage = designerRejectStage || getStageForCause('lab_rejection', designerRejectCause);
             await db.reviewDesignerRejection(order.id, 'approve', reason, undefined, designerRejectCause, stage);
+            sessionStorage.removeItem(DASHBOARD_CACHE_KEY);
             const updatedOrder = await db.getOrder(order.id);
 
             if (updatedOrder) {

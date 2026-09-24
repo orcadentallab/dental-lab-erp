@@ -1,137 +1,30 @@
--- Fix: review_designer_rejection_v2 fails with 400 "Pending designer rejection request is required"
--- when approving a rejection for orders in technician_status IN ('Rejected', 'NeedDetails')
--- that lack a pending order_events row (e.g. NeedDetails orders created by designers, or legacy orders).
+-- Fix: review_designer_rejection_v2 premature idempotency check on 'reject'
 --
 -- Root cause:
--- While review_designer_rejection_v2 was updated to allow reviewing orders with
--- technician_status IN ('Rejected', 'NeedDetails') even when no pending designer_rejection_requested
--- event exists (by falling back to creating an audited fallback event row), the underlying trigger
--- guard_order_issue_transition_v2() still unconditionally checked for a pending order_events row
--- on lab_rejected issue transitions. When the RPC updated public.orders to issue_state = 'lab_rejected',
--- the trigger threw "Pending designer rejection request is required".
+-- review_designer_rejection_v2 checked:
+--   IF p_action = 'reject' AND EXISTS (
+--       SELECT 1 FROM public.order_events event
+--       WHERE event.order_id = p_order_id
+--         AND event.event_type = 'designer_rejection_requested'
+--         AND event.approval_status = 'rejected'
+--         AND event.metadata->>'reviewAction' = 'reject'
+--   )
+-- This matched ANY previous rejection event in the order's history (e.g. an order rejected,
+-- returned to design, and then rejected again; or a legacy fallback event).
+-- As a result, the function returned alreadyApplied=TRUE without actually updating
+-- the order's technician_status to 'Approved' or design_status to 'in_progress'.
 --
 -- Solution:
--- 1. Update guard_order_issue_transition_v2() to allow approve_designer_rejection when
---    OLD.technician_status IN ('Rejected', 'NeedDetails'), matching review_designer_rejection_v2's fallback.
--- 2. Update review_designer_rejection_v2() to also explicitly set technician_status = 'Rejected' on approval
---    and populate approved_by / approved_at on the fallback order_events row.
+-- For p_action = 'reject', only treat it as already applied if:
+--   v_order.technician_status = 'Approved'
+--   AND NOT EXISTS (
+--       SELECT 1 FROM public.order_events
+--       WHERE order_id = p_order_id
+--         AND event_type = 'designer_rejection_requested'
+--         AND approval_status = 'pending'
+--   )
 
 BEGIN;
-
-CREATE OR REPLACE FUNCTION public.guard_order_issue_transition_v2()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'auth'
-AS $function$
-DECLARE
-    v_role TEXT := public.get_my_role();
-    v_operation TEXT := current_setting('app.order_issue_operation', true);
-    v_correcting BOOLEAN := current_setting('app.order_issue_operation', true)
-                            = 'admin_correct_issue_state';
-    v_pending_rejection UUID;
-BEGIN
-    IF TG_OP = 'INSERT' THEN
-        IF NEW.issue_state = 'on_hold' THEN
-            RAISE EXCEPTION 'on_hold is retired';
-        END IF;
-        IF COALESCE(NEW.issue_state, 'none') <> 'none' THEN
-            RAISE EXCEPTION 'New orders must start with issue_state=none';
-        END IF;
-        IF NEW.first_delivered_at IS NOT NULL OR NEW.design_submitted_at IS NOT NULL THEN
-            RAISE EXCEPTION 'New orders cannot inherit delivery timestamps';
-        END IF;
-        RETURN NEW;
-    END IF;
-
-    IF NOT public.workflow_flag_enabled('workflow_issue_v2_enforce') THEN
-        RETURN NEW;
-    END IF;
-
-    IF NEW.first_delivered_at IS DISTINCT FROM OLD.first_delivered_at
-       AND v_operation IS DISTINCT FROM 'record_final_delivery' THEN
-        RAISE EXCEPTION 'first_delivered_at can only be changed by final delivery RPC';
-    END IF;
-    IF NEW.design_submitted_at IS DISTINCT FROM OLD.design_submitted_at
-       AND v_operation IS DISTINCT FROM 'submit_design' THEN
-        RAISE EXCEPTION 'design_submitted_at can only be changed by design submission RPC';
-    END IF;
-    IF NEW.issue_state IS NOT DISTINCT FROM OLD.issue_state THEN
-        RETURN NEW;
-    END IF;
-    IF v_operation IS NULL THEN
-        RAISE EXCEPTION 'Issue transitions must use an approved workflow RPC';
-    END IF;
-    IF v_role NOT IN ('admin', 'representative', 'coordinator') THEN
-        RAISE EXCEPTION 'Only admin or representative can apply issue transitions';
-    END IF;
-
-    -- A correction is an admin privilege only; a rep who mislabelled a case
-    -- must ask an admin, exactly like the legacy-status override.
-    IF v_correcting AND v_role <> 'admin' THEN
-        RAISE EXCEPTION 'Only admin can correct an issue state';
-    END IF;
-
-    CASE NEW.issue_state
-        WHEN 'none' THEN
-            -- Leaving an issue state is ONLY ever a correction. There is no
-            -- ordinary "un-reject" in the workflow.
-            IF NOT v_correcting THEN
-                RAISE EXCEPTION 'Clearing an issue state requires the admin correction RPC';
-            END IF;
-            IF COALESCE(OLD.issue_state, 'none') = 'redo' THEN
-                RAISE EXCEPTION 'A redo owns a replacement order and cannot be cleared';
-            END IF;
-        WHEN 'cancelled' THEN
-            IF v_operation NOT IN ('cancel_order', 'admin_correct_issue_state')
-               OR OLD.first_delivered_at IS NOT NULL THEN
-                RAISE EXCEPTION 'Cancellation is only allowed before first delivery';
-            END IF;
-        WHEN 'returned' THEN
-            IF v_operation NOT IN ('return_for_adjustment', 'admin_correct_issue_state')
-               OR OLD.first_delivered_at IS NULL THEN
-                RAISE EXCEPTION 'Return for adjustment requires prior delivery';
-            END IF;
-        WHEN 'doctor_rejected' THEN
-            IF v_operation NOT IN ('doctor_reject_order', 'admin_correct_issue_state')
-               OR OLD.first_delivered_at IS NULL THEN
-                RAISE EXCEPTION 'Doctor rejection requires prior delivery';
-            END IF;
-        WHEN 'redo' THEN
-            IF v_operation <> 'create_redo' OR OLD.first_delivered_at IS NULL THEN
-                RAISE EXCEPTION 'Redo requires prior delivery';
-            END IF;
-        WHEN 'lab_rejected' THEN
-            IF v_operation NOT IN (
-                    'approve_designer_rejection', 'admin_tech_reject',
-                    'admin_correct_issue_state'
-               )
-               OR OLD.first_delivered_at IS NOT NULL
-               OR OLD.design_submitted_at IS NOT NULL THEN
-                RAISE EXCEPTION 'Lab rejection is only allowed before design submission and final delivery';
-            END IF;
-            IF v_operation = 'admin_tech_reject' THEN
-                IF v_role <> 'admin' THEN
-                    RAISE EXCEPTION 'Only admin can reject directly from technician status';
-                END IF;
-            ELSIF v_operation = 'approve_designer_rejection' THEN
-                SELECT event.id INTO v_pending_rejection
-                FROM public.order_events event
-                WHERE event.order_id = OLD.id
-                  AND event.event_type = 'designer_rejection_requested'
-                  AND event.approval_status = 'pending'
-                ORDER BY event.created_at DESC
-                LIMIT 1 FOR UPDATE;
-                IF v_pending_rejection IS NULL AND OLD.technician_status NOT IN ('Rejected', 'NeedDetails') THEN
-                    RAISE EXCEPTION 'Pending designer rejection request is required';
-                END IF;
-            END IF;
-        ELSE
-            RAISE EXCEPTION 'Unsupported issue transition: %', NEW.issue_state;
-    END CASE;
-    RETURN NEW;
-END;
-$function$;
 
 CREATE OR REPLACE FUNCTION public.review_designer_rejection_v2(
     p_order_id uuid,

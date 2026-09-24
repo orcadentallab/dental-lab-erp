@@ -8,7 +8,8 @@ import OrderCard from './OrderCard';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import IssueCauseFields from './IssueCauseFields';
 import { issueCauseLabel, getStageForCause } from '../../constants/issueCauses';
-import { AppError } from '../../lib/errorHandler';
+import { AppError, ErrorHandler } from '../../lib/errorHandler';
+import { useToast } from '../../context/ToastContext';
 
 // The lab-rejection RPCs raise plain English exceptions. Surface the one guard
 // users actually hit — an order past design submission or final delivery can
@@ -47,6 +48,7 @@ interface OrderListProps {
 }
 
 export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, onRedo, currentUser, onExportInvoice, activeStages }: OrderListProps) {
+    const toast = useToast();
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [fullDoctors, setFullDoctors] = useState<any[]>([]); // Store full objects to resolve parent relationships
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
@@ -219,22 +221,27 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
             const order = orders.find(o => o.id === orderId);
             const isReviewer = userRole === 'admin' || userRole === 'representative';
             if (order?.technicianStatus === 'Rejected' && isReviewer && action !== 'PMMA_First') {
-                if (userRole === 'admin' && action === 'Approved') {
-                    setLabRejectModal({ orderId, mode: 'admin_reject' });
-                    void prefillLabRejectCause(orderId);
+                if (action === 'Approved') {
+                    // Reviewer accepts the case, overruling the designer's rejection and returning it to design
+                    await db.reviewDesignerRejection(orderId, 'reject', 'تم قبول الحالة وإعادتها للمصمم');
+                    toast.success('تم قبول الحالة وإعادتها للتصميم بنجاح');
+                    onStatusChange(orderId, 'same');
                     return;
                 }
-                const reviewAction = action === 'Approved' ? 'approve' : action === 'NeedDetails' ? 'request_details' : 'reject';
-                if (reviewAction === 'approve') {
+                if (action === 'Rejected') {
+                    // Reviewer confirms the rejection (Lab Rejected)
                     setLabRejectModal({ orderId, mode: 'representative_approve' });
                     void prefillLabRejectCause(orderId);
                     return;
                 }
-                const notes = window.prompt(reviewAction === 'request_details' ? 'ما التفاصيل المطلوبة من المصمم؟' : 'سبب رفض طلب المصمم وإعادته للتصميم:') || '';
-                if (!notes.trim()) return;
-                await db.reviewDesignerRejection(orderId, reviewAction, notes);
-                onStatusChange(orderId, 'same');
-                return;
+                if (action === 'NeedDetails') {
+                    const notes = window.prompt('ما التفاصيل المطلوبة من المصمم؟') || '';
+                    if (!notes.trim()) return;
+                    await db.reviewDesignerRejection(orderId, 'request_details', notes);
+                    toast.success('تم طلب التفاصيل من المصمم بنجاح');
+                    onStatusChange(orderId, 'same');
+                    return;
+                }
             }
             if (userRole === 'admin' && action === 'Rejected') {
                 setLabRejectModal({ orderId, mode: 'admin_reject' });
@@ -253,13 +260,12 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                 }
             }
 
-
-
             onStatusChange(orderId, 'same'); // Triggers refresh
         } catch (error) {
             console.error('Error updating technician status:', error);
+            toast.error(ErrorHandler.getUserMessage(error));
         }
-    }, [orders, onStatusChange, currentUser, userRole, prefillLabRejectCause]);
+    }, [orders, onStatusChange, currentUser, userRole, prefillLabRejectCause, toast]);
 
     const handleConfirmLabReject = useCallback(async () => {
         if (!labRejectModal || !labRejectCause) return;
