@@ -861,7 +861,8 @@ export default function DashboardNew() {
             resetDesignerRejectModal();
         } catch (error) {
             console.error('Error rejecting designer case:', error);
-            toast.error('حدث خطأ أثناء رفض الحالة');
+            const msg = error instanceof Error ? error.message : '';
+            toast.error(msg || 'حدث خطأ أثناء رفض الحالة');
             setDesignerRejectSubmitting(false);
         }
     };
