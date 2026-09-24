@@ -564,10 +564,10 @@ function OrderCard({
                                                 getEffectiveIssueState(order),
                                                 { workflowType: order.workflowType, supplierId: order.supplierId }
                                             )}
-                                            stageName={activeStage?.stageName}
-                                            stageSince={formatStageDuration(activeStage?.since ?? null)}
+                                            stageName={isDelivered || getEffectiveProductionStatus(order) === 'final_delivered' ? undefined : activeStage?.stageName}
+                                            stageSince={isDelivered || getEffectiveProductionStatus(order) === 'final_delivered' ? undefined : formatStageDuration(activeStage?.since ?? null)}
                                         />
-                                        {activeStage && (
+                                        {activeStage && !isDelivered && getEffectiveProductionStatus(order) !== 'final_delivered' && (
                                             <span
                                                 className={clsx(
                                                     "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border",

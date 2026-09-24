@@ -469,7 +469,7 @@ const RUN_CARD_SELECT = `
         order_id, priority, due_at,
         orders (
             case_id, patient_name, shade, instructions, design_url, stl_url,
-            images_url, delivery_date,
+            images_url, delivery_date, status, production_status, is_deleted, supplier_id,
             doctors ( name, lab_instructions ),
             order_items ( product_type, teeth_numbers )
         )
@@ -517,7 +517,7 @@ function toCard(r: any): StageRunCard {
         unitsIn: r.units_in ?? 0,
         assigneeId: r.assignee_id ?? null,
         assigneeName: r.users?.name ?? null,
-        supplierId: r.supplier_id ?? null,
+        supplierId: r.supplier_id || order.supplier_id || null,
         supplierName: r.suppliers?.name ?? null,
         isRework: Boolean(r.rework_of),
         teeth: items.flatMap((i) =>
@@ -537,7 +537,22 @@ export async function getOpenStageRuns(): Promise<StageRunCard[]> {
         .order('queued_at', { ascending: true });
 
     if (error) throw ErrorHandler.handle(error, 'getOpenStageRuns');
-    return (data || []).map(toCard);
+    return (data || [])
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        .filter((r: any) => {
+            const order = r.production_jobs?.orders;
+            if (!order) return true;
+            if (order.is_deleted) return false;
+            if (
+                order.status === 'Delivered' ||
+                order.status === 'Completed' ||
+                order.production_status === 'final_delivered'
+            ) {
+                return false;
+            }
+            return true;
+        })
+        .map(toCard);
 }
 
 /**
@@ -903,7 +918,10 @@ export async function getActiveStagesForOrders(orderIds: string[]): Promise<Reco
         .select(`
             id, status, queued_at, started_at, name_override,
             production_stages:stage_id ( id, code, name_ar ),
-            production_jobs!inner ( order_id )
+            production_jobs!inner (
+                order_id,
+                orders ( status, production_status, is_deleted )
+            )
         `)
         .in('status', ['ready', 'in_progress', 'waiting_external'])
         .in('production_jobs.order_id', orderIds);
@@ -918,6 +936,15 @@ export async function getActiveStagesForOrders(orderIds: string[]): Promise<Reco
     for (const row of (data as any[]) || []) {
         const orderId = row.production_jobs?.order_id;
         if (!orderId) continue;
+        const order = row.production_jobs?.orders;
+        if (order?.is_deleted) continue;
+        if (
+            order?.status === 'Delivered' ||
+            order?.status === 'Completed' ||
+            order?.production_status === 'final_delivered'
+        ) {
+            continue;
+        }
         const stage = row.production_stages;
         const stageName = row.name_override || stage?.name_ar || '';
         const since = row.started_at || row.queued_at || null;
