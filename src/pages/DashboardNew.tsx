@@ -1622,11 +1622,14 @@ export default function DashboardNew() {
                 title="حالات منتظرة موافقة المعمل/المصمم"
                 isOpen={activeModal === 'pending'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {pendingApprovalOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                     />
@@ -1637,11 +1640,14 @@ export default function DashboardNew() {
                 title="حالات بدون معمل"
                 isOpen={activeModal === 'unassigned-lab'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {unassignedLabOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                     />
@@ -1740,11 +1746,14 @@ export default function DashboardNew() {
                 title="حالات مرتجعة (من الطبيب)"
                 isOpen={activeModal === 'rejected-doctor'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {rejectedOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                         onArchive={user?.role === 'admin' ? handleArchiveOrder : undefined}
@@ -1756,11 +1765,14 @@ export default function DashboardNew() {
                 title="حالات مرفوضة من المعمل"
                 isOpen={activeModal === 'rejected-lab'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {labRejections.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                         onArchive={user?.role === 'admin' ? handleArchiveOrder : undefined}
@@ -1772,11 +1784,14 @@ export default function DashboardNew() {
                 title="حالات مرتجعة للتعديل"
                 isOpen={activeModal === 'returned'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {returnedOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                     // No onArchive — returned cases must be reworked and delivered, not archived
@@ -1788,11 +1803,14 @@ export default function DashboardNew() {
                 title="مطلوب انتباه (PMMA/تفاصيل)"
                 isOpen={activeModal === 'needs-attention'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {needsAttentionOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                     />
@@ -1850,11 +1868,14 @@ export default function DashboardNew() {
                 title="في مرحلة التصميم/الموافقة"
                 isOpen={activeModal === 'design'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {designPhaseOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                     />
@@ -1865,11 +1886,14 @@ export default function DashboardNew() {
                 title="Try-In منتظر رد الطبيب"
                 isOpen={activeModal === 'tryin'}
                 onClose={() => setActiveModal(null)}
+                showDoctor
             >
                 {tryInOrders.map(order => (
                     <OrderListItem
                         key={order.id}
                         order={order}
+                        doctorName={getDoctorDisplayName(order.doctorId)}
+                        showDoctor
                         labName={getLabName(order.supplierId)}
                         designerName={getDesignerName(order.designerId)}
                     />
