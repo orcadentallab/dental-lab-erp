@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import OrderList from '../components/orders/OrderList';
 import OrderBoard from '../components/orders/OrderBoard';
 import OrderForm from '../components/orders/OrderForm';
@@ -31,6 +31,15 @@ import RepEditModal from '../components/orders/RepEditModal';
 import RedoOrderModal from '../components/orders/RedoOrderModal';
 
 export default function Orders() {
+    const { state } = useLocation();
+    // A search selection can navigate here while this route is already mounted.
+    // Reset the page's local filters/pagination for each selection. URL updates
+    // from this page use replace and retain state, so typing does not remount it.
+    return <OrdersPage key={state?.searchNavigationId ?? 'orders'} />;
+}
+
+function OrdersPage() {
+    const { state: navigationState } = useLocation();
     const { user } = useAuth();
     const { error: toastError } = useToast();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -46,23 +55,24 @@ export default function Orders() {
 
     const highlightedOrderId = searchParams.get('highlight');
 
-    useEffect(() => {
-        if (highlightedOrderId) {
-            const timer = setTimeout(() => {
-                const nextParams = new URLSearchParams(searchParams);
-                nextParams.delete('highlight');
-                setSearchParams(nextParams, { replace: true });
-            }, 5000);
-            return () => clearTimeout(timer);
-        }
-    }, [highlightedOrderId, searchParams, setSearchParams]);
-
     // Note: isDesigner check removed - RLS handles role-based filtering at DB level
     const isAccountant = user?.role === 'accountant';
     const { t } = useTranslation();
 
     // Data state
     const [orders, setOrders] = useState<Order[]>([]);
+
+    useEffect(() => {
+        if (isLoading || !orders.some(order => order.id === highlightedOrderId)) return;
+        const timer = setTimeout(() => {
+            setSearchParams(params => {
+                const nextParams = new URLSearchParams(params);
+                nextParams.delete('highlight');
+                return nextParams;
+            }, { replace: true, state: navigationState });
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, [highlightedOrderId, isLoading, orders, setSearchParams, navigationState]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [users, setUsers] = useState<User[]>([]);
@@ -115,7 +125,7 @@ export default function Orders() {
             }
         });
 
-        setSearchParams(nextParams, { replace: true });
+        setSearchParams(nextParams, { replace: true, state: navigationState });
     };
 
     const clearOpenOrderParams = () => {
@@ -233,9 +243,9 @@ export default function Orders() {
         setOrDelete('archived', showArchived ? '1' : '');
 
         if (nextParams.toString() !== searchParams.toString()) {
-            setSearchParams(nextParams, { replace: true });
+            setSearchParams(nextParams, { replace: true, state: navigationState });
         }
-    }, [searchQuery, statusFilter, productionStatusFilter, productionStageFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams]);
+    }, [searchQuery, statusFilter, productionStatusFilter, productionStageFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams, navigationState]);
 
     useEffect(() => {
         const { modal, orderId } = initialModalRef.current;

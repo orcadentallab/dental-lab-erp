@@ -95,12 +95,16 @@ export default function GlobalSearch({ commandOnly = false }: { commandOnly?: bo
     const openOrder = (order: Order) => {
         setIsOpen(false);
         setQuery('');
-        navigate(`/orders?${new URLSearchParams({ q: order.caseId, highlight: order.id, hideDelivered: '0', ...(order.isArchived ? { archived: '1' } : {}) }).toString()}`);
+        navigate(`/orders?${new URLSearchParams({ q: order.caseId, highlight: order.id, hideDelivered: '0', ...(order.isArchived ? { archived: '1' } : {}) }).toString()}`, {
+            state: { searchNavigationId: crypto.randomUUID() },
+        });
     };
     const openDoctor = (doctor: Doctor) => {
         setIsOpen(false);
         setQuery('');
-        navigate(`/orders?${new URLSearchParams({ doctor: doctor.id, hideDelivered: '0' }).toString()}`);
+        navigate(`/orders?${new URLSearchParams({ doctor: doctor.id, hideDelivered: '0' }).toString()}`, {
+            state: { searchNavigationId: crypto.randomUUID() },
+        });
     };
 
     const hasQuery = query.trim().length > 0;
