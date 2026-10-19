@@ -53,7 +53,6 @@ interface ObligationAuditRecord {
 
 function deriveCaseLocation(prod: ProductionStatus | null, issue: IssueState | null): string {
     if (issue === 'cancelled') return 'closed';
-    if (issue === 'on_hold') return 'on_hold';
     if (issue === 'returned' || issue === 'doctor_rejected' || issue === 'lab_rejected' || issue === 'redo') return 'issue_review';
     switch (prod) {
         case 'not_started':      return 'pending_intake';

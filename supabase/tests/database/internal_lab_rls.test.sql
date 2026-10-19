@@ -32,6 +32,9 @@ VALUES ('e3000000-0000-0000-0000-000000000001', 'RLS Test Doctor', '01000000001'
 INSERT INTO public.suppliers (id, name, phone)
 VALUES ('e4000000-0000-0000-0000-000000000001', 'RLS Test Supplier', '01000000002');
 
+INSERT INTO public.production_routes (id, name_ar, is_fallback, ignores_global_stages)
+VALUES ('e4100000-0000-0000-0000-000000000001', 'RLS Test Route', FALSE, FALSE);
+
 -- Order 1: Has an active production job
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
@@ -42,8 +45,8 @@ INSERT INTO public.orders (
     'A1', 'New Case', CURRENT_DATE, 0, 'in_production', 'none'
 );
 
-INSERT INTO public.production_jobs (id, order_id, status, priority, unit_count)
-VALUES ('e6000000-0000-0000-0000-000000000001', 'e5000000-0000-0000-0000-000000000001', 'active', 'Normal', 1);
+INSERT INTO public.production_jobs (id, order_id, route_id, status, priority, unit_count)
+VALUES ('e6000000-0000-0000-0000-000000000001', 'e5000000-0000-0000-0000-000000000001', 'e4100000-0000-0000-0000-000000000001', 'active', 'Normal', 1);
 
 -- Order 2: Has a done production job (should also be visible to technician)
 INSERT INTO public.orders (
@@ -55,17 +58,17 @@ INSERT INTO public.orders (
     'A2', 'Delivered', CURRENT_DATE, 0, 'final_delivered', 'none'
 );
 
-INSERT INTO public.production_jobs (id, order_id, status, priority, unit_count)
-VALUES ('e6000000-0000-0000-0000-000000000002', 'e5000000-0000-0000-0000-000000000002', 'done', 'Normal', 1);
+INSERT INTO public.production_jobs (id, order_id, route_id, status, priority, unit_count)
+VALUES ('e6000000-0000-0000-0000-000000000002', 'e5000000-0000-0000-0000-000000000002', 'e4100000-0000-0000-0000-000000000001', 'done', 'Normal', 1);
 
 -- Order 3: No production job (technician should NOT see this)
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, cost, production_status, issue_state
+    delivery_date, cost, production_status, issue_state, created_at
 ) VALUES (
     'e5000000-0000-0000-0000-000000000003', 'CASE-NOJOB',
     'e3000000-0000-0000-0000-000000000001', 'Patient No Job', '[]', 200,
-    'A3', 'New Case', CURRENT_DATE, 0, 'not_started', 'none'
+    'A3', 'New Case', CURRENT_DATE, 0, 'not_started', 'none', NOW() - INTERVAL '365 days'
 );
 
 -- ─── Tests as Technician ──────────────────────────────────────────────────

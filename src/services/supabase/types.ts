@@ -105,7 +105,7 @@ export interface DbOrder {
     rejected_designer_cost_status?: 'pending' | 'resolved' | 'not_applicable' | null;
     // WF-1: shadow workflow columns (added by migration 086).
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
-    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
     route_override_id?: string | null;
 }
 

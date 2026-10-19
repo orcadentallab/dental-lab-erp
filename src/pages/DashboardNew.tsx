@@ -1979,7 +1979,7 @@ export default function DashboardNew() {
             </OrderListModal>
 
             <OrderListModal
-                title="حالات المعمل الداخلي المتوقفة (Blocked / On Hold)"
+                title="حالات المعمل الداخلي المتوقفة (Blocked)"
                 isOpen={activeModal === 'internal-blocked'}
                 onClose={() => setActiveModal(null)}
             >

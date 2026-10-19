@@ -13,7 +13,6 @@ const LOCATION_LABELS: Record<CaseLocation, string> = {
     internal_ready_final: 'جاهزة للتسليم',
     with_doctor_final: 'تم التسليم',
     issue_review: 'مراجعة المشكلة',
-    on_hold: 'موقوف',
     closed: 'مغلق',
 };
 
@@ -29,7 +28,6 @@ const LOCATION_COLORS: Record<CaseLocation, string> = {
     internal_ready_final: 'text-emerald-600',
     with_doctor_final: 'text-green-700',
     issue_review: 'text-red-600',
-    on_hold: 'text-orange-700',
     closed: 'text-gray-400',
 };
 

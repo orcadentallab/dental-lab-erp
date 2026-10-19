@@ -13,6 +13,13 @@ describe('Order Status Helpers - Financial Relevance & Statement Visibility', ()
             }
         });
 
+        it('keeps returned-after-delivery orders visible because their earned financial effect remains', () => {
+            expect(isVisibleInAccountStatement({
+                status: 'Returned for Adjustments',
+                isDeleted: false,
+            })).toBe(true);
+        });
+
         it('should NOT show terminal orders when isDeleted is true', () => {
             const terminalStatuses = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'];
             for (const status of terminalStatuses) {
@@ -25,7 +32,7 @@ describe('Order Status Helpers - Financial Relevance & Statement Visibility', ()
             const inProgressStatuses = [
                 'Pending', 'In Progress', 'New Case', 'Under Design',
                 'Waiting Dr Approval', 'Under Production', 'Try In',
-                'Try In Approved', 'Ready', 'Returned for Adjustments', 'Pending Review'
+                'Try In Approved', 'Ready', 'Pending Review'
             ];
             for (const status of inProgressStatuses) {
                 expect(isVisibleInAccountStatement({ status, isDeleted: false })).toBe(false);

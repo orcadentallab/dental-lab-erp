@@ -238,7 +238,7 @@ export function canChangeProductionStatus(
     // name. 'lab' means external supplier and now moves nothing.
     if (role !== 'production_manager') return false;
 
-    // If issueState is on_hold or returned, we can resume to in_production
+    // Returned cases can resume through the normal production path.
     if (issueState === 'returned') {
         if (targetStatus === 'in_production') return true;
         // Allow same target statuses as in_production
@@ -248,9 +248,6 @@ export function canChangeProductionStatus(
         if (!isTryIn && targetStatus === 'final_ready') return true;
         if (targetStatus === 'designing') return true; // return to design
         return false;
-    }
-    if (issueState === 'on_hold') {
-        return targetStatus === 'in_production';
     }
     if (['rejected', 'cancelled', 'redo'].includes(issueState)) {
         return false;
@@ -316,20 +313,15 @@ export function canChangeIssueState(
     currentIssueState: IssueState,
     targetIssueState: IssueState
 ): boolean {
-    // on_hold is a retired historical value. Existing rows may leave it, but
-    // no role (including admin) may create or re-enter it.
-    if (targetIssueState === 'on_hold') return false;
-
     if (role === 'admin') return true;
     // Was 'lab'; see canChangeProductionStatus. The coordinator is pointedly
     // NOT here: plan section 4.3 keeps issue transitions with the people who
     // cause them, not with the person relaying the news.
     if (role !== 'production_manager') return false;
 
-    // The production manager can use none ↔ returned and can release a
-    // historical on_hold row.
+    // The production manager can use none ↔ returned.
     return (
         (currentIssueState === 'none' && targetIssueState === 'returned') ||
-        ((currentIssueState === 'returned' || currentIssueState === 'on_hold') && targetIssueState === 'none')
+        (currentIssueState === 'returned' && targetIssueState === 'none')
     );
 }

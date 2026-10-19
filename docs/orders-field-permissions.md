@@ -26,14 +26,13 @@ Selector: `orders.delivery_type` (`'TryIn'` → try-in workflow; `'Final'` or `N
 
 **Hard invariant**: legacy `orders.status='Delivered'` always maps to `production_status='final_delivered'` and `issue_state='none'`, regardless of `delivery_type`. Existing financial obligations on these rows are never voided by backfill.
 
-## 3. Issue State (7 persisted values, 6 active)
+## 3. Issue State (6 persisted values)
 
-`none`, `returned`, `doctor_rejected`, `lab_rejected`, `cancelled`, `on_hold`, `redo`.
+`none`, `returned`, `doctor_rejected`, `lab_rejected`, `cancelled`, `redo`.
 
-`on_hold` is retired and kept only for historical compatibility. No new order
-may be inserted with it and no existing order may transition into it. Historical
-rows retain their value, timeline, and financial behavior until an authorized
-user transitions them out of `on_hold`.
+`on_hold` was fully removed by migration
+`20261018000000_remove_retired_on_hold_issue_state.sql`. The migration aborts
+without rewriting data if any unexpected order still carries that value.
 
 `redo` — admin-only; closes the current order (sets `issue_state='redo'`, `status='Rejected'`) and creates a new linked order pre-filled with the same data. Added by migration 087.
 
@@ -59,7 +58,7 @@ Legend: ✅ allowed · ❌ denied (trigger raises) · ⚙ governed by the existi
 |---|---|---|---|---|---|
 | `status` (legacy) | ✅ | ⚙ | ✅ | ⚙ | ❌ |
 | `production_status` | ✅ | ✅ (state-machine guarded later in WF-2) | ❌ | ❌ | ❌ |
-| `issue_state` | ✅ active values; cannot enter retired `on_hold` | ✅ for `none↔returned` and historical `on_hold→none`; ❌ rejected/cancelled/entering `on_hold` | ❌ | ❌ | ❌ |
+| `issue_state` | ✅ approved values | ✅ for `none↔returned`; ❌ rejected/cancelled | ❌ | ❌ | ❌ |
 | `actual_delivery_date` | ✅ revert flow only | ⚙ via status | ❌ | ❌ | ❌ |
 | `design_status` | ✅ | ⚙ | ❌ | ✅ | ❌ |
 | `technician_status` | ✅ | ⚙ allowed for lab | ❌ | ❌ | ❌ |

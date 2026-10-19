@@ -43,8 +43,8 @@ test.describe('WF-1: workflow constants', () => {
         ]);
     });
 
-    test('ISSUE_STATES is exactly the 7 approved values', () => {
-        expect([...ISSUE_STATES]).toEqual(['none', 'returned', 'doctor_rejected', 'lab_rejected', 'cancelled', 'on_hold', 'redo']);
+    test('ISSUE_STATES is exactly the 6 approved values', () => {
+        expect([...ISSUE_STATES]).toEqual(['none', 'returned', 'doctor_rejected', 'lab_rejected', 'cancelled', 'redo']);
     });
 
     test('every production_status has a non-empty Arabic label', () => {

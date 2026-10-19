@@ -87,7 +87,7 @@ export interface IssueCorrectionContext {
  * the RPC refuses and the UI must not offer the action.
  */
 export function canCorrectIssueState(context: IssueCorrectionContext): boolean {
-    if (context.issueState === 'none' || context.issueState === 'on_hold') return false;
+    if (context.issueState === 'none') return false;
     if (context.issueState === 'redo') return false;
     return !context.hasReplacementOrder;
 }

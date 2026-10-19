@@ -25,6 +25,10 @@ const onHoldRetirementMigration = readFileSync(
     resolve('supabase/migrations/20260801010000_retire_on_hold_issue_state.sql'),
     'utf8',
 );
+const onHoldRemovalMigration = readFileSync(
+    resolve('supabase/migrations/20261018000000_remove_retired_on_hold_issue_state.sql'),
+    'utf8',
+);
 const redoModal = readFileSync(resolve('src/components/orders/RedoOrderModal.tsx'), 'utf8');
 
 describe('local database integration suite safety', () => {
@@ -75,5 +79,14 @@ describe('local database integration suite safety', () => {
         expect(onHoldRetirementMigration).toContain("OLD.issue_state = 'on_hold'");
         expect(onHoldRetirementMigration).not.toMatch(/UPDATE\s+public\.orders/i);
         expect(onHoldRetirementMigration).not.toContain('financial_obligations');
+    });
+
+    test('on_hold removal aborts on unexpected rows and never rewrites orders', () => {
+        expect(onHoldRemovalMigration).toContain("WHERE issue_state = 'on_hold'");
+        expect(onHoldRemovalMigration).toContain('IF v_on_hold_count <> 0 THEN');
+        expect(onHoldRemovalMigration).toContain('DROP FUNCTION IF EXISTS public.prevent_new_on_hold_issue_state()');
+        expect(onHoldRemovalMigration).toContain('DROP FUNCTION IF EXISTS public.guard_retired_on_hold_insert_v2()');
+        expect(onHoldRemovalMigration).not.toMatch(/UPDATE\s+public\.orders/i);
+        expect(onHoldRemovalMigration).not.toContain('financial_obligations');
     });
 });

@@ -191,7 +191,6 @@ function formatDiffValue(
             'none': 'لا يوجد',
             'returned': 'مرتجع للتعديل',
             'cancelled': 'ملغي',
-            'on_hold': 'موقوف مؤقتاً',
             'redo': 'إعادة إنتاج',
             'doctor_rejected': 'مرتجع طبيب',
             'lab_rejected': 'رفض معمل',

@@ -218,7 +218,6 @@ export function mapIssueStateToLegacy(newIssueState: IssueState, currentLegacySt
         case 'doctor_rejected': return 'Doctor Rejected';  // Doctor returned case; rejectedLabCost applies
         case 'lab_rejected':    return 'Lab Rejected';      // Lab internal rejection; zero financial impact
         case 'cancelled':       return 'Cancelled';
-        case 'on_hold':         return currentLegacyStatus; // Keep current status
         case 'none':            return 'Under Production';  // Resuming
         default:                return currentLegacyStatus;
     }
@@ -248,8 +247,6 @@ function getIssueEventDetails(newIssueState: IssueState): { eventType: string; s
             return { eventType: ORDER_EVENT_TYPES.caseRejected, severity: 'critical' };
         case 'cancelled':
             return { eventType: ORDER_EVENT_TYPES.caseCancelled, severity: 'critical' };
-        case 'on_hold':
-            return { eventType: ORDER_EVENT_TYPES.caseHeld, severity: 'warning' };
         case 'none':
             return { eventType: ORDER_EVENT_TYPES.caseResumed, severity: 'info' };
         default:
@@ -330,7 +327,6 @@ export async function changeProductionStatus(
 
 /**
  * WF-2/WF-3: Change `issue_state` (returned/rejected/cancelled/redo/none).
- * `on_hold` is retained only so historical rows can transition back to `none`.
  */
 export async function changeIssueState(
     orderId: string,
@@ -345,10 +341,6 @@ export async function changeIssueState(
     if (!newIssueState) {
         throw new ValidationError('newIssueState is required');
     }
-    if (newIssueState === 'on_hold') {
-        throw new ValidationError('حالة الإيقاف المؤقت متوقفة ولا يمكن تعيينها لحالات جديدة');
-    }
-
     const { role: userRole, userId } = await getCallerRoleAndId();
 
     const { getOrder } = await import('./orders');

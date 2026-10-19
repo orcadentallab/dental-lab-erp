@@ -26,8 +26,8 @@ test.describe('WF-2: getEffectiveProductionStatus', () => {
 
 test.describe('WF-2: getEffectiveIssueState', () => {
     test('prefers column value when present', () => {
-        const order = { status: 'Under Production', issueState: 'on_hold' } as any;
-        expect(getEffectiveIssueState(order)).toBe('on_hold');
+        const order = { status: 'Under Production', issueState: 'doctor_rejected' } as any;
+        expect(getEffectiveIssueState(order)).toBe('doctor_rejected');
     });
 
     test('falls back to legacy derivation', () => {
@@ -37,10 +37,6 @@ test.describe('WF-2: getEffectiveIssueState', () => {
 });
 
 test.describe('WF-2: getCaseLocation', () => {
-    test('on_hold overrides production status', () => {
-        expect(getCaseLocation('in_production', 'on_hold')).toBe('on_hold');
-    });
-
     test('cancelled maps to closed', () => {
         expect(getCaseLocation('in_production', 'cancelled')).toBe('closed');
     });

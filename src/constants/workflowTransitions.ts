@@ -28,16 +28,6 @@ export function getForwardActions(
         return [];
     }
 
-    if (issueState === 'on_hold') {
-        return [{
-            id: 'resume_from_hold',
-            label: 'رفع الإيقاف',
-            targetLegacyStatus: 'Under Production',
-            variant: 'primary',
-            icon: 'Play',
-        }];
-    }
-
     switch (productionStatus) {
         case 'not_started':
             if (orderContext.status === 'Pending Review') return [];

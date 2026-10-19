@@ -3715,19 +3715,16 @@ export async function updateRejectedOrderFinancials(
 
 /**
  * Convenience function for designers uploading design links.
- * Updates status to 'Waiting Dr Approval' and adds a system comment.
+ * Updates the design link/status without adding a synthetic order comment.
  */
 export async function submitDesignForApproval(
     orderId: string,
     designUrl: string,
-    userId: string,
-    userName: string
+    _userId: string,
+    _userName: string
 ): Promise<Order | null> {
     return updateOrderStatus(orderId, 'Waiting Dr Approval', {
-        designUrl,
-        comment: `🔗 تم إضافة/تحديث رابط التصميم:\n${designUrl}`,
-        userId,
-        userName
+        designUrl
     });
 }
 

@@ -4,7 +4,7 @@ import { db, type Order } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import {
     FolderKanban, Upload, Search,
-    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, StickyNote, MessageCircle
+    AlertCircle, Clock, CheckCircle2, Link as LinkIcon, StickyNote, MessageCircle, Copy
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
@@ -40,7 +40,7 @@ interface DesignerDashboardCache {
 
 export default function DesignerDashboard({ embedded = false }: DesignerDashboardProps) {
     const { user } = useAuth();
-    const { error: toastError } = useToast();
+    const { success, error: toastError } = useToast();
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
         if (!rawUrl) return;
@@ -56,6 +56,21 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    const handleCopyDesignUrl = async (rawUrl: string | undefined | null) => {
+        const absoluteUrl = ensureAbsoluteUrl(rawUrl || '');
+        if (!absoluteUrl) {
+            toastError('رابط التصميم غير صالح أو معطوب');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(absoluteUrl);
+            success('تم نسخ أحدث رابط تصميم');
+        } catch {
+            toastError('تعذر نسخ رابط التصميم');
+        }
     };
 
     const [orders, setOrders] = useState<Order[]>([]);
@@ -338,11 +353,8 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         }
         const absoluteUrl = ensureAbsoluteUrl(cleanedUrl);
 
-        const comment = `🔗 تم تسليم التصميم وإرساله للمعمل:\n${absoluteUrl}`;
-
         const updatedOrder = await db.updateOrderStatus(selectedOrder.id, 'Under Production', {
             designUrl: absoluteUrl,
-            comment,
             userId: user.id,
             userName: user.name || user.role || 'مصمم',
             actorRole: user.role,
@@ -936,13 +948,24 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             </button>
                                                         )}
                                                         {order.designUrl && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
-                                                                className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100"
-                                                            >
-                                                                <LinkIcon size={12} /> التصميم الحالي
-                                                            </button>
+                                                            <>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+                                                                    className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100"
+                                                                >
+                                                                    <LinkIcon size={12} /> تحميل التصميم
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => void handleCopyDesignUrl(order.designUrl)}
+                                                                    aria-label="نسخ أحدث رابط تصميم"
+                                                                    title="نسخ أحدث رابط تصميم"
+                                                                    className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100"
+                                                                >
+                                                                    <Copy size={12} /> نسخ
+                                                                </button>
+                                                            </>
                                                         )}
                                                         {isDesignSubmitted(order) && (
                                                             <button

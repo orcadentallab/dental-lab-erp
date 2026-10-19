@@ -6,6 +6,7 @@ import {
     canRecognizeCashRevenue,
     getDeliveryRoute,
     getDoctorOrderDisplayAmount,
+    getDoctorReceivableAmount,
     getFinancialSummary,
     getOfficialStatementDate,
     getMainStatus,
@@ -156,6 +157,21 @@ test.describe('delivery route and phase 1 finance summary', () => {
 });
 
 test.describe('official statement dates', () => {
+    test('keeps the earned doctor receivable when a delivered order is returned for adjustments', () => {
+        const returned = order({
+            status: 'Returned for Adjustments',
+            productionStatus: 'in_production',
+            issueState: 'returned',
+            firstDeliveredAt: '2026-09-02T10:15:00.000Z',
+            deliveryDate: '2026-08-30',
+        });
+
+        expect(isDeliveredForDoctorReceivable(returned)).toBe(true);
+        expect(getDoctorReceivableAmount(returned)).toBe(1000);
+        expect(getDoctorOrderDisplayAmount(returned)).toBe(1000);
+        expect(getOfficialStatementDate(returned)).toBe('2026-09-02');
+    });
+
     test('keeps approved Doctor Rejected responsibility in the all-orders display value', () => {
         const rejected = order({
             status: 'Doctor Rejected',

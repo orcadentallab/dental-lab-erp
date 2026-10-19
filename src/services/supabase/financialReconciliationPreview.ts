@@ -2,7 +2,7 @@ import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementI
 import { ErrorHandler } from '../../lib/errorHandler';
 import type { Adjustment } from '../financeService';
 import type { Order } from '../db';
-import { getLabCostMetadata } from '../../constants/financialObligations';
+import { getExternalLabStatementAmount } from '../../constants/financialObligations';
 import { isVisibleInAccountStatement as isVisibleInAccountStatementHelper, isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
 import { isDateInOpenRange } from '../../utils/dateRange';
 
@@ -137,6 +137,7 @@ type OrderRow = {
     workflow_type: string | null;
     delivery_date: string | null;
     actual_delivery_date: string | null;
+    first_delivered_at: string | null;
     created_at: string;
     is_archived: boolean | null;
     is_deleted: boolean | null;
@@ -220,6 +221,7 @@ function toLifecycleOrder(row: OrderRow) {
         workflowType: row.workflow_type as 'full' | 'split' | undefined,
         deliveryDate: row.delivery_date || '',
         actualDeliveryDate: row.actual_delivery_date || undefined,
+        firstDeliveredAt: row.first_delivered_at || undefined,
         createdAt: row.created_at,
         isArchived: row.is_archived || false,
         isDeleted: row.is_deleted || false,
@@ -242,25 +244,8 @@ function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>)
 }
 
 function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {
-    // Doctor Rejected: same behavior as old 'Rejected' — rejectedLabCost applies if present
-    const isDoctorRejected = isDoctorRejectedStatus(order.status);
-    const hasRejectionCost = isDoctorRejected && typeof order.rejectedLabCost === 'number';
-    const isRelevant = (!isDoctorRejected || hasRejectionCost)
-        && ((order.status || '').toLowerCase() === 'delivered'
-            || (order.status || '').toLowerCase() === 'cancelled'
-            || isLabRejectedStatus(order.status)
-            || hasRejectionCost);
-
-    if (!isRelevant) return null;
-
     const isSalaried = order.designerId ? salariedDesignerIds.has(order.designerId) : false;
-    let cost = getLabCostMetadata(order, isSalaried).cost;
-    // Zero cost statuses
-    if (order.status === 'Cancelled' || isLabRejectedStatus(order.status)) cost = 0;
-    else if (isDoctorRejected) {
-        cost = hasRejectionCost ? order.rejectedLabCost || 0 : 0;
-    }
-    return cost;
+    return getExternalLabStatementAmount(order, isSalaried);
 }
 
 function buildFlags(input: {
@@ -370,7 +355,7 @@ export async function previewFinancialReconciliation(
         ] = await Promise.all([
             supabase.from('doctors').select('id, name, parent_id, is_center'),
             supabase.from('suppliers').select('id, name'),
-            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, created_at, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, rejection_financial_review_status, production_status, issue_state'),
+            fetchAllRows<OrderRow>('orders', 'id, case_id, doctor_id, supplier_id, designer_id, status, total_price, cost, design_price, manual_cost, workflow_type, design_status, delivery_date, actual_delivery_date, first_delivered_at, created_at, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, rejection_financial_review_status, production_status, issue_state'),
             fetchAllRows<TransactionRow>('transactions', 'id, type, amount, date, category, description, entity_id, entity_type'),
             fetchAllRows<ObligationRow>('financial_obligations', 'order_id, entity_type, entity_id, direction, trigger_type, net_amount, trigger_date, status, source'),
             fetchAllRows<Adjustment>('adjustments', 'entity_type, entity_id, amount, type, date'),

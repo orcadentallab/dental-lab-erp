@@ -73,10 +73,6 @@ describe('order financial-obligation lifecycle decisions', () => {
             ...previous,
             issueState: 'returned',
         })).toBe(false);
-        expect(shouldVoidDoctorReceivableForStatusOrIssueChange(previous, {
-            ...previous,
-            issueState: 'on_hold',
-        })).toBe(false);
     });
 
     it('creates an external-lab payable at final-ready or direct final delivery', () => {

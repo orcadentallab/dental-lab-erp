@@ -61,6 +61,7 @@ export const DOCTOR_STATEMENT_INCLUDED_STATUSES = [
 type LifecycleOrder = Partial<Order> & {
     status?: string;
     actual_delivery_date?: string | null;
+    first_delivered_at?: string | null;
     delivery_date?: string | null;
     created_at?: string | null;
     delivery_type?: string;
@@ -215,7 +216,12 @@ export function isExternalLabPayableEligible(order: LifecycleOrder): boolean {
 export function isDeliveredForDoctorReceivable(order: LifecycleOrder): boolean {
     const status = getProductionStatus(order);
     const issue = getEffectiveIssueState(order);
-    return status === 'final_delivered' && !['cancelled', 'rejected', 'redo', 'returned', 'doctor_rejected', 'lab_rejected'].includes(issue);
+    // Returning a case for adjustments reopens production, but it does not
+    // reverse the receivable earned by the original delivery. The database
+    // obligation trigger follows the same rule and preserves the obligation.
+    if (issue === 'returned') return true;
+
+    return status === 'final_delivered' && !['cancelled', 'rejected', 'redo', 'doctor_rejected', 'lab_rejected'].includes(issue);
 }
 
 export function isBillableToDoctor(order: LifecycleOrder): boolean {
@@ -359,7 +365,11 @@ export function getDoctorOrderDisplayAmount(order: LifecycleOrder): number {
         return getDoctorReceivableAmount(order);
     }
 
-    if (['cancelled', 'returned for adjustments'].includes(normalizedStatus)) {
+    if (normalizedStatus === 'returned for adjustments') {
+        return getDoctorReceivableAmount(order);
+    }
+
+    if (normalizedStatus === 'cancelled') {
         return 0;
     }
 
@@ -370,11 +380,16 @@ const dateOnly = (date?: string | null): string => (date || '').split('T')[0];
 
 export function getOfficialStatementDate(order: LifecycleOrder): string {
     const actualDeliveryDate = order.actualDeliveryDate || order.actual_delivery_date;
+    const firstDeliveredAt = order.firstDeliveredAt || order.first_delivered_at;
     const deliveryDate = order.deliveryDate || order.delivery_date;
     const createdAt = order.createdAt || order.created_at;
 
+    if (getEffectiveIssueState(order) === 'returned') {
+        return dateOnly(firstDeliveredAt || actualDeliveryDate || deliveryDate || createdAt);
+    }
+
     if (getProductionStatus(order) === 'final_delivered') {
-        return dateOnly(actualDeliveryDate || deliveryDate || createdAt);
+        return dateOnly(actualDeliveryDate || firstDeliveredAt || deliveryDate || createdAt);
     }
 
     return dateOnly(deliveryDate || createdAt);
@@ -474,7 +489,6 @@ export function getCaseLocation(
     issueState: IssueState,
     context?: { workflowType?: string | null; supplierId?: string | null }
 ): CaseLocation {
-    if (issueState === 'on_hold') return 'on_hold';
     if (issueState === 'cancelled') return 'closed';
     if (issueState === 'returned' || issueState === 'doctor_rejected' || issueState === 'lab_rejected' || issueState === 'redo') return 'issue_review';
 

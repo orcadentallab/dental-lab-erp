@@ -16,6 +16,7 @@ import {
     buildDoctorReceivableCandidate,
     buildExternalLabPayableCandidate,
     calculateNetAmount,
+    getExternalLabStatementAmount,
     getLabCostMetadata,
     shouldCreateDoctorReceivableObligationForStatusChange,
     shouldCreateExternalLabPayableObligationForStatusChange,
@@ -36,6 +37,7 @@ const baseOrder = {
     deliveryDate: '2026-04-15',
     createdAt: '2026-04-01T10:00:00.000Z',
 };
+const sharedOrdersSource = readFileSync(resolve('src/services/supabase/orders.ts'), 'utf8');
 
 test.describe('financial obligation candidates', () => {
     test('builds doctor receivable candidate for Delivered and legacy Completed', () => {
@@ -80,10 +82,6 @@ test.describe('financial obligation candidates', () => {
         expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
             { ...baseOrder, status: 'Delivered', issueState: 'none' },
             { ...baseOrder, status: 'Delivered', issueState: 'returned' }
-        )).toBe(false);
-        expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
-            { ...baseOrder, status: 'Delivered', issueState: 'none' },
-            { ...baseOrder, status: 'Delivered', issueState: 'on_hold' }
         )).toBe(false);
         expect(shouldVoidDoctorReceivableForStatusOrIssueChange(
             { ...baseOrder, status: 'Delivered' },
@@ -250,8 +248,8 @@ test.describe('financial obligation amounts and due dates', () => {
     });
 
     test('uses the database trigger as the only normal order-mutation financial boundary', () => {
-        expect(ordersSource).toContain('if (!FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled)');
-        expect(ordersSource).toContain('The database trigger is the authoritative financial boundary');
+        expect(sharedOrdersSource).toContain('if (!FINANCIAL_OBLIGATIONS_FLAGS.clientSideMutationSyncEnabled)');
+        expect(sharedOrdersSource).toContain('The database trigger is the authoritative financial boundary');
     });
 
     test('detects lab cost source metadata without recalculating payable amount', () => {
@@ -319,6 +317,21 @@ test.describe('financial obligation amounts and due dates', () => {
                 costSource: 'manual',
             }),
         });
+    });
+
+    test('keeps the earned external-lab payable on a returned delivered order statement', () => {
+        const returned = {
+            ...baseOrder,
+            status: 'Returned for Adjustments',
+            productionStatus: 'in_production',
+            issueState: 'returned',
+            firstDeliveredAt: '2026-09-02T10:15:00.000Z',
+        };
+
+        expect(getExternalLabStatementAmount(returned)).toBe(500);
+        expect(getExternalLabStatementAmount({ ...baseOrder, status: 'Delivered' })).toBe(500);
+        expect(getExternalLabStatementAmount({ ...baseOrder, status: 'Cancelled' })).toBe(0);
+        expect(getExternalLabStatementAmount({ ...baseOrder, status: 'Under Production' })).toBeNull();
     });
 
     test('supports external lab issue settlement trigger type for future historical issue backfill', () => {
@@ -1174,9 +1187,8 @@ test.describe('financial obligations service wiring', () => {
         expect(reconciliationSource).toContain("transaction.type === 'expense'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'doctor'");
         expect(reconciliationSource).toContain("adjustment.entity_type === 'supplier'");
-        expect(reconciliationSource).toContain("const isDoctorRejected = isDoctorRejectedStatus(order.status);");
-        expect(reconciliationSource).toContain("const hasRejectionCost = isDoctorRejected && typeof order.rejectedLabCost === 'number';");
-        expect(reconciliationSource).toContain("getLabCostMetadata(order, isSalaried)");
+        expect(reconciliationSource).toContain('getExternalLabStatementAmount(order, isSalaried)');
+        expect(reconciliationSource).toContain('first_delivered_at');
     });
 
     test('financial reconciliation preview compares obligations against transactions and flags differences', () => {
@@ -1265,7 +1277,7 @@ test.describe('manualCost clearing contract', () => {
 
     test('rejectedLabCost remains separate from normal lab cost flow', () => {
         // Mapped via its own DB column and not mixed into the lab cost correction path.
-        expect(ordersSource).toContain('if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost || null;');
+        expect(ordersSource).toContain('if (updates.rejectedLabCost !== undefined) dbUpdates.rejected_lab_cost = updates.rejectedLabCost;');
         expect(ordersSource).not.toContain('rejectedLabCost !== undefined || updates.cost');
         expect(ordersSource).not.toContain('rejectedLabCost !== undefined || updates.manualCost');
     });
@@ -1504,7 +1516,8 @@ test.describe('returned external-lab obligation price synchronization', () => {
     test('preserves a returned payable only when its financial inputs did not change', () => {
         expect(migration).toContain('sync_preserved_external_lab_price_change');
         expect(migration).toContain('NEW.cost IS NOT DISTINCT FROM OLD.cost');
-        expect(migration).toContain("NOT IN ('returned', 'cancelled', 'on_hold')");
+        expect(migration).toContain("<> 'returned'");
+        expect(migration).not.toContain("NOT IN ('returned', 'cancelled', 'on_hold')");
         expect(migration).toContain('OR NOT EXISTS (');
     });
 

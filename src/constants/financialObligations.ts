@@ -10,6 +10,7 @@ import {
     isDeliveredForDoctorReceivable,
     isFinalReady,
     isTryInReady,
+    normalizeStatus,
 } from './orderLifecycle';
 
 export const OBLIGATION_DIRECTIONS = {
@@ -156,6 +157,47 @@ export function getLabCostMetadata(order: CandidateOrder, isSalariedDesigner = f
     }
 
     return { cost: rawCost, manualCost, defaultCost, costSource: 'unknown' };
+}
+
+/**
+ * Official external-lab amount shown in statements and reconciliation.
+ *
+ * A returned case has gone back into production, but the payable earned at
+ * Final Ready remains active. Keeping this rule beside the obligation logic
+ * prevents account statements and the reconciliation screen from drifting.
+ * `null` means the order is not yet part of the official supplier statement.
+ */
+export function getExternalLabStatementAmount(
+    order: CandidateOrder,
+    isSalariedDesigner = false
+): number | null {
+    const status = normalizeStatus(order.status);
+    const issueState = getEffectiveIssueState(order);
+
+    if (issueState === 'returned') {
+        return Math.max(0, getLabCostMetadata(order, isSalariedDesigner).cost);
+    }
+
+    if (status === 'cancelled' || issueState === 'cancelled'
+        || status === 'lab rejected' || issueState === 'lab_rejected') {
+        return 0;
+    }
+
+    const isDoctorRejected = status === 'doctor rejected'
+        || status === 'rejected'
+        || issueState === 'doctor_rejected'
+        || issueState === 'redo';
+    if (isDoctorRejected) {
+        return typeof order.rejectedLabCost === 'number'
+            ? Math.max(0, order.rejectedLabCost)
+            : null;
+    }
+
+    if (getProductionStatus(order) === 'final_delivered') {
+        return Math.max(0, getLabCostMetadata(order, isSalariedDesigner).cost);
+    }
+
+    return null;
 }
 
 export function getOrderTriggerDate(order: CandidateOrder): string {
@@ -323,7 +365,7 @@ export function shouldVoidExternalLabReadyObligationForStatusChange(
     updatedOrder: CandidateOrder
 ): boolean {
     const issueState = getEffectiveIssueState(updatedOrder);
-    if (['returned', 'doctor_rejected', 'lab_rejected', 'cancelled', 'on_hold', 'redo'].includes(issueState)) {
+    if (['returned', 'doctor_rejected', 'lab_rejected', 'cancelled', 'redo'].includes(issueState)) {
         return false;
     }
 
@@ -340,7 +382,7 @@ export function shouldVoidDoctorReceivableForStatusOrIssueChange(
     updatedOrder: CandidateOrder
 ): boolean {
     const updatedIssueState = getEffectiveIssueState(updatedOrder);
-    if (['returned', 'on_hold'].includes(updatedIssueState)) {
+    if (updatedIssueState === 'returned') {
         return false;
     }
 

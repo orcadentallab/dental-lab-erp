@@ -351,7 +351,7 @@ export interface Order {
     // WF-1: shadow workflow columns. Optional for backwards-compat with all
     // existing call sites; finance logic does not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
-    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'on_hold' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
     routeOverrideId?: string | null;
 }
 

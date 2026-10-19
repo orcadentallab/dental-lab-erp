@@ -74,7 +74,7 @@ SET LOCAL ROLE authenticated;
 
 SELECT throws_like(
     $$SELECT public.admin_reset_password('ea000000-0000-0000-0000-000000000003', 'hijacked-password')$$,
-    '%Unauthorized%',
+    '%غير مصرح%',
     'a representative cannot reset anyone''s password');
 
 -- ─── 4. The anon key (reachable in production before this migration) is now refused up front ──

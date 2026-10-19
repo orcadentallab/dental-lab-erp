@@ -25,17 +25,12 @@ export const ISSUE_STATES = [
     'doctor_rejected', // Doctor returned case — rejectedLabCost applies
     'lab_rejected',    // Lab internal rejection — zero financial impact
     'cancelled',
-    'on_hold',
     'redo',
 ] as const;
 
 export type IssueState = typeof ISSUE_STATES[number];
 
-// `on_hold` remains in the persisted type for historical rows only. New
-// transitions to it are retired at both the application and database layers.
-export const ACTIVE_ISSUE_STATES = ISSUE_STATES.filter(
-    (state): state is Exclude<IssueState, 'on_hold'> => state !== 'on_hold'
-);
+export const ACTIVE_ISSUE_STATES = ISSUE_STATES;
 
 // Arabic labels for the timeline / future UI. Kept colocated with the constant
 // so additions to the enum cannot drift out of sync.
@@ -56,7 +51,6 @@ export const ISSUE_STATE_LABELS_AR: Record<IssueState, string> = {
     doctor_rejected: 'مرتجع طبيب',  // Doctor returned — rejectedLabCost applies
     lab_rejected: 'رفض معمل',       // Lab rejected internally — zero cost
     cancelled: 'ملغي',
-    on_hold: 'موقوف مؤقتاً',
     redo: 'إعادة إنتاج',
 };
 
@@ -74,7 +68,6 @@ export const CASE_LOCATIONS = [
     'internal_ready_final',
     'with_doctor_final',
     'issue_review',
-    'on_hold',
     'closed',
 ] as const;
 

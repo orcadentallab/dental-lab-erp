@@ -1,4 +1,5 @@
 export const TERMINAL_STATUSES = ['Delivered', 'Completed', 'Doctor Rejected', 'Lab Rejected', 'Cancelled', 'Rejected'];
+export const ACCOUNT_STATEMENT_STATUSES = [...TERMINAL_STATUSES, 'Returned for Adjustments'];
 
 export interface OrderLike {
     status?: string | null;
@@ -10,7 +11,7 @@ export interface OrderLike {
 export const isVisibleInAccountStatement = (order: OrderLike): boolean => {
     if (!order) return false;
     if (order.isDeleted) return false;
-    return !!order.status && TERMINAL_STATUSES.includes(order.status);
+    return !!order.status && ACCOUNT_STATEMENT_STATUSES.includes(order.status);
 };
 
 /**
