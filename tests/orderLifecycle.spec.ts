@@ -163,6 +163,7 @@ test.describe('official statement dates', () => {
             productionStatus: 'in_production',
             issueState: 'returned',
             firstDeliveredAt: '2026-09-02T10:15:00.000Z',
+            firstDeliveredSource: 'direct_transition',
             deliveryDate: '2026-08-30',
         });
 

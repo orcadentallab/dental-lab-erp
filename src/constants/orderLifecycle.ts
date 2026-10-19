@@ -62,6 +62,7 @@ type LifecycleOrder = Partial<Order> & {
     status?: string;
     actual_delivery_date?: string | null;
     first_delivered_at?: string | null;
+    first_delivered_source?: string | null;
     delivery_date?: string | null;
     created_at?: string | null;
     delivery_type?: string;
@@ -381,15 +382,22 @@ const dateOnly = (date?: string | null): string => (date || '').split('T')[0];
 export function getOfficialStatementDate(order: LifecycleOrder): string {
     const actualDeliveryDate = order.actualDeliveryDate || order.actual_delivery_date;
     const firstDeliveredAt = order.firstDeliveredAt || order.first_delivered_at;
+    const firstDeliveredSource = order.firstDeliveredSource || order.first_delivered_source;
     const deliveryDate = order.deliveryDate || order.delivery_date;
     const createdAt = order.createdAt || order.created_at;
 
     if (getEffectiveIssueState(order) === 'returned') {
-        return dateOnly(firstDeliveredAt || actualDeliveryDate || deliveryDate || createdAt);
+        // Match is_observed_first_delivery_source in the database. Inferred
+        // accounting timestamps establish delivery evidence, never its date.
+        const observedFirstDelivery = ['direct_transition', 'order_event', 'status_history', 'actual_delivery_date']
+            .includes(firstDeliveredSource || '') ? firstDeliveredAt : undefined;
+        return dateOnly(observedFirstDelivery || actualDeliveryDate || deliveryDate || createdAt);
     }
 
     if (getProductionStatus(order) === 'final_delivered') {
-        return dateOnly(actualDeliveryDate || firstDeliveredAt || deliveryDate || createdAt);
+        // Preserve the historical statement basis. Administrative backfills
+        // populated first_delivered_at long after these Excel cases were delivered.
+        return dateOnly(actualDeliveryDate || deliveryDate || createdAt);
     }
 
     return dateOnly(deliveryDate || createdAt);
