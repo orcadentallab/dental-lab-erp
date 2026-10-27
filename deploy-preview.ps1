@@ -70,8 +70,16 @@ try {
     }
 
     Write-Step 'Staging project changes (generated/temp folders are excluded)'
-    & git add -A -- . @excludedPaths
+    & git add -A -- .
     if ($LASTEXITCODE -ne 0) { throw 'git add failed.' }
+
+    # Exclude local/generated paths after staging. Passing ignored paths as
+    # negative pathspecs to `git add` can still return exit code 1 on Windows,
+    # even though the intended project files were staged successfully.
+    & git reset --quiet HEAD -- @($excludedPaths | ForEach-Object {
+        $_ -replace '^:\(exclude\)', '' -replace '/\*\*$', ''
+    })
+    if ($LASTEXITCODE -ne 0) { throw 'Could not exclude generated/temp folders.' }
 
     & git diff --cached --quiet
     if ($LASTEXITCODE -eq 1) {
