@@ -3,6 +3,7 @@ import type { DbDoctor, DbDoctorInsert, DbDoctorUpdate } from './types';
 import type { Doctor } from '../db';
 import { DoctorCreateSchema, DoctorUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
+import { inferDoctorCodeRegion, normalizeDoctorName, isArabicDoctorName } from '../../lib/doctorIdentity';
 
 // Transform database record to application format (snake_case -> camelCase)
 function dbToDoctor(dbDoctor: DbDoctor): Doctor {
@@ -11,8 +12,10 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
         name: dbDoctor.name,
         phone: dbDoctor.phone,
         phone2: dbDoctor.phone2 || undefined,
+        contactPhones: dbDoctor.contact_phones || [],
         address: dbDoctor.address,
         doctorCode: dbDoctor.doctor_code,
+        codeRegion: inferDoctorCodeRegion(dbDoctor.doctor_code),
         representativeName: dbDoctor.representative_name,
         representativeId: dbDoctor.representative_id || undefined,
         customPrices: dbDoctor.custom_prices || undefined,
@@ -99,13 +102,10 @@ export async function addDoctor(doctor: Omit<Doctor, 'id'>): Promise<Doctor> {
         throw new ValidationError(formatValidationError(error));
     }
 
-    const dbDoctor = doctorToDb(doctor);
-
-    const { data, error } = await supabase
-        .from('doctors')
-        .insert(dbDoctor)
-        .select()
-        .single();
+    const dbDoctor = doctorToDb({ ...doctor, name: normalizeDoctorName(doctor.name) });
+    const { data, error } = await supabase.rpc('create_doctor_with_region_code', {
+        p_profile: { ...dbDoctor, code_region: doctor.codeRegion },
+    }).returns<DbDoctor[]>().single();
 
     if (error) {
         throw ErrorHandler.handle(error, 'addDoctor');
@@ -115,6 +115,14 @@ export async function addDoctor(doctor: Omit<Doctor, 'id'>): Promise<Doctor> {
 }
 
 export async function updateDoctor(id: string, updates: Partial<Doctor>): Promise<Doctor | null> {
+    if (updates.name !== undefined) {
+        const current = await getDoctor(id);
+        if (current && updates.name !== current.name) {
+            const name = normalizeDoctorName(updates.name);
+            if (!isArabicDoctorName(name)) throw new ValidationError('اسم الطبيب يجب أن يكون عربيًا وثنائيًا على الأقل');
+            updates = { ...updates, name };
+        }
+    }
     // Validate UUID
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         throw new ValidationError('معرف الطبيب غير صحيح');

@@ -21,11 +21,9 @@ import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 import clsx from 'clsx';
-import type { AccountingReviewChange, Order, Doctor, Supplier, User as DbUser } from '../services/db';
+import type { AccountingReviewChange, Order, Doctor, Supplier } from '../services/db';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
-import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../lib/userRoles';
-import { getLabCostMetadata } from '../constants/financialObligations';
 import {
     hasPostRegistrationChange,
     hasZeroAccountingImpact,
@@ -33,9 +31,12 @@ import {
     getMissingAccountingDecisions,
     isAccountingFinanciallyReady,
     isAccountingRegistrationCandidate,
+    isAccountingCancellation,
 } from '../constants/accountingRegistration';
 import type { AccountingReviewType } from '../services/db';
 import DateRangeField from '../components/ui/DateRangeField';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
+import { getOrderStatementDisplayStatus } from '../constants/orderStatementFinancials';
 
 const normalizeArabic = (text: string) => {
     if (!text) return '';
@@ -65,27 +66,28 @@ const REVIEW_BADGE_CLASSES: Record<AccountingReviewType, string> = {
 // A redo is deliberately distinct from a doctor rejection even when its source
 // order was originally returned by the doctor.
 const getOrderStatusPresentation = (order: Order, fallbackLabel: string) => {
-    if (order.issueState === 'redo') {
+    const issue = getEffectiveIssueState(order);
+    if (issue === 'redo') {
         return { label: 'إعادة إنتاج', className: 'bg-violet-50 text-violet-700 border-violet-200' };
     }
 
-    if (order.status === 'Doctor Rejected' || order.status === 'Rejected') {
+    if (issue === 'doctor_rejected') {
         return { label: 'مرتجع طبيب', className: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
 
-    if (order.status === 'Lab Rejected') {
+    if (issue === 'lab_rejected') {
         return { label: 'رفض معمل', className: 'bg-rose-50 text-rose-700 border-rose-200' };
     }
 
-    if (order.status === 'Delivered') {
+    if (getEffectiveProductionStatus(order) === 'final_delivered' && issue === 'none') {
         return { label: 'تم التسليم', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
     }
 
-    if (order.status === 'Cancelled') {
+    if (issue === 'cancelled') {
         return { label: 'ملغي', className: 'bg-rose-50 text-rose-700 border-rose-200' };
     }
 
-    if (order.status === 'Returned for Adjustments') {
+    if (issue === 'returned') {
         return { label: 'مرتجع للتعديل', className: 'bg-amber-50 text-amber-700 border-amber-200' };
     }
 
@@ -100,7 +102,6 @@ export default function CaseRegistration() {
     const [orders, setOrders] = useState<Order[]>([]);
     const [doctors, setDoctors] = useState<Record<string, { name: string; code: string; parentId?: string }>>({});
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
-    const [designers, setDesigners] = useState<DbUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
@@ -154,10 +155,9 @@ export default function CaseRegistration() {
         const loadData = async () => {
             setLoading(true);
             try {
-                const [docs, sups, users] = await Promise.all([
+                const [docs, sups] = await Promise.all([
                     db.getDoctors(),
-                    db.getSuppliers(),
-                    db.getUsers()
+                    db.getSuppliers()
                 ]);
                 
                 const docMap: Record<string, { name: string; code: string; parentId?: string }> = {};
@@ -167,8 +167,6 @@ export default function CaseRegistration() {
                 const supMap: Record<string, string> = {};
                 sups.forEach((s: Supplier) => supMap[s.id] = s.name);
                 setSuppliers(supMap);
-
-                setDesigners(users.filter((u: DbUser) => u.role === 'designer' || (u.customPermissions && u.customPermissions['secondary_designer'])));
 
                 await fetchOrders();
             } catch (error) {
@@ -182,7 +180,7 @@ export default function CaseRegistration() {
 
     const handleRegister = async (orderId: string) => {
         const order = orders.find(candidate => candidate.id === orderId);
-        const isCancellation = order?.status === 'Cancelled';
+        const isCancellation = order ? isAccountingCancellation(order) : false;
         setProcessingId(orderId);
         try {
             await db.updateOrder(orderId, { isRegistered: true });
@@ -227,7 +225,7 @@ export default function CaseRegistration() {
 
     const toggleSelect = (id: string) => {
         const selectedOrder = orders.find(order => order.id === id);
-        if (activeTab === 'pending' && selectedOrder?.status === 'Cancelled') return;
+        if (activeTab === 'pending' && selectedOrder && isAccountingCancellation(selectedOrder)) return;
         setSelectedIds(prev => 
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
         );
@@ -267,10 +265,9 @@ export default function CaseRegistration() {
         setIsExporting(true);
         try {
             const exportData = filteredOrders.map(order => {
-                const designer = designers.find(d => d.id === order.designerId);
-                const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                const labCost = getLabCostMetadata(order, isSalaried).cost;
                 const isZeroImpact = hasZeroAccountingImpact(order);
+                const accounting = getAccountingComparison(order);
+                const displayStatus = getOrderStatementDisplayStatus(order);
 
                 return {
                     'رقم الحالة': order.caseId,
@@ -279,12 +276,12 @@ export default function CaseRegistration() {
                     'الطبيب': getBillingDoctor(order.doctorId).name,
                     'الخدمات': order.items.map(i => `${i.serviceType} (x${i.teethNumbers.length})`).join(', '),
                     'سعر البيع': isZeroImpact ? 0 : order.totalPrice,
-                    'التكلفة': isZeroImpact ? 0 : ((order.status === 'Doctor Rejected' || order.status === 'Rejected') ? (order.rejectedLabCost || 0) : labCost),
+                    'التكلفة': accounting.current.labCost,
                     'المعمل': (order.supplierId && suppliers[order.supplierId]) || 'داخلي',
                     'الحالة': (() => {
                         const statusMap: Record<string, string> = t.orders.status;
-                        const key = order.status.toLowerCase().replace(/ /g, '');
-                        return statusMap[key] || order.status;
+                        const key = displayStatus.toLowerCase().replace(/ /g, '');
+                        return statusMap[key] || displayStatus;
                     })(),
                     'الملاحظات': (order.comments || []).map(c => `${c.userName}: ${c.text}`).join(' | ')
                 };
@@ -336,7 +333,7 @@ export default function CaseRegistration() {
         return matchesSearch && matchesDoctor && matchesSupplier && matchesDate;
     });
     const bulkSelectableOrders = filteredOrders.filter(order =>
-        !(activeTab === 'pending' && order.status === 'Cancelled')
+        !(activeTab === 'pending' && isAccountingCancellation(order))
     );
     const reviewCounts = orders.reduce<Record<AccountingReviewType, number>>((counts, order) => {
         const type = getAccountingComparison(order).type;
@@ -546,9 +543,13 @@ export default function CaseRegistration() {
                                     const oldSnapshot = accounting.previous;
                                     const oldDoctorName = oldSnapshot?.doctorId ? getBillingDoctor(oldSnapshot.doctorId).name : null;
                                     const oldSupplierName = oldSnapshot?.supplierId ? suppliers[oldSnapshot.supplierId] : 'داخلي';
-                                    const statusKey = order.status.toLowerCase().replace(/ /g, '');
-                                    const statusLabel = Object.entries(t.orders.status).find(([key]) => key === statusKey)?.[1] || order.status;
+                                    const issue = getEffectiveIssueState(order);
+                                    const displayStatus = getOrderStatementDisplayStatus(order);
+                                    const statusKey = displayStatus.toLowerCase().replace(/ /g, '');
+                                    const statusLabel = Object.entries(t.orders.status).find(([key]) => key === statusKey)?.[1] || displayStatus;
                                     const statusPresentation = getOrderStatusPresentation(order, statusLabel);
+                                    const isCancellation = isAccountingCancellation(order);
+                                    const isRejected = ['doctor_rejected', 'lab_rejected', 'redo'].includes(issue);
                                     
                                     return (
                                         <motion.tr
@@ -560,19 +561,19 @@ export default function CaseRegistration() {
                                                 "hover:bg-cyan-50/40 transition-colors group border-b border-slate-50",
                                                 selectedIds.includes(order.id) && "bg-cyan-50/60",
                                                 activeTab === 'pending' && isChangedAfterRegistration && "bg-cyan-50/20 border-r-4 border-r-cyan-500",
-                                                ['Doctor Rejected', 'Lab Rejected', 'Rejected'].includes(order.status) && "bg-red-50/10",
-                                                order.status === 'Cancelled' && "bg-rose-50/20 border-r-4 border-r-rose-500",
-                                                order.status === 'Returned for Adjustments' && "bg-amber-50/10"
+                                                isRejected && "bg-red-50/10",
+                                                isCancellation && "bg-rose-50/20 border-r-4 border-r-rose-500",
+                                                issue === 'returned' && "bg-amber-50/10"
                                             )}
                                         >
                                             <td className="px-4 py-4">
                                                 <div className="flex justify-center">
                                                     <input
                                                         type="checkbox"
-                                                        title={activeTab === 'pending' && order.status === 'Cancelled' ? 'إلغاء القيد يحتاج تأكيدًا منفصلًا' : 'تحديد'}
+                                                        title={activeTab === 'pending' && isCancellation ? 'إلغاء القيد يحتاج تأكيدًا منفصلًا' : 'تحديد'}
                                                         className="w-4 h-4 rounded border-slate-300 text-cyan-500 focus:ring-cyan-500"
                                                         checked={selectedIds.includes(order.id)}
-                                                        disabled={activeTab === 'pending' && order.status === 'Cancelled'}
+                                                        disabled={activeTab === 'pending' && isCancellation}
                                                         onChange={() => toggleSelect(order.id)}
                                                     />
                                                 </div>
@@ -680,13 +681,13 @@ export default function CaseRegistration() {
                                                                 : undefined}
                                                             className={clsx(
                                                                 "flex items-center gap-1.5 px-3 py-2.5 2xl:px-5 disabled:opacity-50 text-white rounded-2xl text-xs font-black transition-all hover:-translate-y-0.5 whitespace-nowrap",
-                                                                order.status === 'Cancelled'
+                                                                isCancellation
                                                                     ? "bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-200/50"
                                                                     : "bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200/50"
                                                             )}
                                                         >
                                                             {processingId === order.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                                                            {order.status === 'Cancelled' ? 'تأكيد إلغاء القيد' : t.registration.markAsRegistered}
+                                                            {isCancellation ? 'تأكيد إلغاء القيد' : t.registration.markAsRegistered}
                                                         </button>
                                                     ) : (
                                                         <button

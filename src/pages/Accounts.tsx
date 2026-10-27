@@ -15,8 +15,12 @@ import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
-import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
-import { getExternalLabStatementAmount, getLabCostMetadata } from '../constants/financialObligations';
+import {
+    getDesignerStatementAmount,
+    getOrderStatementDisplayStatus,
+    getSupplierStatementAmount,
+    isStatementVisibleOrder,
+} from '../constants/orderStatementFinancials';
 import OrderForm from '../components/orders/OrderForm';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -91,8 +95,6 @@ const isZeroValueStatementItem = (item: StatementItem): boolean => (
     ZERO_ACCOUNTING_STATUSES.has((item.status || '').trim().toLowerCase())
     && (item.officialAmount ?? item.amount) === 0
 );
-
-// isVisibleInAccountStatement is now imported from src/lib/orderStatusHelpers
 
 const matchesStatementSearch = (item: StatementItem, searchTerm: string) => {
     const term = searchTerm.trim();
@@ -326,24 +328,17 @@ export default function Accounts() {
     const handleOrderSubmit = async (orderData: Omit<Order, 'id'>) => {
         if (!editingOrder) return;
         try {
-            const { status, ...restOfData } = orderData;
+            const restOfData: Partial<Order> = { ...orderData };
+            delete restOfData.status;
 
-            // 1. Update non-status fields
+            // Account statements edit order data only. Workflow transitions
+            // remain owned by the dedicated V2 action paths.
             await db.updateOrder(editingOrder.id, restOfData, {
                 userId: user?.id,
                 actorRole: user?.role,
                 deliveryDateChangeSource: 'accounts_statement_edit',
                 deliveryDateResponsibilityParty: 'unknown',
             });
-
-            // 2. If status changed, update it via the unified updateOrderStatus
-            if (status !== editingOrder.status) {
-                await db.updateOrderStatus(editingOrder.id, status, {
-                    userId: user?.id,
-                    userName: user?.name || user?.role || 'User',
-                    actorRole: user?.role,
-                });
-            }
 
             setEditingOrder(null);
             fetchData();
@@ -437,8 +432,7 @@ export default function Accounts() {
 
             if (activeTab === 'doctors' && o.doctorId) {
                 if (!isInSelectedRange(getOfficialStatementDate(o))) continue;
-                // Use isDoctorStatementIncluded (case-insensitive via normalizeStatus) as the
-                // primary gate for doctors — avoids case-sensitivity issues with isVisibleInAccountStatement
+                // The doctor statement gate is derived from the V2 workflow axes.
                 const isRelevant = showAllOrders || isDoctorStatementIncluded(o);
 
                 if (isRelevant) {
@@ -453,30 +447,21 @@ export default function Accounts() {
                 if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                const officialAmount = getExternalLabStatementAmount(o, isSalaried);
-                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const isRelevant = showAllOrders
-                    ? (!isDoctorRejectedStatus(o.status) || hasRejectionCost)
-                    : officialAmount !== null;
+                const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
 
-                if (isRelevant) {
+                if (cost !== null) {
                     const stats = getStats(o.supplierId);
                     stats.count++;
-                    const cost = officialAmount ?? getLabCostMetadata(o, isSalaried).cost;
                     stats.totalCredit += cost;
                     stats.totalSales += cost;
                 }
             } else if (activeTab === 'designers' && o.designerId) {
                 if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
-                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const isRelevant = o.workflowType === 'split' &&
-                    (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
+                const price = getDesignerStatementAmount(o, showAllOrders, getEffectiveDesignPrice(o));
 
-                if (isRelevant) {
+                if (price !== null) {
                     const stats = getStats(o.designerId);
                     stats.count++;
-                    let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status) ? 0 : getEffectiveDesignPrice(o));
-                    if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
                     stats.totalCredit += price;
                     stats.totalSales += price;
                 }
@@ -658,7 +643,7 @@ export default function Accounts() {
             const selectedIsCenter = !!doctors.find(d => d.id === selectedEntityId)?.isCenter;
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.isDeleted) return false;
-                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
+                if (!isStatementVisibleOrder(o) && !showAllOrders) return false;
                 const isDirectOrder = o.doctorId === selectedEntityId;
                 const isChildOrder = selectedIsCenter && o.doctorId &&
                     doctors.find(d => d.id === o.doctorId)?.parentId === selectedEntityId;
@@ -705,24 +690,17 @@ export default function Accounts() {
         } else if (activeTab === 'suppliers') {
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.isDeleted) return false;
-                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
                 if (o.supplierId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                const officialAmount = getExternalLabStatementAmount(o, isSalaried);
-                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const isRelevant = showAllOrders
-                    ? (!isDoctorRejectedStatus(o.status) || hasRejectionCost)
-                    : officialAmount !== null;
-                return orderDate < dateRange.start && isRelevant;
+                return orderDate < dateRange.start
+                    && getSupplierStatementAmount(o, isSalaried, showAllOrders) !== null;
             });
             openingCredit = beforeOrders.reduce((sum, o) => {
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                const cost = getExternalLabStatementAmount(o, isSalaried)
-                    ?? getLabCostMetadata(o, isSalaried).cost;
-                return sum + cost;
+                return sum + (getSupplierStatementAmount(o, isSalaried, showAllOrders) ?? 0);
             }, 0);
 
             const beforeTx = relevantTransactions.filter(t =>
@@ -748,13 +726,10 @@ export default function Accounts() {
         } else if (activeTab === 'designers') {
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.isDeleted) return false;
-                if (!isDesignerPayable(o) && !showAllOrders) return false;
                 if (o.designerId !== selectedEntityId) return false;
                 const orderDate = getOperationalOrderDate(o);
-                const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const isRelevant = o.workflowType === 'split' &&
-                    (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
-                return orderDate < dateRange.start && isRelevant;
+                return orderDate < dateRange.start
+                    && getDesignerStatementAmount(o, showAllOrders, getEffectiveDesignPrice(o)) !== null;
             });
             const designerUser = designers.find(d => d.id === selectedEntityId);
             const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
@@ -762,9 +737,7 @@ export default function Accounts() {
 
             openingCredit = beforeOrders.reduce((sum, o) => {
                 if (hideVirtualCosts) return sum;
-                let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status) ? 0 : getEffectiveDesignPrice(o));
-                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
-                return sum + price;
+                return sum + (getDesignerStatementAmount(o, showAllOrders, getEffectiveDesignPrice(o)) ?? 0);
             }, 0);
 
             const beforeTx = relevantTransactions.filter(t =>
@@ -822,7 +795,7 @@ export default function Accounts() {
                 }
                 const child = order.id ? childByOriginalId.get(order.id) : undefined;
                 if (step === 0 && !child && order.issueState !== 'redo') {
-                    return { description: base, status: order.status };
+                    return { description: base, status: getOrderStatementDisplayStatus(order) };
                 }
                 const rootDate = getOfficialStatementDate(root);
                 if (step === 0) {
@@ -830,7 +803,7 @@ export default function Accounts() {
                 }
                 return {
                     description: `${base} — إعادة إنتاج رقم ${step} من #${root.caseId || '—'}${child ? ` → #${child.caseId || '—'}` : ''}`,
-                    status: child ? 'redo' : order.status,
+                    status: child ? 'redo' : getOrderStatementDisplayStatus(order),
                     redoGroup: root.id,
                     redoStep: step,
                     redoSortDate: rootDate,
@@ -839,7 +812,7 @@ export default function Accounts() {
 
             const docOrders = relevantOrders.filter(o => {
                 if (o.isDeleted) return false;
-                if (!isVisibleInAccountStatement(o) && !showAllOrders) return false;
+                if (!isStatementVisibleOrder(o) && !showAllOrders) return false;
                 // Match direct orders OR orders by child doctors of the selected center
                 const isDirectOrder = o.doctorId === selectedEntityId;
                 const isChildOrder = selectedIsCenter && o.doctorId &&
@@ -908,17 +881,15 @@ export default function Accounts() {
             }))];
         } else if (activeTab === 'suppliers') {
             const supOrders = relevantOrders.filter(o => {
-                if (o.isDeleted || (!isVisibleInAccountStatement(o) && !showAllOrders) || o.supplierId !== selectedEntityId) return false;
+                if (o.supplierId !== selectedEntityId) return false;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                return showAllOrders || getExternalLabStatementAmount(o, isSalaried) !== null;
+                return getSupplierStatementAmount(o, isSalaried, showAllOrders) !== null;
             });
             items = supOrders.map(o => {
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                const officialAmount = getExternalLabStatementAmount(o, isSalaried);
-                let cost = officialAmount ?? getLabCostMetadata(o, isSalaried).cost;
-                if (officialAmount === null && isDoctorRejectedStatus(o.status)) cost = 0;
+                const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders) ?? 0;
 
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
@@ -930,7 +901,7 @@ export default function Accounts() {
                     description: `#${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
                     type: 'credit' as const,
                     amount: cost,
-                    status: o.status,
+                    status: getOrderStatementDisplayStatus(o),
                     services,
                     count
                 };
@@ -949,22 +920,22 @@ export default function Accounts() {
                 amount: t.amount || 0
             }))];
         } else if (activeTab === 'designers') {
-            const desOrders = relevantOrders.filter(o => !o.isDeleted && (isDesignerPayable(o) || showAllOrders) && o.designerId === selectedEntityId && o.workflowType === 'split' && (showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled'));
-            
             const designerUser = designers.find(d => d.id === selectedEntityId);
             const isSalariedDesigner = hasCustomPermission(designerUser, FIXED_SALARY_DESIGNER_PERMISSION);
             const hideVirtualCosts = isSalariedDesigner;
+            const desOrders = relevantOrders.filter(o => o.designerId === selectedEntityId
+                && getDesignerStatementAmount(o, showAllOrders, hideVirtualCosts ? 0 : getEffectiveDesignPrice(o)) !== null);
 
             items = desOrders.map(o => {
                 const orderItems = o.items || [];
                 const services = orderItems.map((i: { serviceType: string }) => i.serviceType).filter(Boolean).join(' + ');
                 const count = orderItems.reduce((sum: number, i: { teethNumbers: string[] }) => sum + (Array.isArray(i.teethNumbers) ? i.teethNumbers.length : 1), 0);
                 
-                let price = hideVirtualCosts ? 0 : getEffectiveDesignPrice(o);
-                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) price = 0;
-                else if (isDoctorRejectedStatus(o.status)) {
-                    price = o.rejectedDesignerCost ?? 0;
-                }
+                const price = getDesignerStatementAmount(
+                    o,
+                    showAllOrders,
+                    hideVirtualCosts ? 0 : getEffectiveDesignPrice(o),
+                ) ?? 0;
 
                 return {
                     id: o.id || '',
@@ -972,7 +943,7 @@ export default function Accounts() {
                     description: `تصميم #${o.caseId} - ${o.patientName}`,
                     type: 'credit' as const,
                     amount: price,
-                    status: o.status,
+                    status: getOrderStatementDisplayStatus(o),
                     services,
                     count,
                     details: isSalariedDesigner ? `تكلفة مراجعة افتراضية: ${getEffectiveDesignPrice(o)} ج.م` : ''

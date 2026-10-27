@@ -6,6 +6,7 @@ import { Clock, User, MessageCircle, Building2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
 import { filterVisibleOrderComments, getOrderCardDisplayDate } from '../../utils/orderDisplay';
+import { getEffectiveOrderDisplayStatus } from '../../constants/orderLifecycle';
 
 const statuses = [
     { id: 'New Case', label: 'حالة جديدة (New)', color: 'bg-teal-100 text-teal-700 border-teal-200' },
@@ -62,7 +63,7 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
         const orderId = e.dataTransfer.getData('orderId');
         if (orderId) {
             const order = orders.find(o => o.id === orderId);
-            if (order && order.status !== newStatus) {
+            if (order && getEffectiveOrderDisplayStatus(order) !== newStatus) {
                 onStatusChange(orderId, newStatus as Order['status']);
             }
         }
@@ -71,7 +72,7 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
     return (
         <div className="flex gap-4 overflow-x-auto pb-4 px-2 min-h-[calc(100vh-250px)] items-start">
             {statuses.map(col => {
-                const colOrders = orders.filter(o => o.status === col.id);
+                const colOrders = orders.filter(order => getEffectiveOrderDisplayStatus(order) === col.id);
                 return (
                     <div
                         key={col.id}

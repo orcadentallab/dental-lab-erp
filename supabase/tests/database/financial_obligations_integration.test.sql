@@ -256,8 +256,7 @@ INSERT INTO public.orders (
 );
 
 UPDATE public.orders
-SET status = 'Doctor Rejected',
-    production_status = 'not_started',
+SET production_status = 'not_started',
     issue_state = 'doctor_rejected',
     rejection_doctor_decision = 'custom_amount',
     rejected_doctor_amount = 350,
@@ -330,8 +329,8 @@ INSERT INTO public.orders (
 );
 
 UPDATE public.orders
-SET status = 'Lab Rejected', issue_state = 'lab_rejected',
-    production_status = 'not_started', rejection_doctor_decision = 'full_price',
+SET issue_state = 'lab_rejected', production_status = 'not_started',
+    rejection_doctor_decision = 'full_price',
     rejected_doctor_amount = 700, rejected_lab_cost = 300,
     rejected_designer_cost = 80
 WHERE id = '40000000-0000-0000-0000-000000000005';
@@ -358,8 +357,8 @@ INSERT INTO public.orders (
 );
 
 UPDATE public.orders
-SET status = 'Cancelled', issue_state = 'cancelled',
-    production_status = 'not_started', rejected_doctor_amount = 600,
+SET issue_state = 'cancelled', production_status = 'not_started',
+    rejected_doctor_amount = 600,
     rejected_lab_cost = 250
 WHERE id = '40000000-0000-0000-0000-000000000006';
 
@@ -375,7 +374,7 @@ SELECT is((SELECT count(*)::integer FROM public.financial_obligations
 
 SELECT throws_like(
     $$UPDATE public.orders
-      SET status = 'Cancelled', issue_state = 'cancelled'
+      SET issue_state = 'cancelled'
       WHERE id = '40000000-0000-0000-0000-000000000001'$$,
     '%delivered order cannot become Lab Rejected or Cancelled%',
     'a delivered order cannot be converted to Cancelled'

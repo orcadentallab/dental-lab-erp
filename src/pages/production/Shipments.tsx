@@ -131,10 +131,11 @@ export const Shipments: React.FC = () => {
   // Handle open create modal from selected orders
   const handleOpenPackSelected = (orderIdsToPack: string[], docInfo?: { name: string; phone?: string; address?: string }) => {
     setSelectedOrderIds(orderIdsToPack);
+    const destination = readyOrders.find(order => order.id === orderIdsToPack[0]);
     if (docInfo) {
       setFormRecipientName(docInfo.name);
-      setFormRecipientPhone(docInfo.phone || '');
-      setFormDeliveryAddress(docInfo.address || '');
+      setFormRecipientPhone(destination?.delivery_contact_phone || docInfo.phone || '');
+      setFormDeliveryAddress(destination?.delivery_address || docInfo.address || '');
     } else {
       setFormRecipientName('');
       setFormRecipientPhone('');

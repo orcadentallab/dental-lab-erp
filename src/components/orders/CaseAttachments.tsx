@@ -14,7 +14,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ChangeEvent } from 'react';
 import {
     uploadCaseFile, getAttachments, getSignedUrls,
-    ACCEPTED_TYPES, type AttachmentKind, type CaseAttachment,
+    ACCEPTED_TYPES, validateCaseFile, type AttachmentKind, type CaseAttachment,
 } from '../../lib/storage';
 import { Camera, Loader2, FileText, X } from 'lucide-react';
 
@@ -29,13 +29,14 @@ interface Props {
     /** Opens the camera straight away on a phone or tablet. */
     useCamera?: boolean;
     compact?: boolean;
+    accept?: string;
     stagedFiles?: File[];
     onStagedFilesChange?: (files: File[]) => void;
 }
 
 export default function CaseAttachments({
     orderId, kind, stageRunId, canUpload = false, label, useCamera = false, compact = false,
-    stagedFiles = [], onStagedFilesChange,
+    stagedFiles = [], onStagedFilesChange, accept = ACCEPTED_TYPES,
 }: Props) {
     const [items, setItems] = useState<CaseAttachment[]>([]);
     const [urls, setUrls] = useState<Record<string, string>>({});
@@ -65,7 +66,8 @@ export default function CaseAttachments({
         try {
             const rows = await getAttachments(orderId, kind);
             setItems(rows);
-            setUrls(await getSignedUrls(rows.map((r) => r.storagePath)));
+            const signed = await Promise.all([...new Set(rows.map(row => row.storageBucket))].map(bucket => getSignedUrls(rows.filter(row => row.storageBucket === bucket).map(row => row.storagePath), 3600, bucket)));
+            setUrls(Object.assign({}, ...signed));
         } catch (e) {
             console.error('[CaseAttachments] load failed', e);
         }
@@ -76,6 +78,7 @@ export default function CaseAttachments({
     const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files ?? []);
         if (files.length === 0) return;
+        try { files.forEach(validateCaseFile); } catch (cause) { setError(cause instanceof Error ? cause.message : 'راجع الملفات'); return; }
 
         // If no orderId, stage files locally for later upload on save
         if (!orderId) {
@@ -121,7 +124,7 @@ export default function CaseAttachments({
             <div className="flex flex-wrap gap-2 items-center">
                 {items.map((a) => {
                     const url = urls[a.storagePath];
-                    const isPdf = a.mimeType === 'application/pdf';
+                    const isPdf = !a.mimeType?.startsWith('image/');
 
                     // A signed URL can expire while the screen is open. Saying
                     // so beats a broken-image icon with no explanation.
@@ -188,7 +191,7 @@ export default function CaseAttachments({
                             ref={inputRef}
                             type="file"
                             multiple
-                            accept={ACCEPTED_TYPES}
+                            accept={accept}
                             {...(useCamera ? { capture: 'environment' as const } : {})}
                             onChange={(e) => void onPick(e)}
                             className="hidden"

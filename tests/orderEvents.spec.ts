@@ -201,8 +201,9 @@ test.describe('delivery date change wiring', () => {
 
     test('updateOrder does not log delivery date changes for actual delivery date or Delivered status only', () => {
         expect(ordersSource).toContain('if (updates.actualDeliveryDate !== undefined) dbUpdates.actual_delivery_date');
-        expect(ordersSource).toContain("if (updates.status === 'Delivered') {");
-        expect(ordersSource).toContain('dbUpdates.actual_delivery_date = deliveredDate;');
+        expect(ordersSource).toContain('if (updates.status !== undefined) {');
+        expect(ordersSource).toContain('لا يمكن كتابة حالة الطلب القديمة مباشرة');
+        expect(ordersSource).not.toContain('dbUpdates.actual_delivery_date = deliveredDate;');
         expect(ordersSource).not.toContain('dbUpdates.delivery_date = deliveredDate;');
     });
 

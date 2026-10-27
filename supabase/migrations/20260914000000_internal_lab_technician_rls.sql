@@ -1,4 +1,4 @@
-﻿-- Migration: 20260914000000_internal_lab_technician_rls.sql
+-- Migration: 20260914000000_internal_lab_technician_rls.sql
 -- Purpose: Unblock technician and production manager visibility for internal lab execution.
 --
 -- RUN_CARD_SELECT (src/services/supabase/production.ts:458) embeds orders, doctors,

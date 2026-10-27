@@ -48,6 +48,8 @@ delivery-obligation-trace*.md
 root-cause-*.md
 status-change-path-audit*.md
 playwright-report/
+test-results/
+.doctor-portal-qa/
 supabase/.temp/
 truncate.sql
 .vercel

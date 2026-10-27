@@ -3,6 +3,7 @@ import { Wallet, AlertTriangle, Truck } from 'lucide-react';
 import clsx from 'clsx';
 import { db, type Transaction, type Order } from '../services/db';
 import { EXPENSE_CATEGORY, normalizeExpenseCategory } from '../constants/expenseCategories';
+import { isDeliveredForDoctorReceivable } from '../constants/orderLifecycle';
 
 /**
  * How many completed weeks of history the report shows.
@@ -207,7 +208,7 @@ export default function CashFlow() {
         let datedDeliveries = 0;
 
         for (const order of orders) {
-            if (order.status !== 'Delivered' && order.status !== 'Completed') continue;
+            if (!isDeliveredForDoctorReceivable(order)) continue;
             const delivered = toDateOnly(order.actualDeliveryDate) || toDateOnly(order.deliveryDate);
             if (!delivered || delivered < windowStart || delivered > windowEnd) continue;
             deliveries += 1;

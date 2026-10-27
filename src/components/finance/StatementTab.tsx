@@ -22,7 +22,8 @@ import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
 import { isLedgerTransaction } from '../../utils/transactions';
 import { ALL_EXPENSE_CATEGORIES, normalizeExpenseCategory } from '../../constants/expenseCategories';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, getEffectiveIssueState, isNonProductiveOrder } from '../../constants/orderLifecycle';
+import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, getEffectiveIssueState, isNonProductiveOrder } from '../../constants/orderLifecycle';
+import { getOrderStatementDisplayStatus } from '../../constants/orderStatementFinancials';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 interface StatementTabProps {
@@ -63,33 +64,26 @@ interface ServiceStats {
 const NON_OPERATIONAL_CATEGORIES = ['supplier_payment', 'designer_payment'];
 
 function getStatusBadgeStyle(status?: string, issueState?: string) {
-    if (issueState === 'doctor_rejected') {
+    if (issueState === 'doctor_rejected' || issueState === 'redo' || issueState === 'rejected') {
         return { label: 'مرتجع طبيب', color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' };
     }
     if (issueState === 'lab_rejected') {
         return { label: 'مرتجع معمل', color: 'bg-red-100 text-red-800 border-red-300 font-bold' };
     }
-    if (issueState === 'cancelled' || normalizeStatus(status) === 'cancelled') {
+    if (issueState === 'cancelled') {
         return { label: 'ملغي', color: 'bg-slate-200 text-slate-800 border-slate-300 font-bold' };
     }
 
-    const norm = normalizeStatus(status);
-    if (norm === 'delivered' || norm === 'تم التسليم') {
+    if (status === 'Delivered') {
         return { label: 'تم التسليم', color: 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold' };
     }
-    if (norm === 'doctor rejected' || norm === 'rejected') {
-        return { label: 'مرتجع طبيب', color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' };
-    }
-    if (norm === 'lab rejected') {
-        return { label: 'مرتجع معمل', color: 'bg-red-100 text-red-800 border-red-300 font-bold' };
-    }
-    if (norm === 'try in' || norm === 'بروفة') {
+    if (status === 'Try In') {
         return { label: 'بروفة', color: 'bg-amber-100 text-amber-900 border-amber-300 font-bold' };
     }
-    if (norm === 'under production' || norm === 'in progress' || norm === 'تشغيل') {
+    if (status === 'Under Production') {
         return { label: 'قيد التشغيل', color: 'bg-blue-100 text-blue-800 border-blue-300 font-bold' };
     }
-    if (norm === 'ready' || norm === 'جاهز') {
+    if (status === 'Ready') {
         return { label: 'جاهز للتسليم', color: 'bg-teal-100 text-teal-800 border-teal-300 font-bold' };
     }
     return { label: status || 'غير محدد', color: 'bg-slate-100 text-slate-700 border-slate-200 font-bold' };
@@ -197,9 +191,8 @@ export default function StatementTab({
             const orderDoctor = doctors.find(d => d.id === o.doctorId);
 
             const isNonProductive = isNonProductiveOrder(o);
-            const isLabRejected = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
-            const isDoctorRejected = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
-            const isRejected = isLabRejected || isDoctorRejected;
+            const issueState = getEffectiveIssueState(o);
+            const isRejected = ['lab_rejected', 'doctor_rejected', 'redo', 'rejected'].includes(issueState);
 
             // Revenue mirrors the doctor statement page exactly: full price
             // for a normal delivered order, the settled rejection amount
@@ -416,16 +409,8 @@ export default function StatementTab({
                 }
 
                 // Cost per unit based on proportional share of effective order cost
-                const isCancelledExp = normalizeStatus(o.status) === 'cancelled' || getEffectiveIssueState(o) === 'cancelled';
-                const isLabRejectedExp = normalizeStatus(o.status) === 'lab rejected' || getEffectiveIssueState(o) === 'lab_rejected';
-                const isNonProductiveExp = isCancelledExp || isLabRejectedExp;
-                const isDoctorRejectedExp = ['Doctor Rejected', 'Rejected'].includes(o.status as string) || getEffectiveIssueState(o) === 'doctor_rejected';
-
-                const effectiveCostExp = isNonProductiveExp
-                    ? 0
-                    : isDoctorRejectedExp
-                        ? ((o as any).rejectedLabCost ?? o.cost ?? 0)
-                        : (o.cost || 0);
+                const isNonProductiveExp = isNonProductiveOrder(o);
+                const effectiveCostExp = getLabCostAmount(o);
                 const itemCostExp = expWeightTotal > 0
                     ? (effectiveCostExp * expWeights[idx]) / expWeightTotal
                     : 0;
@@ -446,7 +431,7 @@ export default function StatementTab({
                     costPerUnit,
                     totalCost: costPerUnit * count,
                     priceSource,
-                    status: o.status,
+                    status: getOrderStatementDisplayStatus(o),
                     issueState: getEffectiveIssueState(o)
                 });
             });

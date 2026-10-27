@@ -7,6 +7,7 @@ import {
     type CaseLocation,
 } from './workflow';
 import { canChangeProductionStatus } from '../lib/workflowPermissions';
+import { deriveOrderDisplayStatusV2, type DerivedOrderDisplayStatus } from './orderDerivedStatusV2';
 
 export const LEGACY_ORDER_STATUSES = {
     completed: 'Completed',
@@ -62,6 +63,7 @@ type LifecycleOrder = Partial<Order> & {
     status?: string;
     actual_delivery_date?: string | null;
     first_delivered_at?: string | null;
+    first_delivered_source?: string | null;
     delivery_date?: string | null;
     created_at?: string | null;
     delivery_type?: string;
@@ -77,6 +79,7 @@ type LifecycleOrder = Partial<Order> & {
     design_url?: string | null;
     issueState?: string | null;
     issue_state?: string | null;
+    intake_state?: string | null;
     isDeleted?: boolean | null;
     is_deleted?: boolean | null;
 };
@@ -239,9 +242,9 @@ export function isBillableToDoctor(order: LifecycleOrder): boolean {
 
 export function isDoctorStatementIncluded(order: LifecycleOrder): boolean {
     if (order.isDeleted || order.is_deleted) return false;
-    return DOCTOR_STATEMENT_INCLUDED_STATUSES.includes(
-        normalizeStatus(order.status) as typeof DOCTOR_STATEMENT_INCLUDED_STATUSES[number]
-    );
+    const issue = getEffectiveIssueState(order);
+    return getEffectiveProductionStatus(order) === 'final_delivered'
+        || ['cancelled', 'doctor_rejected', 'lab_rejected', 'returned', 'redo'].includes(issue);
 }
 
 export function getDoctorReceivableAmount(order: LifecycleOrder): number {
@@ -276,14 +279,12 @@ export function getDoctorReceivableAmount(order: LifecycleOrder): number {
  * supplier side only to add it back on the designer side.
  */
 export function getLabCostAmount(order: LifecycleOrder): number {
-    const status = normalizeStatus(order.status);
     const issue = getEffectiveIssueState(order);
 
-    if (status === 'cancelled' || issue === 'cancelled') return 0;
-    if (status === 'lab rejected' || issue === 'lab_rejected') return 0;
+    if (issue === 'cancelled') return 0;
+    if (issue === 'lab_rejected') return 0;
 
-    const isDoctorRejected =
-        status === 'doctor rejected' || status === 'rejected' || issue === 'doctor_rejected';
+    const isDoctorRejected = issue === 'doctor_rejected' || issue === 'redo';
 
     if (isDoctorRejected) {
         return Math.max(0, (order.rejectedLabCost ?? 0) + (order.rejectedDesignerCost ?? 0));
@@ -304,7 +305,7 @@ export function getLabCostAmount(order: LifecycleOrder): number {
  */
 export function isClosedCaseInPeriod(order: LifecycleOrder): boolean {
     if (!isDoctorStatementIncluded(order)) return false;
-    return normalizeStatus(order.status) !== 'returned for adjustments';
+    return getEffectiveIssueState(order) !== 'returned';
 }
 
 /**
@@ -317,9 +318,8 @@ export function isClosedCaseInPeriod(order: LifecycleOrder): boolean {
  * creating fictitious discounts.
  */
 export function isNonProductiveOrder(order: LifecycleOrder): boolean {
-    const status = normalizeStatus(order.status);
     const issue = getEffectiveIssueState(order);
-    return status === 'cancelled' || issue === 'cancelled' || status === 'lab rejected' || issue === 'lab_rejected';
+    return issue === 'cancelled' || issue === 'lab_rejected';
 }
 
 /**
@@ -331,8 +331,7 @@ export function isNonProductiveOrder(order: LifecycleOrder): boolean {
  */
 export function isZeroValueDelivery(order: LifecycleOrder): boolean {
     if (isNonProductiveOrder(order)) return false;
-    const status = normalizeStatus(order.status);
-    if (status !== 'delivered' && status !== 'completed') return false;
+    if (getEffectiveProductionStatus(order) !== 'final_delivered') return false;
     return Math.max(0, order.totalPrice || 0) === 0;
 }
 
@@ -359,17 +358,17 @@ export function getOrderProductiveUnits(order: LifecycleOrder): number {
  * must keep their approved accounting amount instead of reverting to zero.
  */
 export function getDoctorOrderDisplayAmount(order: LifecycleOrder): number {
-    const normalizedStatus = normalizeStatus(order.status);
+    const issue = getEffectiveIssueState(order);
 
-    if (['doctor rejected', 'rejected', 'lab rejected'].includes(normalizedStatus)) {
+    if (issue === 'doctor_rejected' || issue === 'lab_rejected' || issue === 'redo') {
         return getDoctorReceivableAmount(order);
     }
 
-    if (normalizedStatus === 'returned for adjustments') {
+    if (issue === 'returned') {
         return getDoctorReceivableAmount(order);
     }
 
-    if (normalizedStatus === 'cancelled') {
+    if (issue === 'cancelled') {
         return 0;
     }
 
@@ -381,15 +380,22 @@ const dateOnly = (date?: string | null): string => (date || '').split('T')[0];
 export function getOfficialStatementDate(order: LifecycleOrder): string {
     const actualDeliveryDate = order.actualDeliveryDate || order.actual_delivery_date;
     const firstDeliveredAt = order.firstDeliveredAt || order.first_delivered_at;
+    const firstDeliveredSource = order.firstDeliveredSource || order.first_delivered_source;
     const deliveryDate = order.deliveryDate || order.delivery_date;
     const createdAt = order.createdAt || order.created_at;
 
     if (getEffectiveIssueState(order) === 'returned') {
-        return dateOnly(firstDeliveredAt || actualDeliveryDate || deliveryDate || createdAt);
+        // Match is_observed_first_delivery_source in the database. Inferred
+        // accounting timestamps establish delivery evidence, never its date.
+        const observedFirstDelivery = ['direct_transition', 'order_event', 'status_history', 'actual_delivery_date']
+            .includes(firstDeliveredSource || '') ? firstDeliveredAt : undefined;
+        return dateOnly(observedFirstDelivery || actualDeliveryDate || deliveryDate || createdAt);
     }
 
     if (getProductionStatus(order) === 'final_delivered') {
-        return dateOnly(actualDeliveryDate || firstDeliveredAt || deliveryDate || createdAt);
+        // Preserve the historical statement basis. Administrative backfills
+        // populated first_delivered_at long after these Excel cases were delivered.
+        return dateOnly(actualDeliveryDate || deliveryDate || createdAt);
     }
 
     return dateOnly(deliveryDate || createdAt);
@@ -478,6 +484,14 @@ export function getEffectiveIssueState(order: LifecycleOrder): IssueState {
         default:
             return 'none';
     }
+}
+
+export function getEffectiveOrderDisplayStatus(order: LifecycleOrder): DerivedOrderDisplayStatus | null {
+    return deriveOrderDisplayStatusV2(
+        getEffectiveProductionStatus(order),
+        getEffectiveIssueState(order),
+        order.intakeState || order.intake_state,
+    );
 }
 
 /**

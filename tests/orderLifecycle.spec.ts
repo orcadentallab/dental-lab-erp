@@ -163,6 +163,7 @@ test.describe('official statement dates', () => {
             productionStatus: 'in_production',
             issueState: 'returned',
             firstDeliveredAt: '2026-09-02T10:15:00.000Z',
+            firstDeliveredSource: 'direct_transition',
             deliveryDate: '2026-08-30',
         });
 
@@ -272,31 +273,26 @@ test.describe('official statement dates', () => {
         }
     });
 
-    test('official receivable amount logic remains status-based and unchanged', () => {
+    test('official receivable amount logic remains production-axis based', () => {
         expect(getFinancialSummary(order({ productionStatus: 'final_delivered' })).doctorReceivableEligible).toBe(true);
         expect(getFinancialSummary(order({ productionStatus: 'final_ready' })).doctorReceivableEligible).toBe(false);
     });
 });
 
-test.describe('delivered date persistence hotfix', () => {
+test.describe('delivered date persistence ownership', () => {
     const ordersSource = readFileSync(resolve('src/services/supabase/orders.ts'), 'utf8');
     const statementSource = readFileSync(resolve('src/services/statementService.ts'), 'utf8');
 
-    test('sets actual_delivery_date only when status becomes Delivered and preserves planned delivery_date', () => {
-        expect(ordersSource).toContain("if (updates.status === 'Delivered') {");
-        expect(ordersSource).toContain("const deliveredDate = timestamp.split('T')[0];");
-        expect(ordersSource).toContain('dbUpdates.actual_delivery_date = deliveredDate;');
+    test('leaves transition-derived delivery evidence to the database', () => {
+        expect(ordersSource).not.toContain("if (updates.status === 'Delivered') {");
+        expect(ordersSource).not.toContain('const deliveredDate = timestamp.split');
+        expect(ordersSource).toContain('if (updates.productionStatus !== undefined) dbUpdates.production_status = updates.productionStatus;');
         expect(ordersSource).not.toContain('dbUpdates.delivery_date = deliveredDate;');
-        expect(ordersSource).toContain('delivery_date remains the planned/requested date');
-
-        expect(ordersSource).not.toContain("updates.status === 'Ready'");
-        expect(ordersSource).not.toContain("updates.status === 'Try In'");
-        expect(ordersSource).not.toContain("updates.status === 'Try In Approved'");
     });
 
-    test('clears actual_delivery_date when Delivered is reverted without touching planned delivery_date', () => {
-        expect(ordersSource).toContain("} else if (updates.status !== undefined && !['Delivered', 'Completed'].includes(updates.status)) {");
-        expect(ordersSource).toContain('dbUpdates.actual_delivery_date = null;');
+    test('only changes actual delivery date when explicitly supplied', () => {
+        expect(ordersSource).toContain('if (updates.actualDeliveryDate !== undefined) dbUpdates.actual_delivery_date = updates.actualDeliveryDate || null;');
+        expect(ordersSource).not.toContain("updates.status !== undefined && !['Delivered', 'Completed'].includes(updates.status)");
         expect(ordersSource).not.toContain('dbUpdates.delivery_date = null;');
     });
 

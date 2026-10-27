@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { db } from '../../services/db';
+import { DOCTOR_CODE_REGIONS, normalizeDoctorName } from '../../lib/doctorIdentity';
 
 interface DoctorFormProps {
     onSuccess?: () => void;
@@ -11,7 +12,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
     const [phone, setPhone] = useState(() => localStorage.getItem('doctorForm_phone') || '');
     const [phone2, setPhone2] = useState(() => localStorage.getItem('doctorForm_phone2') || '');
     const [address, setAddress] = useState(() => localStorage.getItem('doctorForm_address') || '');
-    const [doctorCode, setDoctorCode] = useState(() => localStorage.getItem('doctorForm_doctorCode') || '');
+    const [codeRegion, setCodeRegion] = useState(() => localStorage.getItem('doctorForm_codeRegion') || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Persist changes
@@ -25,13 +26,14 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
         setPhone('');
         setPhone2('');
         setAddress('');
-        setDoctorCode('');
+        setCodeRegion('');
 
         localStorage.removeItem('doctorForm_name');
         localStorage.removeItem('doctorForm_phone');
         localStorage.removeItem('doctorForm_phone2');
         localStorage.removeItem('doctorForm_address');
         localStorage.removeItem('doctorForm_doctorCode');
+        localStorage.removeItem('doctorForm_codeRegion');
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -40,11 +42,12 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
 
         try {
             await db.addDoctor({
-                name,
+                name: normalizeDoctorName(name),
                 phone,
                 phone2: phone2 || undefined,
                 address,
-                doctorCode: doctorCode.trim().toUpperCase(),
+                doctorCode: '',
+                codeRegion: DOCTOR_CODE_REGIONS.find(region => region.value === codeRegion)?.value,
                 representativeName: '' // Optional field
             });
 
@@ -104,16 +107,13 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    كود الطبيب *
+                    منطقة العيادة الرئيسية *
                 </label>
-                <input
-                    type="text"
-                    required
-                    value={doctorCode}
-                    onChange={(e) => handleChange('doctorCode', e.target.value, setDoctorCode)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white uppercase"
-                    placeholder="AHM"
-                />
+                <select required aria-label="منطقة العيادة الرئيسية" value={codeRegion} onChange={event => handleChange('codeRegion', event.target.value, setCodeRegion)} className="w-full px-4 py-2 border rounded-lg dark:bg-gray-700">
+                    <option value="">اختر المنطقة</option>
+                    {DOCTOR_CODE_REGIONS.map(region => <option key={region.value} value={region.value}>{region.label}</option>)}
+                </select>
+                <p className="text-xs text-gray-500">الكود يتولد تلقائيًا عند الحفظ.</p>
             </div>
 
             <div>

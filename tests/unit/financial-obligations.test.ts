@@ -207,7 +207,9 @@ vi.mock('../../src/lib/supabase', () => {
                             : order.total_price;
                     return {
                         ...order,
-                        status: args.p_target_status,
+                        status: args.p_issue_state === 'lab_rejected'
+                            ? 'Lab Rejected'
+                            : 'Doctor Rejected',
                         production_status: 'not_started',
                         issue_state: args.p_issue_state,
                         rejected_doctor_amount: doctorAmount,
@@ -274,11 +276,14 @@ describe('Financial Obligations Integration Tests', () => {
         });
 
         expect(updatedOrder).toBeDefined();
+        expect(updatedOrder?.productionStatus).toBe('final_delivered');
         expect(updatedOrder?.status).toBe('Delivered');
+        expect(db.orders[0].production_status).toBe('final_delivered');
+        expect(db.orders[0].status).toBe('Ready');
 
-        // The unit mock does not emulate PostgreSQL triggers. No client-side
-        // obligation write should occur after the atomic order update; the real
-        // trigger behavior is covered by the database integration suite.
+        // The unit mock deliberately does not emulate the PostgreSQL legacy
+        // mirror. The client writes the V2 axis only; the real trigger and
+        // obligation behavior are covered by the database integration suite.
         const obligations = db.financial_obligations;
         expect(obligations).toHaveLength(0);
     });

@@ -47,7 +47,21 @@ INSERT INTO anon_execute_allowlist (proname) VALUES
     ('get_my_role'),
     ('get_my_user_id'),
     ('get_my_entity_id'),
-    ('get_email_by_username');
+    ('get_email_by_username'),
+    ('request_doctor_phone_otp'),
+    ('verify_and_link_doctor'),
+    ('claim_doctor_code'),
+    ('register_verified_doctor'),
+    -- No phone enumeration: submission returns only its own ID; opening requires
+    -- the 256-bit device secret and an explicitly approved request.
+    ('submit_doctor_manual_access'),
+    ('open_doctor_manual_access'),
+    -- Owner-authorized clinic prefill lookup; invitation requires an unguessable
+    -- capability; signup never authorizes an existing record without review.
+    ('find_doctor_registration_matches'),
+    ('inspect_doctor_portal_invitation'),
+    ('register_doctor_password_account'),
+    ('resolve_doctor_password_login');
 
 -- ─── Expected posture per RPC ───────────────────────────────────────────
 --   kind = 'wrapper'    -> anon denied, authenticated allowed
@@ -65,6 +79,13 @@ INSERT INTO anon_execute_allowlist (proname) VALUES
 CREATE TEMP TABLE rpc_expectations (sig text, kind text, in_chain boolean)
     ON COMMIT DROP;
 INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
+    ('public.submit_doctor_portal_case(uuid,jsonb)', 'wrapper', true),
+    ('public.get_my_doctor_month(boolean)', 'wrapper', true),
+    ('public.get_doctor_portal_cases()', 'wrapper', true),
+    ('public.get_doctor_portal_staff_inbox()', 'wrapper', true),
+    ('public.review_doctor_address_update(uuid,boolean)', 'wrapper', true),
+    ('public.review_doctor_password_registration(uuid,boolean,uuid,boolean)', 'wrapper', true),
+    ('public._apply_doctor_registration_contacts(uuid,jsonb,boolean)', 'privileged', true),
     -- fixed by 20260812080000
     ('public.get_doctor_receivables_breakdown()',                              'wrapper',    true),
     ('public.get_marketing_summary(timestamptz,timestamptz)',                  'wrapper',    true),
@@ -145,11 +166,12 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     ('public.capture_cutover_baseline(date,date,text)',                         'wrapper',    true),
     -- added by 20260827006000 (operational warnings)
     ('public.get_open_system_warnings(integer)',                                'wrapper',    true),
-    -- adopted by 20260907020000: existed in production outside the chain
-    -- (same situation get_doctor_receivables_breakdown was in), EXECUTE was
-    -- still open to PUBLIC/anon. The admin check lives inside the function
-    -- itself, so it is a single wrapper, not a wrapper/privileged pair.
-    ('public.admin_reset_password(uuid,text)',                                  'wrapper',    true);
+    ('public.admin_reset_password(uuid,text)',                                  'wrapper',    true),
+    -- added by 20261004000000 (doctor portal pending link approvals)
+    ('public.get_pending_doctor_link_requests()',                               'wrapper',    true),
+    ('public.approve_doctor_link_request(uuid,uuid)',                           'wrapper',    true),
+    ('public.reject_doctor_link_request(uuid,text)',                            'wrapper',    true),
+    ('public.create_doctor_with_region_code(jsonb)', 'wrapper', true);
 
 -- ─── 1. Sanity: the catalog is populated ────────────────────────────────
 -- Without this, every assertion below could pass vacuously (e.g. if the

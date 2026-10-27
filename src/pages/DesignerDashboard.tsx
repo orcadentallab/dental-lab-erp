@@ -15,6 +15,7 @@ import { useToast } from '../context/ToastContext';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
 import DateRangeField from '../components/ui/DateRangeField';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
@@ -244,7 +245,12 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
             // Auto-advance: approving a brand-new case moves it into design,
             // same as the equivalent action on the shared Orders list/board.
-            if (action === 'Approved' && order && order.status === 'New Case') {
+            if (
+                action === 'Approved' &&
+                order &&
+                getEffectiveProductionStatus(order) === 'not_started' &&
+                getEffectiveIssueState(order) === 'none'
+            ) {
                 const advancedOrder = await db.updateOrderStatus(orderId, 'Under Design', {
                     userId: user?.id,
                     userName: user?.name || user?.role || 'User',
@@ -417,7 +423,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 order.technicianStatus === 'NeedDetails' ||
                 order.designStatus === 'waiting_approval' ||
                 order.designStatus === 'returned' ||
-                order.status === 'Waiting Dr Approval'
+                getEffectiveProductionStatus(order) === 'waiting_doctor'
             ) {
                 return false;
             }

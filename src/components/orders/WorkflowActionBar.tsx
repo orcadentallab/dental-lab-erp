@@ -10,7 +10,7 @@ import IssueCauseFields from './IssueCauseFields';
 import IssueStateCorrectionModal from './IssueStateCorrectionModal';
 import { canCorrectIssueState } from '../../constants/issueStateCorrection';
 import type { Order } from '../../services/db';
-import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import { getEffectiveOrderDisplayStatus, getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { getForwardActions, getIssueActions, type WorkflowAction } from '../../constants/workflowTransitions';
 import {
     REJECTION_DOCTOR_DECISIONS,
@@ -110,26 +110,24 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         workflowType: order.workflowType,
         deliveryType: order.deliveryType,
         designUrl: order.designUrl,
-        status: order.status,
+        intakeState: order.intakeState,
     });
 
     const hasDeliveryEvidence = Boolean(
         order.firstDeliveredAt || order.legacyDeliveryConfirmed || order.actualDeliveryDate
         || productionStatus === 'final_delivered'
-        || order.status === 'Delivered' || order.status === 'Completed'
     );
     const issueActions = getIssueActions(issueState, userRole, {
         firstDeliveredAt: order.firstDeliveredAt,
         legacyDeliveryConfirmed: order.legacyDeliveryConfirmed,
         actualDeliveryDate: order.actualDeliveryDate,
         productionStatus,
-        legacyStatus: order.status,
     });
     const canRedo = (userRole === 'admin' || userRole === 'representative')
         && !!onRedo
         && hasDeliveryEvidence
-        && order.issueState !== 'cancelled'
-        && order.issueState !== 'redo';
+        && issueState !== 'cancelled'
+        && issueState !== 'redo';
     const redoBlockedByReplacement = (userRole === 'admin' || userRole === 'representative')
         && !!onRedo
         && issueState === 'redo';
@@ -268,7 +266,8 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         );
     };
 
-    const currentStatusLabel = LEGACY_STATUS_LABELS_AR[order.status] || order.status;
+    const currentDisplayStatus = getEffectiveOrderDisplayStatus(order) || 'New Case';
+    const currentStatusLabel = LEGACY_STATUS_LABELS_AR[currentDisplayStatus] || currentDisplayStatus;
 
     return (
         <>

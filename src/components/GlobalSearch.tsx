@@ -6,6 +6,8 @@ import { buildSmartSearchResults, searchDestinations } from '../lib/smartSearch'
 import { useAuth } from '../context/AuthContext';
 import { getCapabilities } from '../lib/userRoles';
 import { reachableDestinations, type Destination } from '../lib/navigation';
+import { DERIVED_ORDER_STATUS_LABELS_AR } from '../constants/orderDerivedStatusV2';
+import { getEffectiveOrderDisplayStatus } from '../constants/orderLifecycle';
 
 export default function GlobalSearch({ commandOnly = false }: { commandOnly?: boolean }) {
     const navigate = useNavigate();
@@ -113,7 +115,9 @@ export default function GlobalSearch({ commandOnly = false }: { commandOnly?: bo
     const orderMeta = (order: Order, archived = false) => {
         const supplier = suppliers.find(item => item.id === order.supplierId);
         const doctor = doctors.find(item => item.id === order.doctorId);
-        return `${order.caseId} · ${supplier?.name || 'معمل داخلي'} · ${archived ? 'مؤرشفة' : getArabicOrderStatus(order.status)}${doctor ? ` · د. ${doctor.name}` : ''}`;
+        const displayStatus = getEffectiveOrderDisplayStatus(order);
+        const statusLabel = displayStatus ? DERIVED_ORDER_STATUS_LABELS_AR[displayStatus] : 'حالة غير محددة';
+        return `${order.caseId} · ${supplier?.name || 'معمل داخلي'} · ${archived ? 'مؤرشفة' : statusLabel}${doctor ? ` · د. ${doctor.name}` : ''}`;
     };
     const filters = [
         { id: 'all', label: 'الكل', count: recordResults },
@@ -157,17 +161,6 @@ export default function GlobalSearch({ commandOnly = false }: { commandOnly?: bo
 
 function OrderResult({ order, onClick, meta }: { order: Order; onClick: (order: Order) => void; meta: string }) {
     return <button type="button" onClick={() => onClick(order)} className="flex w-full flex-col rounded-lg px-3 py-2 text-right text-sm hover:bg-teal-50"><span className="font-bold text-slate-800">{order.patientName}</span><span className="mt-0.5 text-xs text-slate-500">{meta}</span></button>;
-}
-
-function getArabicOrderStatus(status: Order['status']): string {
-    const labels: Record<Order['status'], string> = {
-        'Pending': 'قيد الانتظار', 'In Progress': 'قيد التنفيذ', 'Completed': 'مكتملة', 'Delivered': 'تم التسليم',
-        'New Case': 'حالة جديدة', 'Under Design': 'تحت التصميم', 'Waiting Dr Approval': 'بانتظار موافقة الطبيب',
-        'Under Production': 'تحت الإنتاج', 'Try In': 'بروفة', 'Try In Approved': 'البروفة موافق', 'Ready': 'جاهزة',
-        'Returned for Adjustments': 'مرتجعة للتعديل', 'Rejected': 'مرفوضة', 'Doctor Rejected': 'مرفوضة من الطبيب',
-        'Lab Rejected': 'مرفوضة من المعمل', 'Cancelled': 'ملغاة', 'Pending Review': 'بانتظار المراجعة',
-    };
-    return labels[status];
 }
 
 function ResultGroup<T>({ title, icon, items, empty, render }: { title: string; icon: ReactNode; items: T[]; empty: string; render: (item: T) => ReactNode }) {

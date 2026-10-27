@@ -14,7 +14,7 @@ import { db, type Order, type Transaction, type Doctor, type Supplier, type Serv
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../utils/dateRange';
 import { isDoctorStatementIncluded, isClosedCaseInPeriod, getDoctorReceivableAmount, getOfficialStatementDate, isNonProductiveOrder, contributesProductiveUnits } from '../constants/orderLifecycle';
 import { getDoctorServicePrice } from '../lib/pricingUtils';
-import { generateComprehensiveAnalyticsPDF } from '../services/comprehensiveReportService';
+import { generateComprehensiveAnalyticsPDF, generateBulkMonthlyComprehensiveReports, TARGET_BATCH_MONTHS } from '../services/comprehensiveReportService';
 
 type AnalyticsTab = 'overview' | 'financial' | 'service_analysis' | 'expense_analysis' | 'order_analysis';
 
@@ -645,6 +645,24 @@ export default function Analytics() {
     }, [isLoading]); // restore after main data finishes loading
 
     const [isExportingReport, setIsExportingReport] = useState(false);
+    const [isBatchExporting, setIsBatchExporting] = useState(false);
+    const [batchProgress, setBatchProgress] = useState({ current: 0, total: TARGET_BATCH_MONTHS.length, monthName: '' });
+
+    const handleExportMonthlyReports = async () => {
+        setIsBatchExporting(true);
+        setBatchProgress({ current: 0, total: TARGET_BATCH_MONTHS.length, monthName: 'تحميل بيانات الفترة كاملة...' });
+        try {
+            // Fetch the complete datasets; the current tab may only have a subset.
+            await generateBulkMonthlyComprehensiveReports({
+                onProgress: (current, total, monthName) => setBatchProgress({ current, total, monthName })
+            });
+        } catch (err) {
+            console.error('Failed to export monthly reports:', err);
+            alert('حدث خطأ أثناء تجهيز التقارير الشهرية. يرجى المحاولة مرة أخرى.');
+        } finally {
+            setIsBatchExporting(false);
+        }
+    };
 
     const handleExportComprehensiveReport = async () => {
         setIsExportingReport(true);
@@ -652,12 +670,7 @@ export default function Analytics() {
             await generateComprehensiveAnalyticsPDF({
                 startDate: dateRange === 'all' ? '' : startDate,
                 endDate: dateRange === 'all' ? '' : endDate,
-                dateRangeLabel: activeDateRangeLabel,
-                preloadedOrders: orders,
-                preloadedTransactions: transactions,
-                preloadedDoctors: doctors,
-                preloadedSuppliers: suppliers,
-                preloadedServices: services
+                dateRangeLabel: activeDateRangeLabel
             });
         } catch (err) {
             console.error('Failed to export comprehensive report:', err);
@@ -743,7 +756,7 @@ export default function Analytics() {
                         {/* Compact PDF Export Button */}
                         <button
                             onClick={handleExportComprehensiveReport}
-                            disabled={isExportingReport}
+                            disabled={isExportingReport || isBatchExporting}
                             className="flex items-center gap-1.5 px-3 py-2.5 bg-blue-600/80 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-white/15 backdrop-blur-md shadow-sm"
                             title="تصدير تقرير شامل PDF للفترة المحددة"
                         >
@@ -759,8 +772,23 @@ export default function Analytics() {
                                 </>
                             )}
                         </button>
+                        <button
+                            onClick={handleExportMonthlyReports}
+                            disabled={isExportingReport || isBatchExporting}
+                            className="flex items-center gap-1.5 px-3 py-2.5 bg-emerald-600/80 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border border-white/15 shadow-sm"
+                            title="تنزيل 15 تقرير PDF، كل شهر في ملف مستقل داخل ZIP، من يوليو 2025 إلى سبتمبر 2026"
+                        >
+                            {isBatchExporting ? <RefreshCcw size={15} className="animate-spin" /> : <Download size={15} />}
+                            <span>{isBatchExporting ? `تجهيز ${batchProgress.current}/${batchProgress.total}` : 'التقارير الشهرية 7/2025 – 9/2026'}</span>
+                        </button>
                     </div>
                 </div>
+
+                {isBatchExporting && (
+                    <div role="status" aria-live="polite" className="relative z-10 mt-4 text-sm text-emerald-200">
+                        {batchProgress.monthName} — يتم تجهيز كل شهر في ملف مستقل داخل ZIP. يرجى إبقاء الصفحة مفتوحة حتى يبدأ التنزيل.
+                    </div>
+                )}
 
                 {/* Custom Date Inputs */}
                 {dateRange === 'custom' && (

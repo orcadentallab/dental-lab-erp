@@ -188,8 +188,9 @@ export default function Users() {
         e.preventDefault();
         try {
             // Validation
-            if (!editingUser && (!password || password.length < 8)) {
-                toastError('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+            const minimumPasswordLength = 8;
+            if ((!editingUser && !password) || (password && (password.length < minimumPasswordLength || new TextEncoder().encode(password).length > 72))) {
+                toastError(`كلمة المرور يجب أن تكون ${minimumPasswordLength} حرفًا على الأقل ولا تتجاوز 72 بايت`);
                 return;
             }
 
@@ -241,12 +242,11 @@ export default function Users() {
                 await db.updateUser(userData);
 
                 // Handle Password Reset
-                if (password && password.length >= 8) {
+                if (password) {
                     try {
                         await db.resetUserPassword(editingUser.id, password);
                         toastSuccess('تم تحديث كلمة المرور بنجاح');
                     } catch (pwError: unknown) {
-                        console.error('Password reset failed:', pwError);
                         toastError('تم تحديث البيانات ولكن فشل تغيير كلمة المرور: ' + ErrorHandler.getUserMessage(pwError));
                     }
                 }
@@ -520,6 +520,7 @@ export default function Users() {
                                     onChange={e => setPassword(e.target.value)}
                                     placeholder={editingUser ? 'أدخل كلمة مرور جديدة للتغيير' : '8 أحرف على الأقل'}
                                     minLength={8}
+                                    maxLength={72}
                                 />
                                 {!editingUser && <p className="text-xs text-gray-400 mt-1">يتم إنشاء حساب المستخدم تلقائياً في Supabase Auth</p>}
                                 {editingUser && <p className="text-xs text-yellow-600 mt-1">اترك الحقل فارغاً إذا كنت لا تريد تغيير كلمة المرور.</p>}

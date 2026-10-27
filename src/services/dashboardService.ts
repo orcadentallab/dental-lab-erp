@@ -46,7 +46,7 @@ export const dashboardService = {
         // The RPC returns raw JSON. We may need to map orders to frontend structure if components expect full Order.
         // However, the RPC returns simplified objects.
         // Let's verify if we need to full dbToOrder or just pass raw data.
-        // Dashboard uses: caseId, patientName, status, deliveryDate, items (serviceType), doctorId.
+        // Dashboard uses the V2 workflow axes for grouping and presentation.
         // dbToOrder maps snake_case to camelCase. e.g. case_id -> caseId.
         // So we MUST map the raw data.
 
@@ -60,7 +60,9 @@ export const dashboardService = {
                 caseId: o.case_id,
                 patientName: o.patient_name,
                 deliveryDate: o.delivery_date,
-                status: o.status,
+                productionStatus: o.production_status,
+                issueState: o.issue_state,
+                intakeState: o.intake_state,
                 doctorId: o.doctor_id,
                 items: o.items ? (Array.isArray(o.items) ? o.items.map((i: any) => ({
                     serviceType: i.product_type || i.serviceType, // Handle both legacy and new

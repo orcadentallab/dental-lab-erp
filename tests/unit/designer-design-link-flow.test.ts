@@ -17,7 +17,9 @@ describe('designer design-link flow', () => {
     test('approving a new case advances it to design automatically', () => {
         const approval = between(dashboardSource, 'const handleTechAction', 'useEffect(() => {');
         expect(approval).toContain("action === 'Approved'");
-        expect(approval).toContain("order.status === 'New Case'");
+        expect(approval).toContain("getEffectiveProductionStatus(order) === 'not_started'");
+        expect(approval).toContain("getEffectiveIssueState(order) === 'none'");
+        expect(approval).not.toContain('order.status');
         expect(approval).toContain("updateOrderStatus(orderId, 'Under Design'");
     });
 

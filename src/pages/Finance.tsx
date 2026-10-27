@@ -95,6 +95,7 @@ export default function Finance() {
     // Filters
     const [expenseFilter, setExpenseFilter] = useState<FilterType>('month');
     const [expenseCategoryFilter, setExpenseCategoryFilter] = useState('all');
+    const [showBankFees, setShowBankFees] = useState(false);
     const [revenueFilter, setRevenueFilter] = useState<FilterType>('month');
     const [doctorPaymentFilter, setDoctorPaymentFilter] = useState<FilterType>('month');
     const [supplierPaymentFilter, setSupplierPaymentFilter] = useState<FilterType>('month');
@@ -191,6 +192,12 @@ export default function Finance() {
         if (expenseCategoryFilter === 'all') return dateFiltered;
         return dateFiltered.filter(transaction => normalizeExpenseCategory(transaction.category) === expenseCategoryFilter);
     }, [generalExpenses, expenseFilter, expenseCategoryFilter]);
+    const bankFeesTotal = useMemo(() => calculateTotal(filteredExpenses.filter(
+        transaction => normalizeExpenseCategory(transaction.category) === EXPENSE_CATEGORY.bankFees
+    )), [filteredExpenses]);
+    const visibleExpenses = useMemo(() => showBankFees ? filteredExpenses : filteredExpenses.filter(
+        transaction => normalizeExpenseCategory(transaction.category) !== EXPENSE_CATEGORY.bankFees
+    ), [filteredExpenses, showBankFees]);
     const filteredIncome = useMemo(() => filterEntries(generalIncome, revenueFilter), [generalIncome, revenueFilter]);
     const filteredDoctorPayments = useMemo(() => filterEntries(doctorPayments, doctorPaymentFilter), [doctorPayments, doctorPaymentFilter]);
     const filteredSupplierPayments = useMemo(() => filterEntries(supplierPayments, supplierPaymentFilter), [supplierPayments, supplierPaymentFilter]);
@@ -629,7 +636,10 @@ export default function Finance() {
                                     <select
                                         aria-label="فلتر نوع المصروف"
                                         value={expenseCategoryFilter}
-                                        onChange={event => setExpenseCategoryFilter(event.target.value)}
+                                        onChange={event => {
+                                            setExpenseCategoryFilter(event.target.value);
+                                            if (event.target.value === EXPENSE_CATEGORY.bankFees) setShowBankFees(true);
+                                        }}
                                         className="min-w-48 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 focus:border-red-400 focus:outline-none focus:ring-2 focus:ring-red-100"
                                     >
                                         <option value="all">كل أنواع المصروفات</option>
@@ -640,11 +650,33 @@ export default function Finance() {
                                     <DateFilter activeFilter={expenseFilter} onFilterChange={setExpenseFilter} />
                                 </div>
                             </div>
+                            <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 text-sm">
+                                <p className="text-gray-600">
+                                    إجمالي العمولات والرسوم البنكية:
+                                    <span className="font-bold text-red-600 ms-2">{bankFeesTotal.toLocaleString()} ج.م</span>
+                                </p>
+                                <label className="inline-flex items-center gap-2 cursor-pointer text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={showBankFees}
+                                        onChange={event => setShowBankFees(event.target.checked)}
+                                        className="h-4 w-4 rounded border-gray-300 accent-red-600"
+                                    />
+                                    إظهار العمولات والرسوم البنكية
+                                </label>
+                            </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-right">
                                     <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                     <tbody className="divide-y divide-gray-50">
-                                        {filteredExpenses.map(t => (
+                                        {visibleExpenses.length === 0 && (
+                                            <tr>
+                                                <td colSpan={['admin', 'accountant'].includes(user?.role || '') ? 7 : 6} className="p-6 text-center text-gray-500">
+                                                    لا توجد مصروفات ظاهرة حسب الفلاتر الحالية
+                                                </td>
+                                            </tr>
+                                        )}
+                                        {visibleExpenses.map(t => (
                                             <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
                                                 <td className="p-4 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
                                                 <td className="p-4 font-bold text-gray-800">{t.category}</td>
@@ -675,7 +707,7 @@ export default function Finance() {
                                     </tbody>
                                     <tfoot className="bg-gray-50 font-bold border-t border-gray-200">
                                         <tr>
-                                            <td colSpan={4} className="p-4 text-gray-700">الإجمالي</td>
+                                            <td colSpan={4} className="p-4 text-gray-700">الإجمالي شامل العمولات والرسوم البنكية</td>
                                             <td className="p-4 text-red-700">{calculateTotal(filteredExpenses).toLocaleString()} ج.م</td>
                                             <td colSpan={2}></td>
                                         </tr>

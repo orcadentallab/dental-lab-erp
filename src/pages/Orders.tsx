@@ -25,6 +25,7 @@ import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
 import { getStages, getActiveStagesForOrders, type ProductionStage, type ActiveOrderStage } from '../services/supabase/production';
+import { getEffectiveIssueState, getEffectiveOrderDisplayStatus, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import RepEditModal from '../components/orders/RepEditModal';
@@ -269,7 +270,7 @@ function OrdersPage() {
                 } else if (modal === 'design') {
                     setDesignLinkOrder(order);
                     setDesignLinkUrl(order.designUrl || '');
-                    setDesignLinkTargetStatus(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
+                    setDesignLinkTargetStatus(getEffectiveProductionStatus(order) === 'in_production' ? 'Under Production' : 'Waiting Dr Approval');
                 } else if (modal === 'accept') {
                     setAcceptingOrder(order);
                 }
@@ -362,7 +363,9 @@ function OrdersPage() {
                 }, {})
                 : orderData;
 
-            const { status, ...restOfUpdates } = safeUpdates;
+            const restOfUpdates = Object.fromEntries(
+                Object.entries(safeUpdates).filter(([field]) => field !== 'status')
+            ) as Partial<Order>;
 
             // 1. Update non-status fields
             await db.updateOrder(fullEditingOrder.id, restOfUpdates, {
@@ -371,15 +374,6 @@ function OrdersPage() {
                 deliveryDateChangeSource: 'orders_page',
                 deliveryDateResponsibilityParty: 'unknown',
             });
-
-            // 2. If status changed, update it via the unified updateOrderStatus
-            if (status !== undefined && status !== fullEditingOrder.status) {
-                await db.updateOrderStatus(fullEditingOrder.id, status, {
-                    userId: user?.id,
-                    userName: user?.name || user?.role || 'User',
-                    actorRole: user?.role,
-                });
-            }
 
             setFullEditingOrder(null);
             clearOpenOrderParams();
@@ -484,7 +478,7 @@ function OrdersPage() {
     const openDesignLinkModal = (order: Order) => {
         setDesignLinkOrder(order);
         setDesignLinkUrl(order.designUrl || '');
-        setDesignLinkTargetStatus(order.status === 'Under Production' ? 'Under Production' : 'Waiting Dr Approval');
+        setDesignLinkTargetStatus(getEffectiveProductionStatus(order) === 'in_production' ? 'Under Production' : 'Waiting Dr Approval');
         setOrderPageParams({ modal: 'design', order: order.id });
     };
 
@@ -563,34 +557,18 @@ function OrdersPage() {
                 designerId: data.workflowType === 'split' ? (data.designerId || undefined) : undefined,
                 createdAt: new Date(data.receivedDate).toISOString(),
                 deliveryDate: data.deliveryDate,
-                // Status mapping:
-                // Full Lab -> New Case (Waiting for Lab)
-                // Split -> New Case (Waiting for Designer)
-                // Actually unified status: 'New Case' is fine start. 
-                // BUT logic says:
-                // Split -> status='New Case', designStatus='Pending'
-                // Full -> status='New Case', technicianStatus='Pending'
-                status: 'New Case' as Order['status'], // Explicit cast
+                productionStatus: 'not_started' as const,
+                issueState: 'none' as const,
+                intakeState: 'accepted' as const,
                 designStatus: (data.workflowType === 'split' ? 'pending' : undefined) as Order['designStatus'],
                 technicianStatus: 'Pending' as 'Pending' | 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First',
             };
 
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { status, ...restOfUpdate } = orderUpdate;
-
-            // 1. Update non-status fields
-            await db.updateOrder(acceptingOrder.id, restOfUpdate, {
+            await db.updateOrder(acceptingOrder.id, orderUpdate, {
                 userId: user?.id,
                 actorRole: user?.role,
                 deliveryDateChangeSource: 'orders_page',
                 deliveryDateResponsibilityParty: 'unknown',
-            });
-
-            // 2. Update status via the unified updateOrderStatus
-            await db.updateOrderStatus(acceptingOrder.id, 'New Case', {
-                userId: user?.id,
-                userName: user?.name || user?.role || 'User',
-                actorRole: user?.role,
             });
 
             // 2. Add System Comment
@@ -733,7 +711,9 @@ function OrdersPage() {
                                     const supplier = suppliers.find(s => s.id === order.supplierId);
                                     const servicesText = (order.items || []).map(i => `${i.serviceType} (${i.teethNumbers?.length || 0})`).join(' | ');
                                     const servicesPrices = (order.items || []).map(i => `${i.price || 0}`).join(' | ');
-                                    const isReturned = ['Returned for Adjustments', 'Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(order.status);
+                                    const issueState = getEffectiveIssueState(order);
+                                    const displayStatus = getEffectiveOrderDisplayStatus(order) || 'New Case';
+                                    const isReturned = ['returned', 'doctor_rejected', 'lab_rejected', 'cancelled'].includes(issueState);
                                     return {
                                         'رقم الحالة': order.caseId,
                                         'الطبيب': doctor?.name || '-',
@@ -742,7 +722,7 @@ function OrdersPage() {
                                         'أسعار الخدمات': servicesPrices,
                                         'إجمالي الفاتورة': order.totalPrice,
                                         'الخصم': order.discount || 0,
-                                        'الحالة': order.status,
+                                        'الحالة': displayStatus,
                                         'مرتجع': isReturned ? 'نعم' : 'لا',
                                         'المعمل': supplier?.name || 'داخلي',
                                         'تاريخ الاستلام': order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : '-',
@@ -771,7 +751,7 @@ function OrdersPage() {
                                         caseId: order.caseId,
                                         doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
                                         patient: order.patientName,
-                                        status: order.status,
+                                        status: getEffectiveOrderDisplayStatus(order) || 'New Case',
                                         price: order.totalPrice,
                                         date: order.deliveryDate
                                     })),

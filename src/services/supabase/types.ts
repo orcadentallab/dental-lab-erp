@@ -6,6 +6,7 @@ export interface DbDoctor {
     name: string;
     phone: string;
     phone2?: string | null;
+    contact_phones?: import('../../lib/doctorContacts').DoctorContactPhone[];
     address: string;
     doctor_code: string;
     representative_name: string;
@@ -48,6 +49,7 @@ export interface DbOrder {
     case_id: string;
     doctor_id: string;
     branch_name?: string | null;
+    delivery_address?: string | null;
     patient_name: string;
     items: DbOrderItem[];
     discount: number;
@@ -106,6 +108,7 @@ export interface DbOrder {
     // WF-1: shadow workflow columns (added by migration 086).
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    intake_state?: 'pending_review' | 'accepted';
     route_override_id?: string | null;
 }
 

@@ -57,6 +57,9 @@ export interface ReadyToPackOrder {
   id: string;
   case_id: string;
   doctor_id: string;
+  delivery_address?: string;
+  delivery_contact_phone?: string;
+  branch_name?: string;
   patient_name: string;
   total_price: number;
   status: string;
@@ -96,6 +99,9 @@ export const shippingService = {
         id,
         case_id,
         doctor_id,
+        delivery_address,
+        delivery_contact_phone,
+        branch_name,
         patient_name,
         total_price,
         status,
@@ -104,7 +110,7 @@ export const shippingService = {
         delivery_date,
         doctor:doctors(id, name, phone, address)
       `)
-      .in('status', ['Ready', 'ready', 'In Production', 'in_production'])
+      .in('production_status', ['final_ready', 'try_in_ready'])
       .eq('is_deleted', false)
       .order('delivery_date', { ascending: true });
 

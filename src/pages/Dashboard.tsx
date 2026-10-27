@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { getEffectiveIssueState, getEffectiveOrderDisplayStatus, getEffectiveProductionStatus } from '../constants/orderLifecycle';
+import { getStatusColor, getStatusText } from '../utils/orderUtils';
 
 export default function Dashboard() {
     const { user } = useAuth();
@@ -60,38 +62,6 @@ export default function Dashboard() {
 
     // For specific role logic, the RPC already returned the correct slice.
     // 'activeOrders' in RPC for Lab/Designer means "My Active Orders".
-
-    // Helpers for UI badges (Unchanged)
-
-    const getStatusLabel = (status: string) => {
-        const map: Record<string, string> = {
-            'New Case': 'جديد',
-            'Under Design': 'تصميم',
-            'Waiting Dr Approval': 'موافقة',
-            'Under Production': 'إنتاج',
-            'Try In': 'تجربة',
-            'Try In Approved': 'بروفة موافق',
-            'Ready': 'جاهز',
-            'Delivered': 'تم',
-            'Returned for Adjustments': 'مرتجع'
-        };
-        return map[status] || status;
-    };
-
-    const getStatusBadgeClass = (status: string) => {
-        switch (status) {
-            case 'New Case': return 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800';
-            case 'Under Design': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800';
-            case 'Waiting Dr Approval': return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800';
-            case 'Under Production': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800';
-            case 'Try In': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-200 dark:border-orange-800';
-            case 'Try In Approved': return 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 border border-teal-200 dark:border-teal-800';
-            case 'Ready': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800';
-            case 'Delivered': return 'bg-green-600 text-white shadow-sm';
-            case 'Returned for Adjustments': return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-800';
-            default: return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600';
-        }
-    };
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -169,8 +139,8 @@ export default function Dashboard() {
                                     {order.deliveryDate < todayStr && <span className="block text-[9px] text-red-500 font-bold">متأخر</span>}
                                 </td>
                                 <td className="p-3">
-                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${getStatusBadgeClass(order.status)}`}>
-                                        {getStatusLabel(order.status)}
+                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${getStatusColor(getEffectiveOrderDisplayStatus(order) || 'غير محدد')}`}>
+                                        {getStatusText(getEffectiveOrderDisplayStatus(order) || 'غير محدد')}
                                     </span>
                                 </td>
                             </motion.tr>
@@ -199,10 +169,10 @@ export default function Dashboard() {
     if (user?.role === 'designer') {
         const myOrders = dashboardData?.designerOrders || [];
 
-        const designerPending = myOrders.filter(o => o.status === 'New Case');
-        const designerInProgress = myOrders.filter(o => o.status === 'Under Design');
-        const designerWaiting = myOrders.filter(o => o.status === 'Waiting Dr Approval');
-        const designerReturned = myOrders.filter(o => o.status === 'Returned for Adjustments');
+        const designerPending = myOrders.filter(o => getEffectiveProductionStatus(o) === 'not_started' && getEffectiveIssueState(o) === 'none');
+        const designerInProgress = myOrders.filter(o => getEffectiveProductionStatus(o) === 'designing' && getEffectiveIssueState(o) === 'none');
+        const designerWaiting = myOrders.filter(o => getEffectiveProductionStatus(o) === 'waiting_doctor' && getEffectiveIssueState(o) === 'none');
+        const designerReturned = myOrders.filter(o => getEffectiveIssueState(o) === 'returned');
 
         // Use counts from stats if available for better accuracy/sync
         const stats = dashboardData?.stats;
@@ -414,8 +384,8 @@ export default function Dashboard() {
                                             </td>
                                             <td className="p-4 ltr font-mono text-xs text-surface-500">{order.deliveryDate}</td>
                                             <td className="p-4">
-                                                <span className={`px-2 py-1 rounded text-[11px] font-bold ${getStatusBadgeClass(order.status)}`}>
-                                                    {getStatusLabel(order.status)}
+                                                <span className={`px-2 py-1 rounded text-[11px] font-bold ${getStatusColor(getEffectiveOrderDisplayStatus(order) || 'غير محدد')}`}>
+                                                    {getStatusText(getEffectiveOrderDisplayStatus(order) || 'غير محدد')}
                                                 </span>
                                             </td>
                                         </tr>

@@ -229,7 +229,6 @@ export function canChangeProductionStatus(
         workflowType?: 'full' | 'split' | string | null;
         deliveryType?: 'Final' | 'TryIn' | string | null;
         designUrl?: string | null;
-        status?: string;
     } = {}
 ): boolean {
     if (role === 'admin') return true;

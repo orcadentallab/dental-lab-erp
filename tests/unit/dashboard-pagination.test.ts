@@ -17,13 +17,8 @@ describe('dashboard and statement pagination guards', () => {
     });
 
     test('treats every terminal state consistently across dashboard cards', () => {
-        expect(dashboard).toContain("'Delivered'");
-        expect(dashboard).toContain("'Completed'");
-        expect(dashboard).toContain("'Doctor Rejected'");
-        expect(dashboard).toContain("'Lab Rejected'");
-        expect(dashboard).toContain("'Cancelled'");
-        expect(dashboard).toContain("'Rejected'");
-        expect(dashboard).toContain('const isDashboardTerminal');
+        expect(dashboard).toContain("from '../constants/dashboardOrderGroups'");
+        expect(dashboard).not.toMatch(/\b(?:order|o)\.status\b/);
         expect(dashboard).toContain('orders.filter(o => !isDashboardTerminal(o)).length');
         expect(dashboard).toContain('!o.supplierId && !isDashboardTerminal(o)');
     });

@@ -1,4 +1,7 @@
 export interface DoctorBranch {
+    phoneOwnerRole?: import('../lib/doctorContacts').PhoneOwnerRole;
+    phoneOwnerName?: string;
+    phoneHasWhatsapp?: boolean;
     id: string;
     name: string;
     address: string;
@@ -10,8 +13,10 @@ export interface Doctor {
     name: string;
     phone: string;
     phone2?: string;
+    contactPhones?: import('../lib/doctorContacts').DoctorContactPhone[];
     address: string;
     doctorCode: string; // e.g., 'DR01'
+    codeRegion?: import('../lib/doctorIdentity').DoctorCodeRegion;
     representativeName: string;
     representativeId?: string; // Link to User.id
     customPrices?: Record<string, number>; // serviceName -> special sellingPrice
@@ -86,7 +91,7 @@ export interface Service {
 }
 
 export interface AccountingOrderSnapshot {
-    status: Order['status'];
+    status: string;
     saleAmount: number;
     labCost: number;
     designCost: number;
@@ -259,6 +264,7 @@ export interface Order {
     caseId: string; // Generated ID
     doctorId: string;
     branchName?: string; // Selected branch for this order
+    deliveryAddress?: string;
     patientName: string;
     items: OrderItem[];
     discount: number;
@@ -352,10 +358,18 @@ export interface Order {
     // existing call sites; finance logic does not depend on these yet.
     productionStatus?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issueState?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    intakeState?: 'pending_review' | 'accepted';
     routeOverrideId?: string | null;
 }
 
 export interface DoctorOrderSummary {
+    stlUrl?: string;
+    imagesUrl?: string;
+    doctorId?: string;
+    doctorName?: string;
+    stageLabel?: string;
+    pickupStatus?: string;
+    shipmentStatus?: string;
     id: string;
     caseId: string;
     patientName: string;
@@ -445,7 +459,7 @@ export interface OrderIssue {
      * points at the original order (rule 0-C), never at this replacement, so
      * it can't be read off `order` above.
      */
-    redoOrder?: { id: string; caseId: string | null; status: string } | null;
+    redoOrder?: { id: string; caseId: string | null } | null;
 }
 
 export interface EntityBillingSettings {
@@ -1082,6 +1096,8 @@ class MockDB {
 
     async createMyDoctorOrderRequest(input: {
         patientName: string;
+        branchId?: string;
+        deliveryAddress: string;
         items: OrderItem[];
         shade: string;
         instructions?: string;

@@ -6,6 +6,7 @@ import Orders from './pages/Orders';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
+import DoctorPortalLayout from './layouts/DoctorPortalLayout';
 import { lazy, Suspense } from 'react';
 
 const MarketingPage = lazy(() => import('./marketing/MarketingPage'));
@@ -27,6 +28,9 @@ const IssuesReport = lazy(() => import('./pages/IssuesReport'));
 const NewOrderRequest = lazy(() => import('./pages/doctor/NewOrderRequest'));
 const DoctorOrders = lazy(() => import('./pages/doctor/DoctorOrders'));
 const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
+const DoctorSupport = lazy(() => import('./pages/doctor/DoctorSupport'));
+const DoctorCenterTeam = lazy(() => import('./pages/doctor/DoctorCenterTeam'));
+const DoctorPortalInbox = lazy(() => import('./pages/DoctorPortalInbox'));
 const BalanceSnapshot = lazy(() => import('./pages/BalanceSnapshot'));
 const FinancialReview = lazy(() => import('./pages/FinancialReview'));
 const Statements = lazy(() => import('./pages/Statements'));
@@ -183,6 +187,7 @@ function App() {
                       <Route path="/case-registration" element={<CaseRegistration />} />
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
                       <Route path="/financial-review" element={<FinancialReview />} />
+                      <Route element={<ProtectedRoute allowedRoles={['admin', 'coordinator']} />}><Route path="/doctor-inbox" element={<DoctorPortalInbox />} /></Route>
                       <Route path="/statements" element={<Statements />} />
                       <Route path="/aging-report" element={<AgingReport />} />
                     </Route>
@@ -221,10 +226,13 @@ function App() {
 
                   {/* Doctor Portal Routes */}
                   <Route element={<ProtectedRoute allowedRoles={['doctor']} />}>
-                    <Route element={<DashboardLayout />}>
+                    <Route element={<DoctorPortalLayout />}>
+                      <Route path="/doctor" element={<Navigate to="/doctor/my-orders" replace />} />
                       <Route path="/doctor/new-request" element={<NewOrderRequest />} />
                       <Route path="/doctor/my-orders" element={<DoctorOrders />} />
                       <Route path="/doctor/account" element={<DoctorFinance />} />
+                      <Route path="/doctor/support" element={<DoctorSupport />} />
+                      <Route path="/doctor/team" element={<DoctorCenterTeam />} />
                     </Route>
                   </Route>
 

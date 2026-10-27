@@ -196,33 +196,6 @@ async function getCallerRoleAndId(): Promise<{ role: WorkflowRole; userId: strin
     };
 }
 
-// Map production status to its corresponding legacy status string
-export function mapProductionStatusToLegacy(status: ProductionStatus): string {
-    switch (status) {
-        case 'not_started': return 'New Case';
-        case 'designing': return 'Under Design';
-        case 'in_production': return 'Under Production';
-        case 'try_in_ready': return 'Try In';
-        case 'waiting_doctor': return 'Waiting Dr Approval';
-        case 'finalization': return 'Try In Approved';
-        case 'final_ready': return 'Ready';
-        case 'final_delivered': return 'Delivered';
-        default: return 'New Case';
-    }
-}
-
-// Map issue state to its corresponding legacy status string
-export function mapIssueStateToLegacy(newIssueState: IssueState, currentLegacyStatus: string): string {
-    switch (newIssueState) {
-        case 'returned':        return 'Returned for Adjustments';
-        case 'doctor_rejected': return 'Doctor Rejected';  // Doctor returned case; rejectedLabCost applies
-        case 'lab_rejected':    return 'Lab Rejected';      // Lab internal rejection; zero financial impact
-        case 'cancelled':       return 'Cancelled';
-        case 'none':            return 'Under Production';  // Resuming
-        default:                return currentLegacyStatus;
-    }
-}
-
 function getStatusChangeEventType(newStatus: ProductionStatus): string {
     switch (newStatus) {
         case 'try_in_ready':
@@ -290,7 +263,6 @@ export async function changeProductionStatus(
             workflowType: order.workflowType,
             deliveryType: order.deliveryType,
             designUrl: order.designUrl,
-            status: order.status,
         }
     );
 
@@ -298,11 +270,9 @@ export async function changeProductionStatus(
         throw new ValidationError('العملية غير مسموحة بناءً على حالة الطلب وصلاحياتك');
     }
 
-    const targetLegacyStatus = mapProductionStatusToLegacy(newStatus as ProductionStatus) as Order['status'];
     const { updateOrder } = await import('./orders');
     const updatedOrder = await updateOrder(orderId, {
         productionStatus: newStatus as ProductionStatus,
-        status: targetLegacyStatus,
     }, {
         userId,
         actorRole: userRole,
@@ -361,35 +331,25 @@ export async function changeIssueState(
         throw new ValidationError('العملية غير مسموحة بناءً على حالة الطلب وصلاحياتك');
     }
 
-    let targetLegacyStatus = order.status;
     let targetProductionStatus = getProductionStatus(order);
 
     if (newIssueState === 'returned') {
-        targetLegacyStatus = 'Returned for Adjustments';
         targetProductionStatus = 'in_production';
     } else if (newIssueState === 'doctor_rejected') {
         // Doctor returned case — same financial behavior as old 'Rejected'
-        targetLegacyStatus = 'Doctor Rejected';
         targetProductionStatus = 'not_started';
     } else if (newIssueState === 'lab_rejected') {
         // Lab internal rejection — zero financial impact, same as Cancelled
-        targetLegacyStatus = 'Lab Rejected';
         targetProductionStatus = 'not_started';
-    } else if (newIssueState === 'cancelled') {
-        targetLegacyStatus = 'Cancelled';
     } else if (newIssueState === 'none') {
         if (currentIssueState !== 'none') {
-            targetLegacyStatus = 'Under Production';
             targetProductionStatus = 'in_production';
         }
-    } else if (newIssueState === 'redo') {
-        targetLegacyStatus = 'New Case';
     }
 
     const { updateOrder } = await import('./orders');
     const updatedOrder = await updateOrder(orderId, {
         issueState: newIssueState as IssueState,
-        status: targetLegacyStatus,
         productionStatus: targetProductionStatus,
     }, {
         userId,

@@ -132,7 +132,7 @@ test.describe('WF-4: getForwardActions', () => {
     });
 
     test('Pending Review shows no forward actions', () => {
-        const actions = getForwardActions('not_started', 'none', { status: 'Pending Review' });
+        const actions = getForwardActions('not_started', 'none', { intakeState: 'pending_review' });
         expect(actions.length).toBe(0);
     });
 

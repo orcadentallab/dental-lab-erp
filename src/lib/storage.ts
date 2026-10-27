@@ -17,6 +17,7 @@ const BUCKET = 'case-files';
 export type AttachmentKind = 'instruction' | 'design' | 'qc' | 'packaging' | 'issue';
 
 export interface CaseAttachment {
+    storageBucket: 'case-files' | 'case-scans';
     id: string;
     orderId: string;
     stageRunId: string | null;
@@ -32,6 +33,12 @@ export interface CaseAttachment {
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export const ACCEPTED_TYPES = 'image/jpeg,image/png,image/webp,image/heic,application/pdf';
+export const SCAN_ACCEPTED_TYPES = '.stl,.ply';
+export function validateCaseFile(file: File): void {
+    const scan = /\.(stl|ply)$/i.test(file.name);
+    if (file.size > (scan ? 50 : 10) * 1024 * 1024) throw new Error(scan ? 'ملف السكان أكبر من 50 ميجا؛ أرفقه كرابط' : 'الصورة أو الملف أكبر من 10 ميجا');
+    if (!scan && !ACCEPTED_TYPES.split(',').includes(file.type)) throw new Error('اختر صورة أو PDF أو ملف STL / PLY');
+}
 
 function safeName(name: string): string {
     // Storage keys are path segments: strip anything that would nest a folder
@@ -43,6 +50,7 @@ function safeName(name: string): string {
 function toAttachment(r: any): CaseAttachment {
     return {
         id: r.id,
+        storageBucket: r.storage_bucket || 'case-files',
         orderId: r.order_id,
         stageRunId: r.stage_run_id ?? null,
         storagePath: r.storage_path,
@@ -66,15 +74,15 @@ export async function uploadCaseFile(
     file: File,
     opts: { orderId: string; kind: AttachmentKind; stageRunId?: string; caption?: string },
 ): Promise<CaseAttachment> {
-    if (file.size > MAX_FILE_BYTES) {
-        throw new Error('الملف أكبر من 10 ميجا');
-    }
+    validateCaseFile(file);
 
-    const path = `${opts.orderId}/${opts.kind}/${Date.now()}_${safeName(file.name)}`;
+    const path = `${opts.orderId}/${opts.kind}/${crypto.randomUUID()}_${safeName(file.name)}`;
+    const mimeType = /\.(stl|ply)$/i.test(file.name) ? 'application/octet-stream' : file.type;
+    const bucket = /\.(stl|ply)$/i.test(file.name) ? 'case-scans' : BUCKET;
 
     const { error: upErr } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, file, { contentType: file.type, upsert: false });
+        .from(bucket)
+        .upload(path, file, { contentType: mimeType, upsert: false });
 
     if (upErr) throw ErrorHandler.handle(upErr, 'uploadCaseFile.upload');
 
@@ -84,16 +92,17 @@ export async function uploadCaseFile(
             order_id: opts.orderId,
             stage_run_id: opts.stageRunId ?? null,
             storage_path: path,
+            storage_bucket: bucket,
             kind: opts.kind,
             caption: opts.caption ?? null,
-            mime_type: file.type || null,
+            mime_type: mimeType || null,
             size_bytes: file.size,
         })
         .select('*')
         .single();
 
     if (error) {
-        await supabase.storage.from(BUCKET).remove([path]);
+        await supabase.storage.from(bucket).remove([path]);
         throw ErrorHandler.handle(error, 'uploadCaseFile.record');
     }
 
@@ -149,11 +158,12 @@ export async function getSignedUrl(storagePath: string, seconds = 3600): Promise
 export async function getSignedUrls(
     paths: string[],
     seconds = 3600,
+    bucket: 'case-files' | 'case-scans' = BUCKET,
 ): Promise<Record<string, string>> {
     if (paths.length === 0) return {};
 
     const { data, error } = await supabase.storage
-        .from(BUCKET)
+        .from(bucket)
         .createSignedUrls(paths, seconds);
 
     if (error) {
@@ -177,5 +187,5 @@ export async function deleteAttachment(attachment: CaseAttachment): Promise<void
 
     if (error) throw ErrorHandler.handle(error, 'deleteAttachment');
 
-    await supabase.storage.from(BUCKET).remove([attachment.storagePath]);
+    await supabase.storage.from(attachment.storageBucket || BUCKET).remove([attachment.storagePath]);
 }

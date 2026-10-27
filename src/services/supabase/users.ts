@@ -80,8 +80,8 @@ export async function addUser(user: User & { password?: string }): Promise<void>
             const err = e as { message?: string; code?: string };
             if (err.message?.includes('User already registered') || err.code === '422') {
                 throw new ValidationError(
-                    'هذا البريد الإلكتروني مسجل بالفعل. بما أن العملية السابقة فشلت، يرجى حذف المستخدم من لوحة تحكم Supabase (Authentication) ثم المحاولة مرة أخرى.',
-                    'هذا البريد الإلكتروني مسجل بالفعل. يرجى حذف المستخدم من قائمة Authentication في Supabase ثم المحاولة.'
+                    'هذا البريد الإلكتروني مسجل بالفعل. راجع الحساب الموجود في إدارة المستخدمين؛ وإذا تعثرت إضافة سابقة، راجع هوية Auth غير المربوطة قبل إعادة الإضافة.',
+                    'هذا البريد الإلكتروني مسجل بالفعل. راجع الحساب الموجود أو إضافة سابقة لم تكتمل مع مسؤول النظام.'
                 );
             }
             // Auth creation failed - throw error to inform admin
@@ -104,6 +104,10 @@ export async function addUser(user: User & { password?: string }): Promise<void>
 
     if (error) {
         throw ErrorHandler.handle(error, 'addUser - insert');
+    }
+    if (authId && user.isActive !== false) {
+        const { error: activationError } = await supabase.rpc('admin_activate_password_auth_user', { p_auth_id: authId });
+        if (activationError) throw ErrorHandler.handle(activationError, 'addUser - activate');
     }
 }
 
@@ -148,6 +152,10 @@ export async function updateUser(user: User & { password?: string }): Promise<vo
     if (error) {
         throw ErrorHandler.handle(error, 'updateUser');
     }
+    if (user.auth_id && user.isActive === true && user.role !== 'doctor') {
+        const { error: activationError } = await supabase.rpc('admin_activate_password_auth_user', { p_auth_id: user.auth_id });
+        if (activationError) throw ErrorHandler.handle(activationError, 'updateUser - activate');
+    }
 }
 
 export async function deleteUser(id: string): Promise<void> {
@@ -180,33 +188,13 @@ export async function resetUserPassword(userId: string, newPassword: string): Pr
     }
 }
 
-// Helper to create Auth User without logging out the admin
-// Uses a temporary client with memory storage
-import { createClient } from '@supabase/supabase-js';
+// Active-admin RPC replaces raw signup; creating staff must work while public
+// Auth signup is disabled for the reviewed doctor registration flow.
 
 export async function createAuthUser(email: string, password: string): Promise<string> {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-    if (!supabaseUrl || !supabaseKey) {
-        throw new Error('Supabase URL/Key missing');
-    }
-
-    const tempClient = createClient(supabaseUrl, supabaseKey, {
-        auth: {
-            persistSession: false, // In-memory only
-            autoRefreshToken: false,
-            detectSessionInUrl: false
-        }
-    });
-
-    const { data, error } = await tempClient.auth.signUp({
-        email,
-        password,
-    });
+    const { data, error } = await supabase.rpc('admin_create_password_auth_user', { p_email: email, p_password: password });
 
     if (error) throw error;
-    if (!data.user) throw new Error('No user returned from signUp');
-
-    return data.user.id;
+    if (typeof data !== 'string') throw new Error('لم يتم إنشاء حساب الدخول');
+    return data;
 }

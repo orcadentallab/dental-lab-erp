@@ -1,4 +1,5 @@
 import type { ProductionStatus, IssueState } from './workflow';
+import type { OrderIntakeState } from './orderDerivedStatusV2';
 
 export interface WorkflowAction {
     id: string;
@@ -20,7 +21,7 @@ export function getForwardActions(
         workflowType?: string | null;
         deliveryType?: string | null;
         designUrl?: string | null;
-        status?: string;
+        intakeState?: OrderIntakeState;
     }
 ): WorkflowAction[] {
 
@@ -30,7 +31,7 @@ export function getForwardActions(
 
     switch (productionStatus) {
         case 'not_started':
-            if (orderContext.status === 'Pending Review') return [];
+            if (orderContext.intakeState === 'pending_review') return [];
             return [
                 ...(orderContext.workflowType === 'split' ? [{
                     id: 'start_design',
@@ -153,7 +154,6 @@ export function getIssueActions(
         legacyDeliveryConfirmed?: boolean;
         actualDeliveryDate?: string | null;
         productionStatus?: string | null;
-        legacyStatus?: string | null;
     } = {},
 ): WorkflowAction[] {
     if (
@@ -171,8 +171,6 @@ export function getIssueActions(
         || orderContext.legacyDeliveryConfirmed
         || orderContext.actualDeliveryDate
         || orderContext.productionStatus === 'final_delivered'
-        || orderContext.legacyStatus === 'Delivered'
-        || orderContext.legacyStatus === 'Completed'
     );
 
     if (wasDelivered && issueState !== 'returned') {

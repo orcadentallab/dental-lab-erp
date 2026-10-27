@@ -3,10 +3,12 @@ import clsx from 'clsx';
 import type { Transaction, Order, Doctor, User } from '../../services/db';
 import type { Adjustment } from '../../services/financeService';
 import { getDoctorReceivableAmount, isDoctorStatementIncluded } from '../../constants/orderLifecycle';
-import { getLabCostMetadata } from '../../constants/financialObligations';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
 import { calculatePayableAdjustmentTotals } from '../../utils/finance';
-import { isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
+import {
+    getDesignerStatementAmount,
+    getSupplierStatementAmount,
+} from '../../constants/orderStatementFinancials';
 
 interface AccountInfoPanelProps {
     entityId: string;
@@ -93,20 +95,10 @@ export function AccountInfoPanel({
         
         let calculatedWork = 0;
         entityOrders.forEach(o => {
-            const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-            const isRelevant = (o.status || '').toLowerCase() === 'delivered' || hasRejectionCost;
-            
-            if (isRelevant) {
-                let cost = o.cost || 0;
-                if (hasRejectionCost) {
-                    cost = o.rejectedLabCost!;
-                } else if (o.workflowType === 'split') {
-                    const designer = designers.find(d => d.id === o.designerId);
-                    const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                    cost = getLabCostMetadata(o, isSalaried).cost;
-                }
-                calculatedWork += cost;
-            }
+            const designer = designers.find(d => d.id === o.designerId);
+            const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
+            const cost = getSupplierStatementAmount(o, isSalaried, false);
+            if (cost !== null) calculatedWork += cost;
         });
         totalWork = calculatedWork + payableAdjustments.additionalWork;
 
@@ -124,14 +116,9 @@ export function AccountInfoPanel({
         
         let calculatedWork = 0;
         entityOrders.forEach(o => {
-            const isRelevant = o.workflowType === 'split' && (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled');
-
-            if (isRelevant && !isSalaried) {
-                const price = isDoctorRejectedStatus(o.status)
-                    ? (o.rejectedDesignerCost ?? 0)
-                    : (o.status === 'Cancelled' || isLabRejectedStatus(o.status) ? 0 : (o.designPrice || 0));
-                calculatedWork += price;
-            }
+            if (isSalaried) return;
+            const price = getDesignerStatementAmount(o, false);
+            if (price !== null) calculatedWork += price;
         });
         totalWork = calculatedWork + payableAdjustments.additionalWork;
 

@@ -24,7 +24,7 @@ import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import ProductionStatusBadge from './ProductionStatusBadge';
 import IssueStateBadge from './IssueStateBadge';
 import CaseLocationChip from './CaseLocationChip';
-import { getEffectiveProductionStatus, getEffectiveIssueState, getCaseLocation } from '../../constants/orderLifecycle';
+import { getDoctorOrderDisplayAmount, getEffectiveProductionStatus, getEffectiveIssueState, getCaseLocation, isNonProductiveOrder } from '../../constants/orderLifecycle';
 import { getLabCostMetadata } from '../../constants/financialObligations';
 import WorkflowActionBar from './WorkflowActionBar';
 import type { RejectionFinancialContext } from '../../constants/rejectionFinancialDecision';
@@ -241,15 +241,14 @@ function OrderCard({
     const hasManualDesignCost = order.manualDesignPrice !== null && order.manualDesignPrice !== undefined;
     const displayedDesignCost = order.manualDesignPrice ?? order.designPrice ?? 0;
     const showDesignerCost = Boolean(order.designerId && designerFixedSalary[order.designerId] === false);
-    const usesRejectionCost = order.status === 'Doctor Rejected' || order.status === 'Rejected';
-    const hasZeroEffectiveCost = order.status === 'Cancelled' || order.status === 'Lab Rejected';
-    const isRejectedStatus = ['Doctor Rejected', 'Rejected', 'Lab Rejected'].includes(order.status);
-    const isFinancialIssue = isRejectedStatus || order.issueState === 'redo';
+    const productionStatus = getEffectiveProductionStatus(order);
+    const issueState = getEffectiveIssueState(order);
+    const usesRejectionCost = issueState === 'doctor_rejected' || issueState === 'redo';
+    const hasZeroEffectiveCost = isNonProductiveOrder(order);
+    const isFinancialIssue = usesRejectionCost || issueState === 'lab_rejected';
     const isFinancialReviewPending = isFinancialIssue && order.rejectionFinancialReviewStatus !== 'resolved';
-    const effectiveDoctorAmount = isRejectedStatus
-        ? (order.rejectionDoctorDecision ? (order.rejectedDoctorAmount ?? 0) : 0)
-        : (order.totalPrice || 0);
-    const hasZeroEffectiveSalePrice = order.status === 'Cancelled' || effectiveDoctorAmount === 0;
+    const effectiveDoctorAmount = getDoctorOrderDisplayAmount(order);
+    const hasZeroEffectiveSalePrice = effectiveDoctorAmount === 0;
     const effectiveDisplayedLabCost = hasZeroEffectiveCost ? 0 : displayedLabCost;
     const effectiveDisplayedDesignCost = hasZeroEffectiveCost ? 0 : displayedDesignCost;
 
@@ -270,8 +269,8 @@ function OrderCard({
     );
 
     // Terminal statuses (red/rose/slate): Doctor Rejected, Lab Rejected, Cancelled, and legacy Rejected — these get archive button and styling
-    const isRedStatus = ['Doctor Rejected', 'Lab Rejected', 'Rejected', 'Cancelled'].includes(order.status) || order.technicianStatus === 'Rejected';
-    const isDelivered = order.status === 'Delivered';
+    const isRedStatus = ['doctor_rejected', 'lab_rejected', 'redo', 'cancelled'].includes(issueState) || order.technicianStatus === 'Rejected';
+    const isDelivered = productionStatus === 'final_delivered' && issueState === 'none';
     const canArchiveOrders = userRole === 'admin';
     const deleteConfirmMessage = 'حذف الطلب؟ سيتم حذف الطلب وتصفير المعاملات المالية المرتبطة به.';
     const deleteTitle = 'حذف';
@@ -324,13 +323,13 @@ function OrderCard({
                     isHighlighted ? 'ring-2 ring-primary-500 shadow-lg scale-[1.01] z-10' : 'hover:shadow-md',
                     isDelivered
                         ? 'bg-green-50 dark:bg-green-900/20 border-l-green-500 border-green-200 dark:border-green-800'
-                        : order.status === 'Returned for Adjustments'
+                        : issueState === 'returned'
                             ? 'bg-amber-50 dark:bg-amber-900/20 border-l-amber-500 border-amber-200 dark:border-amber-800'
-                            : order.status === 'Doctor Rejected' || order.status === 'Rejected'
+                            : issueState === 'doctor_rejected' || issueState === 'redo'
                                 ? 'bg-red-50 dark:bg-red-900/20 border-l-red-500 border-red-200 dark:border-red-800'
-                                : order.status === 'Lab Rejected'
+                                : issueState === 'lab_rejected'
                                     ? 'bg-rose-50 dark:bg-rose-900/20 border-l-rose-500 border-rose-200 dark:border-rose-800'
-                                    : order.status === 'Cancelled'
+                                    : issueState === 'cancelled'
                                         ? 'bg-gray-100 dark:bg-gray-800/80 border-l-gray-500 border-gray-300 dark:border-gray-800 opacity-75'
                                         : order.technicianStatus === 'Rejected'
                                             ? 'bg-red-50/50 dark:bg-red-950/10 border-l-red-400 border-red-100 dark:border-red-950'
@@ -474,7 +473,7 @@ function OrderCard({
                             )}
 
                             {/* Accept Order Action (for Pending Review) */}
-                            {onAccept && order.status === 'Pending Review' && (
+                            {onAccept && order.intakeState === 'pending_review' && (
                                 <Button
                                     size="sm"
                                     onClick={() => onAccept(order)}
@@ -564,10 +563,10 @@ function OrderCard({
                                                 getEffectiveIssueState(order),
                                                 { workflowType: order.workflowType, supplierId: order.supplierId }
                                             )}
-                                            stageName={isDelivered || getEffectiveProductionStatus(order) === 'final_delivered' ? undefined : activeStage?.stageName}
-                                            stageSince={isDelivered || getEffectiveProductionStatus(order) === 'final_delivered' ? undefined : formatStageDuration(activeStage?.since ?? null)}
+                                            stageName={productionStatus === 'final_delivered' ? undefined : activeStage?.stageName}
+                                            stageSince={productionStatus === 'final_delivered' ? undefined : formatStageDuration(activeStage?.since ?? null)}
                                         />
-                                        {activeStage && !isDelivered && getEffectiveProductionStatus(order) !== 'final_delivered' && (
+                                        {activeStage && productionStatus !== 'final_delivered' && (
                                             <span
                                                 className={clsx(
                                                     "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border",
@@ -751,7 +750,7 @@ function OrderCard({
                                 </div>
 
                                 {/* Rejection Financial Review - Admin Only */}
-                                {(order.status === 'Doctor Rejected' || order.status === 'Rejected') && (
+                                {usesRejectionCost && (
                                     <button
                                         type="button"
                                         aria-label="تعديل المراجعة المالية للأوردر المرفوض"
@@ -839,7 +838,7 @@ function OrderCard({
                                 onRedo={onRedo}
                                 showRejectedDesignerCost={showDesignerCost}
                                 showLegacyFallback={userRole === 'admin'}
-                                disabled={userRole === 'lab' && order.status === 'Delivered'}
+                                disabled={userRole === 'lab' && isDelivered}
                             />
 
                             {/* Archive Action for Cancelled/Rejected only — NOT for Returned orders */}

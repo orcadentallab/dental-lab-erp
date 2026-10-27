@@ -5,8 +5,12 @@ import { matchArabic } from '../lib/searchUtils';
 import DateField from '../components/ui/DateField';
 import { calculateDueDate, BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
-import { getLabCostMetadata } from '../constants/financialObligations';
-import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
+import {
+    getDesignerStatementAmount,
+    getSupplierStatementAmount,
+    isDesignerStatementPayable,
+    isStatementVisibleOrder,
+} from '../constants/orderStatementFinancials';
 import { financeService, type Adjustment } from '../services/financeService';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -265,7 +269,7 @@ export default function AgingReport() {
 
         // للمصممين: يتم تضمين الأوردرات التي أكمل فيها المصمم مرحلته
         // حتى لو الأوردر لسه في حالة نهائية
-        const visibleOrders = orders.filter(o => isVisibleInAccountStatement(o) || isDesignerPayable(o));
+        const visibleOrders = orders.filter(o => isStatementVisibleOrder(o) || isDesignerStatementPayable(o));
 
         // Determine entities to process
         let targetEntities: (Doctor | Supplier | User)[] = [];
@@ -361,22 +365,10 @@ export default function AgingReport() {
                 // Supplier
                 visibleOrders.forEach(o => {
                     if (o.supplierId === entity.id) {
-                        const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                        const isRelevant = (!isDoctorRejectedStatus(o.status) || hasRejectionCost) &&
-                            ((o.status || '').toLowerCase() === 'delivered' ||
-                             (o.status || '').toLowerCase() === 'cancelled' ||
-                             isLabRejectedStatus(o.status) ||
-                             hasRejectionCost);
-                        if (!isRelevant) return;
-
                         const designer = designers.find(d => d.id === o.designerId);
                         const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                        let cost = getLabCostMetadata(o, isSalaried).cost;
-
-                        if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
-                        else if (isDoctorRejectedStatus(o.status)) {
-                            cost = hasRejectionCost ? o.rejectedLabCost! : 0;
-                        }
+                        const cost = getSupplierStatementAmount(o, isSalaried, false);
+                        if (cost === null) return;
 
                         if (cost > 0) {
                             debits.push({
@@ -422,13 +414,8 @@ export default function AgingReport() {
                 if (!isSalaried) {
                     visibleOrders.forEach(o => {
                         if (o.designerId === entity.id) {
-                            const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                            const isRelevant = o.workflowType === 'split' &&
-                                (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
-                            if (!isRelevant) return;
-
-                            let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                            if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
+                            const price = getDesignerStatementAmount(o, false);
+                            if (price === null) return;
 
                             if (price > 0) {
                                 debits.push({

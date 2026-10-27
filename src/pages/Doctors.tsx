@@ -1,6 +1,8 @@
+import { doctorPortalService } from '../services/doctorPortalService';
+import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { db, type Doctor } from '../services/db';
-import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcel } from '../lib/exportUtils';
 import { generateGenericTablePDF } from '../services/pdfService';
@@ -8,6 +10,11 @@ import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useTranslation } from '../translations';
 import { matchArabic } from '../lib/searchUtils';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
+import DoctorLinkRequestsModal from '../components/doctors/DoctorLinkRequestsModal';
+import { doctorAuthService } from '../services/auth/doctorAuthService';
+import { doctorPasswordService } from '../services/auth/doctorPasswordService';
+import { DOCTOR_CODE_REGIONS, normalizeDoctorName, isArabicDoctorName, type DoctorCodeRegion } from '../lib/doctorIdentity';
+import { PHONE_OWNER_ROLES } from '../lib/doctorContacts';
 
 interface DoctorForm {
     name: string;
@@ -15,6 +22,7 @@ interface DoctorForm {
     phone2: string;
     address: string;
     doctorCode: string;
+    codeRegion?: DoctorCodeRegion;
     representativeName: string;
     representativeId: string;
     customPrices: Record<string, number>;
@@ -34,6 +42,21 @@ export default function Doctors() {
     // const [representatives, setRepresentatives] = useState<User[]>([]); - REMOVED
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [showLinkRequestsModal, setShowLinkRequestsModal] = useState(false);
+    const [pendingLinkCount, setPendingLinkCount] = useState(0);
+    const [invitationInfo, setInvitationInfo] = useState<{ name: string; url?: string; expiresAt?: string; error?: string } | null>(null);
+    const [invitationBusy, setInvitationBusy] = useState<string | null>(null);
+
+    const inviteDoctor = async (doctor: Doctor) => {
+        if (invitationBusy) return;
+        setInvitationBusy(doctor.id);
+        try {
+            const invitation = await doctorPasswordService.createInvitation(doctor.id);
+            setInvitationInfo({ name: doctor.name, ...invitation });
+        } catch (cause) {
+            setInvitationInfo({ name: doctor.name, error: cause instanceof Error ? cause.message : 'تعذر إصدار الدعوة' });
+        } finally { setInvitationBusy(null); }
+    };
 
     // Form State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,6 +76,7 @@ export default function Doctors() {
     });
     const [childDoctors, setChildDoctors] = useState<{ id?: string, name: string, phone: string, doctorCode?: string }[]>([]);
     const [branches, setBranches] = useState<import('../services/db').DoctorBranch[]>([]);
+    const [inboxCount, setInboxCount] = useState(0);
     const [error, setError] = useState<string | null>(null);
 
 
@@ -68,6 +92,15 @@ export default function Doctors() {
             .replace(/ى/g, 'ي');
     };
 
+    const loadPendingRequestsCount = async () => {
+        try {
+            const reqs = await doctorAuthService.getPendingDoctorLinkRequests();
+            setPendingLinkCount(reqs.length);
+        } catch {
+            // quiet fail
+        }
+    };
+
     useEffect(() => {
         const loadData = async () => {
             // Load Doctors and Services
@@ -78,12 +111,13 @@ export default function Doctors() {
                 ]);
                 setDoctors(doctorsData);
                 setServices(servicesData);
+                if (user?.role === 'admin' || user?.role === 'coordinator') { const inbox = await doctorPortalService.inbox(); setInboxCount(inbox.messages.length + inbox.pickups.length); }
             } catch (error) {
                 console.error('Error loading doctors:', error);
             }
         };
-        loadData();
-    }, []);
+        void loadData().then(loadPendingRequestsCount);
+    }, [user?.role]);
 
     const openAddModal = () => {
         setEditingId(null);
@@ -102,6 +136,7 @@ export default function Doctors() {
             phone2: doc.phone2 || '',
             address: doc.address,
             doctorCode: doc.doctorCode,
+            codeRegion: doc.codeRegion,
             representativeName: doc.representativeName,
             representativeId: doc.representativeId || '',
             customPrices: doc.customPrices || {},
@@ -133,14 +168,22 @@ export default function Doctors() {
 
         try {
             // Validation: Duplicate Check (Case Insensitive)
-            const normalizedName = normalizeText(newDoctor.name);
+            const cleanedName = normalizeDoctorName(newDoctor.name);
+            if ((!editingId || cleanedName !== newDoctor.name) && !isArabicDoctorName(cleanedName)) {
+                setError('اسم الطبيب يجب أن يكون عربيًا وثنائيًا على الأقل'); return;
+            }
+            if (!editingId && !newDoctor.parentId && !newDoctor.codeRegion) { setError('يرجى اختيار منطقة العيادة'); return; }
+            if (newDoctor.isCenter && childDoctors.some(child => child.name.trim() && !isArabicDoctorName(child.name))) {
+                setError('أسماء الأطباء التابعين يجب أن تكون عربية وثنائية على الأقل'); return;
+            }
+            const normalizedName = normalizeText(cleanedName);
             const normalizedCode = newDoctor.doctorCode.trim().toUpperCase();
 
             // Check duplicates (excluding current doctor if editing)
             const nameExists = doctors.find(doc =>
                 doc.id !== editingId &&
                 doc.name &&
-                normalizeText(doc.name) === normalizedName
+                normalizeText(normalizeDoctorName(doc.name)) === normalizedName
             );
             const codeExists = doctors.find(doc =>
                 doc.id !== editingId &&
@@ -161,7 +204,7 @@ export default function Doctors() {
             let savedCenterId = editingId;
             const doctorPayload = {
                 ...newDoctor,
-                name: newDoctor.name.trim(),
+                name: editingId ? newDoctor.name.trim() : cleanedName,
                 doctorCode: normalizedCode,
                 customPrices: newDoctor.parentId ? {} : newDoctor.customPrices,
                 branches: newDoctor.hasBranches ? branches : []
@@ -202,13 +245,12 @@ export default function Doctors() {
                         }
                     } else {
                         // Add new child
-                        const randomSuffix = Math.floor(100 + Math.random() * 900);
                         await db.addDoctor({
                             name: child.name.trim(),
                             phone: child.phone,
                             phone2: '',
                             address: newDoctor.address,
-                            doctorCode: `${normalizedCode}-${randomSuffix}`,
+                            doctorCode: '',
                             representativeName: newDoctor.representativeName,
                             representativeId: newDoctor.representativeId,
                             isCenter: false,
@@ -263,6 +305,7 @@ export default function Doctors() {
 
     return (
         <div>
+            {(user?.role === 'admin' || user?.role === 'coordinator') && <Link to="/doctor-inbox" className="inline-block text-blue-600 font-bold px-4 py-3">رسائل الأطباء وطلبات الاستلام ({inboxCount})</Link>}
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{t.doctors.title}</h1>
                 <div className="flex gap-2">
@@ -316,6 +359,19 @@ export default function Doctors() {
                             </button>
                         </>
                     )}
+                    <button
+                        onClick={() => setShowLinkRequestsModal(true)}
+                        className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-lg font-bold transition-all shadow-md shadow-amber-500/20 text-sm"
+                        title="طلبات ربط أرقام الأطباء المعلقة"
+                    >
+                        <ShieldCheck size={18} />
+                        <span className="hidden sm:inline">طلبات الربط</span>
+                        {pendingLinkCount > 0 && (
+                            <span className="bg-red-600 text-white text-[11px] px-2 py-0.5 rounded-full font-bold">
+                                {pendingLinkCount}
+                            </span>
+                        )}
+                    </button>
                     <button
                         onClick={openAddModal}
                         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 dark:shadow-none"
@@ -405,6 +461,10 @@ export default function Doctors() {
                         </div>
 
                         <div className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                            {(user?.role === 'admin' || user?.role === 'coordinator' || (user?.role === 'representative' && doc.representativeId === user.id)) &&
+                                <button type="button" disabled={!!invitationBusy} onClick={() => inviteDoctor(doc)} className="text-blue-600 dark:text-blue-400 font-bold disabled:opacity-50" aria-label={`دعوة تفعيل حساب ${doc.name}`}>
+                                    {invitationBusy === doc.id ? 'جاري إصدار الدعوة…' : 'دعوة لتفعيل حساب الطبيب'}
+                                </button>}
                             <div className="flex items-center gap-2">
                                 <Phone size={16} className="text-gray-400 dark:text-gray-500" />
                                 <span dir="ltr" className="font-mono">{doc.phone}</span>
@@ -414,12 +474,13 @@ export default function Doctors() {
                                 <MapPin size={16} className="text-gray-400 dark:text-gray-500" />
                                 <span>{doc.address}</span>
                             </div>
+                            {doc.contactPhones?.map((contact, index) => <p key={index} className="text-xs"><span dir="ltr" className="font-mono">{contact.phone}</span> — {PHONE_OWNER_ROLES.find(role => role.value === contact.ownerRole)?.label} {contact.ownerName} — {contact.hasWhatsapp ? 'واتساب' : 'بدون واتساب'}</p>)}
                             {doc.hasBranches && doc.branches && doc.branches.length > 0 && (
                                 <div className="mt-2 pt-2 border-t border-dashed border-gray-100 dark:border-gray-700">
                                     <div className="text-xs font-bold text-gray-400 mb-1">الفروع:</div>
                                     <div className="flex flex-wrap gap-1">
                                         {doc.branches.map(b => (
-                                            <span key={b.id} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600" title={`${b.address || ''} ${b.phone || ''}`.trim()}>
+                                            <span key={b.id} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600" title={`${b.address || ''} ${b.phone || ''} ${PHONE_OWNER_ROLES.find(role => role.value === b.phoneOwnerRole)?.label || ''} ${b.phoneOwnerName || ''} ${b.phoneHasWhatsapp === undefined ? '' : b.phoneHasWhatsapp ? 'واتساب' : 'بدون واتساب'}`.trim()}>
                                                 {b.name}
                                             </span>
                                         ))}
@@ -501,19 +562,17 @@ export default function Doctors() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كود الطبيب</label>
-                                    <input
-                                        required
-                                        placeholder="مثال: AHM"
-                                        type="text"
-                                        aria-label="كود الطبيب"
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
-                                        value={newDoctor.doctorCode}
-                                        onChange={e => {
-                                            setNewDoctor({ ...newDoctor, doctorCode: e.target.value.toUpperCase() });
-                                            setError(null);
-                                        }}
-                                    />
+                                    {editingId ? <>
+                                        <label className="block text-sm mb-1">كود الطبيب الحالي</label>
+                                        <input readOnly aria-label="كود الطبيب" value={newDoctor.doctorCode} className="w-full p-2 border rounded-lg dark:bg-gray-700" />
+                                    </> : <>
+                                        <label className="block text-sm mb-1">منطقة العيادة الرئيسية</label>
+                                        <select required={!newDoctor.parentId} aria-label="منطقة العيادة الرئيسية" className="w-full p-2 border rounded-lg dark:bg-gray-700" value={newDoctor.codeRegion || ''} onChange={event => setNewDoctor({ ...newDoctor, codeRegion: DOCTOR_CODE_REGIONS.find(region => region.value === event.target.value)?.value })}>
+                                            <option value="">اختر المنطقة</option>
+                                            {DOCTOR_CODE_REGIONS.map(region => <option key={region.value} value={region.value}>{region.label}</option>)}
+                                        </select>
+                                        <p className="text-xs text-gray-500 mt-1">الكود يتولد عند الحفظ. للطبيب التابع يُستخدم كود المركز مع لاحقة متسلسلة.</p>
+                                    </>}
                                 </div>
                             </div>
 
@@ -790,6 +849,31 @@ export default function Doctors() {
                 </div>
             )}
 
+            {/* Doctor Link Requests Modal */}
+            {invitationInfo && <div className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4" dir="rtl">
+                <div role="dialog" aria-label="دعوة تفعيل حساب الطبيب" className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-lg space-y-4">
+                    <h2 className="font-bold">دعوة تفعيل حساب {invitationInfo.name}</h2>
+                    {invitationInfo.error ? <p role="alert" className="text-red-600">{invitationInfo.error}</p> : <>
+                        <p className="text-sm">أرسل الرابط للطبيب المقصود فقط. يعمل مرة واحدة، ويربط حسابه بسجله مباشرة بعد اختيار كلمة المرور. إصدار دعوة جديدة يلغي القديمة.</p>
+                        <input aria-label="رابط دعوة الطبيب" readOnly dir="ltr" value={invitationInfo.url || ''} className="w-full p-3 border rounded-xl dark:bg-slate-800" onFocus={event => event.target.select()} />
+                        <p className="text-xs">ينتهي في {invitationInfo.expiresAt ? new Date(invitationInfo.expiresAt).toLocaleString('ar-EG') : ''}</p>
+                        <button type="button" className="text-blue-600" onClick={async () => {
+                            try { await navigator.clipboard.writeText(invitationInfo.url || ''); }
+                            catch { /* Link stays visible/selectable if clipboard permission is unavailable. */ }
+                        }}>نسخ الرابط</button>
+                    </>}
+                    <button type="button" onClick={() => setInvitationInfo(null)} className="block px-4 py-2 border rounded-xl">إغلاق</button>
+                </div>
+            </div>}
+            <DoctorLinkRequestsModal
+                isOpen={showLinkRequestsModal}
+                onClose={() => setShowLinkRequestsModal(false)}
+                doctors={doctors}
+                onRequestHandled={() => {
+                    void db.getDoctors().then(setDoctors).catch(error => console.error('Error refreshing doctors after review:', error));
+                    void loadPendingRequestsCount();
+                }}
+            />
 
         </div>
     );

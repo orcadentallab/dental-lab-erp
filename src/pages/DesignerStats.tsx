@@ -27,6 +27,7 @@ import {
   type DeliveryEstimate
 } from '../services/supabase/capacityService';
 import { supabase } from '../lib/supabase';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 export default function DesignerStats() {
     const { user } = useAuth();
@@ -184,9 +185,13 @@ export default function DesignerStats() {
         } else if (designerStatsStatusFilter === 'submitted') {
             rows = submittedDesignerTimelineRows;
         } else if (designerStatsStatusFilter === 'tryin' || designerStatsStatusFilter === 'delivered') {
-            const targetStatus = designerStatsStatusFilter === 'tryin' ? 'Try In' : 'Delivered';
+            const targetProductionStatus = designerStatsStatusFilter === 'tryin' ? 'try_in_ready' : 'final_delivered';
             rows = orders
-                .filter(o => o.designerId && o.status === targetStatus)
+                .filter(order => (
+                    order.designerId &&
+                    getEffectiveProductionStatus(order) === targetProductionStatus &&
+                    getEffectiveIssueState(order) === 'none'
+                ))
                 .map(order => ({
                     order,
                     submittedAt: getDesignSubmittedAt(order),
@@ -807,7 +812,13 @@ export default function DesignerStats() {
                                 </thead>
                                 <tbody>
                                     {group.rows.map(({ order, submittedAt, durationMs, isFinished }) => {
-                                        const rowStatus = order.status === 'Delivered' ? 'delivered' : order.status === 'Try In' ? 'tryin' : isFinished ? 'submitted' : 'pending';
+                                        const productionStatus = getEffectiveProductionStatus(order);
+                                        const issueState = getEffectiveIssueState(order);
+                                        const rowStatus = productionStatus === 'final_delivered' && issueState === 'none'
+                                            ? 'delivered'
+                                            : productionStatus === 'try_in_ready' && issueState === 'none'
+                                                ? 'tryin'
+                                                : isFinished ? 'submitted' : 'pending';
                                         const rowBg = rowStatus === 'delivered'
                                             ? 'border-gray-100 bg-gray-50/30 dark:border-gray-700/40 dark:bg-gray-700/10'
                                             : rowStatus === 'tryin'
