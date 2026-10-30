@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Order } from '../../src/services/db';
 import {
+    getDoctorReturnedBreakdown,
     isDashboardTerminal,
     isLabDashboardVisible,
 } from '../../src/constants/dashboardOrderGroups';
@@ -61,6 +62,23 @@ describe('dashboard V2 order grouping', () => {
             status: 'New Case',
             issueState: 'returned',
         }))).toBe(true);
+    });
+
+    it('separates doctor rejection and redo counts for the returned-cases card', () => {
+        expect(getDoctorReturnedBreakdown([
+            dashboardOrder({ id: 'rejected-1', issueState: 'doctor_rejected' }),
+            dashboardOrder({ id: 'redo-1', issueState: 'redo' }),
+            dashboardOrder({ id: 'redo-2', issueState: 'redo' }),
+            dashboardOrder({ id: 'returned-1', issueState: 'returned' }),
+        ])).toEqual({ doctorRejected: 1, redo: 2, total: 3 });
+    });
+
+    it('renders both issue labels inside the returned-cases alert card', () => {
+        const source = readFileSync(resolve('src/pages/DashboardNew.tsx'), 'utf8');
+
+        expect(source).toContain("label: 'رفض طبيب'");
+        expect(source).toContain("label: 'إعادة إنتاج'");
+        expect(source).toContain('breakdown={rejectedBreakdownItems}');
     });
 
     it.each([

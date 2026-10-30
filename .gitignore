@@ -53,3 +53,11 @@ test-results/
 supabase/.temp/
 truncate.sql
 .vercel
+
+# Temporary workstation files and private transfer packages
+.tmp/
+.transfer-backup/
+.claude/settings.local.json
+
+tmp/
+output/

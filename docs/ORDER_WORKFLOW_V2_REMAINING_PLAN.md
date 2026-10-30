@@ -15,7 +15,7 @@
 - `workflow_issue_v2_enforce=on`.
 - `workflow_finance_v2=on`.
 - `workflow_accounting_audit_v2=on`.
-- `workflow_status_legacy_mirror=on` وما زال مطلوبًا للـcompatibility الحالي.
+- `workflow_status_legacy_mirror=off` على Staging وProduction منذ 27 أكتوبر 2026؛ عمود `orders.status` ما زال موجودًا وnullable خلال فترة المراقبة.
 - migration `20260808005000_order_issue_v2_client_cutover.sql` مطبقة ومسجلة remote:
   - سياسات الطبيب المباشرة على `orders` أزيلت.
   - INSERT المباشر لـ`authenticated` على `order_events` أُلغي.
@@ -177,7 +177,7 @@ WHERE dependency.refobjid = 'public.orders'::regclass
 
 ## المرحلة 4: parity audit قبل إيقاف المرآة
 
-حالة التنفيذ المحلية بتاريخ 25 أكتوبر 2026: **أدوات التدقيق مكتملة، واعتماد بيانات البيئة الحية ما زال مطلوبًا**.
+حالة التنفيذ بتاريخ 27 أكتوبر 2026: **مكتملة تشغيليًا على Staging وProduction؛ المرحلة 5 لم تبدأ**.
 
 - أضيفت migration القراءة فقط `20261022170000_workflow_status_parity_audit.sql` بثلاثة views: التقرير التفصيلي، صفوف المراجعة، وبوابة mirror-off المجمعة.
 - يفصل التقرير بين اختلاف العرض والاختلاف المالي، ويعامل alias `redo -> Doctor Rejected` كاختلاف عرض مفسر لا يفتح مراجعة مالية.
@@ -185,7 +185,13 @@ WHERE dependency.refobjid = 'public.orders'::regclass
 - أضيف `supabase/audits/order_status_parity_phase4.sql` بتوقيتات قصيرة، summary، ودفعة تفاصيل محدودة إلى 100 صف، مع catalog وRLS checks.
 - الاختبار الجديد 20/20، والبوابة المجمعة 300/300، مع نجاح unit/typecheck/build.
 - قاعدة التطوير المحلية الحالية تحتوي صفر طلبات؛ لذلك `ready_for_mirror_off=true` محليًا ليست اعتمادًا لبيانات الإنتاج.
-- لم تُنشر migration على production أو staging، ولم تبدأ المرحلة 5. يلزم تشغيل التقرير read-only على بيانات البيئة المستهدفة ومراجعة أي صفوف قبل اعتبار هذه المرحلة مغلقة تشغيليًا.
+- نُشرت migration `20261022170000` على Staging فقط، وشُغّل تقرير التدقيق داخل transaction للقراءة فقط. النتيجة: 1304 طلبات، صفر mismatch غير مفسر، صفر صف V2 أو legacy غير محلول، صفر فرق مالي، وصفر صف review؛ لذلك `ready_for_mirror_off=true` على Staging.
+- وُجدت 10 اختلافات عرض مفسرة فقط للـalias `redo -> Doctor Rejected`: 7 طلبات `not_started` و3 طلبات `final_delivered`. الأثر المالي في النظامين `issue_settlement`، فلا يوجد اختلاف حسابي.
+- `workflow_status_legacy_mirror` ما زالت `on`. لا توجد سياسة RLS على `orders` تقرأ `status`، والـdependencies المباشرة مقتصرة على view التدقيق التاريخي وview parity الجديدة.
+- نُشرت migrations المرحلة الثالثة حتى `20261022160000` وmigration التدقيق `20261022170000` على Production، ثم سُجلت نسخها في migration history. عولج drift قديم في دالة مزامنة الإنتاج ودالة Doctor Portal الموجودة فقط عبر ملفي reconciliation منفصلين، من دون DML على الجداول.
+- أعاد تقرير Production نفس بوابة Staging على 1304 طلبات: صفر mismatch غير مفسر، صفر صف V2 أو legacy غير محلول، صفر فرق مالي، وصفر صف review؛ لذلك `ready_for_mirror_off=true`.
+- ظل baseline المالي قبل/بعد مطابقًا: إجمالي السعر `2486285.00`، التكلفة `1603187.00`، التصميم `45220.00`، وعدد الالتزامات 3361. لم يتغير عدد الطلبات، والـmirror ما زالت `on`.
+- المرحلة 4 مغلقة. الخطوة التالية هي المرحلة 5 كإطلاق مستقل يبدأ بإيقاف المرآة على Staging مع خطة rollback ومراقبة قبل Production.
 
 أنشئ report/read-only view تعرض لكل طلب:
 
@@ -213,6 +219,23 @@ WHERE dependency.refobjid = 'public.orders'::regclass
 - فروق مالية غير مفسرة.
 
 ## المرحلة 5: إيقاف `workflow_status_legacy_mirror`
+
+حالة التنفيذ بتاريخ 27 أكتوبر 2026: **مكتملة على Staging وProduction؛ بدأت فترة المراقبة قبل المرحلة 6**.
+
+- أضيفت migration `20261027010000_disable_legacy_status_mirror.sql` ببوابة تفشل إن لم تكن parity جاهزة أو كانت المرآة مطفأة مسبقًا.
+- أبقت migration عمود `orders.status` موجودًا، وأسقطت عنه `NOT NULL` فقط حتى تعمل V2-only inserts، ثم غيّرت flag إلى `off` على Staging.
+- rollback موثق في `supabase/manual/workflow_v2_mirror_off_rollback.sql`: يعيد flag إلى `on`، يصلح فقط الصفوف ذات `status IS NULL` من محاور V2، ثم يعيد `NOT NULL`.
+- اختبار RED أثبت أن الإدخال والانتقال كانا ما زالا يكتبان legacy status؛ بعد migration أصبح الاختبار GREEN 7/7، وبوابة المراحل 3–5 مجمعة 74/74.
+- smoke transaction على Staging أنشأ طلب V2-only، نقله من `not_started` إلى `designing` ثم `in_production`، رفض الكتابة المباشرة إلى `status`، وتأكد من ثبات المجاميع المالية، ثم عمل rollback كامل.
+- admin UI smoke نجح على صفحة الأوردرات. baseline قبل/بعد مطابق: 1304 طلبات، 2615 التزامًا نشطًا بصافي 3425177، و2734 تخصيصًا بقيمة 3660980، و1355 حركة بقيمة 4235519.74.
+- representative pilot نجح على Staging: الحساب رأى دليل الأطباء وكل الطلبات عبر مندوبين متعددين، وفتح فورم تعديل طلب تابع لمندوب آخر. غُيّرت علامة `is_urgent` ثم أُعيدت لقيمتها الأصلية عبر `rep_update_order_fields_with_audit`؛ الاستدعاءان عادا 200 ولم تظهر 4xx/5xx أو أخطاء Console.
+- فحص ما بعد الـpilot ظل مطابقًا: 1304 طلبات، صفر mismatch غير مفسر، صفر صف V2/legacy غير محلول، صفر فرق مالي، وصفر review rows. بقي baseline المالي 2615 / 3425177، و2734 / 3660980، و1355 / 4235519.74 دون تغيير.
+- أضيف تقرير القراءة فقط `supabase/audits/order_status_phase5_post_pilot.sql` لإعادة فحص flag، nullable column، parity، سلامة محاور V2، والمجاميع المالية.
+- نُفذت migration نفسها على Production بعد preflight ناجح، ثم سُجل الإصدار `20261027010000` في `supabase_migrations.schema_migrations`.
+- Production بعد التنفيذ: mirror=`off` و`status` nullable، مع 1306 طلبات، وصفر قيم NULL في `status` أو `production_status` أو `issue_state`.
+- ظلت بوابة parity جاهزة: صفر mismatch غير مفسر، 11 alias مفسرًا لـ`redo`، صفر صف V2/legacy غير محلول، صفر فرق مالي، وصفر review rows.
+- نجح smoke transaction على Production ثم عمل rollback كامل. بقي baseline المالي قبل/بعد مطابقًا: 2615 التزامًا نشطًا بصافي 3427127.00، و2735 تخصيصًا بقيمة 3661030.00، و1355 حركة بقيمة 4235519.74.
+- Staging وProduction الآن mirror=`off` و`status` nullable. لا يُحذف العمود القديم إلا في migration المرحلة 6 بعد انتهاء فترة المراقبة وإعادة اجتياز الـpreflight.
 
 تُنفذ كمرحلة مستقلة قابلة للrollback:
 

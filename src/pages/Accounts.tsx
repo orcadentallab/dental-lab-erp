@@ -222,7 +222,7 @@ export default function Accounts() {
 
     // Options
     const [showAllOrders, setShowAllOrders] = useState(false);
-    const [hideZeroBalance, setHideZeroBalance] = useState(false);
+    const [hideZeroBalance, setHideZeroBalance] = useState(isRepresentative);
     const [searchQuery, setSearchQuery] = useState('');
     const [statementSearch, setStatementSearch] = useState('');
     const [expandedStatementItemId, setExpandedStatementItemId] = useState<string | null>(null);
@@ -1255,6 +1255,7 @@ export default function Accounts() {
     if (viewMode === 'rep-search') {
         // Filter customers
         let repFilteredCustomers = summaryData.filter(item => {
+            if (hideZeroBalance && item.balance === 0) return false;
             if (searchQuery) {
                 const q = searchQuery.toLowerCase();
                 return item.name.toLowerCase().includes(q) || item.code?.toLowerCase().includes(q);
@@ -1345,6 +1346,16 @@ export default function Accounts() {
                             </button>
                         </div>
                     </div>
+
+                    <label className="mb-4 flex w-fit cursor-pointer items-center gap-2 text-sm font-medium text-gray-600">
+                        <input
+                            type="checkbox"
+                            checked={hideZeroBalance}
+                            onChange={e => setHideZeroBalance(e.target.checked)}
+                            className="h-4 w-4 rounded border-gray-300 accent-blue-600 focus:ring-2 focus:ring-blue-100"
+                        />
+                        إخفاء الحسابات الصفرية
+                    </label>
 
                     {/* Search Bar */}
                     <div className="relative">

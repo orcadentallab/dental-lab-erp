@@ -8,7 +8,7 @@ Source plan: `docs/ORDER_WORKFLOW_V2_REMAINING_PLAN.md`, phase 4.
 - It does not update orders, obligations, allocations, transactions,
   accounting snapshots, or workflow flags.
 - `workflow_status_legacy_mirror` remains `on`.
-- Migration `20261022170000` was applied locally only. No staging or production
+- Migration `20261022170000` was applied locally and to staging. No production
   deployment was performed.
 
 ## Guarantees
@@ -65,17 +65,44 @@ statement timeout and a 100-row detail limit.
 Because the local database contains no orders, these zeroes validate the audit
 mechanism but do not prove live-data parity.
 
+## Staging data audit — 2026-10-27
+
+Migration `20261022170000` and the bounded audit were executed against staging
+project `qutnamkwhsfqzijreeyo`. The audit ran read-only and the legacy mirror
+remained on.
+
+- Staging orders: **1304**.
+- Unexplained presentation mismatches: **0**.
+- Explained `redo -> Doctor Rejected` aliases: **10** (7 `not_started`,
+  3 `final_delivered`).
+- Unresolved V2 rows: **0**.
+- Unresolved legacy review rows: **0**.
+- Financial-effect differences: **0**.
+- Review rows: **0**.
+- `ready_for_mirror_off`: **true**.
+- Orders RLS policies reading legacy status: **0**.
+- Mirror flag: **on**.
+
+Both explained alias groups preserve `issue_settlement` as their financial
+effect in the legacy and V2 classifications. No order, obligation, allocation,
+transaction, snapshot, or workflow flag was modified by the audit.
+
 ## Remaining operational gate
 
-Before phase 4 can be closed and phase 5 considered:
+Completed on production on 2026-10-27:
 
-1. Deploy migrations through `20261022170000` to staging first.
-2. Run `supabase/audits/order_status_parity_phase4.sql` read-only.
-3. Review all rows returned by `workflow_v2_status_parity_review` in bounded
-   batches; do not default or bulk-correct ambiguous history.
-4. Repeat against production only after staging review.
-5. Require zero unexplained presentation mismatches, unresolved rows, and
-   financial differences while the mirror remains on.
+1. Production orders: **1304**; review rows: **0**; financial differences:
+   **0**; `ready_for_mirror_off`: **true**.
+2. The same 10 explained Redo aliases were present (7 `not_started`,
+   3 `final_delivered`), all preserving `issue_settlement`.
+3. Financial baseline was unchanged before and after deployment: total price
+   `2486285.00`, cost `1603187.00`, design price `45220.00`, and 3361 financial
+   obligations.
+4. The mirror remained `on`; phase 5 was not started.
+5. Production schema drift required the reviewed, function-only reconciliation
+   scripts `workflow_v2_production_drift_reconcile_20261027.sql` and
+   `workflow_v2_production_portal_drift_20261027.sql`. Neither performs table
+   DML.
 
 No Git checkpoint was created because this checkout contains unrelated user
 changes and the user did not request staging or commits.

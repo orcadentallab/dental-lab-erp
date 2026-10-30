@@ -3,6 +3,25 @@ import { getEffectiveIssueState, getEffectiveProductionStatus } from './orderLif
 
 type DashboardOrder = Partial<Order>;
 
+export interface DoctorReturnedBreakdown {
+    doctorRejected: number;
+    redo: number;
+    total: number;
+}
+
+export function getDoctorReturnedBreakdown(orders: DashboardOrder[]): DoctorReturnedBreakdown {
+    let doctorRejected = 0;
+    let redo = 0;
+
+    for (const order of orders) {
+        const issueState = getEffectiveIssueState(order);
+        if (issueState === 'doctor_rejected') doctorRejected += 1;
+        if (issueState === 'redo') redo += 1;
+    }
+
+    return { doctorRejected, redo, total: doctorRejected + redo };
+}
+
 export function isDashboardTerminal(order: DashboardOrder): boolean {
     const issueState = getEffectiveIssueState(order);
     if (issueState === 'returned') return false;

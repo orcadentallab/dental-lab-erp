@@ -14,6 +14,7 @@ interface AlertCardProps {
     expandable?: boolean;
     onExpand?: () => void;
     useModal?: boolean;
+    breakdown?: Array<{ label: string; count: number }>;
 }
 
 const colorClasses = {
@@ -69,7 +70,8 @@ const AlertCard = React.memo(function AlertCard({
     actionLabel,
     expandable = true,
     onExpand,
-    useModal = false
+    useModal = false,
+    breakdown
 }: AlertCardProps) {
     const colors = colorClasses[colorClass];
     const [isExpanded, setIsExpanded] = useState(false);
@@ -113,6 +115,19 @@ const AlertCard = React.memo(function AlertCard({
                     )}
                 </div>
             </div>
+
+            {breakdown && breakdown.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-4 pb-4" dir="rtl">
+                    {breakdown.map(item => (
+                        <span
+                            key={item.label}
+                            className={`${colors.text} rounded-full border border-current/20 bg-white/60 px-2.5 py-1 text-xs font-bold dark:bg-black/10`}
+                        >
+                            {item.label}: {item.count}
+                        </span>
+                    ))}
+                </div>
+            )}
 
             {children && isExpanded && !useModal && (
                 <div className="px-4 pb-4 border-t border-gray-200 dark:border-gray-700 pt-3">
