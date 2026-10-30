@@ -21,6 +21,8 @@ import {
 } from '../../constants/rejectionFinancialDecision';
 import { issueCauseLabel, getStageForCause, type IssueContext } from '../../constants/issueCauses';
 import clsx from 'clsx';
+import { PRODUCTION_STATUSES, PRODUCTION_STATUS_LABELS_AR, isProductionStatus } from '../../constants/workflow';
+import { adminOverrideProductionStatus } from '../../services/supabase/orderWorkflow';
 
 /** Actions whose "reason" is now an explicit cause pick, not free text. */
 const CAUSE_SELECT_ACTION_CONTEXT: Record<string, IssueContext> = {
@@ -102,6 +104,22 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const [causeCategory, setCauseCategory] = useState('');
     const [responsibleStage, setResponsibleStage] = useState('');
     const issueMenuRef = useRef<HTMLDivElement>(null);
+    const [isOverriding, setIsOverriding] = useState(false);
+    const [overrideError, setOverrideError] = useState('');
+
+    const handleAdminProductionOverride = async (value: string) => {
+        if (userRole !== 'admin' || disabled || isOverriding || !isProductionStatus(value)) return;
+        setIsOverriding(true);
+        setOverrideError('');
+        try {
+            await adminOverrideProductionStatus(order.id, value);
+            onStatusChange(order.id, 'same');
+        } catch (error) {
+            setOverrideError(error instanceof Error ? error.message : 'تعذر تحديث حالة الإنتاج');
+        } finally {
+            setIsOverriding(false);
+        }
+    };
 
     const productionStatus = getEffectiveProductionStatus(order);
     const issueState = getEffectiveIssueState(order);
@@ -387,41 +405,29 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     </div>
                 )}
 
-                {/* Legacy Fallback — admin override dropdown */}
+                {/* Admin production override */}
                 {showLegacyFallback && userRole === 'admin' && (
                     <div className="relative flex items-center">
                         <button
                             className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-white hover:bg-surface-50 text-surface-500 transition-all focus-within:ring-2 focus-within:ring-primary-500 sm:min-h-0 sm:min-w-0"
-                            title="خيارات إضافية"
-                            aria-label="تغيير الحالة"
+                            title="تجاوز مسار الإنتاج — للأدمن فقط"
+                            aria-label="تغيير حالة الإنتاج"
                         >
                             <MoreHorizontal size={14} />
                         </button>
                         <select
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            aria-label="تغيير الحالة"
+                            aria-label="تغيير حالة الإنتاج — للأدمن فقط"
+                            disabled={disabled || isOverriding}
                             value=""
                             onChange={(e) => {
-                                const val = e.target.value;
-                                if (val && isValidOrderStatus(val)) {
-                                    onStatusChange(order.id, val);
-                                }
+                                void handleAdminProductionOverride(e.target.value);
                             }}
                         >
-                            <option value="" disabled>اختر حالة...</option>
-                            {[
-                                { label: 'Pending Review', value: 'Pending Review' },
-                                { label: 'New Case', value: 'New Case' },
-                                { label: 'Under Design', value: 'Under Design' },
-                                { label: 'Waiting Dr Approval', value: 'Waiting Dr Approval' },
-                                { label: 'Under Production', value: 'Under Production' },
-                                { label: 'Try In', value: 'Try In' },
-                                { label: 'Try In Approved', value: 'Try In Approved' },
-                                { label: 'Ready', value: 'Ready' },
-                                { label: 'Delivered', value: 'Delivered' },
-                            ].map(opt => (
-                                <option key={opt.value} value={opt.value}>
-                                    {opt.label}
+                            <option value="" disabled>{isOverriding ? 'جاري التحديث...' : 'اختر حالة الإنتاج...'}</option>
+                            {PRODUCTION_STATUSES.map(status => (
+                                <option key={status} value={status}>
+                                    {PRODUCTION_STATUS_LABELS_AR[status]}
                                 </option>
                             ))}
                         </select>
@@ -429,6 +435,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 )}
             </div>
 
+            {overrideError && <p role="alert" className="text-xs text-red-600">{overrideError}</p>}
             <IssueStateCorrectionModal
                 order={order}
                 isOpen={showIssueCorrection}

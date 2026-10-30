@@ -31,7 +31,7 @@ import {
     canEditOrderField,
 } from '../../lib/workflowPermissions';
 import { ORDER_EVENT_TYPES } from '../../constants/orderEvents';
-import type { ProductionStatus, IssueState } from '../../constants/workflow';
+import { isProductionStatus, type ProductionStatus, type IssueState } from '../../constants/workflow';
 import { getProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import { FINANCIAL_OBLIGATIONS_FLAGS } from '../../constants/financialObligations';
 import {
@@ -293,6 +293,21 @@ export async function changeProductionStatus(
     }
 
     return updatedOrder;
+}
+
+/** Admin bypass uses the production axis; issue/intake corrections stay separate. */
+export async function adminOverrideProductionStatus(
+    orderId: string,
+    newStatus: string,
+): Promise<Order | null> {
+    const { role, userId } = await getCallerRoleAndId();
+    if (role !== 'admin') throw new ValidationError('تجاوز مسار الإنتاج متاح للأدمن فقط');
+    if (!isProductionStatus(newStatus)) throw new ValidationError('حالة الإنتاج غير صحيحة');
+    if (newStatus === 'final_delivered') {
+        const { updateOrderStatus } = await import('./orders');
+        return updateOrderStatus(orderId, 'Delivered', { actorRole: role, userId });
+    }
+    return changeProductionStatus(orderId, newStatus, 'admin_production_override');
 }
 
 /**
