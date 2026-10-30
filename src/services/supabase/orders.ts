@@ -3047,9 +3047,11 @@ export async function updateOrderStatus(
     }
 
     // Build updates object
-    const updates: Partial<Order> = {
-        status: newStatus,
-    };
+    // Design actions must work after the legacy status mirror is disabled.
+    // Their authoritative transition is carried by productionStatus below.
+    const updates: Partial<Order> = ['Under Design', 'Waiting Dr Approval'].includes(newStatus)
+        ? {}
+        : { status: newStatus };
 
     // Explicitly set productionStatus to assist the database trigger sync
     const currentProdStatus = getProductionStatus(currentOrder);

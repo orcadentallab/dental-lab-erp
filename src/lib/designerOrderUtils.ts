@@ -1,5 +1,20 @@
 import type { Order } from '../services/db';
 
+
+/** Match the design-submission RPC's V2 state guard; never advance an order implicitly. */
+export function getDesignSubmissionError(order: Pick<Order, 'productionStatus' | 'issueState' | 'isDeleted'>): string | null {
+    if (order.isDeleted) return 'لا يمكن رفع تصميم لحالة محذوفة.';
+    if ((order.issueState || 'none') !== 'none') {
+        return 'لا يمكن رفع التصميم قبل مراجعة وحل مشكلة الحالة مع المسؤول.';
+    }
+    if (order.productionStatus === 'not_started') {
+        return 'يرجى قبول الحالة ونقلها إلى قيد التصميم قبل رفع التصميم.';
+    }
+    if (order.productionStatus !== 'designing') {
+        return 'الحالة ليست قيد التصميم. اطلب تعديل التصميم وأعد الحالة إلى قيد التصميم قبل رفع رابط جديد.';
+    }
+    return null;
+}
 const DESIGN_HISTORY_STATUSES = ['New Case', 'Under Design', 'Waiting Dr Approval', 'Under Production'] as const;
 const DESIGN_COMPLETION_STATUSES = ['Waiting Dr Approval', 'Under Production'] as const;
 const DESIGN_COMMENT_MARKERS = [

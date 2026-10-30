@@ -8,13 +8,15 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
-import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted } from '../lib/designerOrderUtils';
+import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted, getDesignSubmissionError } from '../lib/designerOrderUtils';
+import { ErrorHandler } from '../lib/errorHandler';
 import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
 import DateRangeField from '../components/ui/DateRangeField';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 interface DesignerDashboardProps {
     embedded?: boolean;
@@ -88,6 +90,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showDesignModal, setShowDesignModal] = useState(false);
     const [designUrl, setDesignUrl] = useState('');
+    const [designSubmitting, setDesignSubmitting] = useState(false);
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
@@ -244,7 +247,12 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
             // Auto-advance: approving a brand-new case moves it into design,
             // same as the equivalent action on the shared Orders list/board.
-            if (action === 'Approved' && order && order.status === 'New Case') {
+            if (
+                action === 'Approved' &&
+                order &&
+                getEffectiveProductionStatus(order) === 'not_started' &&
+                getEffectiveIssueState(order) === 'none'
+            ) {
                 const advancedOrder = await db.updateOrderStatus(orderId, 'Under Design', {
                     userId: user?.id,
                     userName: user?.name || user?.role || 'User',
@@ -340,7 +348,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     };
 
     const submitDesign = async () => {
-        if (!selectedOrder || !user) return;
+        if (!selectedOrder || !user || designSubmitting) return;
 
         const cleanedUrl = cleanUrl(designUrl);
         if (!cleanedUrl) {
@@ -353,21 +361,35 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         }
         const absoluteUrl = ensureAbsoluteUrl(cleanedUrl);
 
-        const updatedOrder = await db.updateOrderStatus(selectedOrder.id, 'Under Production', {
-            designUrl: absoluteUrl,
-            userId: user.id,
-            userName: user.name || user.role || 'مصمم',
-            actorRole: user.role,
-        });
-
-        await db.updateOrder(selectedOrder.id, { technicianStatus: 'Pending' });
-
-        const refreshedOrder = await db.getOrder(selectedOrder.id);
-        updateOrderInState(refreshedOrder || updatedOrder);
-        setShowDesignModal(false);
-        setSelectedOrder(null);
-        setDesignUrl('');
-        setDesignQueueView('submitted');
+        setDesignSubmitting(true);
+        try {
+            const currentOrder = await db.getOrder(selectedOrder.id);
+            if (!currentOrder) throw new Error('الحالة غير موجودة أو لم يعد لديك صلاحية الوصول إليها.');
+            updateOrderInState(currentOrder);
+            const unavailable = getDesignSubmissionError(currentOrder);
+            if (unavailable) {
+                toastError(unavailable);
+                return;
+            }
+            const updatedOrder = await db.updateOrderStatus(selectedOrder.id, 'Under Production', {
+                designUrl: absoluteUrl,
+                userId: user.id,
+                userName: user.name || user.role || 'مصمم',
+                actorRole: user.role,
+            });
+            updateOrderInState(updatedOrder);
+            setShowDesignModal(false);
+            setSelectedOrder(null);
+            setDesignUrl('');
+            setDesignQueueView('submitted');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : '';
+            toastError(message.includes('Order is not available for design submission')
+                ? 'تغيرت حالة الطلب ولم يعد متاحاً للتصميم. حدّث القائمة وتأكد أن الحالة قيد التصميم ولا توجد مشكلة معلقة.'
+                : ErrorHandler.getUserMessage(error));
+        } finally {
+            setDesignSubmitting(false);
+        }
     };
 
     const handleAddComment = async (order: Order) => {
@@ -417,7 +439,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 order.technicianStatus === 'NeedDetails' ||
                 order.designStatus === 'waiting_approval' ||
                 order.designStatus === 'returned' ||
-                order.status === 'Waiting Dr Approval'
+                getEffectiveProductionStatus(order) === 'waiting_doctor'
             ) {
                 return false;
             }
@@ -485,6 +507,8 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     };
 
     const openDesignUploadModal = (order: Order) => {
+        const unavailable = getDesignSubmissionError(order);
+        if (unavailable) { toastError(unavailable); return; }
         setSelectedOrder(order);
         setDesignUrl(order.designUrl || '');
         setShowDesignModal(true);
@@ -1048,6 +1072,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
                         <div className="flex justify-end gap-3 mt-8">
                             <button
+                                disabled={designSubmitting}
                                 onClick={() => { setShowDesignModal(false); setSelectedOrder(null); }}
                                 className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors"
                             >
@@ -1055,11 +1080,11 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                             </button>
                             <button
                                 onClick={submitDesign}
-                                disabled={!designUrl}
+                                disabled={!designUrl || designSubmitting}
                                 className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                                 <CheckCircle2 size={18} />
-                                تأكيد التسليم
+                                {designSubmitting ? 'جاري التسليم...' : 'تأكيد التسليم'}
                             </button>
                         </div>
                     </div>
