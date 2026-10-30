@@ -104,7 +104,7 @@ export const shippingService = {
         delivery_date,
         doctor:doctors(id, name, phone, address)
       `)
-      .in('status', ['Ready', 'ready', 'In Production', 'in_production'])
+      .in('production_status', ['final_ready', 'try_in_ready'])
       .eq('is_deleted', false)
       .order('delivery_date', { ascending: true });
 

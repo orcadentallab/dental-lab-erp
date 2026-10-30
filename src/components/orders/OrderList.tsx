@@ -10,6 +10,7 @@ import IssueCauseFields from './IssueCauseFields';
 import { issueCauseLabel, getStageForCause } from '../../constants/issueCauses';
 import { AppError, ErrorHandler } from '../../lib/errorHandler';
 import { useToast } from '../../context/ToastContext';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../../constants/orderLifecycle';
 
 // The lab-rejection RPCs raise plain English exceptions. Surface the one guard
 // users actually hit — an order past design submission or final delivery can
@@ -251,7 +252,11 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
 
             // Auto-Status Logic: If Accepted and current status is 'New Case', move to 'Under Design'
             if (action === 'Approved') {
-                if (order && order.status === 'New Case') {
+                if (
+                    order &&
+                    getEffectiveProductionStatus(order) === 'not_started' &&
+                    getEffectiveIssueState(order) === 'none'
+                ) {
                     await db.updateOrderStatus(orderId, 'Under Design', {
                         userId: currentUser?.id,
                         userName: currentUser?.name || currentUser?.role || 'User',

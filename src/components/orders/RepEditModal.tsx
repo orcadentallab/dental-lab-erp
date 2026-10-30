@@ -17,7 +17,7 @@ import {
     REP_FIELD_STATE_GUARDS,
     type RepAuditedField,
 } from '../../lib/workflowPermissions';
-import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
+import { getEffectiveProductionStatus, getEffectiveIssueState, requiresAdminApprovalForOrderEdit } from '../../constants/orderLifecycle';
 import { useToast } from '../../context/ToastContext';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
@@ -545,8 +545,8 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
         try {
             await repUpdateOrderWithAudit(order.id, changes, reasonCode, reasonNote.trim() || null);
 
-            // Check if it went to pending approval (order is delivered)
-            const isDelivered = ['Delivered', 'Completed'].includes(order.status) || productionStatus === 'final_delivered';
+            // Mirror the RPC's check of this case's own delivery evidence.
+            const isDelivered = requiresAdminApprovalForOrderEdit(order);
             if (isDelivered) {
                 success('تم إرسال طلب التعديل لمراجعة الأدمن بنجاح');
             } else {

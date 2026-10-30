@@ -1,14 +1,10 @@
 import { Check, X, HelpCircle, FileSearch } from 'lucide-react';
 import type { Order } from '../services/db';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 export const wasRejected = (order: Order): boolean => {
-    if (order.status === 'Doctor Rejected') return true;
-    if (order.status === 'Lab Rejected') return true;
-    // Legacy fallback
-    if (order.status === 'Cancelled' && order.statusHistory) {
-        return order.statusHistory.some(h => h.status === 'Doctor Rejected' || h.status === 'Rejected');
-    }
-    return false;
+    const issueState = getEffectiveIssueState(order);
+    return issueState === 'doctor_rejected' || issueState === 'lab_rejected' || issueState === 'redo';
 };
 
 export const getStatusColor = (status: string) => {
@@ -67,21 +63,15 @@ export const getTechStatusBadge = (status?: string) => {
 };
 
 export const checkIsLate = (order: Order) => {
-    // Doctor Rejected, Lab Rejected, or Cancelled orders are never considered late
-    if (
-        order.status === 'Doctor Rejected' ||
-        order.status === 'Lab Rejected' ||
-        order.status === 'Cancelled'
-    ) return false;
+    const issueState = getEffectiveIssueState(order);
+    if (['doctor_rejected', 'lab_rejected', 'cancelled', 'redo'].includes(issueState)) return false;
 
     if (!order.deliveryDate) return false;
-    const actualDate = order.actualDeliveryDate || (order.status !== 'Delivered' ? new Date().toISOString().split('T')[0] : '');
-    if (!actualDate) return false;
+    const productionStatus = getEffectiveProductionStatus(order);
 
-    if (order.status === 'Delivered' && order.actualDeliveryDate) {
-        return order.actualDeliveryDate > order.deliveryDate;
-    } else if (order.status !== 'Delivered') {
-        return new Date().toISOString().split('T')[0] > order.deliveryDate;
+    if (productionStatus === 'final_delivered') {
+        return Boolean(order.actualDeliveryDate && order.actualDeliveryDate.split('T')[0] > order.deliveryDate);
     }
-    return false;
+
+    return new Date().toISOString().split('T')[0] > order.deliveryDate;
 };

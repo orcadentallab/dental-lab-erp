@@ -21,6 +21,8 @@ import {
     type Insight,
     type InsightReport
 } from '../services/gemini';
+import { getEffectiveOrderDisplayStatus, isDeliveredForDoctorReceivable } from '../constants/orderLifecycle';
+import { isDashboardTerminal } from '../constants/dashboardOrderGroups';
 
 // Interface for UI-ready insights (including createdAt for components)
 interface UIInsight extends Insight {
@@ -122,17 +124,15 @@ export default function AIAnalytics() {
             // Delayed Orders Detection (created > 7 days ago, not delivered/rejected)
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const delayedOrdersCount = orders.filter(o => 
-                new Date(o.createdAt) < sevenDaysAgo && 
-                !['delivered', 'rejected', 'doctor rejected', 'lab rejected', 'cancelled', 'completed'].includes((o.status || '').toLowerCase())
+            const delayedOrdersCount = orders.filter(order =>
+                new Date(order.createdAt) < sevenDaysAgo &&
+                !isDashboardTerminal(order)
             ).length;
 
             // Delivery Performance for current period
             // Orders CREATED this period that are already DELIVERED
             const createdThisPeriod = orders.filter(o => o.createdAt >= curStart && o.createdAt <= curEnd + 'T23:59:59');
-            const deliveredFromThisPeriod = createdThisPeriod.filter(o => 
-                ['delivered', 'completed'].includes((o.status || '').toLowerCase())
-            ).length;
+            const deliveredFromThisPeriod = createdThisPeriod.filter(isDeliveredForDoctorReceivable).length;
             const periodDeliveryRate = createdThisPeriod.length > 0 
                 ? (deliveredFromThisPeriod / createdThisPeriod.length) * 100 
                 : 0;
@@ -147,10 +147,10 @@ export default function AIAnalytics() {
                 profit: summaryCurrent.total_sales_value - (summaryCurrent.production_costs + summaryCurrent.operating_expenses),
                 topDoctors: topDoctorsCurrent.map(d => ({ name: d.name, orderCount: d.count })),
                 topServices: topServicesCurrent.map(s => ({ name: s.name, count: s.count })),
-                recentOrders: orders.slice(0, 10).map(o => ({
-                    patientName: o.patientName,
-                    status: o.status,
-                    totalPrice: o.totalPrice || 0
+                recentOrders: orders.slice(0, 10).map(order => ({
+                    patientName: order.patientName,
+                    status: getEffectiveOrderDisplayStatus(order) || 'Unknown',
+                    totalPrice: order.totalPrice || 0
                 }))
             });
 

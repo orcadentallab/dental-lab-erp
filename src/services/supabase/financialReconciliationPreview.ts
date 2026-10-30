@@ -1,9 +1,12 @@
-import { getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../../constants/orderLifecycle';
+import { getDoctorReceivableAmount, getEffectiveOrderDisplayStatus, getOfficialStatementDate, isDoctorStatementIncluded } from '../../constants/orderLifecycle';
 import { ErrorHandler } from '../../lib/errorHandler';
 import type { Adjustment } from '../financeService';
 import type { Order } from '../db';
 import { getExternalLabStatementAmount } from '../../constants/financialObligations';
-import { isVisibleInAccountStatement as isVisibleInAccountStatementHelper, isDoctorRejectedStatus, isLabRejectedStatus } from '../../lib/orderStatusHelpers';
+import {
+    getDesignerStatementAmount,
+    isStatementVisibleOrder,
+} from '../../constants/orderStatementFinancials';
 import { isDateInOpenRange } from '../../utils/dateRange';
 
 export type FinancialReconciliationEntityType = 'all' | 'doctor' | 'external_lab' | 'designer';
@@ -241,10 +244,6 @@ function getOperationalOrderDate(order: ReturnType<typeof toLifecycleOrder>) {
     return dateOnly(order.deliveryDate || order.createdAt);
 }
 
-function isVisibleInAccountStatement(order: ReturnType<typeof toLifecycleOrder>) {
-    return isVisibleInAccountStatementHelper(order);
-}
-
 function getSupplierOfficialOrderAmount(order: ReturnType<typeof toLifecycleOrder>, salariedDesignerIds: Set<string>): number | null {
     const isSalaried = order.designerId ? salariedDesignerIds.has(order.designerId) : false;
     return getExternalLabStatementAmount(order, isSalaried);
@@ -408,7 +407,7 @@ export async function previewFinancialReconciliation(
     const officialOrderAmounts = new Map<string, number>();
     const orderMetadata = new Map(orders.map(order => [order.id, {
         caseId: order.caseId,
-        status: order.status,
+        status: getEffectiveOrderDisplayStatus(order),
     }]));
     const orderComponentKey = (
         entityType: 'doctor' | 'external_lab' | 'designer',
@@ -417,7 +416,7 @@ export async function previewFinancialReconciliation(
     ) => `${entityType}:${entityId}:${orderId}`;
 
     for (const order of orders) {
-        if (isVisibleInAccountStatement(order)) {
+        if (isStatementVisibleOrder(order)) {
             if (order.doctorId) {
                 const statementDate = getOfficialStatementDate(order);
                 if (isInRange(statementDate, params) && isDoctorStatementIncluded(order)) {
@@ -447,16 +446,8 @@ export async function previewFinancialReconciliation(
         ) {
             const designerDate = getOperationalOrderDate(order);
             if (isInRange(designerDate, params)) {
-                const isRejected = isDoctorRejectedStatus(order.status) || isLabRejectedStatus(order.status);
-                const isRelevant = order.designStatus === 'completed'
-                    || isRejected
-                    || order.status === 'Cancelled';
-                if (isRelevant) {
-                    let amount = order.designPrice || 0;
-                    if (order.status === 'Cancelled' || isLabRejectedStatus(order.status)) amount = 0;
-                    else if (isDoctorRejectedStatus(order.status)) {
-                        amount = order.rejectedDesignerCost ?? 0;
-                    }
+                const amount = getDesignerStatementAmount(order, false);
+                if (amount !== null) {
                     addTo(officialDesignerCredits, order.designerId, amount);
                     addTo(officialOrderAmounts, orderComponentKey('designer', order.designerId, order.id), amount);
                 }

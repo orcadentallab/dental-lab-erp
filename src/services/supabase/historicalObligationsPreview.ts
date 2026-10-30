@@ -1,5 +1,7 @@
 import {
     getDoctorReceivableAmount,
+    getEffectiveIssueState,
+    getEffectiveOrderDisplayStatus,
     getOfficialStatementDate,
     getProductionStatus,
     isFinalReady,
@@ -88,7 +90,9 @@ type HistoricalPreviewOrderRow = {
     patient_name: string | null;
     doctor_id: string | null;
     supplier_id: string | null;
-    status: string;
+    production_status: string;
+    issue_state: string;
+    intake_state: string;
     delivery_type: string | null;
     total_price: number | null;
     cost: number | null;
@@ -109,15 +113,6 @@ type ExistingObligationRow = {
     status: string;
 };
 
-const PREVIEW_CANDIDATE_STATUSES = [
-    'Delivered',
-    'Completed',
-    'Ready',
-    'Rejected',
-    'Cancelled',
-    'Returned for Adjustments',
-];
-
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
 async function getSupabaseClient() {
@@ -125,14 +120,16 @@ async function getSupabaseClient() {
     return supabase;
 }
 
-function toPreviewOrder(row: HistoricalPreviewOrderRow): Partial<Order> & { status: string } {
+function toPreviewOrder(row: HistoricalPreviewOrderRow): Partial<Order> {
     return {
         id: row.id,
         caseId: row.case_id,
         patientName: row.patient_name || '',
         doctorId: row.doctor_id || '',
         supplierId: row.supplier_id || undefined,
-        status: row.status as Order['status'],
+        productionStatus: row.production_status as Order['productionStatus'],
+        issueState: row.issue_state as Order['issueState'],
+        intakeState: row.intake_state as Order['intakeState'],
         deliveryType: (row.delivery_type || undefined) as Order['deliveryType'],
         totalPrice: row.total_price || 0,
         cost: row.cost || 0,
@@ -189,7 +186,7 @@ function baseRow(
         orderId: order.id || '',
         caseId: order.caseId || '',
         patientName: order.patientName || '',
-        status: order.status || '',
+        status: getEffectiveOrderDisplayStatus(order) || '',
         deliveryType: order.deliveryType || null,
         doctorId: order.doctorId || null,
         doctorName: names.doctorName || null,
@@ -212,7 +209,7 @@ export function classifyHistoricalOrderForObligationPreview(
     const isReady = productionStatus === 'final_ready' || productionStatus === 'try_in_ready';
     const operationalDate = getDateWithBasis(order, { allowActualDeliveryDate: isDelivered });
     const base = baseRow(order, names, operationalDate);
-    const isIssueStatus = ['Rejected', 'Cancelled', 'Returned for Adjustments'].includes(order.status || '');
+    const isIssueStatus = getEffectiveIssueState(order) !== 'none';
 
     if (isIssueStatus) {
         const rejectedLabCost = order.rejectedLabCost || 0;
@@ -413,10 +410,10 @@ export async function previewHistoricalObligationsBackfill(
     let query = supabase
         .from('orders')
         .select(
-            'id, case_id, patient_name, doctor_id, supplier_id, status, delivery_type, total_price, cost, manual_cost, delivery_date, actual_delivery_date, rejected_lab_cost, created_at',
+            'id, case_id, patient_name, doctor_id, supplier_id, production_status, issue_state, intake_state, delivery_type, total_price, cost, manual_cost, delivery_date, actual_delivery_date, rejected_lab_cost, created_at',
             { count: 'exact' }
         )
-        .in('status', PREVIEW_CANDIDATE_STATUSES)
+        .or('issue_state.neq.none,production_status.in.(final_ready,try_in_ready,final_delivered)')
         .order('created_at', { ascending: false })
         .order('id')
         .range(from, to);

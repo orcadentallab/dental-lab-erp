@@ -1,22 +1,35 @@
 import type { AccountingOrderSnapshot, AccountingReviewType, Order } from '../services/db';
+import { deriveOrderDisplayStatusV2 } from './orderDerivedStatusV2';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from './orderLifecycle';
 
 export const ACCOUNTING_CHANGE_MARKER = 'بعد التسجيل المحاسبي';
 
-export const ACCOUNTING_REGISTRABLE_STATUSES: Order['status'][] = [
-    'Delivered',
-    'Completed',
-    'Doctor Rejected',
-    'Lab Rejected',
-    'Rejected',
-];
+export function hasZeroAccountingImpact(order: Partial<Order>): boolean {
+    const issue = getEffectiveIssueState(order);
+    return issue === 'cancelled' || issue === 'lab_rejected';
+}
 
-export function hasZeroAccountingImpact(order: Pick<Order, 'status' | 'issueState'>): boolean {
-    return order.issueState === 'cancelled' || order.issueState === 'lab_rejected'
-        || order.status === 'Cancelled' || order.status === 'Lab Rejected';
+export function isAccountingCancellation(order: Partial<Order>): boolean {
+    return getEffectiveIssueState(order) === 'cancelled';
+}
+
+function isAccountingRecognizedLifecycle(order: Partial<Order>): boolean {
+    const issue = getEffectiveIssueState(order);
+    return getEffectiveProductionStatus(order) === 'final_delivered'
+        || ['cancelled', 'doctor_rejected', 'lab_rejected', 'redo'].includes(issue);
+}
+
+function getAccountingSnapshotStatus(order: Partial<Order>): string {
+    return deriveOrderDisplayStatusV2(
+        getEffectiveProductionStatus(order),
+        getEffectiveIssueState(order),
+        order.intakeState,
+    ) ?? 'New Case';
 }
 
 export function getMissingAccountingDecisions(order: Order): string[] {
-    if (order.issueState !== 'doctor_rejected' && order.issueState !== 'redo') return [];
+    const issue = getEffectiveIssueState(order);
+    if (issue !== 'doctor_rejected' && issue !== 'redo') return [];
     const missing: string[] = [];
     if (order.rejectionFinancialReviewStatus !== 'resolved') missing.push('قرار تحمّل الطبيب');
     if (!['resolved', 'not_applicable'].includes(order.rejectedLabCostStatus || '')) missing.push('تكلفة المورد');
@@ -30,10 +43,11 @@ export function isAccountingFinanciallyReady(order: Order): boolean {
 
 export function getCurrentAccountingSnapshot(order: Order): AccountingOrderSnapshot {
     const zeroImpact = hasZeroAccountingImpact(order);
-    const rejected = order.status === 'Doctor Rejected' || order.status === 'Rejected';
+    const issue = getEffectiveIssueState(order);
+    const rejected = issue === 'doctor_rejected' || issue === 'redo';
 
     return {
-        status: order.status,
+        status: getAccountingSnapshotStatus(order),
         // A doctor rejection is zero unless an explicit financial decision
         // recorded a doctor amount; never fall back to the order total.
         saleAmount: zeroImpact ? 0 : (rejected ? (order.rejectedDoctorAmount ?? 0) : order.totalPrice),
@@ -50,9 +64,9 @@ export function getCurrentAccountingSnapshot(order: Order): AccountingOrderSnaps
 }
 
 export function getAccountingReviewType(order: Order): AccountingReviewType {
-    if (order.status === 'Cancelled' && hasPostRegistrationChange(order)) return 'cancellation';
+    if (isAccountingCancellation(order) && hasPostRegistrationChange(order)) return 'cancellation';
     if (hasPostRegistrationChange(order)) return 'change';
-    return order.accountingLastReviewType || (order.status === 'Cancelled' ? 'cancellation' : 'new');
+    return order.accountingLastReviewType || (isAccountingCancellation(order) ? 'cancellation' : 'new');
 }
 
 export function getAccountingComparison(order: Order) {
@@ -92,23 +106,21 @@ export function isAccountingRegistrationCandidate(
         if (order.isRegistered) return false;
         if (hasPostRegistrationChange(order)) return true;
         if (hasZeroAccountingImpact(order)) return false;
-        // A doctor rejection can only happen on a case the doctor actually saw,
-        // so the status itself is delivery evidence even when a pre-V2 order's
-        // delivery timestamps were wiped by the old issue-logging workflow
-        // (see docs on the legacy doctor_rejected/production_status gap).
+        // A reviewed doctor rejection or redo is delivery evidence even when a
+        // pre-V2 transition wiped the original delivery timestamps.
+        const issue = getEffectiveIssueState(order);
         const hasDeliveryEvidence = Boolean(order.firstDeliveredAt || order.actualDeliveryDate)
-            || order.productionStatus === 'final_delivered'
-            || order.status === 'Delivered' || order.status === 'Completed'
-            || order.status === 'Doctor Rejected' || order.status === 'Rejected';
-        return hasDeliveryEvidence && ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status);
+            || getEffectiveProductionStatus(order) === 'final_delivered'
+            || issue === 'doctor_rejected'
+            || issue === 'redo';
+        return hasDeliveryEvidence && isAccountingRecognizedLifecycle(order);
     }
 
     return Boolean(
         order.isRegistered
         && (
             order.isArchived
-            || order.status === 'Cancelled'
-            || ACCOUNTING_REGISTRABLE_STATUSES.includes(order.status)
+            || isAccountingRecognizedLifecycle(order)
         )
     );
 }

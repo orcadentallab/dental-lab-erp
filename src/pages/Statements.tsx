@@ -7,8 +7,12 @@ import { financeService, type Adjustment } from '../services/financeService';
 import DateRangeField from '../components/ui/DateRangeField';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
-import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
-import { getLabCostMetadata } from '../constants/financialObligations';
+import {
+    getDesignerStatementAmount,
+    getOrderStatementDisplayStatus,
+    getSupplierStatementAmount,
+    isStatementVisibleOrder,
+} from '../constants/orderStatementFinancials';
 import { BILLING_ENTITY_TYPES } from '../constants/billingSettings';
 import { generateDoctorStatementPDF, generateMonthlyInvoicePDF } from '../services/pdfService';
 import { statementService } from '../services/statementService';
@@ -89,7 +93,7 @@ const getDateRange = (filter: TimeFilter, custom: { start: string; end: string }
 
 const isVisible = (order: Partial<Order>, showAll: boolean = false) => {
     if (order.isDeleted) return false;
-    return isVisibleInAccountStatement(order) || showAll;
+    return isStatementVisibleOrder(order) || showAll;
 };
 
 // Status badge config for "all" mode
@@ -326,13 +330,13 @@ export default function StatementsPage() {
     const getDoctorStatementRedoDisplay = useCallback((order: Order) => {
         const chain = redoChainByOrderId.get(order.id);
         const base = `حالة #${order.caseId || '—'} — ${order.patientName || '—'}`;
-        if (!chain) return { description: base, status: order.status };
+        if (!chain) return { description: base, status: getOrderStatementDisplayStatus(order) };
         if (chain.step === 0) {
             return { description: `${base} — إعادة إنتاج → #${chain.childCaseId || '—'}`, status: 'redo', redoGroup: chain.rootId, redoStep: 0, redoSortDate: chain.rootDate };
         }
         return {
             description: `${base} — إعادة إنتاج رقم ${chain.step} من #${chain.rootCaseId}${chain.childCaseId ? ` → #${chain.childCaseId}` : ''}`,
-            status: chain.childCaseId ? 'redo' : order.status,
+            status: chain.childCaseId ? 'redo' : getOrderStatementDisplayStatus(order),
             redoGroup: chain.rootId,
             redoStep: chain.step,
             redoSortDate: chain.rootDate,
@@ -396,17 +400,13 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (!isVisible(o, showAllOrders) || !o.supplierId) continue;
+                if (!o.supplierId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
-                const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = showAllOrders || ((!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost));
-                if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                let cost = getLabCostMetadata(o, isSalaried).cost;
-                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
-                else if (isDoctorRejectedStatus(o.status)) cost = hasRejCost ? (o.rejectedLabCost ?? 0) : 0;
+                const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
+                if (cost === null) continue;
                 workMap.set(o.supplierId, (workMap.get(o.supplierId) ?? 0) + cost);
                 countMap.set(o.supplierId, (countMap.get(o.supplierId) ?? 0) + 1);
             }
@@ -438,17 +438,14 @@ export default function StatementsPage() {
             const paidMap = new Map<string, number>();
             const countMap = new Map<string, number>();
             for (const o of orders) {
-                if (o.isDeleted || !(isDesignerPayable(o) || showAllOrders) || !o.designerId || o.workflowType !== 'split') continue;
+                if (!o.designerId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
-                const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
-                if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 if (isSalaried) continue;
-                let price = (o.status === 'Cancelled' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
+                const price = getDesignerStatementAmount(o, showAllOrders);
+                if (price === null) continue;
                 workMap.set(o.designerId, (workMap.get(o.designerId) ?? 0) + price);
                 countMap.set(o.designerId, (countMap.get(o.designerId) ?? 0) + 1);
             }
@@ -534,17 +531,13 @@ export default function StatementsPage() {
 
         if (activeTab === 'suppliers') {
             for (const o of orders) {
-                if (!isVisible(o, showAllOrders) || o.supplierId !== selectedId) continue;
+                if (o.supplierId !== selectedId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
-                const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = showAllOrders || ((!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost));
-                if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                let cost = getLabCostMetadata(o, isSalaried).cost;
-                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
-                else if (isDoctorRejectedStatus(o.status)) cost = hasRejCost ? (o.rejectedLabCost ?? 0) : 0;
+                const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
+                if (cost === null) continue;
                 lines.push({
                     id: o.id, date: (o.deliveryDate || o.createdAt || '').split('T')[0],
                     description: `حالة #${o.caseId || '—'} — ${o.patientName || '—'}`,
@@ -553,7 +546,7 @@ export default function StatementsPage() {
                         const count = Array.isArray(i.teethNumbers) && i.teethNumbers.length > 0 ? i.teethNumbers.length : 1;
                         return `${i.serviceType || '-'}(${count})`;
                     }).filter(Boolean).join(' + '),
-                    status: o.status
+                    status: getOrderStatementDisplayStatus(o)
                 });
             }
             for (const step of externalSteps) {
@@ -583,17 +576,14 @@ export default function StatementsPage() {
 
         if (activeTab === 'designers') {
             for (const o of orders) {
-                if (o.isDeleted || !(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
                 if (!inRange(opDate)) continue;
-                const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
-                if (!relevant) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 if (isSalaried) continue;
-                let price = (o.status === 'Cancelled' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
+                const price = getDesignerStatementAmount(o, showAllOrders);
+                if (price === null) continue;
                 lines.push({
                     id: o.id, date: opDate,
                     description: `حالة #${o.caseId || '—'} — ${o.patientName || '—'}`,
@@ -602,7 +592,7 @@ export default function StatementsPage() {
                         const count = Array.isArray(i.teethNumbers) && i.teethNumbers.length > 0 ? i.teethNumbers.length : 1;
                         return `${i.serviceType || '-'}(${count})`;
                     }).filter(Boolean).join(' + '),
-                    status: o.status
+                    status: getOrderStatementDisplayStatus(o)
                 });
             }
             for (const t of transactions) {
@@ -702,17 +692,12 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'suppliers') {
             for (const o of orders) {
-                if (!isVisible(o, showAllOrders) || o.supplierId !== selectedId) continue;
+                if (o.supplierId !== selectedId) continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
-                const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = showAllOrders || ((!isDoctorRejectedStatus(o.status) || hasRejCost) && (o.status === 'Delivered' || o.status === 'Cancelled' || isLabRejectedStatus(o.status) || hasRejCost));
-                if (!relevant) continue;
-
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                let cost = getLabCostMetadata(o, isSalaried).cost;
-                if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
-                else if (isDoctorRejectedStatus(o.status)) cost = hasRejCost ? (o.rejectedLabCost ?? 0) : 0;
+                const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
+                if (cost === null) continue;
 
                 if (opDate < monthStart) {
                     openingDebit += cost;
@@ -725,7 +710,7 @@ export default function StatementsPage() {
                             const count = Array.isArray(i.teethNumbers) && i.teethNumbers.length > 0 ? i.teethNumbers.length : 1;
                             return `${i.serviceType || '-'}(${count})`;
                         }).filter(Boolean).join(' + '),
-                        status: o.status,
+                        status: getOrderStatementDisplayStatus(o),
                     });
                 }
             }
@@ -760,18 +745,13 @@ export default function StatementsPage() {
             }
         } else if (activeTab === 'designers') {
             for (const o of orders) {
-                if (o.isDeleted || !(isDesignerPayable(o) || showAllOrders) || o.designerId !== selectedId || o.workflowType !== 'split') continue;
+                if (o.designerId !== selectedId || o.workflowType !== 'split') continue;
                 const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
-                const hasRejCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                const relevant = showAllOrders || o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejCost;
-                if (!relevant) continue;
-
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 if (isSalaried) continue;
-
-                let price = (o.status === 'Cancelled' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
+                const price = getDesignerStatementAmount(o, showAllOrders);
+                if (price === null) continue;
 
                 if (opDate < monthStart) {
                     openingDebit += price;
@@ -784,7 +764,7 @@ export default function StatementsPage() {
                             const count = Array.isArray(i.teethNumbers) && i.teethNumbers.length > 0 ? i.teethNumbers.length : 1;
                             return `${i.serviceType || '-'}(${count})`;
                         }).filter(Boolean).join(' + '),
-                        status: o.status,
+                        status: getOrderStatementDisplayStatus(o),
                     });
                 }
             }

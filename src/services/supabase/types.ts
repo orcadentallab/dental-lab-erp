@@ -106,6 +106,7 @@ export interface DbOrder {
     // WF-1: shadow workflow columns (added by migration 086).
     production_status?: 'not_started' | 'designing' | 'in_production' | 'try_in_ready' | 'waiting_doctor' | 'finalization' | 'final_ready' | 'final_delivered';
     issue_state?: 'none' | 'returned' | 'rejected' | 'cancelled' | 'redo' | 'doctor_rejected' | 'lab_rejected';
+    intake_state?: 'pending_review' | 'accepted';
     route_override_id?: string | null;
 }
 

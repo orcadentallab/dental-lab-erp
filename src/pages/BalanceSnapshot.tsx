@@ -14,10 +14,14 @@ import {
     getDoctorReceivableAmount,
     isDoctorStatementIncluded,
 } from '../constants/orderLifecycle';
-import { getLabCostMetadata } from '../constants/financialObligations';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { useAuth } from '../context/AuthContext';
-import { isVisibleInAccountStatement, isDesignerPayable, isDoctorRejectedStatus, isLabRejectedStatus } from '../lib/orderStatusHelpers';
+import {
+    getDesignerStatementAmount,
+    getSupplierStatementAmount,
+    isDesignerStatementPayable,
+    isStatementVisibleOrder,
+} from '../constants/orderStatementFinancials';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,10 +98,10 @@ export default function BalanceSnapshotPage() {
                 db.getTransactionsForFinanceSummary(),  // ← نفس Accounts.tsx تماماً
             ]);
 
-            // نفس منطق isVisibleInAccountStatement في Accounts.tsx، مع إضافة الأوردرات
+            // نفس قواعد V2 المستخدمة في Accounts.tsx، مع إضافة الأوردرات
             // التي أكمل فيها المصمم مرحلة التصميم حتى لو الأوردر لسه تحت التشغيل
             const allOrders = allOrdersRaw.filter(o =>
-                isVisibleInAccountStatement(o) || isDesignerPayable(o)
+                isStatementVisibleOrder(o) || isDesignerStatementPayable(o)
             );
 
             const designers = users.filter(isDesignerUser);
@@ -160,24 +164,10 @@ export default function BalanceSnapshotPage() {
 
                 let totalWork = 0;
                 entityOrders.forEach(o => {
-                    const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                    // نفس شرط Accounts.tsx تماماً
-                    const isRelevant = (!isDoctorRejectedStatus(o.status) || hasRejectionCost) &&
-                        ((o.status || '').toLowerCase() === 'delivered' ||
-                         (o.status || '').toLowerCase() === 'cancelled' ||
-                         isLabRejectedStatus(o.status) ||
-                         hasRejectionCost);
-                    if (!isRelevant) return;
-
-                    // نفس منطق Accounts.tsx: دائماً getLabCostMetadata لكل الأوردرات
                     const designer = designers.find(d => d.id === o.designerId);
                     const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
-                    let cost = getLabCostMetadata(o, isSalaried).cost;
-
-                    if (o.status === 'Cancelled' || isLabRejectedStatus(o.status)) cost = 0;
-                    else if (isDoctorRejectedStatus(o.status)) {
-                        cost = hasRejectionCost ? o.rejectedLabCost! : 0;
-                    }
+                    const cost = getSupplierStatementAmount(o, isSalaried, false);
+                    if (cost === null) return;
                     totalWork += cost;
                 });
                 // charge → يُنقص الدين = يُضاف للمدفوع (خصم على المورد)
@@ -221,14 +211,8 @@ export default function BalanceSnapshotPage() {
                 let totalWork = 0;
                 if (!isSalaried) {
                     entityOrders.forEach(o => {
-                        const hasRejectionCost = isDoctorRejectedStatus(o.status) && typeof o.rejectedLabCost === 'number';
-                        const isRelevant = o.workflowType === 'split' &&
-                            (o.designStatus === 'completed' || isDoctorRejectedStatus(o.status) || isLabRejectedStatus(o.status) || o.status === 'Cancelled' || hasRejectionCost);
-                        if (!isRelevant) return;
-                        // نفس منطق Accounts.tsx سطر 393:
-                        // price = (Cancelled||Rejected) ? 0 : getEffectiveDesignPrice
-                        let price = (o.status === 'Cancelled' || isLabRejectedStatus(o.status) || isDoctorRejectedStatus(o.status)) ? 0 : (o.designPrice || 0);
-                        if (isDoctorRejectedStatus(o.status)) price = o.rejectedDesignerCost ?? 0;
+                        const price = getDesignerStatementAmount(o, false);
+                        if (price === null) return;
                         totalWork += price;
                     });
                 }

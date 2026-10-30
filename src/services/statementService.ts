@@ -7,6 +7,7 @@ import {
     getOfficialStatementDate,
     isDoctorStatementIncluded,
 } from '../constants/orderLifecycle';
+import { getOrderStatementDisplayStatus } from '../constants/orderStatementFinancials';
 
 export interface StatementItem {
     id: string;
@@ -114,7 +115,7 @@ export const statementService = {
             if (!isDateInOpenRange(sortDate, { start: startDate, end: endDate })) return false;
 
             // In detailed view, we often show Rejected for reference, but usually with 0 amount.
-            // Accounts.tsx: "if (showAllOrders) return true; ... if (o.status === 'Rejected') return false;"
+            // The standard view uses the V2 lifecycle financial inclusion rules below.
             // For Bulk Statement, we probably want "Standard" view which excludes Rejected unless we want to allow configuration.
             // Let's assume Standard View: valid statuses only.
             // Actually, Accounts.tsx logic for `individualStatement` includes Cancelled/Rejected if showAll is true.
@@ -133,7 +134,7 @@ export const statementService = {
                 details: orderItems.map((i: { serviceType: string; teethNumbers: string[] }) => `${i.serviceType} (${i.teethNumbers.join(',')})`).join(' + '),
                 type: 'debit' as const,
                 amount: showAllOrders ? getDoctorOrderDisplayAmount(o) : getDoctorReceivableAmount(o),
-                status: o.status,
+                status: getOrderStatementDisplayStatus(o),
                 services,
                 count,
                 branchName: o.branchName || undefined

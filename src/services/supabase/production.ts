@@ -543,11 +543,7 @@ export async function getOpenStageRuns(): Promise<StageRunCard[]> {
             const order = r.production_jobs?.orders;
             if (!order) return true;
             if (order.is_deleted) return false;
-            if (
-                order.status === 'Delivered' ||
-                order.status === 'Completed' ||
-                order.production_status === 'final_delivered'
-            ) {
+            if (order.production_status === 'final_delivered') {
                 return false;
             }
             return true;
@@ -920,7 +916,7 @@ export async function getActiveStagesForOrders(orderIds: string[]): Promise<Reco
             production_stages:stage_id ( id, code, name_ar ),
             production_jobs!inner (
                 order_id,
-                orders ( status, production_status, is_deleted )
+                orders ( production_status, is_deleted )
             )
         `)
         .in('status', ['ready', 'in_progress', 'waiting_external'])
@@ -938,11 +934,7 @@ export async function getActiveStagesForOrders(orderIds: string[]): Promise<Reco
         if (!orderId) continue;
         const order = row.production_jobs?.orders;
         if (order?.is_deleted) continue;
-        if (
-            order?.status === 'Delivered' ||
-            order?.status === 'Completed' ||
-            order?.production_status === 'final_delivered'
-        ) {
+        if (order?.production_status === 'final_delivered') {
             continue;
         }
         const stage = row.production_stages;

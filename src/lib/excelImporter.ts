@@ -3,6 +3,38 @@ import * as XLSX from 'xlsx';
 import type { Doctor, Service, Order, Transaction, Supplier, OrderItem } from '../services/db';
 import { generateUUID } from './utils';
 
+export function getImportedOrderWorkflowAxes(rawStatus: string): Pick<Order, 'status' | 'productionStatus' | 'issueState' | 'intakeState'> {
+    const normalized = rawStatus.trim().toLowerCase();
+
+    if (normalized === 'new case' || normalized === 'pending' || normalized === 'pending review') {
+        return {
+            status: normalized === 'pending review' ? 'Pending Review' : 'New Case',
+            productionStatus: 'not_started',
+            issueState: 'none',
+            intakeState: normalized === 'pending review' ? 'pending_review' : 'accepted',
+        };
+    }
+    if (normalized === 'under design' || normalized === 'design completed') {
+        return { status: 'Under Design', productionStatus: 'designing', issueState: 'none', intakeState: 'accepted' };
+    }
+    if (['printing', 'milling', 'finishing', 'in progress', 'under production'].includes(normalized)) {
+        return { status: 'Under Production', productionStatus: 'in_production', issueState: 'none', intakeState: 'accepted' };
+    }
+    if (normalized === 'try in' || normalized === 'tryin') {
+        return { status: 'Try In', productionStatus: 'try_in_ready', issueState: 'none', intakeState: 'accepted' };
+    }
+    if (normalized === 'ready') {
+        return { status: 'Ready', productionStatus: 'final_ready', issueState: 'none', intakeState: 'accepted' };
+    }
+    if (normalized === 'cancelled') {
+        return { status: 'Cancelled', productionStatus: 'not_started', issueState: 'cancelled', intakeState: 'accepted' };
+    }
+
+    // Preserve the existing import contract: blank, unknown, Delivered and
+    // Completed historical values are treated as already delivered.
+    return { status: 'Delivered', productionStatus: 'final_delivered', issueState: 'none', intakeState: 'accepted' };
+}
+
 // Helper Type for Excel Rows
 type ExcelRow = Record<string, unknown>;
 
@@ -456,21 +488,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                         // Updated Status Parsing
                         const statusStr = cleanString(getVal(['حالة الاوردر', 'Order Status', 'Status', 'الحالة', 'status'])).trim();
 
-                        // Normalize status (case insensitive matching)
-                        let status: Order['status'] = 'Delivered';
-                        const validStatuses = ['New Case', 'Under Design', 'Design Completed', 'Printing', 'Milling', 'Finishing', 'Ready', 'Delivered', 'Completed', 'Cancelled', 'Try in', 'try in', 'Try In', 'under design'];
-
-                        // Find match ignoring case
-                        const matchedStatus = validStatuses.find(s => s.toLowerCase() === statusStr.toLowerCase());
-
-                        if (matchedStatus) {
-                            // Convert to canonical case
-                            if (matchedStatus.toLowerCase() === 'try in') status = 'Try In';
-                            else if (matchedStatus.toLowerCase() === 'under design') status = 'Under Design';
-                            else status = matchedStatus as Order['status'];
-                        } else if (statusStr) {
-                            status = 'Delivered';
-                        }
+                        const workflow = getImportedOrderWorkflowAxes(statusStr);
 
                         const deliveryDate = parseDate(getVal(['تاريخ التسليم', 'delivery_date', 'DeliveryDate', 'التاريخ']));
                         const priorityStr = cleanString(getVal(['الأولوية', 'priority', 'Priority']));
@@ -485,7 +503,7 @@ export function importOrdersFromExcel(file: File, doctors: Doctor[], suppliers: 
                             discount: discount || 0,
                             totalPrice: totalPrice,
                             shade: shade,
-                            status: status,
+                            ...workflow,
                             deliveryDate,
                             cost: cost || 0,
                             priority: priority,

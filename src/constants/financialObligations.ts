@@ -7,10 +7,10 @@ import {
 import {
     getProductionStatus,
     getEffectiveIssueState,
+    getEffectiveOrderDisplayStatus,
     isDeliveredForDoctorReceivable,
     isFinalReady,
     isTryInReady,
-    normalizeStatus,
 } from './orderLifecycle';
 
 export const OBLIGATION_DIRECTIONS = {
@@ -171,22 +171,17 @@ export function getExternalLabStatementAmount(
     order: CandidateOrder,
     isSalariedDesigner = false
 ): number | null {
-    const status = normalizeStatus(order.status);
     const issueState = getEffectiveIssueState(order);
 
     if (issueState === 'returned') {
         return Math.max(0, getLabCostMetadata(order, isSalariedDesigner).cost);
     }
 
-    if (status === 'cancelled' || issueState === 'cancelled'
-        || status === 'lab rejected' || issueState === 'lab_rejected') {
+    if (issueState === 'cancelled' || issueState === 'lab_rejected') {
         return 0;
     }
 
-    const isDoctorRejected = status === 'doctor rejected'
-        || status === 'rejected'
-        || issueState === 'doctor_rejected'
-        || issueState === 'redo';
+    const isDoctorRejected = issueState === 'doctor_rejected' || issueState === 'redo';
     if (isDoctorRejected) {
         return typeof order.rejectedLabCost === 'number'
             ? Math.max(0, order.rejectedLabCost)
@@ -221,7 +216,7 @@ export function buildDoctorReceivableCandidate(order: CandidateOrder): Financial
         entityId: order.doctorId,
         direction: OBLIGATION_DIRECTIONS.receivable,
         triggerType: OBLIGATION_TRIGGER_TYPES.doctorDelivered,
-        triggerStatus: order.status || null,
+        triggerStatus: getEffectiveOrderDisplayStatus(order),
         triggerDate: getOrderTriggerDate(order),
         grossAmount: order.totalPrice || 0,
         adjustmentAmount: 0,
@@ -252,7 +247,7 @@ export function buildExternalLabPayableCandidate(
         entityId: order.supplierId,
         direction: OBLIGATION_DIRECTIONS.payable,
         triggerType: OBLIGATION_TRIGGER_TYPES.externalLabReady,
-        triggerStatus: order.status || null,
+        triggerStatus: getEffectiveOrderDisplayStatus(order),
         triggerDate: options.triggerDate || getOrderTriggerDate(order),
         grossAmount: labCostMetadata.cost,
         adjustmentAmount: 0,
@@ -306,10 +301,11 @@ export function buildDesignerPayableCandidate(
 }
 
 export function shouldCreateDoctorReceivableObligationForStatusChange(
-    previousStatus: string | undefined,
-    newStatus: string | undefined
+    previousOrder: CandidateOrder,
+    updatedOrder: CandidateOrder
 ): boolean {
-    return previousStatus !== newStatus && newStatus === 'Delivered';
+    return !isDeliveredForDoctorReceivable(previousOrder)
+        && isDeliveredForDoctorReceivable(updatedOrder);
 }
 
 export function shouldCreateExternalLabPayableObligationForStatusChange(

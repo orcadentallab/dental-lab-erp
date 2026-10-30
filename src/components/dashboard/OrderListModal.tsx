@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { getOrderListColumns, orderListActionsClass } from './orderListLayout';
 
 interface OrderListModalProps {
     title: string;
@@ -9,23 +10,23 @@ interface OrderListModalProps {
     showDoctor?: boolean;
     showDeliveryDate?: boolean;
     hideCaseId?: boolean;
+    showOrderHeaders?: boolean;
 }
 
-export default function OrderListModal({ title, isOpen, onClose, children, showDoctor = false, showDeliveryDate = false, hideCaseId = false }: OrderListModalProps) {
+export default function OrderListModal({ title, isOpen, onClose, children, showDoctor = false, showDeliveryDate = false, hideCaseId = false, showOrderHeaders = true }: OrderListModalProps) {
     if (!isOpen) return null;
 
-    const columns = hideCaseId
-        ? (showDeliveryDate ? 'grid-cols-5' : 'grid-cols-4')
-        : (showDeliveryDate ? 'grid-cols-6' : 'grid-cols-5');
+    const columns = getOrderListColumns(hideCaseId, showDeliveryDate);
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-7xl max-h-[90vh] overflow-hidden flex flex-col" dir="rtl">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                     <h2 className="text-xl font-bold text-gray-800 dark:text-white">{title}</h2>
                     <button
                         onClick={onClose}
+                        aria-label="إغلاق"
                         className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
                     >
                         <X size={24} />
@@ -33,10 +34,10 @@ export default function OrderListModal({ title, isOpen, onClose, children, showD
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4">
                     {/* Headers — mirrors OrderListItem's row layout (content grid + fixed actions column) */}
-                    <div className="hidden md:flex md:items-center w-full px-3 pb-3 mb-3 border-b border-gray-300 dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-300">
-                        <div className={`flex-1 grid ${columns} gap-4`}>
+                    {showOrderHeaders && <div className="hidden lg:flex lg:items-center w-full px-3 pb-3 mb-3 border-b border-gray-300 dark:border-gray-600 font-bold text-sm text-gray-700 dark:text-gray-300">
+                        <div className={`flex-1 min-w-0 grid ${columns} gap-4`}>
                             {!hideCaseId && <div>رقم الكيس</div>}
                             <div>{showDoctor ? 'المريض / الطبيب' : 'المريض'}</div>
                             <div>الخدمات</div>
@@ -44,8 +45,8 @@ export default function OrderListModal({ title, isOpen, onClose, children, showD
                             {showDeliveryDate && <div>تاريخ التسليم</div>}
                             <div>الحالة</div>
                         </div>
-                        <div className="w-72 shrink-0 mr-4" aria-hidden="true" />
-                    </div>
+                        <div className={`${orderListActionsClass} text-left`}>الإجراءات</div>
+                    </div>}
 
                     {/* Order List */}
                     <div className="space-y-1">

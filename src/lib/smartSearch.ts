@@ -1,5 +1,6 @@
 import type { Doctor, Order } from '../services/db';
 import { normalizeArabicText } from './searchUtils';
+import { isDeliveredForDoctorReceivable } from '../constants/orderLifecycle';
 
 const normalize = (value: string) => normalizeArabicText(value)
     .toLowerCase()
@@ -120,8 +121,8 @@ export const buildSmartSearchResults = (
             : undefined);
 
     return {
-        activeOrders: orderMatches.filter(({ order }) => !order.isArchived && order.status !== 'Delivered').map(({ order }) => order),
-        deliveredOrders: orderMatches.filter(({ order }) => !order.isArchived && order.status === 'Delivered').map(({ order }) => order),
+        activeOrders: orderMatches.filter(({ order }) => !order.isArchived && !isDeliveredForDoctorReceivable(order)).map(({ order }) => order),
+        deliveredOrders: orderMatches.filter(({ order }) => !order.isArchived && isDeliveredForDoctorReceivable(order)).map(({ order }) => order),
         archivedOrders: orderMatches.filter(({ order }) => order.isArchived).map(({ order }) => order),
         doctors: doctorMatches.map(({ doctor }) => ({
             doctor,

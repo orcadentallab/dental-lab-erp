@@ -19,7 +19,7 @@ import { exportToExcel } from '../../lib/exportUtils';
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { getDoctorServicePrice } from '../../lib/pricingUtils';
-import { isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, isNonProductiveOrder } from '../../constants/orderLifecycle';
+import { getEffectiveOrderDisplayStatus, isDoctorStatementIncluded, getDoctorReceivableAmount, getLabCostAmount, getOfficialStatementDate, normalizeStatus, isNonProductiveOrder } from '../../constants/orderLifecycle';
 import { formatOpenDateRangeLabel, isDateInOpenRange } from '../../utils/dateRange';
 
 export interface OrderAnalysisRow {
@@ -268,7 +268,7 @@ export default function OrderAnalysisTab({
                 priceReasons: priceReasons.join(' • '),
                 costReasons: costReasons.join(' • '),
                 manualReasons: allReasons.join(' • '),
-                status: o.status || '—',
+                status: getEffectiveOrderDisplayStatus(o) || '—',
             });
         });
 
