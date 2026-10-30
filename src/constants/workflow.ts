@@ -19,6 +19,17 @@ export const PRODUCTION_STATUSES = [
 
 export type ProductionStatus = typeof PRODUCTION_STATUSES[number];
 
+export const PRODUCTION_STATUS_LABELS_EN: Record<ProductionStatus, string> = {
+    not_started: 'Not Started',
+    designing: 'Under Design',
+    in_production: 'Under Production',
+    try_in_ready: 'Try-In Ready',
+    waiting_doctor: 'Waiting for Doctor Approval',
+    finalization: 'Finalization',
+    final_ready: 'Final Ready',
+    final_delivered: 'Final Delivered',
+};
+
 export const ISSUE_STATES = [
     'none',
     'returned',

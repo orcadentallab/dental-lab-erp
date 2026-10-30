@@ -21,7 +21,7 @@ import {
 } from '../../constants/rejectionFinancialDecision';
 import { issueCauseLabel, getStageForCause, type IssueContext } from '../../constants/issueCauses';
 import clsx from 'clsx';
-import { PRODUCTION_STATUSES, PRODUCTION_STATUS_LABELS_AR, isProductionStatus } from '../../constants/workflow';
+import { PRODUCTION_STATUSES, PRODUCTION_STATUS_LABELS_EN, isProductionStatus } from '../../constants/workflow';
 import { adminOverrideProductionStatus } from '../../services/supabase/orderWorkflow';
 
 /** Actions whose "reason" is now an explicit cause pick, not free text. */
@@ -427,7 +427,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                             <option value="" disabled>{isOverriding ? 'جاري التحديث...' : 'اختر حالة الإنتاج...'}</option>
                             {PRODUCTION_STATUSES.map(status => (
                                 <option key={status} value={status}>
-                                    {PRODUCTION_STATUS_LABELS_AR[status]}
+                                    {PRODUCTION_STATUS_LABELS_EN[status]}
                                 </option>
                             ))}
                         </select>

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { PRODUCTION_STATUSES, PRODUCTION_STATUS_LABELS_AR } from '../../src/constants/workflow';
+import { PRODUCTION_STATUSES, PRODUCTION_STATUS_LABELS_EN } from '../../src/constants/workflow';
 
 describe('admin production override', () => {
     it('uses the canonical production values and labels instead of legacy choices', () => {
@@ -8,11 +8,11 @@ describe('admin production override', () => {
         const menu = source.slice(source.indexOf('{/* Admin production override */}'), source.indexOf('<IssueStateCorrectionModal'));
         expect(menu).toContain("userRole === 'admin'");
         expect(menu).toContain('PRODUCTION_STATUSES.map');
-        expect(menu).toContain('PRODUCTION_STATUS_LABELS_AR[status]');
+        expect(menu).toContain('PRODUCTION_STATUS_LABELS_EN[status]');
         expect(menu).toContain('handleAdminProductionOverride');
         expect(menu).not.toContain('Pending Review');
         expect(PRODUCTION_STATUSES).toHaveLength(8);
-        for (const status of PRODUCTION_STATUSES) expect(PRODUCTION_STATUS_LABELS_AR[status]).toBeTruthy();
+        for (const status of PRODUCTION_STATUSES) expect(PRODUCTION_STATUS_LABELS_EN[status]).toMatch(/^[A-Za-z -]+$/);
     });
 
     it('verifies the authenticated admin and preserves final-delivery accounting', () => {

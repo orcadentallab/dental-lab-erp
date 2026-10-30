@@ -1365,7 +1365,7 @@ export default function DashboardNew() {
 
 
             {/* Internal Lab Floor Board (4 Core Numbers) */}
-            {canViewFloorBoard && (
+            {canViewFloorBoard && internalActiveOrders.length > 0 && (
                 <div className="bg-gradient-to-l from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg border border-indigo-800/40 space-y-4">
                     <div className="flex items-center justify-between flex-wrap gap-3">
                         <div className="flex items-center gap-3">
