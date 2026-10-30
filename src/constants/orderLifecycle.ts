@@ -91,6 +91,17 @@ type CashRevenueCandidate = Partial<Transaction> & {
     entity_id?: string;
 };
 
+/** Match order_edit_requires_admin_approval in SQL. Only this case's own
+ * delivery evidence counts; a remake never inherits its parent's delivery.
+ * Legacy display status and the planned delivery date are not evidence.
+ */
+export function requiresAdminApprovalForOrderEdit(order: LifecycleOrder): boolean {
+    return (order.productionStatus || order.production_status) === 'final_delivered'
+        || Boolean(order.firstDeliveredAt || order.first_delivered_at)
+        || Boolean(order.actualDeliveryDate || order.actual_delivery_date)
+        || order.legacyDeliveryConfirmed === true;
+}
+
 export interface OrderFinancialState {
     order?: LifecycleOrder;
     paymentStatus?: 'unpaid' | 'partially_paid' | 'paid';

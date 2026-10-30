@@ -612,7 +612,7 @@ export function getLandingRoute(user: User | null | undefined): string {
         case 'coordinator':
             return '/finance/transactions';
         case 'designer':
-            return '/orders';
+            return '/dashboard';
         default:
             return caps.has('view_dashboard') ? '/dashboard' : '/orders';
     }
@@ -681,7 +681,7 @@ export const DEFAULT_FAVOURITES: Record<string, string[]> = {
     // The coordinator's two jobs, in the order the day tends to demand them.
     coordinator: ['finance.caseRegistration', 'orders', 'doctors'],
     representative: ['orders', 'doctors'],
-    designer: ['orders', 'production.myTasks'],
+    designer: ['dashboard'],
     doctor: [],
 };
 

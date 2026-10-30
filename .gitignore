@@ -57,6 +57,7 @@ truncate.sql
 # Temporary workstation files and private transfer packages
 .tmp/
 .transfer-backup/
+/.deployment/
 .claude/settings.local.json
 
 tmp/

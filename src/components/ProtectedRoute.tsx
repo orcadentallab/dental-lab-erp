@@ -1,12 +1,15 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { isDesignerUser, isOtherEmployeeOnly } from '../lib/userRoles';
+import { hasCapability, isDesignerUser, isOtherEmployeeOnly, type Capability } from '../lib/userRoles';
+
+import { getLandingRoute } from '../lib/navigation';
 
 interface ProtectedRouteProps {
     allowedRoles?: string[];
+    requiredCapability?: Capability;
 }
 
-export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+export default function ProtectedRoute({ allowedRoles, requiredCapability }: ProtectedRouteProps) {
     const { user, isAuthenticated, isLoading } = useAuth();
 
     if (isLoading) {
@@ -15,6 +18,10 @@ export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
 
     if (!isAuthenticated) {
         return <Navigate to="/login" replace />;
+    }
+
+    if (requiredCapability && !hasCapability(user, requiredCapability)) {
+        return <Navigate to={getLandingRoute(user)} replace />;
     }
 
     const matchesAllowedRole = !allowedRoles || !user || allowedRoles.includes(user.role) || (allowedRoles.includes('designer') && isDesignerUser(user));

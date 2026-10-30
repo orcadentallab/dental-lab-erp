@@ -89,7 +89,9 @@ function App() {
                     <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer']} />}>
                       <Route element={<DashboardLayout />}>
                         <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/orders" element={<Orders />} />
+                        <Route element={<ProtectedRoute requiredCapability="view_orders" />}>
+                          <Route path="/orders" element={<Orders />} />
+                        </Route>
                         <Route element={<ProtectedRoute allowedRoles={['admin', 'representative', 'coordinator']} />}>
                           <Route path="/doctors" element={<Doctors />} />
                         </Route>
@@ -111,7 +113,7 @@ function App() {
 
                   {/* Production floor. The technician role exists only here:
                       everything else in the app stays closed to it. */}
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'technician', 'production_manager', 'designer']} />}>
+                  <Route element={<ProtectedRoute requiredCapability="view_my_tasks" />}>
                     <Route element={<DashboardLayout />}>
                       <Route path="/production/my-tasks" element={<MyTasks />} />
                     </Route>

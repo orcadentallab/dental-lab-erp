@@ -39,6 +39,7 @@ import CaseAttachments from './CaseAttachments';
 import CaseSlipPrint from './CaseSlipPrint';
 import { uploadCaseFilesBatch } from '../../lib/storage';
 import { capacityService } from '../../services/supabase/capacityService';
+import { getOrderFormDesigners, loadOrderFormList } from '../../lib/orderFormLoading';
 
 const calculateOrderCost = (
     workflowType: 'full' | 'split',
@@ -143,7 +144,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     // const [doctorSearchTerm, setDoctorSearchTerm] = useState(''); // REPLACED BY DOCTOR SELECT
     // const [isDoctorDropdownOpen, setIsDoctorDropdownOpen] = useState(false); // REPLACED BY DOCTOR SELECT
-    const [selectedMainDoctorId, setSelectedMainDoctorId] = useState('');
+    const [selectedMainDoctorId, setSelectedMainDoctorId] = useState(initialData?.doctorId || '');
     const [selectedChildDoctorId, setSelectedChildDoctorId] = useState('');
     const [branchName, setBranchName] = useState(initialData?.branchName || '');
     const [patientName, setPatientName] = useState(initialData?.patientName || '');
@@ -153,6 +154,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [discount, setDiscount] = useState(initialData?.discount || 0);
     const [stagedInstructionFiles, setStagedInstructionFiles] = useState<File[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isLoadingData, setIsLoadingData] = useState(true);
+    const [dataLoadError, setDataLoadError] = useState(false);
     const [hasTriedSubmit, setHasTriedSubmit] = useState(false);
     const [showSlipPrint, setShowSlipPrint] = useState(false);
 
@@ -389,33 +392,41 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     useEffect(() => {
         const loadData = async () => {
+            setIsLoadingData(true);
+            setDataLoadError(false);
             try {
-                const [doctorsData, servicesData, familiesData, suppliersData, usersData] = await Promise.all([
-                    db.getDoctors(),
-                    db.getServices(),
-                    db.getServiceFamilies(),
-                    db.getSuppliers(),
-                    db.getUsers(),
+                const [doctorResult, serviceResult, familyResult, supplierResult, userResult] = await Promise.all([
+                    loadOrderFormList(() => db.getDoctors()),
+                    loadOrderFormList(() => db.getServices()),
+                    loadOrderFormList(() => db.getServiceFamilies()),
+                    loadOrderFormList(() => db.getSuppliers()),
+                    loadOrderFormList(() => db.getUsers()),
                 ]);
+                const doctorsData = doctorResult.data;
+                const servicesData = serviceResult.data;
+                const familiesData = familyResult.data;
+                const suppliersData = supplierResult.data;
+                const usersData = userResult.data;
+                const designersData = getOrderFormDesigners(usersData, initialData?.designerId);
                 setDoctors(doctorsData);
                 setServices(servicesData);
                 setFamilies(familiesData);
+                setSuppliers(suppliersData);
+                setRepresentatives(usersData.filter(u => canBeOrderRepresentative(u)));
+                setDesigners(designersData);
+                if (initialData?.doctorId) {
+                    const doctor = doctorsData.find(d => d.id === initialData.doctorId);
+                    setSelectedMainDoctorId(doctor?.parentId || initialData.doctorId);
+                    setSelectedChildDoctorId(doctor?.parentId ? doctor.id : '');
+                }
+                if ([doctorResult, serviceResult, familyResult, supplierResult, userResult].some(result => result.failed)) {
+                    setDataLoadError(true);
+                    return;
+                }
 
                 if (!initialData && servicesData.length > 0) {
                     setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: servicesData[0].name } : i));
                 }
-
-                if (initialData && initialData.doctorId) {
-                    // const doc = doctorsData.find(d => d.id === initialData.doctorId);
-                    // if (doc) setDoctorSearchTerm(doc.name);
-                }
-
-                const designersData = usersData.filter(u => isDesignerUser(u));
-                setSuppliers(suppliersData);
-                setRepresentatives(usersData.filter(u => canBeOrderRepresentative(u)));
-                setDesigners(designersData);
-
-
 
                 if (initialData) {
                     const initialItems: FormOrderItem[] = initialData.items && initialData.items.length > 0 ? initialData.items.map(i => ({
@@ -515,6 +526,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
             } catch (error) {
                 console.error('Error loading form data:', error);
+                setDataLoadError(true);
+            } finally {
+                setIsLoadingData(false);
             }
         };
         loadData();
@@ -627,7 +641,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isSubmitting) return;
+        if (isSubmitting || isLoadingData || dataLoadError) return;
         setHasTriedSubmit(true);
 
         if (!selectedMainDoctorId) {
@@ -774,6 +788,11 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4 text-right font-sans max-w-7xl mx-auto">
+            {dataLoadError && (
+                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+                    تعذر تحميل بعض بيانات الطبيب أو الخدمات أو فريق العمل. الحفظ متوقف لحماية بيانات الحالة؛ احتفظ بأي تعديلات غير محفوظة ثم حدّث الصفحة لإعادة المحاولة.
+                </div>
+            )}
             {/* Header / Top Actions */}
             <div className="sticky top-0 z-20 -mx-3 flex flex-col items-stretch gap-3 border-b border-surface-100 bg-white/95 px-3 pb-3 pt-1 backdrop-blur lg:static lg:mx-0 lg:flex-row lg:items-center lg:justify-between lg:border-0 lg:bg-transparent lg:p-0 lg:backdrop-blur-none">
                 <h2 className="text-lg sm:text-xl font-bold text-surface-800 dark:text-surface-100 flex items-center gap-2">
@@ -810,7 +829,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         <span>{readOnly ? 'إغلاق' : 'إلغاء'}</span>
                     </Button>
                     {!readOnly && (
-                        <Button type="submit" size="md" disabled={isSubmitting} className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
+                        <Button type="submit" size="md" disabled={isSubmitting || isLoadingData || dataLoadError} className="px-6 sm:px-8 shadow-lg shadow-primary-500/20 flex-1 sm:flex-initial">
                             <span>{isSubmitting ? 'جاري الحفظ...' : (initialData ? 'حفظ التعديلات' : 'تأكيد الأوردر')}</span>
                         </Button>
                     )}
@@ -1286,7 +1305,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                         disabled={isFieldDisabled('designer_id')}
                                     >
                                         <option value="">اختر المصمم...</option>
-                                        {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                        {designers.map(d => <option key={d.id} value={d.id} disabled={!isDesignerUser(d)}>{d.name}</option>)}
                                     </select>
                                 </div>
 
@@ -1374,7 +1393,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                             disabled={isFieldDisabled('designer_id')}
                                         >
                                             <option value="">اختر المصمم...</option>
-                                            {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                            {designers.map(d => <option key={d.id} value={d.id} disabled={!isDesignerUser(d)}>{d.name}</option>)}
                                         </select>
                                     </div>
                                 )}

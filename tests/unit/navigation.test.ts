@@ -36,10 +36,10 @@ function makeUser(role: Role, overrides: Partial<User> = {}): User {
  */
 const ROUTE_ROLES: Record<string, Role[]> = {
     '/dashboard': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
-    '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
+    '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant'],
     '/doctors': ['admin', 'representative', 'coordinator'],
     '/doctors/retention': ['admin'],
-    '/production/my-tasks': ['admin', 'technician', 'production_manager', 'designer'],
+    '/production/my-tasks': ['admin', 'technician', 'production_manager'],
     '/production/board': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/machines': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/shadow': ['admin', 'technician', 'production_manager', 'coordinator'],
@@ -157,10 +157,10 @@ describe('visibility never disagrees with authorization', () => {
         expect(new Set(paths).size).toBe(paths.length);
     });
 
-    it('a designer Production entry goes to My Tasks, not the board', () => {
+    it('a designer has no Production entry', () => {
         const caps = getCapabilities(makeUser('designer'));
         const production = visibleSidebarEntries(caps).find(entry => entry.id === 'production');
-        expect(production?.path).toBe('/production/my-tasks');
+        expect(production).toBeUndefined();
     });
 
     it('a workspace owner does not also get the standalone fallback entry', () => {

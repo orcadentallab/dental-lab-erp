@@ -163,17 +163,18 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
 
     if (isAdmin || isFloor || isDesigner || hasRepScope || hasAccountantScope || isExternalLab) {
         caps.add('view_dashboard');
-        caps.add('view_orders');
+        // Designers manage assigned cases exclusively in their dashboard.
+        if (role !== 'designer') caps.add('view_orders');
         caps.add('view_accounts');
     }
     // The floor board and the shadow report are a supervisory view; the
-    // designer only ever gets the shared task queue. Route guards in
+    // designers work exclusively in their dashboard. Route guards in
     // App.tsx already draw that line, so the capabilities must too.
     // The coordinator reads the board -- knowing where a case is, is the job
     // -- but never moves a stage run. That separation is enforced in the
     // database by can_work_production(); this only matches it in the UI.
     if (isAdmin || isFloor || isCoordinator) caps.add('view_production');
-    if (isAdmin || isFloor || isDesigner) caps.add('view_my_tasks');
+    if (isAdmin || isFloor || (isDesigner && role !== 'designer')) caps.add('view_my_tasks');
     if (isAdmin || isFloor || hasAccountantScope) {
         caps.add('view_external_work');
         caps.add('view_inventory');

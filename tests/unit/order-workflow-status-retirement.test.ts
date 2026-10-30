@@ -112,7 +112,7 @@ describe('order workflow legacy status retirement', () => {
         );
 
         expect(functionSource).toContain(".not('issue_state', 'in', '(\"doctor_rejected\",\"lab_rejected\",\"cancelled\",\"redo\")')");
-        expect(functionSource).toContain("production_status.neq.final_delivered,issue_state.neq.none");
+        expect(functionSource).toContain("production_status.neq.final_delivered,production_status.is.null");
         expect(functionSource).not.toContain(".not('status'");
     });
 
