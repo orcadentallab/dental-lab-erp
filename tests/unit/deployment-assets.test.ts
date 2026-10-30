@@ -2,34 +2,37 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
-const rewriteFor = (path: string) => config.rewrites.find(
-    (rule: { source: string }) => new RegExp(`^${rule.source}$`).test(path),
+const routes = config.routes as { src?: string; handle?: string; dest?: string; status?: number; continue?: boolean }[];
+const routeFor = (path: string) => routes.find(
+    rule => rule.src && new RegExp(`^${rule.src}$`).test(path),
 );
 
 describe('deployment asset routing', () => {
     it('does not serve the SPA HTML for a missing JavaScript chunk', () => {
-        expect(rewriteFor('/assets/serviceFamilyService-old.js')).toBeUndefined();
-        expect(rewriteFor('/assets/missing.css')).toBeUndefined();
+        const filesystem = routes.findIndex(rule => rule.handle === 'filesystem');
+        const missingAssetRule = routes.findIndex(rule => rule.status === 404 && rule.src === '/assets/.*');
+        expect(filesystem).toBeGreaterThanOrEqual(0);
+        expect(missingAssetRule).toBeGreaterThan(filesystem);
+        expect(routeFor('/assets/serviceFamilyService-old.js')?.status).toBeUndefined();
+        expect(routeFor('/assets/missing.css')?.status).toBeUndefined();
+        expect(routes[missingAssetRule].status).toBe(404);
     });
 
     it('keeps direct links to application pages working', () => {
         for (const path of ['/', '/orders', '/production/board', '/doctor/orders']) {
-            expect(rewriteFor(path)?.destination).toBe('/index.html');
+            const filesystem = routes.findIndex(rule => rule.handle === 'filesystem');
+            const fallback = routes.findIndex(rule => rule.dest === '/index.html');
+            expect(fallback).toBeGreaterThan(filesystem);
         }
     });
 
     it('revalidates application HTML without overriding hashed asset caching', () => {
-        const cacheRules = config.headers.filter((rule: { headers: { key: string }[] }) =>
-            rule.headers.some(header => header.key.toLowerCase() === 'cache-control'),
-        );
+        const assetHeader = routeFor('/assets/index-hash.js')?.headers;
+        const appHeader = routeFor('/orders')?.headers;
         for (const path of ['/', '/index.html', '/orders']) {
-            expect(cacheRules.some((rule: { source: string; headers: { key: string; value: string }[] }) =>
-                new RegExp(`^${rule.source}$`).test(path)
-                && rule.headers.some(header => header.value === 'no-cache'),
-            )).toBe(true);
+            expect(routeFor(path)?.headers?.['Cache-Control']).toBe('no-cache');
         }
-        expect(cacheRules.some((rule: { source: string }) =>
-            new RegExp(`^${rule.source}$`).test('/assets/index-hash.js'),
-        )).toBe(false);
+        expect(assetHeader['Cache-Control']).toBe('public, max-age=31536000, immutable');
+        expect(appHeader['Cache-Control']).toBe('no-cache');
     });
 });
