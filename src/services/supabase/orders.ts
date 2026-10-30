@@ -1536,7 +1536,8 @@ export async function getDesignerDashboardOrders(designerId?: string): Promise<O
             .select('*, order_items(*), order_comments(*)')
             .or('is_deleted.eq.false,is_deleted.is.null')
             .eq('workflow_type', 'split')
-            .not('status', 'in', '("Delivered","Completed","Doctor Rejected","Lab Rejected","Cancelled")')
+            .not('issue_state', 'in', '("doctor_rejected","lab_rejected","cancelled","redo")')
+            .or('production_status.neq.final_delivered,production_status.is.null')
             .or('is_archived.eq.false,is_archived.is.null')
             .order('created_at', { ascending: false })
             .order('id');

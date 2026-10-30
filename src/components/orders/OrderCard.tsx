@@ -104,6 +104,7 @@ function OrderCard({
     currentUser
 }: OrderCardProps) {
     const { success, error: toastError } = useToast();
+    const isDesigner = userRole === 'designer' || currentUser?.role === 'designer';
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
         if (!rawUrl) return;
@@ -474,7 +475,7 @@ function OrderCard({
                             )}
 
                             {/* Accept Order Action (for Pending Review) */}
-                            {onAccept && order.status === 'Pending Review' && (
+                            {!isDesigner && onAccept && order.status === 'Pending Review' && (
                                 <Button
                                     size="sm"
                                     onClick={() => onAccept(order)}
@@ -558,7 +559,7 @@ function OrderCard({
                                     <div className="flex items-center gap-1 flex-wrap mt-1">
                                         <ProductionStatusBadge status={getEffectiveProductionStatus(order)} />
                                         <IssueStateBadge state={getEffectiveIssueState(order)} />
-                                        <CaseLocationChip
+                                        {!isDesigner && <CaseLocationChip
                                             location={getCaseLocation(
                                                 getEffectiveProductionStatus(order),
                                                 getEffectiveIssueState(order),
@@ -566,8 +567,8 @@ function OrderCard({
                                             )}
                                             stageName={isDelivered || getEffectiveProductionStatus(order) === 'final_delivered' ? undefined : activeStage?.stageName}
                                             stageSince={isDelivered || getEffectiveProductionStatus(order) === 'final_delivered' ? undefined : formatStageDuration(activeStage?.since ?? null)}
-                                        />
-                                        {activeStage && !isDelivered && getEffectiveProductionStatus(order) !== 'final_delivered' && (
+                                        />}
+                                        {!isDesigner && activeStage && !isDelivered && getEffectiveProductionStatus(order) !== 'final_delivered' && (
                                             <span
                                                 className={clsx(
                                                     "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border",
@@ -586,7 +587,7 @@ function OrderCard({
                                 </div>
                             </div>
 
-                            {!hideSensitiveInfo && (
+                            {!isDesigner && !hideSensitiveInfo && (
                                 <div className="flex items-center gap-2 flex-1">
                                     <div className="p-1.5 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-500 shrink-0">
                                         <User size={14} />
@@ -641,7 +642,7 @@ function OrderCard({
 
                             {/* Assignment Info */}
                             <div className="flex flex-wrap gap-2 mt-1.5 origin-right">
-                                {order.supplierId && suppliers[order.supplierId] && (
+                                {!isDesigner && order.supplierId && suppliers[order.supplierId] && (
                                     <div
                                         className="inline-flex max-w-full items-center gap-1.5 bg-teal-50 dark:bg-teal-900/10 px-2 py-0.5 rounded-md text-xs border border-teal-100 dark:border-teal-800/30"
                                         title={`المعمل: ${suppliers[order.supplierId]}`}
@@ -832,7 +833,7 @@ function OrderCard({
                         {/* Left: Quick Actions */}
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1">
                             {/* Workflow Action Bar (WF-4) */}
-                            <WorkflowActionBar
+                            {!isDesigner && <WorkflowActionBar
                                 order={order}
                                 userRole={userRole}
                                 onStatusChange={onStatusChange}
@@ -840,7 +841,7 @@ function OrderCard({
                                 showRejectedDesignerCost={showDesignerCost}
                                 showLegacyFallback={userRole === 'admin'}
                                 disabled={userRole === 'lab' && order.status === 'Delivered'}
-                            />
+                            />}
 
                             {/* Archive Action for Cancelled/Rejected only — NOT for Returned orders */}
                             {canArchiveOrders && isRedStatus && !order.isArchived && !order.isDeleted && (
@@ -902,7 +903,7 @@ function OrderCard({
                         </div>
 
                         {/* Right: Admin Tools */}
-                        <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
+                        {!isDesigner && <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
                             {(userRole === 'admin' || userRole === 'representative' || currentUser?.customPermissions?.edit_orders) && onEdit && (
                                 <Button size="sm" variant="ghost" aria-label="تعديل الأوردر" className="min-h-10 h-10 w-10 p-0 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />
@@ -915,7 +916,7 @@ function OrderCard({
                             )}
 
 
-                            {onExportInvoice && (
+                            {!isDesigner && !hideSensitiveInfo && onExportInvoice && (
                                 <Button size="sm" variant="ghost" aria-label="تصدير فاتورة الأوردر PDF" className="min-h-10 h-10 w-10 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => onExportInvoice(order)} title="فاتورة PDF">
                                     <FileDown size={14} />
                                 </Button>
@@ -923,7 +924,7 @@ function OrderCard({
                             <Button size="sm" variant="ghost" aria-label="عرض سجل الأوردر" className="min-h-10 h-10 w-10 p-0 text-primary-500 sm:min-h-0 sm:h-7 sm:w-7" onClick={handleShowHistory} title="سجل">
                                 <History size={14} />
                             </Button>
-                        </div>
+                        </div>}
                     </div>
                 </div>
             </Card>

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
-import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted, getDesignSubmissionError } from '../lib/designerOrderUtils';
+import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted, isDesignerDashboardOrderVisible, getDesignSubmissionError } from '../lib/designerOrderUtils';
 import { ErrorHandler } from '../lib/errorHandler';
 import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
@@ -28,7 +28,7 @@ interface ExpandedTextPreview {
     accentClass: string;
 }
 
-const DESIGNER_DASHBOARD_CACHE_KEY = 'designer-dashboard-cache-v1';
+const DESIGNER_DASHBOARD_CACHE_KEY = 'designer-dashboard-cache-v2';
 const DESIGNER_DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface DesignerDashboardCache {
@@ -165,7 +165,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             }
 
             const results = await Promise.all(promises);
-            const dashboardOrders: Order[] = results[0];
+            const dashboardOrders: Order[] = results[0].filter(isDesignerDashboardOrderVisible);
             const allDoctors = results[1];
             const allUsers = results[2] || []; // Undefined if not fetched
 
@@ -208,7 +208,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     const updateOrderInState = useCallback((updatedOrder: Order | null) => {
         if (!updatedOrder) return;
-        setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order));
+        setOrders(prev => prev.map(order => order.id === updatedOrder.id ? updatedOrder : order).filter(isDesignerDashboardOrderVisible));
     }, []);
 
     const handleTechAction = useCallback(async (
@@ -432,17 +432,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     const filteredOrders = useMemo(() => {
         return orders.filter(order => {
-            // Filter out orders that the designer has already rejected or requested details for,
-            // or orders waiting for doctor approval.
-            if (
-                order.technicianStatus === 'Rejected' ||
-                order.technicianStatus === 'NeedDetails' ||
-                order.designStatus === 'waiting_approval' ||
-                order.designStatus === 'returned' ||
-                getEffectiveProductionStatus(order) === 'waiting_doctor'
-            ) {
-                return false;
-            }
+            if (!isDesignerDashboardOrderVisible(order)) return false;
 
             const s = (order.designStatus || 'pending');
             const matchesStatus = statusFilter === 'all' || s === statusFilter;
@@ -466,6 +456,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     const pendingDecisionOrders = useMemo(
         () => orders.filter(o =>
+            isDesignerDashboardOrderVisible(o) &&
             (!o.designStatus || o.designStatus === 'pending') &&
             (isRestrictedDesigner ? o.designerId === user?.id : true)
         ),

@@ -1,4 +1,14 @@
 import type { Order } from '../services/db';
+import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
+
+/** Keep the assigned designer's active cases visible through approval and production. */
+export function isDesignerDashboardOrderVisible(order: Order): boolean {
+    return !order.isDeleted
+        && !order.isArchived
+        && getEffectiveProductionStatus(order) !== 'final_delivered'
+        && !['cancelled', 'doctor_rejected', 'lab_rejected', 'redo'].includes(getEffectiveIssueState(order))
+        && order.technicianStatus !== 'Rejected';
+}
 
 
 /** Match the design-submission RPC's V2 state guard; never advance an order implicitly. */
