@@ -5,22 +5,21 @@ import { resolve } from 'node:path';
 test.describe('WF-3 & WF-4: Workflow service operations wiring', () => {
     const serviceSource = readFileSync(resolve('src/services/supabase/orderWorkflow.ts'), 'utf8');
 
-    test('implements changeProductionStatus with role checks and double-column updates', () => {
+    test('implements changeProductionStatus with role checks and V2-only updates', () => {
         expect(serviceSource).toContain('export async function changeProductionStatus');
         expect(serviceSource).toContain('getCallerRoleAndId()');
         expect(serviceSource).toContain('canChangeProductionStatus(');
-        expect(serviceSource).toContain('mapProductionStatusToLegacy(');
         expect(serviceSource).toContain('productionStatus: newStatus');
-        expect(serviceSource).toContain('status: targetLegacyStatus');
+        expect(serviceSource).not.toContain('status: targetLegacyStatus');
         expect(serviceSource).toContain('addOrderEvent(');
         expect(serviceSource).toContain('getStatusChangeEventType(');
     });
 
-    test('implements changeIssueState with role checks, issue-to-legacy mapping, and double-column updates', () => {
+    test('implements changeIssueState with role checks and V2-only updates', () => {
         expect(serviceSource).toContain('export async function changeIssueState');
         expect(serviceSource).toContain('canChangeIssueState(');
         expect(serviceSource).toContain('issueState: newIssueState');
-        expect(serviceSource).toContain('status: targetLegacyStatus');
+        expect(serviceSource).not.toContain('status: targetLegacyStatus');
         expect(serviceSource).toContain('productionStatus: targetProductionStatus');
         expect(serviceSource).toContain('getIssueEventDetails(');
     });

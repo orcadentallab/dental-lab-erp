@@ -40,7 +40,7 @@ const baseOrder = {
 const sharedOrdersSource = readFileSync(resolve('src/services/supabase/orders.ts'), 'utf8');
 
 test.describe('financial obligation candidates', () => {
-    test('builds doctor receivable candidate for Delivered and legacy Completed', () => {
+    test('normalizes Delivered and legacy Completed to the V2 delivery label', () => {
         for (const status of ['Delivered', 'Completed']) {
             const candidate = buildDoctorReceivableCandidate({ ...baseOrder, status });
 
@@ -49,7 +49,7 @@ test.describe('financial obligation candidates', () => {
                 entityId: baseOrder.doctorId,
                 direction: OBLIGATION_DIRECTIONS.receivable,
                 triggerType: OBLIGATION_TRIGGER_TYPES.doctorDelivered,
-                triggerStatus: status,
+                triggerStatus: 'Delivered',
                 grossAmount: 1200,
                 source: OBLIGATION_SOURCES.order,
             });
@@ -138,15 +138,14 @@ test.describe('financial obligation candidates', () => {
     });
 
     test('wires prospective doctor obligations only for Delivered status updates', () => {
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Ready', 'Delivered')).toBe(true);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Completed', 'Delivered')).toBe(true);
+        const ready = { productionStatus: 'final_ready', issueState: 'none' };
+        const delivered = { productionStatus: 'final_delivered', issueState: 'none' };
+        const rejectedDelivery = { productionStatus: 'final_delivered', issueState: 'doctor_rejected' };
 
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Ready', 'Ready')).toBe(false);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Under Production', 'Ready')).toBe(false);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Under Production', 'Try In')).toBe(false);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Try In', 'Try In Approved')).toBe(false);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Delivered', 'Completed')).toBe(false);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Delivered', 'Delivered')).toBe(false);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(ready, delivered)).toBe(true);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(delivered, delivered)).toBe(false);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(delivered, ready)).toBe(false);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(ready, rejectedDelivery)).toBe(false);
     });
 
     test('wires external lab payables only for Final Ready and direct Delivered implied Final Ready', () => {
@@ -634,7 +633,7 @@ test.describe('financial obligations service wiring', () => {
     });
 
     test('orders status wiring creates only shadow doctor receivable and external lab payable tracking', () => {
-        expect(ordersSource).toContain('shouldCreateDoctorReceivableObligationForStatusChange(currentOrder.status, newStatus)');
+        expect(ordersSource).toContain('shouldCreateDoctorReceivableObligationForStatusChange(currentOrder, updatedOrder)');
         expect(ordersSource).toContain('createDoctorReceivableObligationForOrder(updatedOrder');
         expect(ordersSource).toContain('DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE');
         expect(DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE).toBe('Order delivered, but doctor receivable obligation could not be created.');
@@ -700,7 +699,8 @@ test.describe('financial obligations service wiring', () => {
         expect(ordersSource).toContain('findActiveExternalLabReadyObligationForOrder(orderId)');
         expect(ordersSource).toContain('Order left Final Ready/Delivered workflow; normal external lab payable voided. Issue settlement may be entered separately.');
         expect(ordersSource).toContain("voidReason: 'left_final_ready_or_issue_status'");
-        expect(ordersSource).toContain('previousStatus: currentOrder.status');
+        expect(ordersSource).toContain('previousStatus: previousDisplayStatus');
+        expect(ordersSource).not.toContain('previousStatus: currentOrder.status');
         expect(ordersSource).toContain('newStatus');
         expect(ordersSource).toContain('reviewNeeded: true');
         expect(ordersSource).toContain('issueSettlementMayBeNeeded: true');

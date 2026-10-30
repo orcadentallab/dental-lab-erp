@@ -38,9 +38,22 @@ describe('order financial-obligation lifecycle decisions', () => {
     });
 
     it('creates the doctor receivable only when entering Delivered', () => {
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Ready', 'Delivered')).toBe(true);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Delivered', 'Delivered')).toBe(false);
-        expect(shouldCreateDoctorReceivableObligationForStatusChange('Delivered', 'Ready')).toBe(false);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(
+            { productionStatus: 'final_ready', issueState: 'none' },
+            { productionStatus: 'final_delivered', issueState: 'none' },
+        )).toBe(true);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(
+            { productionStatus: 'final_delivered', issueState: 'none' },
+            { productionStatus: 'final_delivered', issueState: 'none' },
+        )).toBe(false);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(
+            { productionStatus: 'final_delivered', issueState: 'none' },
+            { productionStatus: 'final_ready', issueState: 'none' },
+        )).toBe(false);
+        expect(shouldCreateDoctorReceivableObligationForStatusChange(
+            { productionStatus: 'final_ready', issueState: 'none' },
+            { productionStatus: 'final_delivered', issueState: 'doctor_rejected' },
+        )).toBe(false);
     });
 
     it.each(['cancelled', 'doctor_rejected', 'lab_rejected', 'redo'] as const)(
