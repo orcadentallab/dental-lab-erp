@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, t
 import { supabase } from '../lib/supabase';
 import type { User } from '../services/db';
 import { isDesignerUser } from '../lib/userRoles';
+import { observeAuthSession } from '../lib/authSessionObserver';
 
 
 
@@ -80,16 +81,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
 
     useEffect(() => {
-        // Check active session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            fetchProfileAndSetUser(session).finally(() => setIsLoading(false));
-        });
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            fetchProfileAndSetUser(session).finally(() => setIsLoading(false));
-        });
-
-        return () => subscription.unsubscribe();
+        return observeAuthSession(supabase.auth, fetchProfileAndSetUser, error => {
+            console.error('Session initialization failed:', error);
+            setUser(null);
+        }, () => setIsLoading(false));
     }, []);
 
     /**
@@ -101,59 +96,65 @@ export function AuthProvider({ children }: PropsWithChildren) {
      */
     const login = useCallback(async (identifier: string, password: string): Promise<{ success: boolean; error?: string }> => {
         setIsLoading(true);
+        try {
+            let email = identifier;
 
-        let email = identifier;
+            // Flexible Login Strategy:
+            // 1. If identifier looks like an email (@), use it directly.
+            // 2. If not, try to resolve username -> email via RPC.
 
-        // Flexible Login Strategy:
-        // 1. If identifier looks like an email (@), use it directly.
-        // 2. If not, try to resolve username -> email via RPC.
+            if (!identifier.includes('@')) {
+                // Case-insensitive username lookup: convert input to lowercase
+                // (Assumes usernames are stored/created or handled as case-insensitive, or we should lowercase them on creation too)
+                // But for now, let's try to match exactly what is in DB? No, user wants case-insensitive entry.
+                // If DB has MixedCase, lowercasing input might fail if we don't lowercase DB check.
+                // Best approach: Send as is, let RPC handle it using ILIKE?
+                // Actually, let's update the RPC to be case insensitive if we can, or just try to find it.
 
-        if (!identifier.includes('@')) {
-            // Case-insensitive username lookup: convert input to lowercase
-            // (Assumes usernames are stored/created or handled as case-insensitive, or we should lowercase them on creation too)
-            // But for now, let's try to match exactly what is in DB? No, user wants case-insensitive entry.
-            // If DB has MixedCase, lowercasing input might fail if we don't lowercase DB check.
-            // Best approach: Send as is, let RPC handle it using ILIKE?
-            // Actually, let's update the RPC to be case insensitive if we can, or just try to find it.
+                // Wait, supabase.rpc call: 'get_email_by_username'
+                // We should check that RPC function.
 
-            // Wait, supabase.rpc call: 'get_email_by_username'
-            // We should check that RPC function.
+                const { data: resolvedEmail, error: lookupError } = await supabase.rpc('get_email_by_username', { uname: identifier.trim() });
 
-            const { data: resolvedEmail, error: lookupError } = await supabase.rpc('get_email_by_username', { uname: identifier.trim() });
-
-            if (lookupError) {
-                console.error('Username lookup failed:', lookupError);
-                // If RPC missing or error, we can't resolve username.
-                // But we shouldn't block generic login if they typed an email but forgot '@'? Unlikely.
-                setIsLoading(false);
-                return { success: false, error: 'اسم المستخدم غير موجود' };
-            }
-
-            if (resolvedEmail) {
-                if (typeof resolvedEmail === 'string') {
-                    email = resolvedEmail;
+                if (lookupError) {
+                    console.error('Username lookup failed:', lookupError);
+                    // If RPC missing or error, we can't resolve username.
+                    // But we shouldn't block generic login if they typed an email but forgot '@'? Unlikely.
+                    setIsLoading(false);
+                    return { success: false, error: 'تعذر الاتصال بخدمة تسجيل الدخول. أغلق تبويبات البرنامج الأخرى وأعد تحميل الصفحة ثم حاول مجددًا.' };
                 }
-            } else {
-                // Return specific error if username not found
-                setIsLoading(false);
-                return { success: false, error: 'اسم المستخدم غير صحيح' };
+
+                if (resolvedEmail) {
+                    if (typeof resolvedEmail === 'string') {
+                        email = resolvedEmail;
+                    }
+                } else {
+                    // Return specific error if username not found
+                    setIsLoading(false);
+                    return { success: false, error: 'اسم المستخدم غير صحيح' };
+                }
             }
-        }
 
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-        if (error) {
-            console.error('Login error:', error.message);
+            if (error) {
+                console.error('Login error:', error.message);
+                setIsLoading(false);
+                return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' };
+            }
+
+            // State update handled by onAuthStateChange
             setIsLoading(false);
-            return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' };
+            return { success: true };
+        } catch (error) {
+            console.error('Sign-in request failed:', error);
+            return { success: false, error: 'تعذر بدء جلسة تسجيل الدخول. أغلق تبويبات البرنامج الأخرى وأعد تحميل الصفحة ثم حاول مجددًا.' };
+        } finally {
+            setIsLoading(false);
         }
-
-        // State update handled by onAuthStateChange
-        setIsLoading(false);
-        return { success: true };
     }, []);
 
     const logout = useCallback(async () => {
