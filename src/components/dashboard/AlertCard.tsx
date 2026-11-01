@@ -94,14 +94,26 @@ const AlertCard = React.memo(function AlertCard({
     return (
         <div className={`${colors.bg} ${colors.border} border rounded-xl shadow-sm`}>
             <div
-                className={`flex items-center justify-between p-4 ${isClickable ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+                className={`flex items-center justify-between gap-2 p-4 ${isClickable ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
                 onClick={handleClick}
             >
-                <div className="flex items-center gap-2">
-                    <Icon className={`${colors.icon} w-5 h-5`} />
+                <div className="flex items-center gap-2 min-w-0">
+                    <Icon className={`${colors.icon} w-5 h-5 shrink-0`} />
                     <h3 className={`${colors.text} font-bold text-sm`}>{title}</h3>
                 </div>
-                <div className="flex items-center gap-2">
+                {breakdown && breakdown.length > 0 && (
+                    <div className="flex items-center gap-1 shrink-0" dir="rtl">
+                        {breakdown.map(item => (
+                            <span
+                                key={item.label}
+                                className={`${colors.text} whitespace-nowrap rounded-full border border-current/20 bg-white/60 px-1.5 py-1 text-[10px] font-bold dark:bg-black/10`}
+                            >
+                                {item.label}: {item.count}
+                            </span>
+                        ))}
+                    </div>
+                )}
+                <div className="flex items-center gap-2 shrink-0">
                     <span className={`${colors.badge} px-2.5 py-1 rounded-full text-xs font-bold`}>
                         {count}
                     </span>
@@ -115,19 +127,6 @@ const AlertCard = React.memo(function AlertCard({
                     )}
                 </div>
             </div>
-
-            {breakdown && breakdown.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-4 pb-4" dir="rtl">
-                    {breakdown.map(item => (
-                        <span
-                            key={item.label}
-                            className={`${colors.text} rounded-full border border-current/20 bg-white/60 px-2.5 py-1 text-xs font-bold dark:bg-black/10`}
-                        >
-                            {item.label}: {item.count}
-                        </span>
-                    ))}
-                </div>
-            )}
 
             {children && isExpanded && !useModal && (
                 <div className="px-4 pb-4 border-t border-gray-200 dark:border-gray-700 pt-3">
