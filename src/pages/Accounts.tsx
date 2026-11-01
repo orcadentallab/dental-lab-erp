@@ -444,7 +444,7 @@ export default function Accounts() {
                     if (o.createdAt && o.createdAt > stats.lastDate) stats.lastDate = o.createdAt;
                 }
             } else if (activeTab === 'suppliers' && o.supplierId) {
-                if (!isInSelectedRange(getOperationalOrderDate(o))) continue;
+                if (!isInSelectedRange(getOfficialStatementDate(o))) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
@@ -691,7 +691,7 @@ export default function Accounts() {
             const beforeOrders = relevantOrders.filter(o => {
                 if (o.isDeleted) return false;
                 if (o.supplierId !== selectedEntityId) return false;
-                const orderDate = getOperationalOrderDate(o);
+                const orderDate = getOfficialStatementDate(o);
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 return orderDate < dateRange.start
@@ -897,7 +897,7 @@ export default function Accounts() {
 
                 return {
                     id: o.id || '',
-                    date: getOperationalOrderDate(o),
+                    date: getOfficialStatementDate(o),
                     description: `#${o.caseId} - ${o.patientName} ${o.workflowType === 'split' ? '(خراطة فقط)' : ''}`,
                     type: 'credit' as const,
                     amount: cost,

@@ -401,7 +401,7 @@ export default function StatementsPage() {
             const countMap = new Map<string, number>();
             for (const o of orders) {
                 if (!o.supplierId) continue;
-                const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
+                const opDate = getOfficialStatementDate(o);
                 if (!inRange(opDate)) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
@@ -532,14 +532,14 @@ export default function StatementsPage() {
         if (activeTab === 'suppliers') {
             for (const o of orders) {
                 if (o.supplierId !== selectedId) continue;
-                const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
+                const opDate = getOfficialStatementDate(o);
                 if (!inRange(opDate)) continue;
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
                 if (cost === null) continue;
                 lines.push({
-                    id: o.id, date: (o.deliveryDate || o.createdAt || '').split('T')[0],
+                    id: o.id, date: getOfficialStatementDate(o),
                     description: `حالة #${o.caseId || '—'} — ${o.patientName || '—'}`,
                     type: 'debit', amount: cost,
                     services: ((o.items || []) as any[]).map(i => {
@@ -693,7 +693,7 @@ export default function StatementsPage() {
         } else if (activeTab === 'suppliers') {
             for (const o of orders) {
                 if (o.supplierId !== selectedId) continue;
-                const opDate = (o.deliveryDate || o.createdAt || '').split('T')[0];
+                const opDate = getOfficialStatementDate(o);
                 const designer = designers.find(d => d.id === o.designerId);
                 const isSalaried = designer ? hasCustomPermission(designer, FIXED_SALARY_DESIGNER_PERMISSION) : false;
                 const cost = getSupplierStatementAmount(o, isSalaried, showAllOrders);
