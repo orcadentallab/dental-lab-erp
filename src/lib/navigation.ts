@@ -13,6 +13,7 @@
  *   3. hub       -- the reports catalogue, a page rather than a menu
  */
 import type { User } from '../services/db';
+import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../constants/externalRegistration';
 import { getCapabilities, isOtherEmployeeOnly, type Capability } from './userRoles';
 
 export type NavSection = 'top' | 'operations' | 'management';
@@ -132,12 +133,12 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             matches: ['/balance-snapshot'],
             aliases: ['المراجعة المالية', 'لقطة الأرصدة', 'الأرصدة', 'reconciliation', 'snapshot'],
         },
-        {
+        ...(LEGACY_EXTERNAL_REGISTRATION_ENABLED ? [{
             id: 'finance.caseRegistration', labelAr: 'الحالات غير المسجلة', labelEn: 'Unregistered Cases',
             path: '/case-registration', capability: 'view_finance',
             badge: 'unregisteredCases',
             aliases: ['تسجيل الحالات', 'غير مسجلة', 'unregistered', 'case registration'],
-        },
+        } satisfies WorkspaceTab] : []),
     ],
     // The client-side counterpart to Finance: everything about a doctor's
     // account rather than the lab's own money. Split out on its own so
@@ -652,10 +653,10 @@ export const QUICK_ACTIONS: QuickAction[] = [
         id: 'action.recordPayment', labelAr: 'تسجيل دفعة', labelEn: 'Record Payment',
         path: '/finance/ledgers', capability: 'view_finance', groupAr: 'المالية',
     },
-    {
+    ...(LEGACY_EXTERNAL_REGISTRATION_ENABLED ? [{
         id: 'action.registerCase', labelAr: 'تسجيل حالة', labelEn: 'Register Case',
         path: '/case-registration', capability: 'view_finance', groupAr: 'المالية',
-    },
+    } satisfies QuickAction] : []),
     {
         id: 'action.startTask', labelAr: 'ابدأ مهمة', labelEn: 'Start a Task',
         path: '/production/my-tasks', capability: 'view_my_tasks', groupAr: 'الإنتاج',
@@ -677,9 +678,9 @@ export const DEFAULT_FAVOURITES: Record<string, string[]> = {
     lab: ['orders', 'finance.accounts'],
     technician: ['production.myTasks', 'production.board'],
     production_manager: ['production.board', 'production.myTasks', 'orders'],
-    accountant: ['finance.caseRegistration', 'finance.aging', 'finance.accounts'],
+    accountant: [...(LEGACY_EXTERNAL_REGISTRATION_ENABLED ? ['finance.caseRegistration'] : []), 'finance.aging', 'finance.accounts'],
     // The coordinator's two jobs, in the order the day tends to demand them.
-    coordinator: ['finance.caseRegistration', 'orders', 'doctors'],
+    coordinator: [...(LEGACY_EXTERNAL_REGISTRATION_ENABLED ? ['finance.caseRegistration'] : []), 'orders', 'doctors'],
     representative: ['orders', 'doctors'],
     designer: ['dashboard'],
     doctor: [],

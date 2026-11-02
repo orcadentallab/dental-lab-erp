@@ -1,4 +1,5 @@
 import React from 'react';
+import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../../constants/externalRegistration';
 import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import type { Order } from '../../services/db';
@@ -206,7 +207,7 @@ const OrderListItem = React.memo(function OrderListItem({
                                     تمت المراجعة
                                 </button>
                             )}
-                            {showRegister && !order.isRegistered && isDelivered && onRegister && (
+                            {LEGACY_EXTERNAL_REGISTRATION_ENABLED && showRegister && !order.isRegistered && isDelivered && onRegister && (
                                 <button
                                     onClick={() => onRegister(order.id)}
                                     className="flex-1 md:flex-none justify-center text-xs font-bold bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg transition-colors shadow-sm"

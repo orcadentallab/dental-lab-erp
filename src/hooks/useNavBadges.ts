@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from 'react';
 import { db } from '../services/db';
+import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../constants/externalRegistration';
 import type { BadgeKey } from '../lib/navigation';
 import type { Capability } from '../lib/userRoles';
 
@@ -23,7 +24,7 @@ let lastArgs: { caps: Set<Capability>; userId: string } | null = null;
 async function fetchCounts(caps: Set<Capability>, userId: string): Promise<BadgeCounts> {
     const counts: BadgeCounts = {};
 
-    if (caps.has('view_finance')) {
+    if (LEGACY_EXTERNAL_REGISTRATION_ENABLED && caps.has('view_finance')) {
         try {
             // Optimized: replaces heavy getOrdersForAccountingRegistration() full table download.
             // The count is computed via getUnregisteredCasesCount() which evaluates

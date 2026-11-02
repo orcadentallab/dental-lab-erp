@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from './constants/externalRegistration';
 import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/DashboardNew';
@@ -182,7 +183,7 @@ function App() {
                       <Route path="/finance/transactions" element={<Finance />} />
                       <Route path="/finance/ledgers" element={<Finance />} />
                       <Route path="/suppliers" element={<Suppliers />} />
-                      <Route path="/case-registration" element={<CaseRegistration />} />
+                      <Route path="/case-registration" element={LEGACY_EXTERNAL_REGISTRATION_ENABLED ? <CaseRegistration /> : <Navigate to="/finance/ledgers" replace />} />
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
                       <Route path="/financial-review" element={<FinancialReview />} />
                       <Route path="/statements" element={<Statements />} />

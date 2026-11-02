@@ -1,5 +1,6 @@
  
 import { supabase } from '../../lib/supabase';
+import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../../constants/externalRegistration';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
 import type { AccountingOrderSnapshot, AccountingReviewChange, AccountingReviewType, DoctorOrderSummary, Order, OrderHistoryEntry, OrderItem, Transaction } from '../db';
 import { OrderCreateSchema, OrderUpdateSchema, formatValidationError } from '../../lib/validation';
@@ -1641,6 +1642,7 @@ export async function getAllOrdersUnpaginated(): Promise<Order[]> {
  * booked, a skipped row is a case that never gets registered.
  */
 export async function getOrdersForAccountingRegistration(): Promise<Order[]> {
+    if (!LEGACY_EXTERNAL_REGISTRATION_ENABLED) return [];
     const allData: DbOrderWithRelations[] = [];
     const pageSize = 250;
     let from = 0;
@@ -1675,6 +1677,7 @@ export async function getOrdersForAccountingRegistration(): Promise<Order[]> {
  * Replaces fetching the entire historical database of orders.
  */
 export async function getUnregisteredCasesCount(): Promise<number> {
+    if (!LEGACY_EXTERNAL_REGISTRATION_ENABLED) return 0;
     const { data, error } = await supabase
         .from('orders')
         .select(`

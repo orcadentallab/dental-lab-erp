@@ -57,7 +57,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/finance/cashboxes': ['admin'],
     '/finance/capital': ['admin'],
     '/suppliers': ['admin', 'accountant', 'coordinator'],
-    '/case-registration': ['admin', 'accountant', 'coordinator'],
+    // Decision 80: /case-registration is now a redirect, not a destination.
     '/balance-snapshot': ['admin', 'accountant', 'coordinator'],
     '/financial-review': ['admin', 'accountant', 'coordinator'],
     '/statements': ['admin', 'accountant', 'coordinator'],
@@ -427,7 +427,7 @@ describe('favourites and quick actions', () => {
         const accountant = getCapabilities(makeUser('accountant'));
         const visible = QUICK_ACTIONS.filter(action => accountant.has(action.capability));
         expect(visible.map(action => action.id)).toEqual([
-            'action.newOrder', 'action.recordPayment', 'action.registerCase',
+            'action.newOrder', 'action.recordPayment',
         ]);
     });
 
