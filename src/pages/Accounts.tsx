@@ -22,6 +22,8 @@ import {
     isStatementVisibleOrder,
 } from '../constants/orderStatementFinancials';
 import OrderForm from '../components/orders/OrderForm';
+import {getQcCompensations} from '../services/supabase/designQc';
+import {designQcCompensationRows} from '../lib/designQcCompensations';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { matchArabic } from '../lib/searchUtils';
@@ -297,7 +299,7 @@ export default function Accounts() {
                 db.getTransactionsForFinanceSummary(),
                 financeService.getAdjustments()
             ]);
-            setOrders(ords);
+            setOrders([...ords,...designQcCompensationRows(await getQcCompensations())]);
             setTransactions(txs);
             setAdjustments(adjs);
         } catch (error: unknown) {
@@ -312,6 +314,7 @@ export default function Accounts() {
     }, []);
 
     const handleStatementRowClick = async (item: StatementItem) => {
+        if(item.id.startsWith('qc-contribution-')) return;
         if (item.status && (item.description?.includes('حالة #') || item.description?.includes('#'))) {
             try {
                 // Determine order ID using the case ID or item ID (item.id usually is the order ID)

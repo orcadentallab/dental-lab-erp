@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { refreshNavBadges } from '../../hooks/useNavBadges';
 import { useToast } from '../../context/ToastContext';
+import {openDesignExecution} from '../../services/supabase/designQc';
 import {
     Disc, ChevronUp, ChevronDown, RefreshCw, Layers, CheckCircle2, Play, Star, Clock, Check
 } from 'lucide-react';
@@ -375,6 +376,7 @@ export default function MyTasks() {
                                     {(t.designUrl || t.stlUrl) && (
                                         <a
                                             href={t.designUrl || t.stlUrl || '#'}
+                                            onClick={e=>{if(t.designUrl){e.preventDefault();void openDesignExecution(t.orderId,t.designUrl,t.id).catch(err=>toastError(err.message));}}}
                                             target="_blank" rel="noreferrer"
                                             className="text-brand-blue underline"
                                         >

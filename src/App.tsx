@@ -22,6 +22,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const ServicesPage = lazy(() => import('./pages/Services'));
 const AIAnalytics = lazy(() => import('./pages/AIAnalytics'));
 const CaseRegistration = lazy(() => import('./pages/CaseRegistration'));
+const DesignQC = lazy(() => import('./pages/DesignQC'));
 const Employees = lazy(() => import('./pages/Employees'));
 const EmployeeDetail = lazy(() => import('./pages/EmployeeDetail'));
 const IssuesReport = lazy(() => import('./pages/IssuesReport'));
@@ -108,6 +109,9 @@ function App() {
                     </Route>
                   </Route>
 
+                  <Route element={<ProtectedRoute requiredCapability="view_design_qc" />}>
+                    <Route element={<DashboardLayout />}><Route path="/design-qc" element={<DesignQC />} /></Route>
+                  </Route>
                   {/* Production floor. The technician role exists only here:
                       everything else in the app stays closed to it. */}
                   <Route element={<ProtectedRoute requiredCapability="view_my_tasks" />}>

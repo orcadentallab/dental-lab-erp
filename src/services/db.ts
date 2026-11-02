@@ -475,7 +475,7 @@ export interface EntityBillingSettings {
 
 export interface FinancialObligation {
     id: string;
-    orderId: string;
+    orderId: string | null;
     entityType: 'doctor' | 'external_lab' | 'designer';
     entityId: string;
     direction: 'receivable' | 'payable';
@@ -858,7 +858,7 @@ class MockDB {
     }
 
     async createFinancialObligation(
-        input: Omit<FinancialObligation, 'id' | 'netAmount' | 'remainingAmount' | 'createdAt' | 'updatedAt'> & { dueDate: string }
+        input: Omit<FinancialObligation, 'id' | 'orderId' | 'netAmount' | 'remainingAmount' | 'createdAt' | 'updatedAt'> & { orderId: string; dueDate: string }
     ): Promise<FinancialObligation> {
         const { createFinancialObligation } = await import('./supabase/financialObligations');
         return createFinancialObligation(input);

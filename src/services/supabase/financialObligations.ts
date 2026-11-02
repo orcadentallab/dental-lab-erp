@@ -22,7 +22,7 @@ import { getEntityBillingSettings } from './billingSettings';
 
 type FinancialObligationRow = {
     id: string;
-    order_id: string;
+    order_id: string | null;
     entity_type: BillingEntityType;
     entity_id: string;
     direction: ObligationDirection;

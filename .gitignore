@@ -48,6 +48,18 @@ delivery-obligation-trace*.md
 root-cause-*.md
 status-change-path-audit*.md
 playwright-report/
+test-results/
+.doctor-portal-qa/
 supabase/.temp/
 truncate.sql
 .vercel
+
+# Temporary workstation files and private transfer packages
+.tmp/
+.transfer-backup/
+/.deployment/
+.claude/settings.local.json
+
+tmp/
+output/
+.design-qc-qa/
