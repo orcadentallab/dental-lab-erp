@@ -93,15 +93,15 @@ test.describe('financial obligation candidates', () => {
         )).toBe(false);
     });
 
-    test('builds external lab payable candidate only for final ready', () => {
-        const candidate = buildExternalLabPayableCandidate({ ...baseOrder, status: 'Ready' });
+    test('builds external lab payable candidate only for final doctor delivery', () => {
+        const candidate = buildExternalLabPayableCandidate({ ...baseOrder, status: 'Delivered' });
 
         expect(candidate).toMatchObject({
             entityType: BILLING_ENTITY_TYPES.externalLab,
             entityId: baseOrder.supplierId,
             direction: OBLIGATION_DIRECTIONS.payable,
             triggerType: OBLIGATION_TRIGGER_TYPES.externalLabReady,
-            triggerStatus: 'Ready',
+            triggerStatus: 'Delivered',
             grossAmount: 500,
             source: OBLIGATION_SOURCES.order,
         });
@@ -148,11 +148,11 @@ test.describe('financial obligation candidates', () => {
         expect(shouldCreateDoctorReceivableObligationForStatusChange(ready, rejectedDelivery)).toBe(false);
     });
 
-    test('wires external lab payables only for Final Ready and direct Delivered implied Final Ready', () => {
+    test('wires external lab payables only upon actual final Delivered', () => {
         expect(shouldCreateExternalLabPayableObligationForStatusChange(
             { ...baseOrder, status: 'Under Production' },
             { ...baseOrder, status: 'Ready' }
-        )).toEqual({ shouldCreate: true, impliedFinalReady: false });
+        )).toEqual({ shouldCreate: false, impliedFinalReady: false });
 
         expect(shouldCreateExternalLabPayableObligationForStatusChange(
             { ...baseOrder, status: 'Under Production' },
@@ -167,12 +167,12 @@ test.describe('financial obligation candidates', () => {
         expect(shouldCreateExternalLabPayableObligationForStatusChange(
             { ...baseOrder, status: 'Ready', deliveryType: 'TryIn' },
             { ...baseOrder, status: 'Delivered', actualDeliveryDate: '2026-05-11' }
-        )).toEqual({ shouldCreate: false, impliedFinalReady: false });
+        )).toEqual({ shouldCreate: true, impliedFinalReady: true });
 
         expect(shouldCreateExternalLabPayableObligationForStatusChange(
             { ...baseOrder, status: 'Ready' },
             { ...baseOrder, status: 'Delivered', actualDeliveryDate: '2026-05-11' }
-        )).toEqual({ shouldCreate: false, impliedFinalReady: false });
+        )).toEqual({ shouldCreate: true, impliedFinalReady: true });
     });
 
     test('voids normal external lab ready payable when leaving final-ready workflow', () => {
@@ -302,7 +302,7 @@ test.describe('financial obligation amounts and due dates', () => {
     test('external lab payable helper uses order cost and preserves manual cost metadata', () => {
         const candidate = buildExternalLabPayableCandidate({
             ...baseOrder,
-            status: 'Ready',
+            status: 'Delivered',
             cost: 450,
             manualCost: 450,
         });
@@ -640,7 +640,7 @@ test.describe('financial obligations service wiring', () => {
         expect(ordersSource).toContain('shouldCreateExternalLabPayableObligationForStatusChange(currentOrder, updatedOrder)');
         expect(ordersSource).toContain('createExternalLabPayableObligationForOrder(updatedOrder');
         expect(ordersSource).toContain('EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE');
-        expect(EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE).toBe('Order marked Ready, but external lab payable obligation could not be created.');
+        expect(EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE).toBe('Order finally delivered, but external lab payable obligation could not be created.');
         expect(ordersSource).not.toContain('buildDesignerPayableCandidate');
     });
 
@@ -739,12 +739,12 @@ test.describe('financial obligations service wiring', () => {
         expect(serviceSource).toContain(".eq('source', OBLIGATION_SOURCES.order)");
     });
 
-    test('corrects shadow external lab payable when supplier changes after Final Ready or Delivered', () => {
+    test('corrects shadow external lab payable when supplier changes after final Delivered', () => {
         expect(ordersSource).toContain('correctExternalLabPayablePartyAfterOrderUpdate');
         expect(ordersSource).toContain('const previousSupplierId = input.previousOrder.supplierId || null;');
         expect(ordersSource).toContain('const newSupplierId = input.updatedOrder.supplierId || null;');
         expect(ordersSource).toContain('const impliedFinalReady = getProductionStatus(input.updatedOrder) === \'final_delivered\';');
-        expect(ordersSource).toContain('const isPayableEligible = isFinalReady(input.updatedOrder) || impliedFinalReady;');
+        expect(ordersSource).toContain('const isPayableEligible = impliedFinalReady;');
         expect(ordersSource).toContain('Supplier corrected from ${previousSupplierId} to ${newSupplierId || \'none\'}');
         expect(ordersSource).toContain('voidReason: \'supplier_corrected\'');
         expect(ordersSource).toContain('correctionReason: previousSupplierId ? \'supplier_corrected\' : \'supplier_added_after_ready_or_delivered\'');
@@ -756,7 +756,7 @@ test.describe('financial obligations service wiring', () => {
         expect(ordersSource).toContain('if ((input.updatedOrder.cost || 0) <= 0) {');
         expect(ordersSource).toContain('shadow payable was not created because cost is missing or zero');
         expect(ordersSource).toContain('if (!isPayableEligible) return;');
-        expect(ordersSource).toContain('isFinalReady(input.updatedOrder) || impliedFinalReady');
+        expect(ordersSource).toContain('const isPayableEligible = impliedFinalReady;');
     });
 
     test('corrects shadow doctor receivable when doctor changes after Delivered', () => {
@@ -820,8 +820,8 @@ test.describe('financial obligations service wiring', () => {
     });
 
     test('skips Try-In Ready cost corrections and does not use rejected lab cost for normal payable amount correction', () => {
-        expect(ordersSource).toContain("const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'final_delivered' && !isTryInOrder(input.updatedOrder);");
-        expect(ordersSource).toContain('const isPayableEligible = (isFinalReady(input.updatedOrder) || impliedFinalReady) && !!input.updatedOrder.supplierId;');
+        expect(ordersSource).toContain("const impliedFinalReady = getProductionStatus(input.updatedOrder) === 'final_delivered';");
+        expect(ordersSource).toContain('const isPayableEligible = impliedFinalReady && !!input.updatedOrder.supplierId;');
         expect(ordersSource).toContain('updates.cost !== undefined');
         expect(ordersSource).not.toContain('rejectedLabCost !== undefined || updates.cost');
         expect(ordersSource).not.toContain('designPrice !== undefined || updates.cost');

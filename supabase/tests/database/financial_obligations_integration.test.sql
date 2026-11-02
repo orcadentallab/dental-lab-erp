@@ -194,7 +194,7 @@ INSERT INTO public.orders (
     '40000000-0000-0000-0000-000000000003', 'DBTEST-SUPPLIER',
     '10000000-0000-0000-0000-000000000004', 'Supplier change', '[]',
     0, 'A1', 'Ready', CURRENT_DATE, 300,
-    '20000000-0000-0000-0000-000000000001', 'final_ready', 'none'
+    '20000000-0000-0000-0000-000000000001', 'final_delivered', 'none'
 );
 
 INSERT INTO public.transactions (
