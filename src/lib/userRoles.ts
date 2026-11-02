@@ -75,6 +75,8 @@ export function getUserRoleDisplay(user: User | null | undefined): string {
  * ------------------------------------------------------------------ */
 
 export type Capability =
+    | 'view_design_qc'
+    | 'view_production_workspace'
     | 'view_dashboard'
     | 'view_orders'
     | 'view_production'
@@ -149,6 +151,8 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     // Written as a union of the two existing conditions rather than as its
     // own capability list, so it cannot drift out of step with either.
     const isCoordinator = role === 'coordinator';
+    if(isAdmin || isFloor || isCoordinator || (isDesigner && role!=='designer')) caps.add('view_production_workspace');
+    if(isAdmin || isCoordinator || isDesigner) caps.add('view_design_qc');
     const hasAccountantScope = role === 'accountant' || isCoordinator;
     const hasRepScope = role === 'representative' || isCoordinator;
 

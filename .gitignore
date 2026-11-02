@@ -62,3 +62,4 @@ truncate.sql
 
 tmp/
 output/
+.design-qc-qa/

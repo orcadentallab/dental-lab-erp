@@ -9,6 +9,7 @@ import {
     Edit3, DollarSign, Copy
 } from 'lucide-react';
 import OrderHistoryModal from './OrderHistoryModal';
+import {designExecutionUrl,openDesignExecution} from '../../services/supabase/designQc';
 import { db } from '../../services/db';
 import type { Order, OrderEvent, OrderHistoryEntry } from '../../services/db';
 import clsx from 'clsx';
@@ -123,17 +124,16 @@ function OrderCard({
     };
 
     const handleCopyDesignUrl = async () => {
-        const absoluteUrl = ensureAbsoluteUrl(order.designUrl || '');
-        if (!absoluteUrl) {
-            toastError('رابط التصميم غير صالح أو معطوب');
-            return;
-        }
-
         try {
+            const absoluteUrl = await designExecutionUrl(order.id,order.designUrl);
+            if (!absoluteUrl) {
+                toastError('رابط التصميم غير صالح أو معطوب');
+                return;
+            }
             await navigator.clipboard.writeText(absoluteUrl);
             success('تم نسخ أحدث رابط تصميم');
-        } catch {
-            toastError('تعذر نسخ رابط التصميم');
+        } catch (error) {
+            toastError(error instanceof Error ? error.message : 'تعذر نسخ رابط التصميم');
         }
     };
 
@@ -438,7 +438,7 @@ function OrderCard({
                                     <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+                                        onClick={() => void openDesignExecution(order.id,order.designUrl).catch(e=>toastError(e.message))}
                                         className="min-h-10 min-w-10 h-10 px-2 text-xs text-orange-600 border-orange-200 hover:bg-orange-50 bg-white sm:min-h-0 sm:min-w-0 sm:h-6"
                                         title="تحميل التصميم"
                                     >

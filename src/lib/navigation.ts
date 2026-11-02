@@ -70,6 +70,7 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             path: '/production/my-tasks', capability: 'view_my_tasks',
             badge: 'myOpenTasks', aliases: ['شغلي', 'الطابور', 'queue', 'tasks'],
         },
+        {id:'production.designQc',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
         {
             id: 'production.inventory', labelAr: 'المخزن والخامات', labelEn: 'Inventory & Materials',
             path: '/inventory', capability: 'view_inventory',
@@ -304,6 +305,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
  * ------------------------------------------------------------------ */
 
 export const SIDEBAR: SidebarEntry[] = [
+    {id:'designQc.standalone',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',section:'operations',fallbackFor:'production',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
     {
         id: 'dashboard', labelAr: 'لوحة التحكم', labelEn: 'Dashboard',
         path: '/dashboard', capability: 'view_dashboard', section: 'top',
@@ -316,7 +318,7 @@ export const SIDEBAR: SidebarEntry[] = [
     },
     {
         id: 'production', labelAr: 'الإنتاج', labelEn: 'Production',
-        path: '/production/board', capability: 'view_my_tasks', section: 'operations',
+        path: '/production/board', capability: 'view_production_workspace', section: 'operations',
         workspace: 'production', badge: 'myOpenTasks',
         aliases: ['المعمل', 'الورشة', 'المراحل', 'production', 'floor'],
     },

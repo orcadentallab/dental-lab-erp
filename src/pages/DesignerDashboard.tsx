@@ -16,6 +16,8 @@ import { useToast } from '../context/ToastContext';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
 import DateRangeField from '../components/ui/DateRangeField';
+import {Link} from 'react-router-dom';
+import {designExecutionUrl,openDesignExecution} from '../services/supabase/designQc';
 import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 interface DesignerDashboardProps {
@@ -966,14 +968,14 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             <>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => handleOpenExternalUrl(order.designUrl, 'رابط التحميل غير صالح أو معطوب')}
+                                                                    onClick={() => void openDesignExecution(order.id,order.designUrl).catch(e=>toastError(e.message))}
                                                                     className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100"
                                                                 >
                                                                     <LinkIcon size={12} /> تحميل التصميم
                                                                 </button>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => void handleCopyDesignUrl(order.designUrl)}
+                                                                    onClick={() => void designExecutionUrl(order.id,order.designUrl).then(handleCopyDesignUrl).catch(e=>toastError(e.message))}
                                                                     aria-label="نسخ أحدث رابط تصميم"
                                                                     title="نسخ أحدث رابط تصميم"
                                                                     className="text-amber-700 hover:text-amber-800 text-xs flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-md border border-amber-100"
@@ -1040,8 +1042,9 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
                         <h3 className="text-xl font-bold text-gray-900 mb-4">تسليم التصميم</h3>
                         <p className="text-sm text-gray-500 mb-6">
-                            ارفع رابط التصميم وسيتم إرساله مباشرة إلى المعمل للتنفيذ.
+                            أثناء إيقاف QC يستمر تسليم الرابط المعتاد. عند تشغيله استخدم مسار النسخ الثابتة أدناه.
                         </p>
+                        <Link className="block text-blue-700 underline mb-4" to={`/design-qc?order=${selectedOrder?.id||''}`}>تسليم ملفات نسخة ثابتة وDesign QC</Link>
 
                         <div className="space-y-4">
                             <div>

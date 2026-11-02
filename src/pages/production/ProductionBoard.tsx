@@ -15,6 +15,7 @@ import {
     type StageRunCard, type ProductionStage,
 } from '../../services/supabase/production';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
+import {openDesignExecution} from '../../services/supabase/designQc';
 import {
     RefreshCw, AlertTriangle, Building2,
     LayoutGrid, Columns, ChevronLeft, ChevronRight, User,
@@ -710,6 +711,7 @@ interface CaseDetailsDrawerProps {
 }
 
 function CaseDetailsDrawer({ run, suppliers, onClose }: CaseDetailsDrawerProps) {
+    const {error:toastError}=useToast();
     const extLabName = run.supplierName || (run.supplierId ? suppliers[run.supplierId] : null);
     const urgency = getDeliveryUrgency(run.deliveryDate);
     const isStale = (ageHours(run.queuedAt) ?? 0) > STALE_HOURS;
@@ -848,7 +850,7 @@ function CaseDetailsDrawer({ run, suppliers, onClose }: CaseDetailsDrawerProps) 
                             <div className="grid grid-cols-1 gap-2">
                                 {run.designUrl ? (
                                     <button
-                                        onClick={() => handleOpenLink(run.designUrl)}
+                                        onClick={() => void openDesignExecution(run.orderId,run.designUrl||undefined,run.id).catch(e=>toastError(e.message))}
                                         className="flex items-center justify-between p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-800 transition-colors text-xs font-bold"
                                     >
                                         <div className="flex items-center gap-2">

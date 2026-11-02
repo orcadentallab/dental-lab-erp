@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
+import {getQcCompensations} from '../services/supabase/designQc';
+import {designQcCompensationRows} from '../lib/designQcCompensations';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type EntityBillingSettings } from '../services/db';
 import { financeService, type Adjustment } from '../services/financeService';
@@ -224,7 +226,7 @@ export default function StatementsPage() {
                         `)
                         .in('status', ['returned'])
                 ]);
-                setOrders(Array.isArray(o) ? o as Order[] : []);
+                setOrders([...(Array.isArray(o) ? o as Order[] : []),...designQcCompensationRows(await getQcCompensations())]);
                 setTransactions(Array.isArray(t) ? t as Transaction[] : []);
                 setAllDoctors(Array.isArray(doc) ? doc : []);
                 setSuppliers(Array.isArray(sup) ? sup : []);

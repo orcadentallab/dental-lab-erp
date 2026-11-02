@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState } from 'react';
+import {Link} from 'react-router-dom';
 import { db } from '../services/db';
 import { Download, Upload, AlertCircle, CheckCircle, FileSpreadsheet, Cloud, Lock, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -99,6 +100,7 @@ export default function Settings() {
 
     return (
         <div className="max-w-3xl mx-auto space-y-6">
+            {isAdmin&&<Link className="block border rounded-xl p-4 bg-blue-50" to="/design-qc">ملفات التصميم وDesign QC — تشغيل أو إيقاف المراجعة حتى إعادة فتحها</Link>}
             {/* Header */}
             <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-gray-100 rounded-lg">
