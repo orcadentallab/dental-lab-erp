@@ -56,7 +56,15 @@ SELECT public.submit_design_revision('fb000000-0000-0000-0000-000000000011','fb0
 SELECT lives_ok($$UPDATE public.orders SET production_status='in_production' WHERE case_id='QC-CASE'$$,'Paused QC does not obstruct existing work');
 SELECT public.set_design_qc_enabled(true,'Reopen explicitly');
 SELECT lives_ok($$UPDATE public.orders SET production_status='final_ready' WHERE case_id='QC-CASE'$$,'Reopen does not retroactively gate files submitted while paused');
-SELECT public.return_design_revision('fb000000-0000-0000-0000-000000000011','fb000000-0000-0000-0000-000000000004','Assign revised work to another designer');
+INSERT INTO public.transactions(id,type,amount,category,date,description,entity_id,entity_type,status,is_approved)
+VALUES('fb000000-0000-0000-0000-000000000041','expense',100,'designer_payment',current_date,'QC designer payment','fb000000-0000-0000-0000-000000000003','designer','approved',true);
+SELECT public.reassign_design_revision('fb000000-0000-0000-0000-000000000011','fb000000-0000-0000-0000-000000000004','Assign revised work to another designer',80,90,'fb000000-0000-0000-0000-000000000042');
+SELECT is((SELECT net_amount FROM public.financial_obligations WHERE design_qc_assignment_id='fb000000-0000-0000-0000-000000000042' AND status<>'void'),80::numeric,'Old designer retains explicitly chosen earning');
+SELECT is((SELECT allocated_amount FROM public.financial_obligations WHERE design_qc_assignment_id='fb000000-0000-0000-0000-000000000042' AND status<>'void'),80::numeric,'Existing paid amount transfers to old designer settlement');
+SELECT is((SELECT sum(remaining_amount) FROM public.account_credits WHERE entity_id='fb000000-0000-0000-0000-000000000003' AND status='active'),20::numeric,'Excess old-designer payment remains their credit');
+SELECT is((SELECT amount FROM public.transactions WHERE id='fb000000-0000-0000-0000-000000000041'),100::numeric,'Designer reassignment does not reverse actual cash');
+SELECT is((SELECT design_price FROM public.orders WHERE case_id='QC-CASE'),90::numeric,'New designer receives manual fee override');
+SELECT is((SELECT count(*) FROM public.financial_obligations WHERE order_id='fb000000-0000-0000-0000-000000000011' AND trigger_type='designer_approved' AND status<>'void'),0::bigint,'New designer earns at completion, not assignment');
 SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000003',true);
 SELECT throws_ok($$SELECT public.get_design_qc_state('fb000000-0000-0000-0000-000000000011')$$,'42501','Design access denied','Previous designer loses access after reassignment');
 SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000004',true);
