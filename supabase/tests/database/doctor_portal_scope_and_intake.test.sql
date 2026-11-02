@@ -71,8 +71,8 @@ SELECT set_config('request.jwt.claim.sub','a2000000-0000-0000-0000-000000000003'
 SELECT throws_ok($q$ SELECT public.create_shipment(NULL,'a1000000-0000-0000-0000-000000000002',NULL,ARRAY[(SELECT first FROM portal_orders)]) $q$,'P0001','الحالة لم تصبح جاهزة للشحن','Unreviewed case cannot be shipped');
 SELECT ok((SELECT status IS NULL AND intake_state='pending_review' AND production_status='not_started' FROM public.orders WHERE id=(SELECT first FROM portal_orders)), 'Portal intake has explicit V2 pending state and no legacy status');
 SELECT is((SELECT count(*) FROM public.shipment_orders WHERE order_id=(SELECT first FROM portal_orders)),0::bigint,'Rejected intake shipment leaves no shipment links');
-INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,shade,status,production_status,delivery_date)
-VALUES('a6000000-0000-0000-0000-000000000003','QA-PORTAL-STALE-READY','a1000000-0000-0000-0000-000000000002','Stale legacy Ready','[]',0,'A1','Ready','not_started',current_date);
+INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,status,production_status,delivery_date)
+VALUES('a6000000-0000-0000-0000-000000000003','QA-PORTAL-STALE-READY','a1000000-0000-0000-0000-000000000002','Stale legacy Ready','[]',0,0,'A1','Ready','not_started',current_date);
 SELECT throws_ok($q$ SELECT public.create_shipment(NULL,'a1000000-0000-0000-0000-000000000002',NULL,ARRAY['a6000000-0000-0000-0000-000000000003']::uuid[]) $q$,'P0001','الحالة لم تصبح جاهزة للشحن','Stale legacy Ready cannot bypass V2 readiness');
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,status,production_status,delivery_date,delivery_address,delivery_contact_phone) VALUES
 ('a6000000-0000-0000-0000-000000000001','QA-PORTAL-SHIP-1','a1000000-0000-0000-0000-000000000002','حالة شحن أولى','[]',0,0,'A1','Ready','final_ready',current_date,'عنوان فرع الشحن','201099111115'),
