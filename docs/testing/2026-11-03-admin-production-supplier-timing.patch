@@ -1,0 +1,44 @@
+diff --git a/supabase/tests/database/admin_production_status_correction.test.sql b/supabase/tests/database/admin_production_status_correction.test.sql
+index a6aaa95..a6ad3b4 100644
+--- a/supabase/tests/database/admin_production_status_correction.test.sql
++++ b/supabase/tests/database/admin_production_status_correction.test.sql
+@@ -28,9 +28,9 @@ VALUES ('49310000-0000-0000-0000-000000000001', 'PRODCORRECT-1',
+     '19310000-0000-0000-0000-000000000001', 'Patient', '[]', 1000, 'A1', 'Ready',
+     'final_ready', 'none', '29310000-0000-0000-0000-000000000001', 400, current_date, 'TryIn');
+ 
+-SELECT is((SELECT net_amount FROM public.financial_obligations
++SELECT is((SELECT count(*)::integer FROM public.financial_obligations
+     WHERE order_id = '49310000-0000-0000-0000-000000000001' AND entity_type = 'external_lab' AND status <> 'void'),
+-    400::numeric, 'ready fixture has a lab obligation');
++    0, 'ready fixture has no supplier obligation before final receipt');
+ 
+ -- This is the actual authenticated REST caller, not a superuser bypass.
+ SET LOCAL ROLE authenticated;
+@@ -42,7 +42,7 @@ SELECT is((SELECT production_status FROM public.orders WHERE case_id = 'PRODCORR
+     'try_in_ready', 'backward correction is committed');
+ SELECT is((SELECT count(*)::integer FROM public.financial_obligations
+     WHERE order_id = '49310000-0000-0000-0000-000000000001' AND status NOT IN ('void','written_off')),
+-    0, 'premature lab obligation is voided in the same call');
++    0, 'backward correction keeps unearned supplier obligations absent');
+ SELECT is((SELECT count(*)::integer FROM public.order_events WHERE order_id = '49310000-0000-0000-0000-000000000001'
+     AND reason = 'wrong ready click' AND changed_by = '39310000-0000-0000-0000-000000000001'),
+     1, 'audit records the authenticated profile and reason');
+@@ -71,7 +71,7 @@ SELECT is((SELECT production_status FROM public.orders WHERE case_id = 'PRODCORR
+     'try_in_ready', 'audit failure rolls back the order');
+ SELECT is((SELECT count(*)::integer FROM public.financial_obligations
+     WHERE order_id = '49310000-0000-0000-0000-000000000001' AND status NOT IN ('void','written_off')),
+-    0, 'audit failure rolls back the newly recreated obligation');
++    0, 'audit failure leaves no unearned obligation');
+ SELECT is((SELECT count(*)::integer FROM public.order_transition_commands
+     WHERE idempotency_key = '69310000-0000-0000-0000-000000000002'),
+     0, 'failed command is not recorded as complete');
+@@ -115,7 +115,7 @@ $$;
+ CREATE TRIGGER test_fail_production_correction_finance BEFORE INSERT ON public.financial_obligations
+ FOR EACH ROW EXECUTE FUNCTION public.test_fail_production_correction_finance();
+ SELECT throws_ok($$SELECT public.admin_correct_order_production_status_v2(
+-    '49310000-0000-0000-0000-000000000001', 'Ready', 'force finance failure',
++    '49310000-0000-0000-0000-000000000001', 'Delivered', 'force finance failure',
+     '69310000-0000-0000-0000-000000000005')$$, 'P0001', 'forced financial failure', 'financial failure aborts correction');
+ SELECT is((SELECT production_status FROM public.orders WHERE case_id = 'PRODCORRECT-1'),
+     'in_production', 'financial failure rolls back the order');
+

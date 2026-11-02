@@ -178,7 +178,7 @@ INSERT INTO public.orders (
     '42000000-0000-0000-0000-000000000002', 'WORKFLOW-PAYABLE-1',
     '12000000-0000-0000-0000-000000000001', 'Payable patient', '[]',
     1000, 'A1', 'Ready', CURRENT_DATE, 600,
-    '22000000-0000-0000-0000-000000000001', 'final_ready', 'none'
+    '22000000-0000-0000-0000-000000000001', 'final_delivered', 'none'
 );
 
 INSERT INTO public.transactions (

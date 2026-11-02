@@ -1,6 +1,6 @@
 BEGIN;
 SET search_path=public,extensions;
-SELECT plan(16);
+SELECT plan(21);
 INSERT INTO auth.users(id,email) VALUES('fa000000-0000-0000-0000-000000000001','supplier-timing@local.test');
 INSERT INTO public.users(id,auth_id,username,role,name) VALUES
 ('fa000000-0000-0000-0000-000000000001','fa000000-0000-0000-0000-000000000001','supplier_timing_admin','admin','Timing admin'),
@@ -49,5 +49,15 @@ CREATE TEMP TABLE legacy_before AS SELECT * FROM public.financial_obligations WH
 UPDATE public.orders SET cost=cost WHERE case_id='TIMING-LEGACY';
 SELECT is((SELECT count(*) FROM public.financial_obligations WHERE order_id='fa000000-0000-0000-0000-000000000008'),(SELECT count(*) FROM legacy_before),'Existing Ready obligation is not replaced or backfilled');
 SELECT results_eq('SELECT to_jsonb(f) FROM public.financial_obligations f WHERE order_id=''fa000000-0000-0000-0000-000000000008'' ORDER BY id','SELECT to_jsonb(f) FROM legacy_before f ORDER BY id','Existing Ready obligation retains every field on unrelated sync');
+INSERT INTO public.users(id,username,role,name,custom_permissions)
+VALUES('fa000000-0000-0000-0000-000000000009','timing_salary','designer','Salary designer','{"designer_fixed_salary":true}');
+INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,supplier_id,designer_id,workflow_type,design_status,design_price)
+VALUES('fa000000-0000-0000-0000-000000000010','TIMING-SALARY','fa000000-0000-0000-0000-000000000003','Salary case','[]',900,400,'A1','final_ready',current_date,'fa000000-0000-0000-0000-000000000004','fa000000-0000-0000-0000-000000000009','split','completed',100);
+SELECT is((SELECT gross_amount FROM public.financial_obligations WHERE order_id='fa000000-0000-0000-0000-000000000010' AND trigger_type='designer_approved' AND status<>'void'),0::numeric,'Fixed salary has no per-case designer earning at design completion');
+SELECT is((SELECT count(*) FROM public.financial_obligations WHERE order_id='fa000000-0000-0000-0000-000000000010' AND trigger_type='external_lab_ready' AND status<>'void'),0::bigint,'Fixed-salary split still earns no supplier AP at Ready');
+SELECT public.record_order_final_delivery_v2('fa000000-0000-0000-0000-000000000010',now(),gen_random_uuid());
+SELECT is((SELECT gross_amount FROM public.financial_obligations WHERE order_id='fa000000-0000-0000-0000-000000000010' AND trigger_type='external_lab_ready' AND status<>'void'),400::numeric,'Fixed-salary supplier retains full existing cost formula at final receipt');
+SELECT is((SELECT gross_amount FROM public.financial_obligations WHERE order_id='fa000000-0000-0000-0000-000000000010' AND trigger_type='designer_approved' AND status<>'void'),0::numeric,'Final receipt leaves fixed-salary per-case earning at zero');
+SELECT is((SELECT count(*) FROM public.transactions),(SELECT n FROM cash_count),'Fixed salary final receipt also creates no cash');
 SELECT * FROM finish();
 ROLLBACK;

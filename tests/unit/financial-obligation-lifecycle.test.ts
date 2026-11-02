@@ -88,11 +88,11 @@ describe('order financial-obligation lifecycle decisions', () => {
         })).toBe(false);
     });
 
-    it('creates an external-lab payable at final-ready or direct final delivery', () => {
+    it('creates an external-lab payable only at final doctor delivery', () => {
         expect(shouldCreateExternalLabPayableObligationForStatusChange(
             { productionStatus: 'in_production' },
             { productionStatus: 'final_ready' }
-        )).toEqual({ shouldCreate: true, impliedFinalReady: false });
+        )).toEqual({ shouldCreate: false, impliedFinalReady: false });
 
         expect(shouldCreateExternalLabPayableObligationForStatusChange(
             { productionStatus: 'in_production' },

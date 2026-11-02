@@ -10,7 +10,6 @@ import {
     getEffectiveOrderDisplayStatus,
     isDeliveredForDoctorReceivable,
     isFinalReady,
-    isTryInReady,
 } from './orderLifecycle';
 
 export const OBLIGATION_DIRECTIONS = {
@@ -64,7 +63,7 @@ export const DOCTOR_RECEIVABLE_OBLIGATION_FAILURE_MESSAGE =
     'Order delivered, but doctor receivable obligation could not be created.';
 
 export const EXTERNAL_LAB_PAYABLE_OBLIGATION_FAILURE_MESSAGE =
-    'Order marked Ready, but external lab payable obligation could not be created.';
+    'Order finally delivered, but external lab payable obligation could not be created.';
 
 export const EXTERNAL_LAB_PAYABLE_VOID_FAILURE_MESSAGE =
     'Order left Final Ready/Delivered workflow, but shadow external lab payable obligation could not be voided.';
@@ -234,7 +233,9 @@ export function buildExternalLabPayableCandidate(
     options: { impliedFinalReady?: boolean; triggerDate?: string } = {},
     isSalariedDesigner = false
 ): FinancialObligationCandidate | null {
-    const isEligibleFinalReady = isFinalReady(order) || options.impliedFinalReady === true;
+    // The legacy hint cannot substitute for actual final doctor receipt.
+    const isEligibleFinalReady = getProductionStatus(order) === 'final_delivered'
+        && getEffectiveIssueState(order) === 'none';
     const labCostMetadata = getLabCostMetadata(order, isSalariedDesigner);
 
     if (!order.id || !order.supplierId || !isEligibleFinalReady || labCostMetadata.cost <= 0) {
@@ -258,6 +259,7 @@ export function buildExternalLabPayableCandidate(
             ...labCostMetadata,
             deliveryType: order.deliveryType || order.delivery_type || null,
             impliedFinalReady: options.impliedFinalReady === true,
+            normalSupplierAccrual: 'final_delivered',
         },
     };
 }
@@ -312,14 +314,12 @@ export function shouldCreateExternalLabPayableObligationForStatusChange(
     previousOrder: CandidateOrder,
     updatedOrder: CandidateOrder
 ): { shouldCreate: boolean; impliedFinalReady: boolean } {
-    const becameFinalReady = !isFinalReady(previousOrder) && isFinalReady(updatedOrder);
     const directDeliveredImpliesFinalReady =
         getProductionStatus(updatedOrder) === 'final_delivered'
-        && !isFinalReady(previousOrder)
-        && !isTryInReady(previousOrder);
+        && getProductionStatus(previousOrder) !== 'final_delivered';
 
     return {
-        shouldCreate: becameFinalReady || directDeliveredImpliesFinalReady,
+        shouldCreate: directDeliveredImpliesFinalReady,
         impliedFinalReady: directDeliveredImpliesFinalReady,
     };
 }
