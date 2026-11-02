@@ -1,6 +1,6 @@
 BEGIN;
 SET search_path=public,extensions;
-SELECT plan(52);
+SELECT plan(55);
 INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name,is_center,custom_prices,branches) VALUES
 ('a1000000-0000-0000-0000-000000000001','مركز اختبار النطاق','01099111111','عنوان المركز الأصلي','QA-SCOPE-1','',true,'{"خدمة اختبار البوابة":80}','[{"id":"qa-branch","name":"فرع الاختبار","address":"عنوان الفرع الاختباري","phone":"01099111115"}]'),
 ('a1000000-0000-0000-0000-000000000002','طبيب اختبار أول','01099111112','عنوان المركز الأصلي','QA-SCOPE-2','',false,'{}','[]'),
@@ -69,6 +69,11 @@ SELECT is(public.get_doctor_portal_cases()->0->>'pickup_status','received','Doct
 SELECT ok(jsonb_array_length(public.get_doctor_portal_catalog())>0 AND NOT(public.get_doctor_portal_catalog()->0 ? 'cost_price'),'Doctor catalogue provides choices without internal cost columns');
 SELECT set_config('request.jwt.claim.sub','a2000000-0000-0000-0000-000000000003',true);
 SELECT throws_ok($q$ SELECT public.create_shipment(NULL,'a1000000-0000-0000-0000-000000000002',NULL,ARRAY[(SELECT first FROM portal_orders)]) $q$,'P0001','الحالة لم تصبح جاهزة للشحن','Unreviewed case cannot be shipped');
+SELECT ok((SELECT status IS NULL AND intake_state='pending_review' AND production_status='not_started' FROM public.orders WHERE id=(SELECT first FROM portal_orders)), 'Portal intake has explicit V2 pending state and no legacy status');
+SELECT is((SELECT count(*) FROM public.shipment_orders WHERE order_id=(SELECT first FROM portal_orders)),0::bigint,'Rejected intake shipment leaves no shipment links');
+INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,shade,status,production_status,delivery_date)
+VALUES('a6000000-0000-0000-0000-000000000003','QA-PORTAL-STALE-READY','a1000000-0000-0000-0000-000000000002','Stale legacy Ready','[]',0,'A1','Ready','not_started',current_date);
+SELECT throws_ok($q$ SELECT public.create_shipment(NULL,'a1000000-0000-0000-0000-000000000002',NULL,ARRAY['a6000000-0000-0000-0000-000000000003']::uuid[]) $q$,'P0001','الحالة لم تصبح جاهزة للشحن','Stale legacy Ready cannot bypass V2 readiness');
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,status,production_status,delivery_date,delivery_address,delivery_contact_phone) VALUES
 ('a6000000-0000-0000-0000-000000000001','QA-PORTAL-SHIP-1','a1000000-0000-0000-0000-000000000002','حالة شحن أولى','[]',0,0,'A1','Ready','final_ready',current_date,'عنوان فرع الشحن','201099111115'),
 ('a6000000-0000-0000-0000-000000000002','QA-PORTAL-SHIP-2','a1000000-0000-0000-0000-000000000002','حالة شحن ثانية','[]',0,0,'A1','Ready','final_ready',current_date,'عنوان فرع آخر','201099111116');
