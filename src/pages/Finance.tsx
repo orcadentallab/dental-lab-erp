@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
+import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../constants/externalRegistration';
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2, Car, Landmark, Building2, Wrench } from 'lucide-react';
 import { db, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
@@ -667,11 +668,11 @@ export default function Finance() {
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-right">
-                                    <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                                    <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">النوع</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {visibleExpenses.length === 0 && (
                                             <tr>
-                                                <td colSpan={['admin', 'accountant'].includes(user?.role || '') ? 7 : 6} className="p-6 text-center text-gray-500">
+                                                <td colSpan={(['admin', 'accountant'].includes(user?.role || '') ? 6 : 5) + (LEGACY_EXTERNAL_REGISTRATION_ENABLED ? 1 : 0)} className="p-6 text-center text-gray-500">
                                                     لا توجد مصروفات ظاهرة حسب الفلاتر الحالية
                                                 </td>
                                             </tr>
@@ -683,13 +684,13 @@ export default function Finance() {
                                                 <td className="p-4 text-gray-600">{t.description}</td>
                                                 <td className="p-4 text-gray-500">{cashboxes.find(c => c.id === t.cashboxId)?.name || 'غير محدد'}</td>
                                                 <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
-                                                <td className="p-4 text-center">
+                                                {LEGACY_EXTERNAL_REGISTRATION_ENABLED && (<td className="p-4 text-center">
                                                     {t.isRegistered ? (
                                                         <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-700/10">مسجل</span>
                                                     ) : (
                                                         <button onClick={() => { db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate); }} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded transition-colors">تسجيل</button>
                                                     )}
-                                                </td>
+                                                </td>)}
                                                 {['admin', 'accountant'].includes(user?.role || '') && (
                                                     <td className="p-4 text-center">
                                                         <div className="flex items-center justify-center gap-2">
@@ -709,7 +710,7 @@ export default function Finance() {
                                         <tr>
                                             <td colSpan={4} className="p-4 text-gray-700">الإجمالي شامل العمولات والرسوم البنكية</td>
                                             <td className="p-4 text-red-700">{calculateTotal(filteredExpenses).toLocaleString()} ج.م</td>
-                                            <td colSpan={2}></td>
+                                            {(LEGACY_EXTERNAL_REGISTRATION_ENABLED || ['admin', 'accountant'].includes(user?.role || '')) && <td colSpan={(LEGACY_EXTERNAL_REGISTRATION_ENABLED ? 1 : 0) + (['admin', 'accountant'].includes(user?.role || '') ? 1 : 0)}></td>}
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -755,7 +756,7 @@ export default function Finance() {
                                 <DateFilter activeFilter={revenueFilter} onFilterChange={setRevenueFilter} />
                             </div>
                             <table className="w-full text-sm text-right">
-                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                                <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                                 <tbody className="divide-y divide-gray-50">
                                     {filteredIncome.map(t => (
                                         <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -763,9 +764,9 @@ export default function Finance() {
                                             <td className="p-4 text-gray-800">{t.description}</td>
                                             <td className="p-4 text-gray-500">{cashboxes.find(c => c.id === t.cashboxId)?.name || 'غير محدد'}</td>
                                             <td className="p-4 font-bold text-green-600">{t.amount.toLocaleString()}</td>
-                                            <td className="p-4 text-center">
+                                            {LEGACY_EXTERNAL_REGISTRATION_ENABLED && (<td className="p-4 text-center">
                                                 {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
-                                            </td>
+                                            </td>)}
                                             {['admin', 'accountant'].includes(user?.role || '') && (
                                                 <td className="p-4 text-center">
                                                     <div className="flex items-center justify-center gap-2">
@@ -785,7 +786,7 @@ export default function Finance() {
                                     <tr>
                                         <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                         <td className="p-4 text-green-700">{calculateTotal(filteredIncome).toLocaleString()} ج.م</td>
-                                        <td colSpan={2}></td>
+                                        {(LEGACY_EXTERNAL_REGISTRATION_ENABLED || ['admin', 'accountant'].includes(user?.role || '')) && <td colSpan={(LEGACY_EXTERNAL_REGISTRATION_ENABLED ? 1 : 0) + (['admin', 'accountant'].includes(user?.role || '') ? 1 : 0)}></td>}
                                     </tr>
                                 </tfoot>
                             </table>
@@ -863,7 +864,7 @@ export default function Finance() {
                             <DateFilter activeFilter={doctorPaymentFilter} onFilterChange={setDoctorPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredDoctorPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -872,9 +873,9 @@ export default function Finance() {
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-green-600">{t.amount.toLocaleString()}</td>
                                         <td className="p-4 text-gray-600">{getCashboxName(t.cashboxId)}</td>
-                                        <td className="p-4 text-center">
+                                        {LEGACY_EXTERNAL_REGISTRATION_ENABLED && (<td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
-                                        </td>
+                                        </td>)}
                                         {['admin', 'accountant'].includes(user?.role || '') && (
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
@@ -894,7 +895,7 @@ export default function Finance() {
                                 <tr>
                                     <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                     <td className="p-4 text-green-700">{calculateTotal(filteredDoctorPayments).toLocaleString()} ج.م</td>
-                                    <td colSpan={3}></td>
+                                    <td colSpan={1 + (LEGACY_EXTERNAL_REGISTRATION_ENABLED ? 1 : 0) + (['admin', 'accountant'].includes(user?.role || '') ? 1 : 0)}></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -959,7 +960,7 @@ export default function Finance() {
                             <DateFilter activeFilter={supplierPaymentFilter} onFilterChange={setSupplierPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredSupplierPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -968,9 +969,9 @@ export default function Finance() {
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
                                         <td className="p-4 text-gray-600">{getCashboxName(t.cashboxId)}</td>
-                                        <td className="p-4 text-center">
+                                        {LEGACY_EXTERNAL_REGISTRATION_ENABLED && (<td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
-                                        </td>
+                                        </td>)}
                                         {['admin', 'accountant'].includes(user?.role || '') && (
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
@@ -990,7 +991,7 @@ export default function Finance() {
                                 <tr>
                                     <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                     <td className="p-4 text-red-700">{calculateTotal(filteredSupplierPayments).toLocaleString()} ج.م</td>
-                                    <td colSpan={3}></td>
+                                    <td colSpan={1 + (LEGACY_EXTERNAL_REGISTRATION_ENABLED ? 1 : 0) + (['admin', 'accountant'].includes(user?.role || '') ? 1 : 0)}></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -1055,7 +1056,7 @@ export default function Finance() {
                             <DateFilter activeFilter={designerPaymentFilter} onFilterChange={setDesignerPaymentFilter} />
                         </div>
                         <table className="w-full text-sm text-right">
-                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium text-center">الحالة</th>{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
+                            <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
                             <tbody className="divide-y divide-gray-50">
                                 {filteredDesignerPayments.map(t => (
                                     <tr key={t.id} className="hover:bg-gray-50 transition-colors group">
@@ -1064,9 +1065,9 @@ export default function Finance() {
                                         <td className="p-4 text-gray-600">{t.description}</td>
                                         <td className="p-4 font-bold text-red-600">{t.amount.toLocaleString()}</td>
                                         <td className="p-4 text-gray-600">{getCashboxName(t.cashboxId)}</td>
-                                        <td className="p-4 text-center">
+                                        {LEGACY_EXTERNAL_REGISTRATION_ENABLED && (<td className="p-4 text-center">
                                             {t.isRegistered ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md ring-1 ring-blue-700/10">مسجل</span> : <button onClick={() => db.updateTransaction(t.id, { isRegistered: true }).then(handleTransactionUpdate)} className="text-xs bg-gray-100 hover:bg-blue-600 hover:text-white px-2 py-1 rounded">تسجيل</button>}
-                                        </td>
+                                        </td>)}
                                         {['admin', 'accountant'].includes(user?.role || '') && (
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
@@ -1086,7 +1087,7 @@ export default function Finance() {
                                 <tr>
                                     <td colSpan={3} className="p-4 text-gray-700">الإجمالي</td>
                                     <td className="p-4 text-red-700">{calculateTotal(filteredDesignerPayments).toLocaleString()} ج.م</td>
-                                    <td colSpan={3}></td>
+                                    <td colSpan={1 + (LEGACY_EXTERNAL_REGISTRATION_ENABLED ? 1 : 0) + (['admin', 'accountant'].includes(user?.role || '') ? 1 : 0)}></td>
                                 </tr>
                             </tfoot>
                         </table>
