@@ -10,7 +10,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(5);
+SELECT plan(7);
 
 INSERT INTO public.doctors (
     id, name, phone, address, doctor_code, representative_name
@@ -74,11 +74,22 @@ SELECT ok(
 
 SELECT throws_ok(
     $$UPDATE public.orders
-         SET is_archived = FALSE, status = 'Cancelled', total_price = 0
+         SET is_archived = FALSE, total_price = 0
        WHERE id = '40000000-0000-0000-0000-000000000601'$$,
     '23514',
     NULL,
-    'flipping the archive flag while changing the status or the money in the same update is rejected'
+    'flipping the archive flag while changing money in the same update is rejected'
+);
+
+SELECT throws_ok(
+    $$UPDATE public.orders SET is_archived=FALSE, production_status='final_ready'
+      WHERE id='40000000-0000-0000-0000-000000000601'$$,
+    '23514', NULL, 'archive cannot conceal a V2 workflow change'
+);
+SELECT ok(
+    (SELECT is_archived AND total_price=1000 AND production_status='final_delivered'
+     FROM public.orders WHERE id='40000000-0000-0000-0000-000000000601'),
+    'rejected archive mutations preserve original money and V2 workflow'
 );
 
 SELECT * FROM finish();

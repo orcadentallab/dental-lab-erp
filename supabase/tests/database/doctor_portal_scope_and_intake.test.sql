@@ -1,6 +1,6 @@
 BEGIN;
 SET search_path=public,extensions;
-SELECT plan(55);
+SELECT plan(56);
 INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name,is_center,custom_prices,branches) VALUES
 ('a1000000-0000-0000-0000-000000000001','مركز اختبار النطاق','01099111111','عنوان المركز الأصلي','QA-SCOPE-1','',true,'{"خدمة اختبار البوابة":80}','[{"id":"qa-branch","name":"فرع الاختبار","address":"عنوان الفرع الاختباري","phone":"01099111115"}]'),
 ('a1000000-0000-0000-0000-000000000002','طبيب اختبار أول','01099111112','عنوان المركز الأصلي','QA-SCOPE-2','',false,'{}','[]'),
@@ -74,6 +74,8 @@ SELECT is((SELECT count(*) FROM public.shipment_orders WHERE order_id=(SELECT fi
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,status,production_status,delivery_date)
 VALUES('a6000000-0000-0000-0000-000000000003','QA-PORTAL-STALE-READY','a1000000-0000-0000-0000-000000000002','Stale legacy Ready','[]',0,0,'A1','Ready','not_started',current_date);
 SELECT throws_ok($q$ SELECT public.create_shipment(NULL,'a1000000-0000-0000-0000-000000000002',NULL,ARRAY['a6000000-0000-0000-0000-000000000003']::uuid[]) $q$,'P0001','الحالة لم تصبح جاهزة للشحن','Stale legacy Ready cannot bypass V2 readiness');
+UPDATE public.orders SET production_status='try_in_ready' WHERE id='a6000000-0000-0000-0000-000000000003';
+SELECT lives_ok($q$ SELECT public.create_shipment(NULL,'a1000000-0000-0000-0000-000000000002',NULL,ARRAY['a6000000-0000-0000-0000-000000000003']::uuid[]) $q$,'Accepted V2 Try-In Ready remains eligible for shipping');
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,status,production_status,delivery_date,delivery_address,delivery_contact_phone) VALUES
 ('a6000000-0000-0000-0000-000000000001','QA-PORTAL-SHIP-1','a1000000-0000-0000-0000-000000000002','حالة شحن أولى','[]',0,0,'A1','Ready','final_ready',current_date,'عنوان فرع الشحن','201099111115'),
 ('a6000000-0000-0000-0000-000000000002','QA-PORTAL-SHIP-2','a1000000-0000-0000-0000-000000000002','حالة شحن ثانية','[]',0,0,'A1','Ready','final_ready',current_date,'عنوان فرع آخر','201099111116');

@@ -1,5 +1,7 @@
 # Decision 80 — first local implementation slice
 
+Update, 3 November: the SQL baseline failures recorded below were subsequently resolved locally. See [V2 database regression repairs](2026-11-03-v2-database-regressions.md) for the 54-file / 947-test passing result. The original baseline record below is retained as history.
+
 Source: English Consolidated ERP Implementation Plan — One-Week Target, packages 1/2, B02/B04/B09/B14/B16, decision 80. Latest owner instructions authorize local implementation, not production deployment or source cutover.
 
 ## Changes and preservation

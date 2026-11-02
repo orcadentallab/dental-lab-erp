@@ -173,7 +173,8 @@ SELECT is(
     (SELECT COUNT(*)::int FROM public.orders o
       JOIN public.shipment_orders so ON so.order_id = o.id
      WHERE so.shipment_id = ((SELECT result->>'shipment_id' FROM test_shipment_res)::uuid)
-       AND o.production_status = 'final_delivered' AND o.status = 'Delivered'),
+         AND o.production_status = 'final_delivered'
+         AND public.derive_order_display_status_v2(o.production_status, o.issue_state, o.intake_state) = 'Delivered'),
     2,
     'delivery travels the existing path: orders reach Delivered / final_delivered'
 );

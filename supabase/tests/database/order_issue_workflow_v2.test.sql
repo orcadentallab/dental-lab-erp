@@ -223,7 +223,7 @@ SELECT lives_ok(
 RESET ROLE;
 
 SELECT is(
-    (SELECT status || ':' || issue_state || ':' || technician_status
+    (SELECT public.derive_order_display_status_v2(production_status, issue_state, intake_state) || ':' || issue_state || ':' || technician_status
      FROM public.orders WHERE id = '48000000-0000-0000-0000-000000000001'),
     'Lab Rejected:lab_rejected:Rejected',
     'direct technician rejection atomically sets the lab rejection states'
