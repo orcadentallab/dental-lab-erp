@@ -1,0 +1,4576 @@
+{
+  "schemaVersion": 1,
+  "scope": "Read-only public/storage catalog, operational DB flags and public deployment assets; no business rows or mutation tests",
+  "project": {
+    "name": "Orca ERP",
+    "ref": "piuiiwcjnfvjwyewczuz",
+    "url": "https://orcalab.vercel.app",
+    "verifiedAgainst": [
+      ".env",
+      ".env.production",
+      "supabase/.temp/project-ref",
+      "live JS Supabase host"
+    ]
+  },
+  "observations": {
+    "production": "2026-11-04T03:36:32.01984+00:00",
+    "local": "2026-11-04T03:38:10.561603+00:00",
+    "productionReadOnly": "on",
+    "localReadOnly": "on",
+    "postgres": {
+      "production": "17.6",
+      "local": "17.6"
+    },
+    "productionCloseout": "2026-11-04T03:50:30.146977+00:00",
+    "closeoutMetadataStable": true
+  },
+  "counts": {
+    "migrations": {
+      "production": 272,
+      "local": 297
+    },
+    "publicFunctions": {
+      "production": 188,
+      "local": 258,
+      "onlyLocal": 71,
+      "onlyProduction": 1,
+      "commonChanged": 40,
+      "changedClassifications": {
+        "line_endings_only": 29,
+        "behavior_change_reviewed": 8,
+        "access_metadata_only": 1,
+        "comments_and_whitespace_only": 2
+      }
+    },
+    "publicRelations": {
+      "production": 87,
+      "local": 103
+    },
+    "policies": {
+      "production": 183,
+      "local": 222,
+      "sharedIdentical": 183,
+      "onlyLocal": 39,
+      "onlyProduction": 0,
+      "changed": 0
+    },
+    "triggers": {
+      "production": 70,
+      "local": 74,
+      "onlyLocal": 7,
+      "onlyProduction": 3,
+      "changed": 0
+    }
+  },
+  "migrations": {
+    "lastProduction": {
+      "name": "admin_production_status_correction",
+      "version": "20261101000000"
+    },
+    "lastLocal": {
+      "name": "design_qc_independent_settlements",
+      "version": "20261103028000"
+    },
+    "onlyLocal": [
+      {
+        "name": "doctor_portal_phone_auth_and_linking",
+        "version": "20261004000000"
+      },
+      {
+        "name": "harden_audit_table_and_reporting_views",
+        "version": "20261007000000"
+      },
+      {
+        "name": "doctor_onboarding_and_order_destination",
+        "version": "20261007010000"
+      },
+      {
+        "name": "doctor_region_codes_and_names",
+        "version": "20261007020000"
+      },
+      {
+        "name": "doctor_manual_access",
+        "version": "20261007030000"
+      },
+      {
+        "name": "doctor_password_registration_and_invitations",
+        "version": "20261007040000"
+      },
+      {
+        "name": "doctor_registration_contacts_and_address_review",
+        "version": "20261011000000"
+      },
+      {
+        "name": "doctor_portal_scope_intake_and_monthly_reads",
+        "version": "20261011010000"
+      },
+      {
+        "name": "fix_production_sync_route_record_alias",
+        "version": "20261011020000"
+      },
+      {
+        "name": "doctor_case_file_limits_and_audit",
+        "version": "20261011030000"
+      },
+      {
+        "name": "prevent_duplicate_center_child_registration",
+        "version": "20261011040000"
+      },
+      {
+        "name": "doctor_service_catalog_projection",
+        "version": "20261011050000"
+      },
+      {
+        "name": "separate_scan_storage_limits",
+        "version": "20261011060000"
+      },
+      {
+        "name": "rep_delivery_type_edits",
+        "version": "20261101010000"
+      },
+      {
+        "name": "shipment_readiness_v2_guard",
+        "version": "20261103000000"
+      },
+      {
+        "name": "normal_supplier_final_receipt",
+        "version": "20261103010000"
+      },
+      {
+        "name": "design_revisions_and_qc",
+        "version": "20261103020000"
+      },
+      {
+        "name": "design_qc_guards_and_handoffs",
+        "version": "20261103021000"
+      },
+      {
+        "name": "design_qc_financial_privacy",
+        "version": "20261103022000"
+      },
+      {
+        "name": "design_qc_file_access",
+        "version": "20261103023000"
+      },
+      {
+        "name": "design_qc_execution_snapshots",
+        "version": "20261103024000"
+      },
+      {
+        "name": "design_qc_snapshot_insert_guard",
+        "version": "20261103025000"
+      },
+      {
+        "name": "design_qc_unchanged_files",
+        "version": "20261103026000"
+      },
+      {
+        "name": "design_qc_boundary_hardening",
+        "version": "20261103027000"
+      },
+      {
+        "name": "design_qc_independent_settlements",
+        "version": "20261103028000"
+      }
+    ],
+    "onlyProduction": []
+  },
+  "settings": {
+    "production": [
+      {
+        "key": "production_autostart_since",
+        "value": "2026-08-27 12:37:52.176405+00"
+      },
+      {
+        "key": "production_v1",
+        "value": "off"
+      },
+      {
+        "key": "workflow_accounting_audit_v2",
+        "value": "on"
+      },
+      {
+        "key": "workflow_finance_v2",
+        "value": "on"
+      },
+      {
+        "key": "workflow_issue_v2_enforce",
+        "value": "on"
+      },
+      {
+        "key": "workflow_issue_v2_shadow_read",
+        "value": "on"
+      },
+      {
+        "key": "workflow_issue_v2_write",
+        "value": "on"
+      },
+      {
+        "key": "workflow_status_legacy_mirror",
+        "value": "off"
+      },
+      {
+        "key": "workflow_strict_rep",
+        "value": "on"
+      }
+    ],
+    "local": [
+      {
+        "key": "production_autostart_since",
+        "value": "2026-11-04 03:28:27.753464+00"
+      },
+      {
+        "key": "production_v1",
+        "value": "off"
+      },
+      {
+        "key": "workflow_accounting_audit_v2",
+        "value": "on"
+      },
+      {
+        "key": "workflow_finance_v2",
+        "value": "on"
+      },
+      {
+        "key": "workflow_issue_v2_enforce",
+        "value": "on"
+      },
+      {
+        "key": "workflow_issue_v2_shadow_read",
+        "value": "off"
+      },
+      {
+        "key": "workflow_issue_v2_write",
+        "value": "on"
+      },
+      {
+        "key": "workflow_status_legacy_mirror",
+        "value": "off"
+      },
+      {
+        "key": "workflow_strict_rep",
+        "value": "on"
+      }
+    ],
+    "changed": [
+      {
+        "key": "production_autostart_since",
+        "fields": [
+          "value"
+        ],
+        "production": {
+          "key": "production_autostart_since",
+          "value": "2026-08-27 12:37:52.176405+00"
+        },
+        "local": {
+          "key": "production_autostart_since",
+          "value": "2026-11-04 03:28:27.753464+00"
+        }
+      },
+      {
+        "key": "workflow_issue_v2_shadow_read",
+        "fields": [
+          "value"
+        ],
+        "production": {
+          "key": "workflow_issue_v2_shadow_read",
+          "value": "on"
+        },
+        "local": {
+          "key": "workflow_issue_v2_shadow_read",
+          "value": "off"
+        }
+      }
+    ]
+  },
+  "buckets": {
+    "production": [
+      {
+        "id": "case-files",
+        "public": false,
+        "file_size_limit": 10485760,
+        "allowed_mime_types": [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/heic",
+          "application/pdf"
+        ]
+      },
+      {
+        "id": "ORCA Marketing",
+        "public": true,
+        "file_size_limit": null,
+        "allowed_mime_types": null
+      }
+    ],
+    "local": [
+      {
+        "id": "case-files",
+        "public": false,
+        "file_size_limit": 10485760,
+        "allowed_mime_types": [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/heic",
+          "application/pdf"
+        ]
+      },
+      {
+        "id": "case-scans",
+        "public": false,
+        "file_size_limit": 52428800,
+        "allowed_mime_types": [
+          "application/octet-stream",
+          "model/stl",
+          "model/ply",
+          "application/sla"
+        ]
+      },
+      {
+        "id": "design-qc-files",
+        "public": false,
+        "file_size_limit": 52428800,
+        "allowed_mime_types": [
+          "application/zip",
+          "application/octet-stream",
+          "text/html"
+        ]
+      }
+    ]
+  },
+  "functions": {
+    "onlyLocal": [
+      {
+        "key": "public._allocate_doctor_region_code(p_region text)",
+        "definition_md5": "ab4cf8c541690a1989f5abc1b107fb8c"
+      },
+      {
+        "key": "public._apply_doctor_registration_contacts(p_doctor_id uuid, p_profile jsonb, p_new boolean)",
+        "definition_md5": "3159dbf4857d2e0b1afac55353ed80d7"
+      },
+      {
+        "key": "public._clean_doctor_contact_phones(p_contacts jsonb, p_primary text)",
+        "definition_md5": "c57d89bcc09c2ccac8456e3407fe787c"
+      },
+      {
+        "key": "public._clean_doctor_registration_branches(p_branches jsonb)",
+        "definition_md5": "9dc194bcebc1b1dbedc1f39c25e006f9"
+      },
+      {
+        "key": "public._doctor_portal_phone_matches(p_doctor doctors, p_phone text)",
+        "definition_md5": "e9e95fd9d8091ed433b6036cfc916865"
+      },
+      {
+        "key": "public._doctor_portal_take_rate(p_action text, p_key text, p_limit integer)",
+        "definition_md5": "6f773e6846b2b94b6316a471ddffe7ae"
+      },
+      {
+        "key": "public._insert_doctor_profile(p_profile jsonb)",
+        "definition_md5": "e8d5868b6d48c6fd4b144ff1fd59772b"
+      },
+      {
+        "key": "public._normalize_clinic_contact_phone(p_phone text)",
+        "definition_md5": "79d0a9e012a0d9e1efdb9c635a75beb2"
+      },
+      {
+        "key": "public.admin_activate_password_auth_user(p_auth_id uuid)",
+        "definition_md5": "79cf232764414929e603657d915534c4"
+      },
+      {
+        "key": "public.admin_create_password_auth_user(p_email text, p_password text)",
+        "definition_md5": "be4bca7ab6a49f164b199863714c8abc"
+      },
+      {
+        "key": "public.approve_doctor_link_request(p_request_id uuid, p_doctor_id uuid)",
+        "definition_md5": "980d269ec67a7ba24191a82761d94869"
+      },
+      {
+        "key": "public.audit_doctor_case_attachment()",
+        "definition_md5": "bac612438aba4c669a9595a5cb4a88b0"
+      },
+      {
+        "key": "public.claim_doctor_code(p_phone text, p_doctor_code text, p_claim_token text)",
+        "definition_md5": "7e898e836d923993d182797da4d3f81f"
+      },
+      {
+        "key": "public.coordinate_doctor_pickup(p_id uuid, p_status text, p_expected_status text, p_note text)",
+        "definition_md5": "9fe603c58dc2e3477b4ab1356872043c"
+      },
+      {
+        "key": "public.create_doctor_portal_invitation(p_doctor_id uuid)",
+        "definition_md5": "aa17bfed278e6d60244ea4db617b197f"
+      },
+      {
+        "key": "public.create_doctor_with_region_code(p_profile jsonb)",
+        "definition_md5": "a9dc8006bc3a532229d7c8cbfe5a205b"
+      },
+      {
+        "key": "public.create_my_order_request_with_destination(p_patient_name text, p_items jsonb, p_shade text, p_instructions text, p_stl_url text, p_images_url text, p_delivery_date date, p_total_price numeric, p_branch_id text, p_delivery_address text)",
+        "definition_md5": "d60b403609c6dab81637f406c3c62b28"
+      },
+      {
+        "key": "public.decide_design_revision(p_revision_id uuid, p_event_id uuid, p_action text, p_note text)",
+        "definition_md5": "22b17784fcde76651fe3085b46786c79"
+      },
+      {
+        "key": "public.delivery_type_transition_status(p_status text, p_previous_type text, p_target_type text)",
+        "definition_md5": "39401b098dae6ab314d7ff835ce4dee0"
+      },
+      {
+        "key": "public.design_qc_can_read(p_order_id uuid)",
+        "definition_md5": "bda35764d7271da5138497110e3bdc3d"
+      },
+      {
+        "key": "public.design_qc_can_read_files(p_order_id uuid)",
+        "definition_md5": "b7c4f746c142ffcca6de892191bc1188"
+      },
+      {
+        "key": "public.design_qc_can_read_path(p_path text)",
+        "definition_md5": "8a4a64773f470a90aa21d07ee68caee4"
+      },
+      {
+        "key": "public.design_qc_can_write_path(p_path text)",
+        "definition_md5": "b1c92ff3240e46aba98f4941d022b07e"
+      },
+      {
+        "key": "public.design_qc_default_price(p_order_id uuid, p_designer_id uuid)",
+        "definition_md5": "49aab3b1e0303067a7df5c14f91cf02c"
+      },
+      {
+        "key": "public.design_qc_gate_passes(p_revision_id uuid)",
+        "definition_md5": "f606a6b77d1240643a48cb2660614ab3"
+      },
+      {
+        "key": "public.doctor_portal_can_access_order(p_order_id uuid)",
+        "definition_md5": "9c4b1421a29cdf1b8ee6d8f3b6c8d05b"
+      },
+      {
+        "key": "public.doctor_portal_owns_file(p_path text)",
+        "definition_md5": "d06966623cbc23cff67a6ac069509ff2"
+      },
+      {
+        "key": "public.doctor_portal_scope()",
+        "definition_md5": "7674fe6441d26ace44ce875b48a81515"
+      },
+      {
+        "key": "public.find_doctor_registration_matches(p_phone text)",
+        "definition_md5": "7cbad6ee8051f5f9e91eb279033b5807"
+      },
+      {
+        "key": "public.get_design_execution_path(p_order_id uuid)",
+        "definition_md5": "e5822381d0b0437ca840f4e2fd193dfc"
+      },
+      {
+        "key": "public.get_design_qc_compensations()",
+        "definition_md5": "e1d2ecc0405c31d3aa0baeb65e9b0079"
+      },
+      {
+        "key": "public.get_design_qc_designer_options()",
+        "definition_md5": "e450452c46c9a32fea54b55267ebe203"
+      },
+      {
+        "key": "public.get_design_qc_designer_options(p_order_id uuid)",
+        "definition_md5": "edfd0edd1a9f942b0f71f7d519621e2c"
+      },
+      {
+        "key": "public.get_design_qc_queue()",
+        "definition_md5": "1db111edc5cc03a200a33f2524603665"
+      },
+      {
+        "key": "public.get_design_qc_state(p_order_id uuid)",
+        "definition_md5": "39a5e344c4bed8a90d5f9a100c7a1e88"
+      },
+      {
+        "key": "public.get_doctor_portal_cases()",
+        "definition_md5": "c61385a86fbac8dc85346ae6ba288941"
+      },
+      {
+        "key": "public.get_doctor_portal_catalog()",
+        "definition_md5": "d3fb88db245a2919ec0caa35bc19cba8"
+      },
+      {
+        "key": "public.get_doctor_portal_context()",
+        "definition_md5": "fbb3a9dd299e46d49654a61d32e8c099"
+      },
+      {
+        "key": "public.get_doctor_portal_staff_inbox()",
+        "definition_md5": "4152f5b61a0fb6393d6253e9dd5c6512"
+      },
+      {
+        "key": "public.get_my_doctor_messages()",
+        "definition_md5": "aaf4073a22e02d65d57bee8d4376f8b8"
+      },
+      {
+        "key": "public.get_my_doctor_month(p_previous boolean)",
+        "definition_md5": "038e280e949459dad8d4a88cf301fa01"
+      },
+      {
+        "key": "public.get_pending_doctor_link_requests()",
+        "definition_md5": "77e8c6d642b77305c5aa35e8733a3013"
+      },
+      {
+        "key": "public.get_pending_doctor_manual_access()",
+        "definition_md5": "46ca8c621ea2f17c184c921ea1c5e0fd"
+      },
+      {
+        "key": "public.get_pending_doctor_password_registrations()",
+        "definition_md5": "ad45e00c552fcbe1289a8161624202b5"
+      },
+      {
+        "key": "public.get_stage_design_execution_path(p_stage_id uuid)",
+        "definition_md5": "a3f1790283ccffd396fa2a4a625fbb22"
+      },
+      {
+        "key": "public.guard_design_qc_execution()",
+        "definition_md5": "1e3086f4bdd5aebc26fb0bf2ad612751"
+      },
+      {
+        "key": "public.guard_design_qc_order()",
+        "definition_md5": "237c0c601ee2a9b7e9ff1448e477ce98"
+      },
+      {
+        "key": "public.inspect_doctor_portal_invitation(p_token text)",
+        "definition_md5": "16f8598ebdf4ae4a54add569c83aca8c"
+      },
+      {
+        "key": "public.normalize_doctor_name(p_name text)",
+        "definition_md5": "cd470893cad541ee89df99e18bf2231b"
+      },
+      {
+        "key": "public.normalize_phone(p_phone text)",
+        "definition_md5": "a8a050f2e395a9b53aa80106fd48c7b5"
+      },
+      {
+        "key": "public.open_doctor_manual_access(p_request_id uuid, p_token text)",
+        "definition_md5": "85c66f15ca0c36c9a1f53179b651a18b"
+      },
+      {
+        "key": "public.reassign_design_revision(p_order_id uuid, p_designer_id uuid, p_note text, p_old_amount numeric, p_new_amount numeric, p_command_id uuid)",
+        "definition_md5": "53c74070d2a4913c9f7ca1ce6ef86e1a"
+      },
+      {
+        "key": "public.register_doctor_password_account(p_phone text, p_email text, p_password text, p_profile jsonb, p_intent text, p_claimed_doctor_id uuid, p_invitation_token text)",
+        "definition_md5": "22080a2837d0d5690e53b5fa9572d269"
+      },
+      {
+        "key": "public.register_verified_doctor(p_phone text, p_claim_token text, p_profile jsonb)",
+        "definition_md5": "d64b09362ac4c14bc7fb1b04b297a9f6"
+      },
+      {
+        "key": "public.reject_doctor_link_request(p_request_id uuid, p_notes text)",
+        "definition_md5": "371bd61b64abeb392a369064101d8b5d"
+      },
+      {
+        "key": "public.release_design_revision(p_order_id uuid)",
+        "definition_md5": "5d981e79628b30d073ac35ae345ee00b"
+      },
+      {
+        "key": "public.reply_doctor_portal_message(p_id uuid, p_reply text)",
+        "definition_md5": "7f1dfb16be0023ed441bf1ac72535dbe"
+      },
+      {
+        "key": "public.request_doctor_phone_otp(p_phone text, p_channel text, p_ip text, p_user_agent text)",
+        "definition_md5": "38c1bac0ebce065bfe591aea61d248bc"
+      },
+      {
+        "key": "public.resolve_doctor_password_login(p_phone text, p_password text)",
+        "definition_md5": "d0cb0bf4ce271292cb02932caad535b0"
+      },
+      {
+        "key": "public.return_design_revision(p_order_id uuid, p_designer_id uuid, p_note text)",
+        "definition_md5": "177c9b56e6296bf57adc7952edcdcaef"
+      },
+      {
+        "key": "public.review_doctor_address_update(p_request_id uuid, p_approve boolean)",
+        "definition_md5": "e98219b3300e0f9d2078efa3aec71944"
+      },
+      {
+        "key": "public.review_doctor_manual_access(p_request_id uuid, p_approve boolean, p_doctor_id uuid)",
+        "definition_md5": "76684ba67fac75cc8f0ce81c122786c5"
+      },
+      {
+        "key": "public.review_doctor_password_registration(p_request_id uuid, p_approve boolean, p_doctor_id uuid, p_approve_address boolean)",
+        "definition_md5": "fa60df768bf9cea7bd0dd3acd6aab0b5"
+      },
+      {
+        "key": "public.send_doctor_portal_message(p_body text, p_order_id uuid)",
+        "definition_md5": "2295c75e18021747dcf4c313dd474d5b"
+      },
+      {
+        "key": "public.set_design_qc_enabled(p_enabled boolean, p_reason text)",
+        "definition_md5": "3bba983e99679f97cbeb32d6707c3895"
+      },
+      {
+        "key": "public.submit_design_revision(p_order_id uuid, p_revision_id uuid, p_execution_url text, p_without_preview_reason text)",
+        "definition_md5": "213e0412bb337677dd622ce5e596fe39"
+      },
+      {
+        "key": "public.submit_design_revision_new_files(p_order_id uuid, p_revision_id uuid, p_execution_url text, p_without_preview_reason text)",
+        "definition_md5": "f39d79b6bbff5684fd557874abedd48d"
+      },
+      {
+        "key": "public.submit_doctor_manual_access(p_phone text, p_token text, p_intent text, p_code text, p_profile jsonb)",
+        "definition_md5": "5c78ae5e84724f5b518564a4e9f3b668"
+      },
+      {
+        "key": "public.submit_doctor_portal_case(p_request_key uuid, p_payload jsonb)",
+        "definition_md5": "75d3d2e9feac8163e38dc979fb24d9e6"
+      },
+      {
+        "key": "public.update_conversation_timestamp()",
+        "definition_md5": "83b4a7d77dbcd95d364de0cd36b3e827"
+      },
+      {
+        "key": "public.verify_and_link_doctor(p_phone text, p_otp_code text)",
+        "definition_md5": "1c0db3dbfba280f784a89df17008095d"
+      }
+    ],
+    "onlyProduction": [
+      {
+        "key": "public._cost_split_metrics()",
+        "definition_md5": "3a9be8b7035b017d86a98d891e4e651e"
+      }
+    ],
+    "changed": [
+      {
+        "key": "public.admin_correct_order_production_status_v2(p_order_id uuid, p_target_status text, p_reason text, p_idempotency_key uuid)",
+        "name": "admin_correct_order_production_status_v2",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "dec860398fcfc74b91ed8594e92cea84",
+          "definition_md5": "5f80e5ce176a4aae539c643496545662",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "5fcebd7dfcfb6ce699ebcc892690af9a",
+          "definition_md5": "4c8fdf1f22afd54d5b3aaeeaff53012c",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.admin_reset_password(target_user_id uuid, new_password text)",
+        "name": "admin_reset_password",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "7f41233411f40aaaee6f2dc0eb3dc208",
+          "definition_md5": "53e0b66f1d696f7be7dc121e63e6e285",
+          "config": [
+            "search_path=public, auth, extensions"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "27a33fe6fe6c04e935acf33ee664e686",
+          "definition_md5": "ee1cba7c1bfc20b6c792e90350ae49bb",
+          "config": [
+            "search_path=public, auth, extensions"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.admin_review_order_edit(p_event_id uuid, p_action text, p_admin_notes text)",
+        "name": "admin_review_order_edit",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "fd5800e4379b5c2157ace18cf61acf8b",
+          "definition_md5": "593a1a07dc6d58a2817df139294db680",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "67311d14d0e6c4de62ca3e89fca999c0",
+          "definition_md5": "7cb25b42c69fbee5c43a8d4b90c0c878",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.allocate_payable_transaction_fifo(p_transaction_id uuid, p_changed_by uuid)",
+        "name": "allocate_payable_transaction_fifo",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "dfb113f44e98225dd581370bb0e5dfb7",
+          "definition_md5": "ff57c3c6eb285f84fec6b87bf98dce78",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "bb3a59b7a0800b4b55fe980b8de5b383",
+          "definition_md5": "887e28b1ad66ad4c23da3c23129a16fe",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.apply_workflow_v2_backfill(p_confirmation text)",
+        "name": "apply_workflow_v2_backfill",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "665f7a769c41e92e796d4d97285466e8",
+          "definition_md5": "7f972ebb3273adf72bca362909188e6d",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "38beed016502300da49491d4f814ba72",
+          "definition_md5": "86dfb19414d10332fa98d271bc76de69",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.assert_delivered_doctor_obligation_integrity(p_order_id uuid)",
+        "name": "assert_delivered_doctor_obligation_integrity",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "ea5bda67fe54969eb5a6acee18bbe9e2",
+          "definition_md5": "aa7fd0721f21894197bfb260df6097a3",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "206a1fe135ea2c02ff9e126c98199dcd",
+          "definition_md5": "654ce50728c78f9c1864b0242a932342",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.canonical_doctor_account_id(p_doctor_id uuid)",
+        "name": "canonical_doctor_account_id",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "44912461b3578f5fe9fb9d35796f0349",
+          "definition_md5": "5a4628e02614192923863d4a58c0cdc8",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "a892a15d3ecb7bf711a82010c1fef344",
+          "definition_md5": "3d1f9189fc33b5a835b8989e06a1168d",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.capture_stage_completion_cost()",
+        "name": "capture_stage_completion_cost",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "21cf8d560fc172d137576813c2b21cb2",
+          "definition_md5": "756b778f6ee0c15c7c7ad00c960bbbaa",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "fce4ad3f71ed36da56e053556d519334",
+          "definition_md5": "a522514945956dbd40a3b4832265c6cb",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.check_lab_column_updates()",
+        "name": "check_lab_column_updates",
+        "classification": "access_metadata_only",
+        "fields": [
+          "acl"
+        ],
+        "production": {
+          "body_md5": "f632e19500246b77f2a7e262b57da698",
+          "definition_md5": "3406cb3e19ab1d93f6f8a92a52fa2ae5",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "f632e19500246b77f2a7e262b57da698",
+          "definition_md5": "3406cb3e19ab1d93f6f8a92a52fa2ae5",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.confirm_legacy_delivery_without_date_v2(p_order_id uuid, p_confirmation_basis text)",
+        "name": "confirm_legacy_delivery_without_date_v2",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "5906f880104e09f5ad9f4bd329c0bd36",
+          "definition_md5": "66220a294de357258b94a03f9f159e26",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "c0ece1c8ede90253df94624fea735fa9",
+          "definition_md5": "0e29ca20580b7ec18e3c62dce20db70e",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.create_my_order_request_v2(p_patient_name text, p_items jsonb, p_shade text, p_instructions text, p_stl_url text, p_images_url text, p_delivery_date date, p_total_price numeric)",
+        "name": "create_my_order_request_v2",
+        "classification": "line_endings_only",
+        "fields": [
+          "acl",
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "50905217e83380c86f8dd17178b41af5",
+          "definition_md5": "d95683ee5b58214b6a5c4e88f7431dd1",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "bf1033f6b299e89b76493f7afc8c37b6",
+          "definition_md5": "d4fff2a874d5e7ff66d6244207f0c655",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.create_shipment(p_courier_id uuid, p_doctor_id uuid, p_tracking_ref text, p_order_ids uuid[], p_packing_proof_urls text[], p_recipient_name text, p_recipient_phone text, p_delivery_address text, p_notes text)",
+        "name": "create_shipment",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "c120726d368583bf8e7db9872a41815f",
+          "definition_md5": "6abf7020725bc288f87e2480e0864e84",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "9747d741a37c7d50bf0d607c9e0e7e83",
+          "definition_md5": "85d082c75863a3c1d998b0ae96edb0c1",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_analytics_summary(p_start_date date, p_end_date date)",
+        "name": "get_analytics_summary",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "93b3e5c809b98fa5e856d25ed2ccd3e4",
+          "definition_md5": "d47a538c3c20f3b4ea7ed95029bfbea1",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "46ab84781e65df9b53fa3f1c1499dfa7",
+          "definition_md5": "d4c375afce5685ae525b5a67aaea0625",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_doctor_receivables_breakdown()",
+        "name": "get_doctor_receivables_breakdown",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "c714bcec8206a40ab98f9aa6a633093f",
+          "definition_md5": "24304666708e9e4fc112fb4258e82bb7",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "7cae5e62e4e002d71a1953c642abecbc",
+          "definition_md5": "f6f5d7bf87c5c84a2244418843fee748",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_doctor_receivables_breakdown_privileged_20260812()",
+        "name": "get_doctor_receivables_breakdown_privileged_20260812",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "359d9610571ae5c08744743acc1e9d0e",
+          "definition_md5": "9814f2ff25aef327682587c126ef5686",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "9afb50b821f45e44e2f1120abe8d7df1",
+          "definition_md5": "afdc296077a2745be83bbc8a5f95abe1",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_marketing_summary(p_start_date timestamp with time zone, p_end_date timestamp with time zone)",
+        "name": "get_marketing_summary",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "08385a6417591ae7e926526e47fa5d70",
+          "definition_md5": "216a62ca4fa4dbff7a5fda517f52759e",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "90aa3caecb05172c9de5ba184f1c7419",
+          "definition_md5": "f6661028a3f8d71d539d7ad51d620c63",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_marketing_summary_privileged_20260812(p_start_date timestamp with time zone, p_end_date timestamp with time zone)",
+        "name": "get_marketing_summary_privileged_20260812",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "5ea76110305ca959d08f81716ef7ec66",
+          "definition_md5": "e4f6b0a0da8b2bd864e2c9d21f104295",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "fb92b75ea6372f817b75ecbd5dc3b5f5",
+          "definition_md5": "2a965e6ad287c424169819ac77288774",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_my_custom_permission(p_key text)",
+        "name": "get_my_custom_permission",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "7289c099816cc5b6d6773708724a9809",
+          "definition_md5": "88f1198ecd08e30f1cc644cef065af0f",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "2701f8d6969916f39b648b0795c85ed3",
+          "definition_md5": "b20b83da43dc8bb6ab007248aba8f2dd",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_my_doctor_orders_v2()",
+        "name": "get_my_doctor_orders_v2",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "config",
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "1322d1d0307c9ebcdf60c43bf39b2730",
+          "definition_md5": "3fff465326e77f0b57f6eed7b57a1ca1",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "fffa8bc4f5a36d0ebed94c3bce92c767",
+          "definition_md5": "3f0ecc2ae8c3600acf53013fe12b5fd4",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_order_workflow_v2_capabilities()",
+        "name": "get_order_workflow_v2_capabilities",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "a5e5160578fad5036a3d2520bad44416",
+          "definition_md5": "a10a288a82d6dbf21ea246c7e497bed5",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "149be99abde93aa1b3aa0df46e0023dd",
+          "definition_md5": "fc159e271a55c4dd5afff2a238fa3f8a",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_top_doctors(p_start_date date, p_end_date date, p_limit integer)",
+        "name": "get_top_doctors",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "a0398628467989d62797a37a8d2cf4ef",
+          "definition_md5": "8c96925abee6551d22db1c61a2b985f6",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "38688565352be9876b025e53285d7efa",
+          "definition_md5": "e023a6b34a73be705d805a813eec5d44",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_top_doctors_privileged_20260801(p_start_date date, p_end_date date, p_limit integer)",
+        "name": "get_top_doctors_privileged_20260801",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "197cf7d9ea49728de0496e511455e473",
+          "definition_md5": "48ce6904c43363c9414a624223074c91",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "3cc2189c727c6e68d15a9e627d942577",
+          "definition_md5": "17e60d842f8590b15ff29ca510e96aa7",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_top_expense_categories(p_start_date date, p_end_date date, p_limit integer)",
+        "name": "get_top_expense_categories",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "0d61de77d8d5ed26b845bd3262643edd",
+          "definition_md5": "d57be7daa6a97452e567c131ee189015",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "51c3caf92ed2a2b5c120e6ca55f8569b",
+          "definition_md5": "7058299822cffbb0df892a2b9d57ed38",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_top_expense_categories_privileged_20260801(p_start_date date, p_end_date date, p_limit integer)",
+        "name": "get_top_expense_categories_privileged_20260801",
+        "classification": "comments_and_whitespace_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "c68b6752856951b24ba1ad0597847619",
+          "definition_md5": "9e10a1ff5b903bebd336b63abc3b61f7",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "dff38fd402cede541479a48b1dabfb00",
+          "definition_md5": "e9653216377595226ce6b3a9192412da",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.get_top_services(p_start_date date, p_end_date date, p_limit integer)",
+        "name": "get_top_services",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "a1373f478c75dbf9a6f6c4e87fc9c28b",
+          "definition_md5": "3f390ad34a6801448366e065a16fc77f",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "d76fdfa5b6d950c77e6483639558e065",
+          "definition_md5": "15e582564f2d1b659b531afc61ecb0d2",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.guard_allocated_payable_payment_mutation()",
+        "name": "guard_allocated_payable_payment_mutation",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "5d68e7d3dd10f0d49bdecd9e69d266a0",
+          "definition_md5": "ad3d5d4b224bb0e3e6ab258d3bcfc330",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "0065262b27e4b89b03e52dbba53f34f4",
+          "definition_md5": "676b67f4df911e7d9831afabc9f7cfd9",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.guard_delivered_doctor_obligation_from_obligation()",
+        "name": "guard_delivered_doctor_obligation_from_obligation",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "c94741708da47f0449d05459fbb5932b",
+          "definition_md5": "c1c186f40bb792ec6fa22aaccddcf330",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "0a5803623ace4d8c2fdf192e8cc5c6fa",
+          "definition_md5": "b3b39340c29547d1b6786cccddc36ff3",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.guard_delivered_doctor_obligation_from_order()",
+        "name": "guard_delivered_doctor_obligation_from_order",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "03b61721be18712df59252c57b574c95",
+          "definition_md5": "51ed75ae675af5e14f2a68a78b111296",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "e2f4c000cdd4be061a39f22a8ead8eb5",
+          "definition_md5": "132222fd25f5ee657f89ac298593ee4a",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.guard_legacy_delivery_confirmation_v2()",
+        "name": "guard_legacy_delivery_confirmation_v2",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "ec31a47a9d005d84aaafd964fb7f33ce",
+          "definition_md5": "7a46b2adb691995587f283e5570ad106",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "5983698b7a1395d4bd7d24fda4f064be",
+          "definition_md5": "0577e85cf80c35144e22751bbf68e2eb",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.orders_role_field_guard()",
+        "name": "orders_role_field_guard",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "ee27c25dabf2ff75c52dfe3814f3eeb9",
+          "definition_md5": "134d8c57de464b33a50618a957e3e5af",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "2f97a99d186a1e36b0699c1ecc318ad3",
+          "definition_md5": "866702ca94bd03e9e130d6291ace8f01",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.reconcile_doctor_account_fifo(p_doctor_id uuid, p_changed_by uuid)",
+        "name": "reconcile_doctor_account_fifo",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "044247ef84b8d784d2ef9cbd533c4f46",
+          "definition_md5": "db06ae9963813c2fca36c1ef5f97a255",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "642dac692eae7fd333cb9d0485ba143b",
+          "definition_md5": "df07863468086a6bd43ee3fd0260c1c1",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.rep_update_order_fields_with_audit(p_order_id uuid, p_changes jsonb, p_reason_code text, p_reason_note text)",
+        "name": "rep_update_order_fields_with_audit",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "de1c683ba970f37bb7b1a489f0ca2cd6",
+          "definition_md5": "4c87c05159039920564a71ea258ca418",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "c78f93aeb7756a09a01b19b076597531",
+          "definition_md5": "f753659e23ff5d4159c878353b75b077",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.set_entity_billing_settings_updated_at()",
+        "name": "set_entity_billing_settings_updated_at",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "a4f0035ed48faa660c7664ffee7ec51c",
+          "definition_md5": "646f16c0eae90ee86731e25ea532d9e6",
+          "config": null,
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "06b9f5a418fc4b912c5b7027e9fd9334",
+          "definition_md5": "f586a0dfd44edabfa6dc219edfe10c9c",
+          "config": null,
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.submit_my_order_feedback_v2(p_order_id uuid, p_rating integer, p_notes text)",
+        "name": "submit_my_order_feedback_v2",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "fbf56cfc970217f91c1cebf8e3cb7d10",
+          "definition_md5": "66ab090dcbb264ead4c713d742e742a8",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "92721548fca8db8e0be55be8d644bca0",
+          "definition_md5": "5000afa13877ac9de403c1a8ca726fd9",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.sync_order_financial_obligations()",
+        "name": "sync_order_financial_obligations",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "55d88cc7dfafbddfdb503f65f6902e39",
+          "definition_md5": "4808d874703486c98ded40cfcaadd589",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "4d392a486f9b0a245e0e225fea52d971",
+          "definition_md5": "b2b4444f4ac4c8274d9ba95a7893c769",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.sync_preserved_external_lab_price_change()",
+        "name": "sync_preserved_external_lab_price_change",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "396bc25693a52bc9b093ae74f922f55e",
+          "definition_md5": "c5ea641f0514ace74f0079f58d651111",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "e33407389d68cba588b524209488f0ec",
+          "definition_md5": "441622b132815373e6736e15431a6fda",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.sync_production_from_order(p_order_id uuid)",
+        "name": "sync_production_from_order",
+        "classification": "behavior_change_reviewed",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "0e3a6b87bdd6c268d5a371de4cc900f9",
+          "definition_md5": "6b8565ba73c86aca2dd8efabe217844a",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "563d4f1d66a3c82611e9eb6089a3bbf6",
+          "definition_md5": "b9bb7a85472bb99ace784a9b800097ce",
+          "config": [
+            "search_path=public, auth"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.sync_service_name_changes()",
+        "name": "sync_service_name_changes",
+        "classification": "comments_and_whitespace_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "be34ab09ed6e28a2fa61c5d831c58d49",
+          "definition_md5": "245ab2e058e1b9ac209c479eddd60f54",
+          "config": null,
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "7fda482c42a247c1cfe14ebb0556128b",
+          "definition_md5": "8c9710aa52d6b78910a8bbcd60368458",
+          "config": null,
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.try_timestamptz_v2(p_value text)",
+        "name": "try_timestamptz_v2",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "8e9a6bc53181b28f3bdcfd52d8d06531",
+          "definition_md5": "0caded4501d450e11f1be9d5b70c1c71",
+          "config": null,
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "564ecc200825f428094aaddd7c80df4c",
+          "definition_md5": "ab849c9b22598922cf328d5fee845a26",
+          "config": null,
+          "acl": [
+            {
+              "grantee": "PUBLIC",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "anon",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      },
+      {
+        "key": "public.workflow_flag_enabled(p_key text)",
+        "name": "workflow_flag_enabled",
+        "classification": "line_endings_only",
+        "fields": [
+          "body_md5",
+          "definition_md5"
+        ],
+        "production": {
+          "body_md5": "f34c91a91d0645467c8748a3f7205ab7",
+          "definition_md5": "5257243b185ef1543327f01d0c056b15",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        },
+        "local": {
+          "body_md5": "ab40838b6a43d0a663fe37547f341871",
+          "definition_md5": "25d74ebf20d1c80b69ecb137f35b2a6c",
+          "config": [
+            "search_path=public"
+          ],
+          "acl": [
+            {
+              "grantee": "authenticated",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "postgres",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            },
+            {
+              "grantee": "service_role",
+              "grantable": false,
+              "privilege": "EXECUTE"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "relations": {
+    "onlyLocal": [
+      "public.design_qc_assignments",
+      "public.design_qc_control",
+      "public.design_qc_control_events",
+      "public.design_qc_events",
+      "public.design_revisions",
+      "public.doctor_address_update_requests",
+      "public.doctor_code_counters",
+      "public.doctor_link_requests",
+      "public.doctor_manual_access_requests",
+      "public.doctor_password_registrations",
+      "public.doctor_pickup_requests",
+      "public.doctor_portal_case_requests",
+      "public.doctor_portal_invitations",
+      "public.doctor_portal_messages",
+      "public.doctor_portal_public_rate",
+      "public.phone_verifications",
+      "storage.iceberg_namespaces",
+      "storage.iceberg_tables"
+    ],
+    "details": [
+      {
+        "key": "public.account_credits",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.allocation_events",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.doctors",
+        "meta": [],
+        "columnsOnlyLocal": [
+          {
+            "acl": null,
+            "name": "code_region",
+            "type": "text",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          },
+          {
+            "acl": null,
+            "name": "contact_phones",
+            "type": "jsonb",
+            "default": "'[]'::jsonb",
+            "identity": "",
+            "not_null": true,
+            "generated": ""
+          }
+        ],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "custom_prices",
+            "prod": {
+              "acl": null,
+              "name": "custom_prices",
+              "type": "jsonb",
+              "default": "'{}'::jsonb",
+              "identity": "",
+              "not_null": false,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "custom_prices",
+              "type": "jsonb",
+              "default": null,
+              "identity": "",
+              "not_null": false,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.entity_billing_settings",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.external_work_orders",
+        "meta": [],
+        "columnsOnlyLocal": [
+          {
+            "acl": null,
+            "name": "design_revision_id",
+            "type": "uuid",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          }
+        ],
+        "columnsOnlyProd": [],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [
+          {
+            "name": "external_work_orders_design_revision_id_fkey",
+            "type": "f",
+            "validated": true,
+            "definition": "FOREIGN KEY (design_revision_id) REFERENCES design_revisions(id)"
+          }
+        ],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.financial_exception_reviews",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.financial_obligations",
+        "meta": [],
+        "columnsOnlyLocal": [
+          {
+            "acl": null,
+            "name": "design_qc_assignment_id",
+            "type": "uuid",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          }
+        ],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          },
+          {
+            "name": "order_id",
+            "prod": {
+              "acl": null,
+              "name": "order_id",
+              "type": "uuid",
+              "default": null,
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "order_id",
+              "type": "uuid",
+              "default": null,
+              "identity": "",
+              "not_null": false,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [
+          {
+            "name": "financial_obligations_design_qc_assignment_id_fkey",
+            "type": "f",
+            "validated": true,
+            "definition": "FOREIGN KEY (design_qc_assignment_id) REFERENCES design_qc_assignments(id)"
+          },
+          {
+            "name": "obligation_order_or_qc_settlement",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (order_id IS NOT NULL OR design_qc_assignment_id IS NOT NULL)"
+          },
+          {
+            "name": "qc_settlement_shape",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (design_qc_assignment_id IS NULL OR entity_type = 'designer'::text AND direction = 'payable'::text AND source = 'adjustment'::text AND trigger_type = 'manual_adjustment'::text)"
+          }
+        ],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.order_attachments",
+        "meta": [],
+        "columnsOnlyLocal": [
+          {
+            "acl": null,
+            "name": "storage_bucket",
+            "type": "text",
+            "default": "'case-files'::text",
+            "identity": "",
+            "not_null": true,
+            "generated": ""
+          }
+        ],
+        "columnsOnlyProd": [],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [
+          {
+            "name": "order_attachments_storage_bucket_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (storage_bucket = ANY (ARRAY['case-files'::text, 'case-scans'::text]))"
+          }
+        ],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.order_events",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.order_history",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.orders",
+        "meta": [],
+        "columnsOnlyLocal": [
+          {
+            "acl": null,
+            "name": "delivery_address",
+            "type": "text",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          },
+          {
+            "acl": null,
+            "name": "delivery_contact_phone",
+            "type": "text",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          },
+          {
+            "acl": null,
+            "name": "design_qc_revision_id",
+            "type": "uuid",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          },
+          {
+            "acl": null,
+            "name": "design_qc_required",
+            "type": "boolean",
+            "default": "false",
+            "identity": "",
+            "not_null": true,
+            "generated": ""
+          }
+        ],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "is_archived",
+            "prod": {
+              "acl": null,
+              "name": "is_archived",
+              "type": "boolean",
+              "default": "false",
+              "identity": "",
+              "not_null": false,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "is_archived",
+              "type": "boolean",
+              "default": "false",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [
+          {
+            "name": "orders_design_qc_revision_id_fkey",
+            "type": "f",
+            "validated": true,
+            "definition": "FOREIGN KEY (design_qc_revision_id) REFERENCES design_revisions(id)"
+          },
+          {
+            "name": "orders_design_status_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (design_status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'completed'::text]))"
+          }
+        ],
+        "constraintsOnlyProd": [
+          {
+            "name": "orders_production_status_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (production_status = ANY (ARRAY['not_started'::text, 'designing'::text, 'in_production'::text, 'try_in_ready'::text, 'waiting_doctor'::text, 'finalization'::text, 'final_ready'::text, 'final_delivered'::text]))"
+          }
+        ],
+        "constraintsChanged": [
+          {
+            "name": "orders_first_delivered_source_check",
+            "prod": {
+              "name": "orders_first_delivered_source_check",
+              "type": "c",
+              "validated": true,
+              "definition": "CHECK (first_delivered_source IS NULL OR (first_delivered_source = ANY (ARRAY['direct_transition'::text, 'order_event'::text, 'status_history'::text, 'actual_delivery_date'::text, 'accounting_snapshot_inferred'::text, 'manual_review'::text])))"
+            },
+            "local": {
+              "name": "orders_first_delivered_source_check",
+              "type": "c",
+              "validated": false,
+              "definition": "CHECK (first_delivered_source IS NULL OR (first_delivered_source = ANY (ARRAY['direct_transition'::text, 'order_event'::text, 'status_history'::text, 'actual_delivery_date'::text, 'accounting_snapshot_inferred'::text, 'manual_review'::text]))) NOT VALID"
+            }
+          },
+          {
+            "name": "orders_issue_timing_v2_check",
+            "prod": {
+              "name": "orders_issue_timing_v2_check",
+              "type": "c",
+              "validated": true,
+              "definition": "CHECK (NOT workflow_flag_enabled('workflow_issue_v2_enforce'::text) OR (issue_state <> 'cancelled'::text OR first_delivered_at IS NULL AND NOT legacy_delivery_confirmed) AND ((issue_state <> ALL (ARRAY['returned'::text, 'doctor_rejected'::text, 'redo'::text])) OR first_delivered_at IS NOT NULL OR legacy_delivery_confirmed) AND (issue_state <> 'lab_rejected'::text OR first_delivered_at IS NULL AND NOT legacy_delivery_confirmed AND design_submitted_at IS NULL))"
+            },
+            "local": {
+              "name": "orders_issue_timing_v2_check",
+              "type": "c",
+              "validated": false,
+              "definition": "CHECK (NOT workflow_flag_enabled('workflow_issue_v2_enforce'::text) OR (issue_state <> 'cancelled'::text OR first_delivered_at IS NULL AND NOT legacy_delivery_confirmed) AND ((issue_state <> ALL (ARRAY['returned'::text, 'doctor_rejected'::text, 'redo'::text])) OR first_delivered_at IS NOT NULL OR legacy_delivery_confirmed) AND (issue_state <> 'lab_rejected'::text OR first_delivered_at IS NULL AND NOT legacy_delivery_confirmed AND design_submitted_at IS NULL)) NOT VALID"
+            }
+          },
+          {
+            "name": "orders_lifecycle_timestamp_check",
+            "prod": {
+              "name": "orders_lifecycle_timestamp_check",
+              "type": "c",
+              "validated": true,
+              "definition": "CHECK ((design_submitted_at IS NULL OR design_submitted_at >= created_at) AND (first_delivered_at IS NULL OR first_delivered_at >= created_at))"
+            },
+            "local": {
+              "name": "orders_lifecycle_timestamp_check",
+              "type": "c",
+              "validated": false,
+              "definition": "CHECK ((design_submitted_at IS NULL OR design_submitted_at >= created_at) AND (first_delivered_at IS NULL OR first_delivered_at >= created_at)) NOT VALID"
+            }
+          },
+          {
+            "name": "orders_pending_doctor_decision_check",
+            "prod": {
+              "name": "orders_pending_doctor_decision_check",
+              "type": "c",
+              "validated": true,
+              "definition": "CHECK (NOT workflow_flag_enabled('workflow_issue_v2_enforce'::text) OR rejection_doctor_decision IS DISTINCT FROM 'decide_later'::text OR NOT rejected_doctor_amount IS DISTINCT FROM COALESCE(total_price, 0::numeric) AND rejection_financial_review_status = 'pending'::text)"
+            },
+            "local": {
+              "name": "orders_pending_doctor_decision_check",
+              "type": "c",
+              "validated": false,
+              "definition": "CHECK (NOT workflow_flag_enabled('workflow_issue_v2_enforce'::text) OR rejection_doctor_decision IS DISTINCT FROM 'decide_later'::text OR NOT rejected_doctor_amount IS DISTINCT FROM COALESCE(total_price, 0::numeric) AND rejection_financial_review_status = 'pending'::text) NOT VALID"
+            }
+          },
+          {
+            "name": "orders_zero_issue_financial_fields_check",
+            "prod": {
+              "name": "orders_zero_issue_financial_fields_check",
+              "type": "c",
+              "validated": true,
+              "definition": "CHECK (NOT workflow_flag_enabled('workflow_issue_v2_enforce'::text) OR (issue_state <> ALL (ARRAY['cancelled'::text, 'lab_rejected'::text])) OR rejection_doctor_decision = 'zero'::text AND NOT rejected_doctor_amount IS DISTINCT FROM 0::numeric AND rejection_financial_review_status = 'resolved'::text AND NOT rejected_lab_cost IS DISTINCT FROM 0::numeric AND NOT rejected_designer_cost IS DISTINCT FROM 0::numeric AND (rejected_lab_cost_status = ANY (ARRAY['resolved'::text, 'not_applicable'::text])) AND (rejected_designer_cost_status = ANY (ARRAY['resolved'::text, 'not_applicable'::text])))"
+            },
+            "local": {
+              "name": "orders_zero_issue_financial_fields_check",
+              "type": "c",
+              "validated": false,
+              "definition": "CHECK (NOT workflow_flag_enabled('workflow_issue_v2_enforce'::text) OR (issue_state <> ALL (ARRAY['cancelled'::text, 'lab_rejected'::text])) OR rejection_doctor_decision = 'zero'::text AND NOT rejected_doctor_amount IS DISTINCT FROM 0::numeric AND rejection_financial_review_status = 'resolved'::text AND NOT rejected_lab_cost IS DISTINCT FROM 0::numeric AND NOT rejected_designer_cost IS DISTINCT FROM 0::numeric AND (rejected_lab_cost_status = ANY (ARRAY['resolved'::text, 'not_applicable'::text])) AND (rejected_designer_cost_status = ANY (ARRAY['resolved'::text, 'not_applicable'::text]))) NOT VALID"
+            }
+          }
+        ]
+      },
+      {
+        "key": "public.payment_allocations",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [
+          {
+            "name": "id",
+            "prod": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "uuid_generate_v4()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            },
+            "local": {
+              "acl": null,
+              "name": "id",
+              "type": "uuid",
+              "default": "gen_random_uuid()",
+              "identity": "",
+              "not_null": true,
+              "generated": ""
+            }
+          }
+        ],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.production_stage_runs",
+        "meta": [],
+        "columnsOnlyLocal": [
+          {
+            "acl": null,
+            "name": "design_revision_id",
+            "type": "uuid",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          }
+        ],
+        "columnsOnlyProd": [],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [
+          {
+            "name": "production_stage_runs_design_revision_id_fkey",
+            "type": "f",
+            "validated": true,
+            "definition": "FOREIGN KEY (design_revision_id) REFERENCES design_revisions(id)"
+          }
+        ],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.services",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [
+          {
+            "acl": null,
+            "name": "milling_price",
+            "type": "numeric(10,2)",
+            "default": "0",
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          }
+        ],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.transactions",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [
+          {
+            "name": "transactions_entity_type_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (entity_type = ANY (ARRAY['doctor'::text, 'supplier'::text, 'general'::text, 'designer'::text, 'representative'::text]))"
+          }
+        ],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "public.workflow_v2_backfill_dry_run",
+        "meta": [
+          "view_md5"
+        ],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [],
+        "constraintsChanged": []
+      },
+      {
+        "key": "storage.buckets",
+        "meta": [],
+        "columnsOnlyLocal": [],
+        "columnsOnlyProd": [
+          {
+            "acl": null,
+            "name": "lifecycle_configuration",
+            "type": "jsonb",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          },
+          {
+            "acl": null,
+            "name": "lifecycle_configuration_generation",
+            "type": "uuid",
+            "default": null,
+            "identity": "",
+            "not_null": false,
+            "generated": ""
+          }
+        ],
+        "columnsChanged": [],
+        "constraintsOnlyLocal": [],
+        "constraintsOnlyProd": [
+          {
+            "name": "buckets_lifecycle_configuration_pair_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK ((lifecycle_configuration IS NULL) = (lifecycle_configuration_generation IS NULL))"
+          },
+          {
+            "name": "buckets_lifecycle_configuration_shape_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (lifecycle_configuration IS NULL OR jsonb_typeof(lifecycle_configuration) = 'object'::text AND lifecycle_configuration ? 'rules'::text AND\nCASE\n    WHEN jsonb_typeof(lifecycle_configuration -> 'rules'::text) = 'array'::text THEN jsonb_array_length(lifecycle_configuration -> 'rules'::text) >= 1 AND jsonb_array_length(lifecycle_configuration -> 'rules'::text) <= 1000\n    ELSE false\nEND)"
+          },
+          {
+            "name": "buckets_lifecycle_configuration_standard_only_check",
+            "type": "c",
+            "validated": true,
+            "definition": "CHECK (type = 'STANDARD'::storage.buckettype OR lifecycle_configuration IS NULL AND lifecycle_configuration_generation IS NULL)"
+          }
+        ],
+        "constraintsChanged": []
+      }
+    ]
+  },
+  "policies": {
+    "onlyLocal": [
+      {
+        "key": "public.adjustments.doctor_portal_adjustments_projection_only",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.design_qc_assignments.qc_assignment_read",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.design_qc_control.qc_control_read",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.design_qc_control_events.qc_control_audit",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.design_qc_events.qc_event_read",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.design_revisions.qc_revision_read",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.doctor_link_requests.Admins and coordinators view link requests",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.financial_obligations.doctor_portal_obligations_projection_only",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.order_attachments.portal_attachment_insert",
+        "command": "INSERT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.order_attachments.portal_attachment_read_scope",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.order_attachments.portal_attachment_write_scope",
+        "command": "INSERT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.order_events.portal_events_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.order_issues.portal_issues_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.order_items.doctor_portal_items_projection_only",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.orders.doctor_portal_orders_projection_only",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.orders.portal_orders_rpc_insert_only",
+        "command": "INSERT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.orders.portal_orders_rpc_update_only",
+        "command": "UPDATE",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.payment_allocations.doctor_portal_allocations_projection_only",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.production_jobs.portal_jobs_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.production_route_stages.portal_route_stage_estimates_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.production_routes.portal_route_estimates_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.production_stage_runs.portal_stage_runs_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.production_stages.portal_stage_estimates_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.services.portal_service_costs_private",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "public.transactions.doctor_portal_transactions_projection_only",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.case_scans_admin_delete",
+        "command": "DELETE",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.case_scans_read",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.case_scans_write",
+        "command": "INSERT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.portal_case_file_size",
+        "command": "ALL",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.portal_storage_cleanup",
+        "command": "DELETE",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.portal_storage_insert",
+        "command": "INSERT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.portal_storage_read_scope",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.portal_storage_write_scope",
+        "command": "INSERT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.qc_file_insert",
+        "command": "INSERT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.qc_file_insert_limit",
+        "command": "INSERT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.qc_file_read",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.qc_file_read_limit",
+        "command": "SELECT",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.qc_no_delete",
+        "command": "DELETE",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      },
+      {
+        "key": "storage.objects.qc_no_overwrite",
+        "command": "UPDATE",
+        "permissive": "RESTRICTIVE",
+        "roles": [
+          "authenticated"
+        ]
+      }
+    ],
+    "onlyProduction": [],
+    "changed": [],
+    "allPublicStorageTablesRlsEnabled": {
+      "production": true,
+      "local": true
+    },
+    "columnSpecificAcls": {
+      "production": 0,
+      "local": 0
+    }
+  },
+  "triggers": {
+    "onlyLocal": [
+      {
+        "key": "public.ai_messages.trigger_update_conversation_timestamp",
+        "table": "public.ai_messages",
+        "enabled": "O",
+        "function": "public.update_conversation_timestamp",
+        "definition": "CREATE TRIGGER trigger_update_conversation_timestamp AFTER INSERT ON ai_messages FOR EACH ROW EXECUTE FUNCTION update_conversation_timestamp()"
+      },
+      {
+        "key": "public.external_work_orders.aac_design_qc_external",
+        "table": "public.external_work_orders",
+        "enabled": "O",
+        "function": "public.guard_design_qc_execution",
+        "definition": "CREATE TRIGGER aac_design_qc_external BEFORE INSERT OR UPDATE ON external_work_orders FOR EACH ROW EXECUTE FUNCTION guard_design_qc_execution()"
+      },
+      {
+        "key": "public.order_attachments.doctor_case_attachment_audit",
+        "table": "public.order_attachments",
+        "enabled": "O",
+        "function": "public.audit_doctor_case_attachment",
+        "definition": "CREATE TRIGGER doctor_case_attachment_audit BEFORE INSERT ON order_attachments FOR EACH ROW EXECUTE FUNCTION audit_doctor_case_attachment()"
+      },
+      {
+        "key": "public.orders.aac_guard_design_qc",
+        "table": "public.orders",
+        "enabled": "O",
+        "function": "public.guard_design_qc_order",
+        "definition": "CREATE TRIGGER aac_guard_design_qc BEFORE INSERT OR UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION guard_design_qc_order()"
+      },
+      {
+        "key": "public.orders.enforce_lab_column_updates",
+        "table": "public.orders",
+        "enabled": "O",
+        "function": "public.check_lab_column_updates",
+        "definition": "CREATE TRIGGER enforce_lab_column_updates BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION check_lab_column_updates()"
+      },
+      {
+        "key": "public.orders.trigger_check_order_update",
+        "table": "public.orders",
+        "enabled": "O",
+        "function": "public.check_order_update_permissions",
+        "definition": "CREATE TRIGGER trigger_check_order_update BEFORE UPDATE ON orders FOR EACH ROW EXECUTE FUNCTION check_order_update_permissions()"
+      },
+      {
+        "key": "public.production_stage_runs.aac_design_qc_stage",
+        "table": "public.production_stage_runs",
+        "enabled": "O",
+        "function": "public.guard_design_qc_execution",
+        "definition": "CREATE TRIGGER aac_design_qc_stage BEFORE INSERT OR UPDATE ON production_stage_runs FOR EACH ROW EXECUTE FUNCTION guard_design_qc_execution()"
+      }
+    ],
+    "onlyProduction": [
+      {
+        "key": "storage.buckets.protect_bucket_control_insert",
+        "table": "storage.buckets",
+        "enabled": "O",
+        "function": "storage.protect_bucket_control_columns",
+        "definition": "CREATE TRIGGER protect_bucket_control_insert BEFORE INSERT ON storage.buckets FOR EACH ROW EXECUTE FUNCTION storage.protect_bucket_control_columns('service_role')"
+      },
+      {
+        "key": "storage.buckets.protect_bucket_control_update",
+        "table": "storage.buckets",
+        "enabled": "O",
+        "function": "storage.protect_bucket_control_columns",
+        "definition": "CREATE TRIGGER protect_bucket_control_update BEFORE UPDATE OF lifecycle_configuration, lifecycle_configuration_generation ON storage.buckets FOR EACH ROW EXECUTE FUNCTION storage.protect_bucket_control_columns()"
+      },
+      {
+        "key": "storage.buckets.protect_bucket_control_update_role",
+        "table": "storage.buckets",
+        "enabled": "O",
+        "function": "storage.enforce_bucket_lifecycle_service_role",
+        "definition": "CREATE TRIGGER protect_bucket_control_update_role AFTER UPDATE OF lifecycle_configuration, lifecycle_configuration_generation ON storage.buckets FOR EACH ROW EXECUTE FUNCTION storage.enforce_bucket_lifecycle_service_role('service_role')"
+      }
+    ],
+    "changed": []
+  },
+  "privileges": {
+    "roles": {
+      "prod": 6,
+      "local": 6,
+      "onlyLocal": [],
+      "onlyProd": [],
+      "changed": []
+    },
+    "schema": {
+      "prod": 17,
+      "local": 17,
+      "onlyLocal": [],
+      "onlyProd": [],
+      "changed": []
+    },
+    "defaults": {
+      "prod": 9,
+      "local": 9,
+      "onlyLocal": [],
+      "onlyProd": [],
+      "changed": []
+    },
+    "tableGrantCounts": {
+      "production": 2554,
+      "local": 2891,
+      "onlyLocal": 337,
+      "onlyProduction": 0
+    },
+    "commonTableGrantChanges": [
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|DELETE",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|DELETE",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|INSERT",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|INSERT",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|MAINTAIN",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|MAINTAIN",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|REFERENCES",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|REFERENCES",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|SELECT",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|SELECT",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|TRIGGER",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|TRIGGER",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|TRUNCATE",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|TRUNCATE",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.buckets|supabase_storage_admin|UPDATE",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.buckets|supabase_storage_admin|UPDATE",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|DELETE",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|DELETE",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|INSERT",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|INSERT",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|MAINTAIN",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|MAINTAIN",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|REFERENCES",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|REFERENCES",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|SELECT",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|SELECT",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|TRIGGER",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|TRIGGER",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|TRUNCATE",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|TRUNCATE",
+          "grantable": false
+        }
+      },
+      {
+        "prod": {
+          "key": "storage.objects|supabase_storage_admin|UPDATE",
+          "grantable": true
+        },
+        "local": {
+          "key": "storage.objects|supabase_storage_admin|UPDATE",
+          "grantable": false
+        }
+      }
+    ],
+    "memberships": {
+      "prod": 8,
+      "local": 8,
+      "onlyLocal": [],
+      "onlyProd": [],
+      "changed": []
+    },
+    "sequenceGrants": {
+      "prod": 12,
+      "local": 12,
+      "onlyLocal": [],
+      "onlyProd": [],
+      "changed": []
+    }
+  },
+  "indexes": {
+    "prod": 284,
+    "local": 316,
+    "onlyLocal": [
+      {
+        "key": "public.design_qc_assignments_pkey",
+        "table": "public.design_qc_assignments",
+        "definition": "CREATE UNIQUE INDEX design_qc_assignments_pkey ON public.design_qc_assignments USING btree (id)"
+      },
+      {
+        "key": "public.design_qc_control_events_pkey",
+        "table": "public.design_qc_control_events",
+        "definition": "CREATE UNIQUE INDEX design_qc_control_events_pkey ON public.design_qc_control_events USING btree (id)"
+      },
+      {
+        "key": "public.design_qc_control_pkey",
+        "table": "public.design_qc_control",
+        "definition": "CREATE UNIQUE INDEX design_qc_control_pkey ON public.design_qc_control USING btree (id)"
+      },
+      {
+        "key": "public.design_qc_events_order",
+        "table": "public.design_qc_events",
+        "definition": "CREATE INDEX design_qc_events_order ON public.design_qc_events USING btree (order_id, created_at)"
+      },
+      {
+        "key": "public.design_qc_events_pkey",
+        "table": "public.design_qc_events",
+        "definition": "CREATE UNIQUE INDEX design_qc_events_pkey ON public.design_qc_events USING btree (id)"
+      },
+      {
+        "key": "public.design_revisions_execution_path_key",
+        "table": "public.design_revisions",
+        "definition": "CREATE UNIQUE INDEX design_revisions_execution_path_key ON public.design_revisions USING btree (execution_path)"
+      },
+      {
+        "key": "public.design_revisions_order_id_revision_no_key",
+        "table": "public.design_revisions",
+        "definition": "CREATE UNIQUE INDEX design_revisions_order_id_revision_no_key ON public.design_revisions USING btree (order_id, revision_no)"
+      },
+      {
+        "key": "public.design_revisions_pkey",
+        "table": "public.design_revisions",
+        "definition": "CREATE UNIQUE INDEX design_revisions_pkey ON public.design_revisions USING btree (id)"
+      },
+      {
+        "key": "public.design_revisions_preview_path_key",
+        "table": "public.design_revisions",
+        "definition": "CREATE UNIQUE INDEX design_revisions_preview_path_key ON public.design_revisions USING btree (preview_path)"
+      },
+      {
+        "key": "public.doctor_address_update_requests_pkey",
+        "table": "public.doctor_address_update_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_address_update_requests_pkey ON public.doctor_address_update_requests USING btree (id)"
+      },
+      {
+        "key": "public.doctor_address_update_requests_registration_id_key",
+        "table": "public.doctor_address_update_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_address_update_requests_registration_id_key ON public.doctor_address_update_requests USING btree (registration_id)"
+      },
+      {
+        "key": "public.doctor_code_counters_pkey",
+        "table": "public.doctor_code_counters",
+        "definition": "CREATE UNIQUE INDEX doctor_code_counters_pkey ON public.doctor_code_counters USING btree (region)"
+      },
+      {
+        "key": "public.doctor_link_requests_pkey",
+        "table": "public.doctor_link_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_link_requests_pkey ON public.doctor_link_requests USING btree (id)"
+      },
+      {
+        "key": "public.doctor_manual_access_created",
+        "table": "public.doctor_manual_access_requests",
+        "definition": "CREATE INDEX doctor_manual_access_created ON public.doctor_manual_access_requests USING btree (created_at)"
+      },
+      {
+        "key": "public.doctor_manual_access_phone_created",
+        "table": "public.doctor_manual_access_requests",
+        "definition": "CREATE INDEX doctor_manual_access_phone_created ON public.doctor_manual_access_requests USING btree (phone, created_at)"
+      },
+      {
+        "key": "public.doctor_manual_access_requests_pkey",
+        "table": "public.doctor_manual_access_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_manual_access_requests_pkey ON public.doctor_manual_access_requests USING btree (id)"
+      },
+      {
+        "key": "public.doctor_password_registrations_auth_id_key",
+        "table": "public.doctor_password_registrations",
+        "definition": "CREATE UNIQUE INDEX doctor_password_registrations_auth_id_key ON public.doctor_password_registrations USING btree (auth_id)"
+      },
+      {
+        "key": "public.doctor_password_registrations_phone_key",
+        "table": "public.doctor_password_registrations",
+        "definition": "CREATE UNIQUE INDEX doctor_password_registrations_phone_key ON public.doctor_password_registrations USING btree (phone)"
+      },
+      {
+        "key": "public.doctor_password_registrations_pkey",
+        "table": "public.doctor_password_registrations",
+        "definition": "CREATE UNIQUE INDEX doctor_password_registrations_pkey ON public.doctor_password_registrations USING btree (id)"
+      },
+      {
+        "key": "public.doctor_pickup_requests_order_id_key",
+        "table": "public.doctor_pickup_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_pickup_requests_order_id_key ON public.doctor_pickup_requests USING btree (order_id)"
+      },
+      {
+        "key": "public.doctor_pickup_requests_pkey",
+        "table": "public.doctor_pickup_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_pickup_requests_pkey ON public.doctor_pickup_requests USING btree (id)"
+      },
+      {
+        "key": "public.doctor_portal_case_requests_pkey",
+        "table": "public.doctor_portal_case_requests",
+        "definition": "CREATE UNIQUE INDEX doctor_portal_case_requests_pkey ON public.doctor_portal_case_requests USING btree (request_key)"
+      },
+      {
+        "key": "public.doctor_portal_invitations_pkey",
+        "table": "public.doctor_portal_invitations",
+        "definition": "CREATE UNIQUE INDEX doctor_portal_invitations_pkey ON public.doctor_portal_invitations USING btree (id)"
+      },
+      {
+        "key": "public.doctor_portal_invitations_token_hash_key",
+        "table": "public.doctor_portal_invitations",
+        "definition": "CREATE UNIQUE INDEX doctor_portal_invitations_token_hash_key ON public.doctor_portal_invitations USING btree (token_hash)"
+      },
+      {
+        "key": "public.doctor_portal_messages_pkey",
+        "table": "public.doctor_portal_messages",
+        "definition": "CREATE UNIQUE INDEX doctor_portal_messages_pkey ON public.doctor_portal_messages USING btree (id)"
+      },
+      {
+        "key": "public.doctor_portal_public_rate_pkey",
+        "table": "public.doctor_portal_public_rate",
+        "definition": "CREATE UNIQUE INDEX doctor_portal_public_rate_pkey ON public.doctor_portal_public_rate USING btree (action, key_hash, bucket)"
+      },
+      {
+        "key": "public.idx_doctor_link_requests_phone",
+        "table": "public.doctor_link_requests",
+        "definition": "CREATE INDEX idx_doctor_link_requests_phone ON public.doctor_link_requests USING btree (normalized_phone)"
+      },
+      {
+        "key": "public.idx_doctor_link_requests_status",
+        "table": "public.doctor_link_requests",
+        "definition": "CREATE INDEX idx_doctor_link_requests_status ON public.doctor_link_requests USING btree (status, created_at DESC)"
+      },
+      {
+        "key": "public.idx_doctors_norm_phone",
+        "table": "public.doctors",
+        "definition": "CREATE INDEX idx_doctors_norm_phone ON public.doctors USING btree (normalize_phone(phone))"
+      },
+      {
+        "key": "public.idx_doctors_norm_phone2",
+        "table": "public.doctors",
+        "definition": "CREATE INDEX idx_doctors_norm_phone2 ON public.doctors USING btree (normalize_phone(phone2)) WHERE (phone2 IS NOT NULL)"
+      },
+      {
+        "key": "public.idx_phone_verifications_active",
+        "table": "public.phone_verifications",
+        "definition": "CREATE INDEX idx_phone_verifications_active ON public.phone_verifications USING btree (normalized_phone, expires_at) WHERE (verified_at IS NULL)"
+      },
+      {
+        "key": "public.idx_phone_verifications_norm_phone",
+        "table": "public.phone_verifications",
+        "definition": "CREATE INDEX idx_phone_verifications_norm_phone ON public.phone_verifications USING btree (normalized_phone, created_at DESC)"
+      },
+      {
+        "key": "public.idx_users_custom_permissions",
+        "table": "public.users",
+        "definition": "CREATE INDEX idx_users_custom_permissions ON public.users USING gin (custom_permissions)"
+      },
+      {
+        "key": "public.phone_verifications_pkey",
+        "table": "public.phone_verifications",
+        "definition": "CREATE UNIQUE INDEX phone_verifications_pkey ON public.phone_verifications USING btree (id)"
+      },
+      {
+        "key": "public.uq_design_qc_assignment_obligation",
+        "table": "public.financial_obligations",
+        "definition": "CREATE UNIQUE INDEX uq_design_qc_assignment_obligation ON public.financial_obligations USING btree (design_qc_assignment_id) WHERE ((design_qc_assignment_id IS NOT NULL) AND (status <> ALL (ARRAY['void'::text, 'written_off'::text])))"
+      },
+      {
+        "key": "storage.bucketid_objname",
+        "table": "storage.objects",
+        "definition": "CREATE UNIQUE INDEX bucketid_objname ON storage.objects USING btree (bucket_id, name)"
+      },
+      {
+        "key": "storage.iceberg_namespaces_pkey",
+        "table": "storage.iceberg_namespaces",
+        "definition": "CREATE UNIQUE INDEX iceberg_namespaces_pkey ON storage.iceberg_namespaces USING btree (id)"
+      },
+      {
+        "key": "storage.iceberg_tables_pkey",
+        "table": "storage.iceberg_tables",
+        "definition": "CREATE UNIQUE INDEX iceberg_tables_pkey ON storage.iceberg_tables USING btree (id)"
+      },
+      {
+        "key": "storage.idx_iceberg_namespaces_bucket_id",
+        "table": "storage.iceberg_namespaces",
+        "definition": "CREATE UNIQUE INDEX idx_iceberg_namespaces_bucket_id ON storage.iceberg_namespaces USING btree (catalog_id, name)"
+      },
+      {
+        "key": "storage.idx_iceberg_tables_location",
+        "table": "storage.iceberg_tables",
+        "definition": "CREATE UNIQUE INDEX idx_iceberg_tables_location ON storage.iceberg_tables USING btree (location)"
+      },
+      {
+        "key": "storage.idx_iceberg_tables_namespace_id",
+        "table": "storage.iceberg_tables",
+        "definition": "CREATE UNIQUE INDEX idx_iceberg_tables_namespace_id ON storage.iceberg_tables USING btree (catalog_id, namespace_id, name)"
+      }
+    ],
+    "onlyProd": [
+      {
+        "key": "public.idx_orders_issue_state",
+        "table": "public.orders",
+        "definition": "CREATE INDEX idx_orders_issue_state ON public.orders USING btree (issue_state) WHERE (issue_state <> 'none'::text)"
+      },
+      {
+        "key": "public.idx_orders_production_status",
+        "table": "public.orders",
+        "definition": "CREATE INDEX idx_orders_production_status ON public.orders USING btree (production_status)"
+      },
+      {
+        "key": "public.idx_suppliers_is_active",
+        "table": "public.suppliers",
+        "definition": "CREATE INDEX idx_suppliers_is_active ON public.suppliers USING btree (is_active)"
+      },
+      {
+        "key": "public.idx_transactions_status",
+        "table": "public.transactions",
+        "definition": "CREATE INDEX idx_transactions_status ON public.transactions USING btree (status)"
+      },
+      {
+        "key": "public.idx_users_role_is_active",
+        "table": "public.users",
+        "definition": "CREATE INDEX idx_users_role_is_active ON public.users USING btree (role, is_active)"
+      },
+      {
+        "key": "storage.idx_objects_current_version",
+        "table": "storage.objects",
+        "definition": "CREATE UNIQUE INDEX idx_objects_current_version ON storage.objects USING btree (bucket_id, name COLLATE \"C\") WHERE (archived_at IS NULL)"
+      },
+      {
+        "key": "storage.idx_objects_delete_markers",
+        "table": "storage.objects",
+        "definition": "CREATE INDEX idx_objects_delete_markers ON storage.objects USING btree (bucket_id, name COLLATE \"C\") WHERE is_delete_marker"
+      },
+      {
+        "key": "storage.idx_objects_null_version",
+        "table": "storage.objects",
+        "definition": "CREATE UNIQUE INDEX idx_objects_null_version ON storage.objects USING btree (bucket_id, name COLLATE \"C\") WHERE (NOT is_versioned)"
+      },
+      {
+        "key": "storage.objects_bucket_id_name_version_key",
+        "table": "storage.objects",
+        "definition": "CREATE UNIQUE INDEX objects_bucket_id_name_version_key ON storage.objects USING btree (bucket_id, name COLLATE \"C\", version) NULLS NOT DISTINCT"
+      }
+    ],
+    "changed": [
+      {
+        "key": "public.uq_financial_obligation_active_business_key",
+        "prod": {
+          "key": "public.uq_financial_obligation_active_business_key",
+          "table": "public.financial_obligations",
+          "definition": "CREATE UNIQUE INDEX uq_financial_obligation_active_business_key ON public.financial_obligations USING btree (order_id, entity_type, direction, trigger_type, source) WHERE (status <> ALL (ARRAY['void'::text, 'written_off'::text]))"
+        },
+        "local": {
+          "key": "public.uq_financial_obligation_active_business_key",
+          "table": "public.financial_obligations",
+          "definition": "CREATE UNIQUE INDEX uq_financial_obligation_active_business_key ON public.financial_obligations USING btree (order_id, entity_type, direction, trigger_type, source) WHERE ((status <> ALL (ARRAY['void'::text, 'written_off'::text])) AND (design_qc_assignment_id IS NULL))"
+        }
+      },
+      {
+        "key": "public.uq_financial_obligation_source_trigger",
+        "prod": {
+          "key": "public.uq_financial_obligation_source_trigger",
+          "table": "public.financial_obligations",
+          "definition": "CREATE UNIQUE INDEX uq_financial_obligation_source_trigger ON public.financial_obligations USING btree (order_id, entity_type, entity_id, direction, trigger_type, source) WHERE (status <> 'void'::text)"
+        },
+        "local": {
+          "key": "public.uq_financial_obligation_source_trigger",
+          "table": "public.financial_obligations",
+          "definition": "CREATE UNIQUE INDEX uq_financial_obligation_source_trigger ON public.financial_obligations USING btree (order_id, entity_type, entity_id, direction, trigger_type, source) WHERE ((status <> 'void'::text) AND (design_qc_assignment_id IS NULL))"
+        }
+      }
+    ]
+  },
+  "viewOptions": [
+    {
+      "key": "public.workflow_v2_backfill_dry_run",
+      "production": [
+        "security_invoker=true"
+      ],
+      "local": [
+        "security_invoker=true"
+      ],
+      "definitionChanged": true
+    }
+  ],
+  "compatibility": {
+    "shipmentPatchNeedle": "production_status NOT IN('final_ready','try_in_ready') AND status<>'Ready'",
+    "needlePresentInProduction": false,
+    "normalSupplierProductionCondition": "NEW.production_status IN ('final_ready', 'final_delivered')",
+    "normalSupplierLocalCondition": "NEW.production_status = 'final_delivered'",
+    "frontendFinancialFlags": "The latest successful GitHub Production – orca deployment reports daf0aa9 with matching financial source flags. Exact current alias-to-commit artifact comparison is unproven because the immutable deployment host redirects to Vercel SSO. The current public alias directly mounts the legacy registration component."
+  },
+  "frontend": {
+    "observedAt": "2026-11-04T03:41:05.349Z",
+    "origin": "https://orcalab.vercel.app",
+    "httpStatus": 200,
+    "entry": "/assets/index-BCZPm9n2.js",
+    "entrySha256": "2e64d89475aa917fdd0ae115f8a406e5d4ac7e905332bf3e4dcc996bf6684719",
+    "assets": [
+      {
+        "file": "/assets/index-BCZPm9n2.js",
+        "sha256": "2e64d89475aa917fdd0ae115f8a406e5d4ac7e905332bf3e4dcc996bf6684719",
+        "supabaseHosts": [
+          "piuiiwcjnfvjwyewczuz.supabase.co"
+        ],
+        "flagObjects": []
+      },
+      {
+        "file": "/assets/orders-DN7qjBqq.js",
+        "sha256": "0ac824e2a08bfce997f8c1f55c6c5ceff8c1abf33d251a2def7a24e084ae554a",
+        "supabaseHosts": [],
+        "flagObjects": []
+      },
+      {
+        "file": "/assets/financialObligations-D1JfPHTO.js",
+        "sha256": "3fc672d0675c0811a5fa8d9e39b63545341de91fb32d0345e287ec372f98f9c6",
+        "supabaseHosts": [],
+        "flagObjects": []
+      },
+      {
+        "file": "/assets/Finance-DvVPN25b.js",
+        "sha256": "02306a6efcf2b69fa7958e33ca7d1de00ad80748091b24de5504ed7f16d05f95",
+        "supabaseHosts": [],
+        "flagObjects": []
+      },
+      {
+        "file": "/assets/Settings-CXs3T9Qs.js",
+        "sha256": "1beb5be1091b90475699dd7e9787d38ec56ed33c89577566e7b8c8725d809ada",
+        "supabaseHosts": [],
+        "flagObjects": []
+      }
+    ],
+    "reportedDeployment": {
+      "deploymentId": 7474986991,
+      "commit": "daf0aa9dba99d5e7c801dfe3e0a13f43e75a5f5b",
+      "state": "success",
+      "environment": "Production – orca",
+      "environmentUrl": "https://orca-ldibr4pxr-orca-dental-labs-projects.vercel.app",
+      "observedAt": "2026-11-04T03:53:33.120Z",
+      "httpStatus": 302,
+      "redirectHost": "vercel.com",
+      "redirectPath": "/sso-api",
+      "matchesPublicAlias": null
+    },
+    "reportedReleaseSource": {
+      "repository": "orcadentallab/dental-lab-erp",
+      "commit": "daf0aa9dba99d5e7c801dfe3e0a13f43e75a5f5b",
+      "financialFlags": {
+        "trackingEnabled": true,
+        "reportingEnabled": false,
+        "clientSideMutationSyncEnabled": false
+      },
+      "financialFlagsBlob": "976a5fc51feae09ebb0813b327c5b544c1680ed8",
+      "financialFlagsUrl": "https://github.com/orcadentallab/dental-lab-erp/blob/daf0aa9dba99d5e7c801dfe3e0a13f43e75a5f5b/src/constants/financialObligations.ts",
+      "appBlob": "a4f4fc0636d1d41c3c849a69b1127227125dd525",
+      "appUrl": "https://github.com/orcadentallab/dental-lab-erp/blob/daf0aa9dba99d5e7c801dfe3e0a13f43e75a5f5b/src/App.tsx",
+      "registrationRouteDirect": true
+    },
+    "observedRegistrationRoute": {
+      "entry": "/assets/index-BCZPm9n2.js",
+      "routeElements": [
+        "path:\"/case-registration\",element:a.jsx(US,{})}),a.jsx(Ve,{path:\"/balance-snapshot\",element:a.jsx($S,{})}),a.jsx(Ve,{path:\"/financial-review\",element:a.jsx(GS,{})}),a.jsx(Ve,{path:\"/st"
+      ],
+      "componentDefinition": "US=N.lazy(()=>ge(()=>import(\"./CaseRegistration-kip_3Y06.js\"),__vite__mapDeps([44,4,5,7,9,17,6,3]))),BS=N.lazy(()=>ge(()=>import(\"./Employees-Dfpa3nzZ.js\"),__vite__mapDeps([45,4,5,34,22,6,3,7,46,47]))),PS=N.lazy(()=>ge(()=>import(\"./EmployeeDe",
+      "directLegacyComponent": true
+    }
+  },
+  "limitations": [
+    "No live auth/assignment mutation tests or user sessions were exercised.",
+    "Catalogs were sampled in separate read-only transactions, not one cross-environment atomic snapshot.",
+    "No ledger repair, migrations, backfill, bucket change, feature toggle or deployment was run.",
+    "Storage platform-owned catalog drift is not an instruction to copy platform objects."
+  ]
+}
