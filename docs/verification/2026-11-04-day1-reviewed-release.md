@@ -23,6 +23,7 @@ The 17-path release diff contains no `supabase/` changes, no Design QC implement
 | Release TypeScript/build and changed-source lint | PASS |
 | Offline browser registration retirement: admin/accountant/coordinator | 3 PASS |
 | Current public UI artifacts and deployment status | PASS, GET-only |
+| Live Chrome numeric-input smoke on the login page | PASS: temporary DOM input has no spinners; trusted wheel preserves value/focus; ArrowUp works; other wheel events are not prevented. All non-GET/HEAD requests blocked; no login or database write |
 | Production migration ledger after deployment | Read-only query: 272, latest `20261101000000`, `transaction_read_only=on`; unchanged from inventory |
 
 No production transaction was created for testing. The owner had already accepted the manual local finance tests. GitHub/Vercel exact-commit provenance and public served-code checks are separate evidence; an exact byte comparison to the local build was **not established** (local and hosted entry hashes differ). Financial source flags were verified in the unchanged published source, not recovered as named objects from optimized hosted JavaScript. No claim of production Day 2 readiness is made.
