@@ -7,12 +7,14 @@ INSERT INTO public.suppliers(id,name,phone) VALUES('ac100000-0000-4000-8000-0000
 INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name) VALUES('ac100000-0000-4000-8000-000000000011','Hidden Doctor','01000000000','QA','PRIV-QA','QA');
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,supplier_id,design_price)
 VALUES('ac100000-0000-4000-8000-000000000012','PRIV-CASE','ac100000-0000-4000-8000-000000000011','Technical patient','[]',999,777,'A1','designing',current_date,'split','ac100000-0000-4000-8000-000000000002','ac100000-0000-4000-8000-000000000010',123);
+INSERT INTO storage.objects(bucket_id,name) VALUES('case-scans','ac100000-0000-4000-8000-000000000012/instruction/scan.stl'),('case-scans','ac100000-0000-4000-8000-000000000099/instruction/private.stl');
 SELECT set_config('request.jwt.claim.sub','ac100000-0000-4000-8000-000000000002',true);
 SET LOCAL ROLE authenticated;
 SELECT is((SELECT count(*) FROM public.orders),0::bigint,'Designer raw order API cannot expose commercial columns');
 SELECT is((SELECT count(*) FROM public.suppliers),0::bigint,'Designer raw supplier API hides identity');
 SELECT is((SELECT count(*) FROM public.doctors),0::bigint,'Designer raw doctor API hides accounts');
 SELECT is((SELECT count(*) FROM public.users),1::bigint,'Designer cannot list other staff financial profiles');
+SELECT is((SELECT count(*) FROM storage.objects WHERE bucket_id='case-scans'),1::bigint,'Designer can read only assigned case scan metadata');
 SELECT is(public.get_designer_workspace(NULL,false)->0->>'patient_name','Technical patient','Technical projection retains assigned case');
 SELECT ok(NOT(public.get_designer_workspace(NULL,false)->0 ?| ARRAY['supplier_id','doctor_id','total_price','cost','lab_cost','accounting_snapshot']),'Safe projection omits commercial keys rather than returning hidden values');
 SELECT is((public.get_designer_workspace(NULL,true)->0->>'design_price')::numeric,123::numeric,'Personal finance projection preserves own fee');
@@ -31,5 +33,8 @@ RESET ROLE;
 UPDATE public.orders SET designer_id='ac100000-0000-4000-8000-000000000003' WHERE id='ac100000-0000-4000-8000-000000000012';
 SELECT set_config('request.jwt.claim.sub','ac100000-0000-4000-8000-000000000002',true);
 SELECT is(public.get_designer_workspace(NULL,false),'[]'::jsonb,'Former designer loses technical case after assignment change');
+SET LOCAL ROLE authenticated;
+SELECT is((SELECT count(*) FROM storage.objects WHERE bucket_id='case-scans'),0::bigint,'Former designer cannot sign or list previous case scans');
+RESET ROLE;
 SELECT * FROM finish();
 ROLLBACK;
