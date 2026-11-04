@@ -1,0 +1,57 @@
+{
+  "checkedAt": "2026-11-04T17:47:55.315Z",
+  "release": "5f691de51234a97fb8f9e995d4cd92669209d413",
+  "origin": "https://orcalab.vercel.app",
+  "assets": [
+    {
+      "path": "/assets/index-B8KUTeid.js",
+      "sha256": "d9b49c8c6facef46e374b1dc3043a6115fa1ca9d300e6732ad4899e5ef8cd35b"
+    },
+    {
+      "path": "/assets/react-vendor-CUMElwIX.js",
+      "sha256": "1d3ec9dd81e362d82c613adbdf758f6ba180288a287a7e9c1ce035ae00eb393b"
+    },
+    {
+      "path": "/assets/ui-vendor-B4eeBOUP.js",
+      "sha256": "10e8a1c579ea2d688447ccfb0ef82ffa5da9b4f731ccc4aeb14a888ffbcf02b7"
+    },
+    {
+      "path": "/assets/pdf-vendor-BzSV88yC.js",
+      "sha256": "47ae1ba5fbaaf931df66535e9030bbe03180526f1780eb2700d638073b3e79e8"
+    },
+    {
+      "path": "/assets/supabase-B6uBmK-X.js",
+      "sha256": "68e84d16d53521ff1525141106f3e70231884b4712dc0a7ec41c7048d875b110"
+    },
+    {
+      "path": "/assets/spreadsheet-vendor-BxLBA2Km.js",
+      "sha256": "eb19601391a8340c9e03231aac64a4fc01528a9336697812a75465593428f3eb"
+    },
+    {
+      "path": "/assets/index-D-9ZEegY.css",
+      "sha256": "5a717a420face38eac2239b75f6a6b0cb69412dfa228b7d04d382f32bb048fa7"
+    },
+    {
+      "path": "/assets/Finance-BumhxzKj.js",
+      "sha256": "7abeddaf7591b8a218b065cca7320a3851c42e82b1bfc588c49c9b9fbda9bf52"
+    },
+    {
+      "path": "/assets/financialObligations-BvPmlMhU.js",
+      "sha256": "f1eba81f221a7275a12a7356944a0bf4f6d7bec42ab465145b20138768fc3667"
+    },
+    {
+      "path": "/assets/supabase-B6uBmK-X.js",
+      "sha256": "68e84d16d53521ff1525141106f3e70231884b4712dc0a7ec41c7048d875b110"
+    }
+  ],
+  "checks": {
+    "retiredRouteRedirect": true,
+    "designQcAbsent": true,
+    "rolling7": true,
+    "rolling30": true,
+    "spinButtonsHidden": true,
+    "wheelGuard": true,
+    "productionHost": true
+  },
+  "financialFlagExcerpt": null
+}

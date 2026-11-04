@@ -1,6 +1,6 @@
 # ERP implementation — Day 1 evidence (2026-11-02)
 
-> The 2 November sections below are a preserved historical snapshot. Current evidence is in the **4 November 2026 — unified isolated database verification** and **4 November 2026 — current production comparison (read-only)** sections below. Statements about downloading Docker, active legacy registration and unverified production in earlier task snapshots must not be read as today's status.
+> Earlier sections below are preserved historical snapshots. The owner subsequently approved the narrow Day 1 frontend release: see [4 November reviewed release](2026-11-04-day1-reviewed-release.md). It is now deployed; the old registration route is retired on the live frontend. Database comparison and missing Day 2 migrations remain separate from that frontend release.
 
 ## Authority and scope
 
