@@ -16,4 +16,8 @@ describe('owner choice: one execution source',()=>{
   for(const input of [{mode:'link' as const,url:'',execution:null},{mode:'link' as const,url:'javascript:alert(1)',execution:null},{mode:'link' as const,url:'https://example.test/file',execution:new File(['zip'],'case.zip')},{mode:'file' as const,url:'',execution:null}])await expect(submitDesignDelivery('case',{...input,html:null,reason:'No preview'})).rejects.toThrow();
   expect(api.rpc).not.toHaveBeenCalled();expect(api.upload).not.toHaveBeenCalled();
  });
+ it('requires a reason when a designer skips HTML and does not write partial data',async()=>{
+  await expect(submitDesignDelivery('case',{mode:'link',url:'https://drive.google.com/file/d/example',execution:null,html:null,reason:'   '})).rejects.toThrow('سبب');
+  expect(api.rpc).not.toHaveBeenCalled();expect(api.upload).not.toHaveBeenCalled();
+ });
 });
