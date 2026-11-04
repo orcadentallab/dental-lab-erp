@@ -1,6 +1,10 @@
+[CmdletBinding()]
+param([switch]$DatabaseOnly)
+
 $ErrorActionPreference='Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 $qcRoot=(Get-Location).Path
+New-Item -ItemType Directory -Path (Join-Path $qcRoot '.tmp') -Force | Out-Null
 $qcWorkspace=[IO.Path]::GetFullPath((Join-Path $qcRoot '.design-qc-qa'))
 if($qcWorkspace-ne [IO.Path]::GetFullPath("$qcRoot\.design-qc-qa")){throw 'Unexpected QA workspace'}
 $qcMarker=Join-Path $qcWorkspace '.codex-owned-qc-test-workspace'
@@ -20,15 +24,26 @@ Set-Content -LiteralPath $qcConfigPath -Value $qcConfig
 if($qcConfig-notmatch '(?m)^project_id = "design-qc-qa"'){throw 'QA project identity mismatch'}
 foreach($qcDir in @('migrations','tests\database','.temp')){New-Item -ItemType Directory -Path (Join-Path $qcWorkspace "supabase\$qcDir") -Force|Out-Null}
 Copy-Item -Path (Join-Path $qcRoot 'supabase\migrations\*.sql') -Destination (Join-Path $qcWorkspace 'supabase\migrations')
-Copy-Item -Path (Join-Path $qcRoot 'supabase\tests\database\*.sql') -Destination (Join-Path $qcWorkspace 'supabase\tests\database')
+$qcSourceTests=@(Get-ChildItem -LiteralPath (Join-Path $qcRoot 'supabase\tests\database') -Filter '*.sql' -File)
+if($qcSourceTests.Count-eq 0){throw 'No SQL tests found in the repository'}
+Copy-Item -LiteralPath $qcSourceTests.FullName -Destination (Join-Path $qcWorkspace 'supabase\tests\database')
+$qcCopiedTests=@(Get-ChildItem -LiteralPath (Join-Path $qcWorkspace 'supabase\tests\database') -Filter '*.sql' -File)
+if(Compare-Object ($qcSourceTests.Name|Sort-Object) ($qcCopiedTests.Name|Sort-Object)){throw 'QA SQL test snapshot differs from the repository'}
 foreach($qcVersion in @('postgres-version','gotrue-version','storage-version','rest-version')){if(Test-Path -LiteralPath "supabase/.temp/$qcVersion"){Copy-Item -LiteralPath "supabase/.temp/$qcVersion" -Destination (Join-Path $qcWorkspace "supabase\.temp\$qcVersion")}}
+Write-Host "Preparing owned disposable QA project design-qc-qa (API 56501 / DB 56502)."
 & .\node_modules\supabase\bin\supabase.exe start --workdir $qcWorkspace --exclude studio,imgproxy,realtime,logflare,vector,edge-runtime *> .tmp/design-qc-qa-start.log
 if($LASTEXITCODE-ne 0){throw 'Local QA startup failed; private diagnostic log retained'}
 # This reset targets ONLY the newly owned disposable namespace, never the main project.
 & .\node_modules\supabase\bin\supabase.exe db reset --local --workdir $qcWorkspace *> .tmp/design-qc-qa-reset.log
 if($LASTEXITCODE-ne 0){throw 'Disposable QA reset failed'}
+Write-Host "Running all $($qcSourceTests.Count) SQL test files in isolated QA..."
 & .\node_modules\supabase\bin\supabase.exe test db supabase/tests/database --local --workdir $qcWorkspace *> .tmp/design-qc-clean-db.log
-if($LASTEXITCODE-ne 0){throw 'Full SQL suite failed in disposable QA; see .tmp/design-qc-clean-db.log'}
+if($LASTEXITCODE-ne 0){Get-Content -LiteralPath .tmp/design-qc-clean-db.log -Tail 40; throw 'Full SQL suite failed in disposable QA; see .tmp/design-qc-clean-db.log'}
+$qcSummary=Select-String -LiteralPath .tmp/design-qc-clean-db.log -Pattern '^Files=(\d+), Tests=(\d+)' | Select-Object -Last 1
+if(-not $qcSummary -or [int]$qcSummary.Matches[0].Groups[1].Value-ne $qcSourceTests.Count){throw 'SQL runner did not report every repository test file'}
+Write-Host $qcSummary.Line
+Write-Host 'Result: PASS (isolated QA; .tmp/design-qc-clean-db.log)'
+if($DatabaseOnly){return}
 $qcStatus=(& .\node_modules\supabase\bin\supabase.exe status --workdir $qcWorkspace --output json 2>$null)|ConvertFrom-Json
 if($qcStatus.API_URL -ne 'http://127.0.0.1:56501'){throw 'Refusing a non-local QA API'}
 $qcEnabled=& docker exec supabase_db_design-qc-qa psql -U postgres -d postgres -At -c 'SELECT enabled FROM public.design_qc_control WHERE id;'
