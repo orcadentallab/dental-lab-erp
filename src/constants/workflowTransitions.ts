@@ -21,6 +21,7 @@ export function getForwardActions(
         workflowType?: string | null;
         deliveryType?: string | null;
         designUrl?: string | null;
+        designRevisionId?: string | null;
         intakeState?: OrderIntakeState;
     }
 ): WorkflowAction[] {
@@ -69,7 +70,7 @@ export function getForwardActions(
             // Split with a designer on it: the lab must not be sent a case
             // before its design is uploaded. The bar shows why instead of
             // going blank; admins still have the "…" override.
-            if (orderContext.designUrl) {
+            if (orderContext.designUrl || orderContext.designRevisionId) {
                 return [toProduction];
             }
             return [];

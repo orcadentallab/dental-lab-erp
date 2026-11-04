@@ -373,10 +373,10 @@ export default function MyTasks() {
                                         <Clock className="w-3 h-3" /> مستنية {waitingLabel(t.queuedAt)}
                                     </span>
                                     <span className={due.late ? 'text-red-600 font-bold' : ''}>{due.text}</span>
-                                    {(t.designUrl || t.stlUrl) && (
+                                    {(t.designUrl || t.designRevisionId || t.stlUrl) && (
                                         <a
                                             href={t.designUrl || t.stlUrl || '#'}
-                                            onClick={e=>{if(t.designUrl){e.preventDefault();void openDesignExecution(t.orderId,t.designUrl,t.id).catch(err=>toastError(err.message));}}}
+                                            onClick={e=>{if(t.designUrl || t.designRevisionId){e.preventDefault();void openDesignExecution(t.orderId,t.designUrl||undefined,t.id).catch(err=>toastError(err.message));}}}
                                             target="_blank" rel="noreferrer"
                                             className="text-brand-blue underline"
                                         >

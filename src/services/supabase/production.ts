@@ -135,6 +135,7 @@ export interface StageRunCard {
     shade: string | null;
     instructions: string | null;
     designUrl: string | null;
+    designRevisionId: string | null;
     stlUrl: string | null;
     imagesUrl: string | null;
     deliveryDate: string | null;
@@ -468,7 +469,7 @@ const RUN_CARD_SELECT = `
     production_jobs (
         order_id, priority, due_at,
         orders (
-            case_id, patient_name, shade, instructions, design_url, stl_url,
+            case_id, patient_name, shade, instructions, design_url, design_qc_revision_id, stl_url,
             images_url, delivery_date, status, production_status, is_deleted, supplier_id,
             doctors ( name, lab_instructions ),
             order_items ( product_type, teeth_numbers )
@@ -493,6 +494,7 @@ function toCard(r: any): StageRunCard {
         shade: order.shade ?? null,
         instructions: order.instructions ?? null,
         designUrl: order.design_url ?? null,
+        designRevisionId: order.design_qc_revision_id ?? null,
         stlUrl: order.stl_url ?? null,
         imagesUrl: order.images_url ?? null,
         deliveryDate: order.delivery_date ?? null,

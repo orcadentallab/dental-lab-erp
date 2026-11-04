@@ -11,7 +11,7 @@ describe('canonical design download and legacy compatibility',()=>{
   expect(api.from).not.toHaveBeenCalled();
  });
  it('uses a short-lived immutable file URL instead of the mutable reference',async()=>{
-  api.rpc.mockResolvedValue({data:'case/revision/execution.zip',error:null});
+  api.rpc.mockResolvedValue({data:{path:'case/revision/execution.zip',url:'https://mutable.example.test'},error:null});
   api.signed.mockResolvedValue({data:{signedUrl:'http://127.0.0.1/signed?token=opaque'},error:null});
   await expect(designExecutionUrl('case','https://mutable.example.test')).resolves.toBe('http://127.0.0.1/signed?token=opaque');
   expect(api.signed).toHaveBeenCalledWith('case/revision/execution.zip',60);
@@ -19,7 +19,7 @@ describe('canonical design download and legacy compatibility',()=>{
  it('resolves the running stage snapshot when a stage is provided',async()=>{
   api.rpc.mockResolvedValue({data:null,error:null});
   await designExecutionUrl('case','https://legacy.example.test','stage');
-  expect(api.rpc).toHaveBeenCalledWith('get_stage_design_execution_path',{p_stage_id:'stage'});
+  expect(api.rpc).toHaveBeenCalledWith('get_design_delivery_asset',{p_order_id:'case',p_stage_id:'stage'});
   expect(api.rpc).toHaveBeenCalledTimes(1);
  });
  it('never falls back to a known reference after assignment access is denied',async()=>{
@@ -28,8 +28,13 @@ describe('canonical design download and legacy compatibility',()=>{
   expect(api.from).not.toHaveBeenCalled();
  });
  it('does not silently use mutable files when private signing fails',async()=>{
-  api.rpc.mockResolvedValue({data:'case/revision/execution.zip',error:null});
+  api.rpc.mockResolvedValue({data:{path:'case/revision/execution.zip',url:'https://mutable.example.test'},error:null});
   api.signed.mockResolvedValue({data:null,error:{message:'Storage unavailable'}});
   await expect(designExecutionUrl('case','https://mutable.example.test')).rejects.toThrow('Storage unavailable');
+ });
+ it('opens the saved link of a running revision rather than a newer legacy reference',async()=>{
+  api.rpc.mockResolvedValue({data:{path:null,url:'https://drive.google.com/saved-stage-version'},error:null});
+  await expect(designExecutionUrl('case','https://drive.google.com/newer-case-version','stage')).resolves.toBe('https://drive.google.com/saved-stage-version');
+  expect(api.from).not.toHaveBeenCalled();
  });
 });

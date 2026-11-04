@@ -848,7 +848,7 @@ function CaseDetailsDrawer({ run, suppliers, onClose }: CaseDetailsDrawerProps) 
                         <div className="space-y-2">
                             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">المرفقات والملفات</h3>
                             <div className="grid grid-cols-1 gap-2">
-                                {run.designUrl ? (
+                                {run.designUrl || run.designRevisionId ? (
                                     <button
                                         onClick={() => void openDesignExecution(run.orderId,run.designUrl||undefined,run.id).catch(e=>toastError(e.message))}
                                         className="flex items-center justify-between p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-800 transition-colors text-xs font-bold"
