@@ -2,7 +2,7 @@ import {test,expect,type Page,type Browser} from '@playwright/test';
 import {isolatedDesignHtml} from '../src/lib/designPreview';
 const orderId=process.env.DESIGN_QC_ORDER_ID!;
 const caseId=`QC-BROWSER-${orderId}`;
-async function signIn(browser:Browser,n:number){
+async function signIn(browser:Browser,n:number,openQc=true){
  const context=await browser.newContext({baseURL:'http://127.0.0.1:5192',viewport:{width:1280,height:850}});
  const page=await context.newPage();
  await page.route('**/*',route=>route.request().url().startsWith('http://127.0.0.1:')?route.continue():route.abort());
@@ -12,8 +12,7 @@ async function signIn(browser:Browser,n:number){
  await page.locator('input[type="password"]').fill('Local-QC-Only-2026!');
  await page.locator('button[type="submit"]').click();
  await expect(page).not.toHaveURL(/\/login$/);
- await page.goto(`/design-qc?order=${orderId}`);
- await expect(page.getByRole('heading',{name:'ملفات التصميم وDesign QC',level:1,exact:true})).toBeVisible();
+ if(openQc){await page.goto(`/design-qc?order=${orderId}`);await expect(page.getByRole('heading',{name:'ملفات التصميم وDesign QC',level:1,exact:true})).toBeVisible();}
  return {page,context};
 }
 function zip(comment:string){const header=Buffer.alloc(22);header.writeUInt32LE(0x06054b50,0);header.writeUInt16LE(Buffer.byteLength(comment),20);return Buffer.concat([header,Buffer.from(comment)]);}
@@ -21,7 +20,6 @@ async function submit(page:Page,version:number){
  await page.getByRole('tab',{name:'رفع ملف',exact:true}).click();
  await expect(page.getByLabel('رابط ملفات التصميم',{exact:true})).toHaveCount(0);
  await page.getByLabel('ملف التنفيذ ZIP',{exact:true}).setInputFiles({name:'execution.zip',mimeType:'application/zip',buffer:zip(`synthetic revision ${version}`)});
- await page.locator('summary').filter({hasText:'معاينة HTML'}).click();
  await page.getByLabel('ملف معاينة HTML',{exact:true}).setInputFiles({name:'preview.html',mimeType:'text/html',buffer:Buffer.from('<html><body><h1>معاينة اصطناعية</h1><script>document.body.dataset.rendered="yes"</script></body></html>')});
  await page.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();
  await expect(page.getByRole('heading',{name:`النسخة الحالية ${version}`,exact:true})).toBeVisible();
@@ -36,6 +34,42 @@ async function localApi(page:Page,path:string,method='POST',body:unknown={},cont
   return {status:response.status,data};
  },{path,method,body,contentType,anon:process.env.DESIGN_QC_ANON_KEY!});
 }
+test('designer dashboard with QC OFF: inline instructions, upload popup, saved preview and explicit HTML skip',async({browser})=>{
+ const designer=await signIn(browser,3,false),page=designer.page;
+ const qcNavigations:string[]=[];page.on('framenavigated',frame=>{if(frame===page.mainFrame()&&frame.url().includes('/design-qc'))qcNavigations.push(frame.url());});
+ await expect(page).toHaveURL(/\/dashboard$/);
+ const row=()=>page.getByRole('row').filter({hasText:'QC-PAUSED-POPUP'});
+ await expect(row().getByText('تعليمات تجربة المصمم: راجع حدود التحضير.',{exact:true})).toBeVisible();
+ await row().getByRole('button',{name:'رفع التصميم',exact:true}).click();
+ let dialog=page.getByRole('dialog',{name:'تسليم التصميم',exact:true});
+ await dialog.getByRole('tab',{name:'رفع ملف',exact:true}).click();
+ await dialog.getByLabel('ملف التنفيذ ZIP',{exact:true}).setInputFiles({name:'execution.zip',mimeType:'application/zip',buffer:zip('paused designer upload')});
+ await dialog.getByLabel('ملف معاينة HTML',{exact:true}).setInputFiles({name:'preview.html',mimeType:'text/html',buffer:Buffer.from('<html><body><h1>معاينة من لوحة المصمم</h1></body></html>')});
+ await dialog.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();await expect(dialog).toHaveCount(0);
+ const saved=await localApi(page,'rest/v1/rpc/get_design_qc_state','POST',{p_order_id:'fc000000-0000-4000-8000-000000000014'});
+ expect(saved.status).toBe(200);expect(saved.data).toMatchObject({enabled:false,required:false});
+ await row().getByRole('button',{name:'عرض التصميم',exact:true}).click();
+ const viewer=page.getByRole('dialog',{name:'التصميم المحفوظ',exact:true});
+ await expect(viewer.getByRole('button',{name:'تحميل ملفات التصميم',exact:true})).toBeVisible();
+ await viewer.getByRole('button',{name:'عرض معاينة HTML',exact:true}).click();
+ await expect(viewer.frameLocator('iframe[title="معاينة التصميم المحفوظة"]').getByRole('heading',{name:'معاينة من لوحة المصمم'})).toBeVisible();
+ await expect(viewer.locator('iframe')).toHaveAttribute('sandbox','allow-scripts');
+ await viewer.getByRole('button',{name:'إغلاق التصميم',exact:true}).click();
+ page.once('dialog',dialog=>dialog.accept());await row().getByRole('button',{name:'طلب تعديل تصميم',exact:true}).click();
+ await expect(row().getByRole('button',{name:'طلب تعديل تصميم',exact:true})).toHaveCount(0);
+ await row().getByRole('button',{name:/^(رفع التصميم|تحديث التصميم)$/}).click();
+ dialog=page.getByRole('dialog',{name:'تسليم التصميم',exact:true});
+ await dialog.getByLabel('رابط ملفات التصميم',{exact:true}).fill('https://drive.google.com/file/d/paused-direct-link');
+ await dialog.getByRole('checkbox',{name:'تخطي رفع HTML مع كتابة السبب',exact:true}).check();
+ expect(await dialog.getByRole('form',{name:'تسليم التصميم',exact:true}).evaluate((form:HTMLFormElement)=>form.checkValidity())).toBe(false);
+ await dialog.getByLabel('سبب التسليم بدون معاينة',{exact:true}).fill('برنامج التصميم لا يخرج ملف HTML لهذه الحالة');
+ await dialog.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();await expect(dialog).toHaveCount(0);
+ await row().getByRole('button',{name:'عرض التصميم',exact:true}).click();
+ await expect(viewer.getByRole('button',{name:'فتح رابط الملفات',exact:true})).toBeVisible();
+ await expect(viewer.getByText(/برنامج التصميم لا يخرج ملف HTML لهذه الحالة/)).toBeVisible();
+ expect(qcNavigations).toEqual([]);await designer.context.close();
+});
+
 test('real local API: switch, immutable upload, approval, rejection, bypass and priced handoff',async({browser})=>{
  const admin=await signIn(browser,1);const page=admin.page;
  await page.goto('/suppliers');
@@ -107,7 +141,7 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  const existingFile=await localApi(page,`storage/v1/object/sign/design-qc-files/${String(filePath.data)}`,'POST',{expiresIn:60});
  expect(existingFile.status).toBe(200);
  await page.getByText('إعادة التكليف وتسوية التصميم السابق',{exact:true}).click();
- await page.getByLabel('المصمم البديل',{exact:true}).selectOption('fc000000-0000-0000-0000-000000000004');
+ await page.getByLabel('المصمم البديل',{exact:true}).selectOption('fc000000-0000-4000-8000-000000000004');
  await page.getByLabel('المستحق النهائي للمصمم السابق (ج.م)',{exact:true}).fill('80');
  await page.getByLabel('تعديل أجر البديل (اختياري)',{exact:true}).fill('90');
  await page.getByRole('button',{name:'تأكيد التسوية وإعادة التكليف',exact:true}).click();
@@ -123,7 +157,7 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  await expect(former.page.getByRole('alert')).toContainText('لم يعد لديك صلاحية');
  const deniedFile=await localApi(former.page,`storage/v1/object/sign/design-qc-files/${String(filePath.data)}`,'POST',{expiresIn:60});
  expect(deniedFile.status).toBeGreaterThanOrEqual(400);
- await former.page.goto('/accounts?tab=designers&entity=fc000000-0000-0000-0000-000000000003&mode=detail');
+ await former.page.goto('/accounts?tab=designers&entity=fc000000-0000-4000-8000-000000000003&mode=detail');
  await expect(former.page.getByText(/تصميم سابق/).first()).toBeVisible().catch(async error=>{await former.page.screenshot({path:'.tmp/design-qc-former-account.png',fullPage:true});throw error;});
  const replacement=await signIn(browser,4);
  await replacement.page.goto('/dashboard');
@@ -133,6 +167,7 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  await expect(deliveryDialog.getByRole('tab',{name:'رفع ملف',exact:true})).toBeVisible();
  await expect(deliveryDialog.getByRole('link')).toHaveCount(0);
  await deliveryDialog.getByLabel('رابط ملفات التصميم',{exact:true}).fill('https://drive.google.com/file/d/synthetic-replacement');
+ await deliveryDialog.getByRole('checkbox',{name:'تخطي رفع HTML مع كتابة السبب',exact:true}).check();
  await deliveryDialog.getByLabel('سبب التسليم بدون معاينة',{exact:true}).fill('HTML not available for link-only sample');
  await deliveryDialog.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();
  await expect(deliveryDialog).toHaveCount(0);

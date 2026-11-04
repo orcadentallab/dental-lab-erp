@@ -16,6 +16,7 @@ import { ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
 import DateRangeField from '../components/ui/DateRangeField';
 import DesignDeliveryForm from '../components/orders/DesignDeliveryForm';
+import DesignerDesignViewer from '../components/orders/DesignerDesignViewer';
 import {designExecutionUrl,openDesignExecution} from '../services/supabase/designQc';
 import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
@@ -90,6 +91,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     // Modal State
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showDesignModal, setShowDesignModal] = useState(false);
+    const [viewingDesign,setViewingDesign]=useState<Order|null>(null);
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
@@ -172,6 +174,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
             setOrders(dashboardOrders);
             setSelectedOrder(current=>current?dashboardOrders.find(order=>order.id===current.id)??null:null);
+            setViewingDesign(current=>current?dashboardOrders.find(order=>order.id===current.id)??null:null);
             setDoctors(allDoctors);
             const designerUsers = allUsers.filter((u: any) => isDesignerUser(u));
             setUsers(designerUsers);
@@ -825,6 +828,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                             )}
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1.5 min-w-[220px] max-w-[280px]">
+                                                    {order.supplierDesignInstruction?.paragraph&&<button type="button" onClick={()=>openTextPreview('التعليمات الفنية للمصمم',order.supplierDesignInstruction?.paragraph??'','bg-cyan-50 border-cyan-100 text-cyan-900')} className="w-full cursor-pointer rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-right text-xs text-cyan-900 transition-colors hover:bg-cyan-100 focus-visible:ring-2 focus-visible:ring-cyan-600"><span className="mb-1 block font-bold">التعليمات الفنية للمصمم{order.supplierDesignInstruction.version?` · نسخة ${order.supplierDesignInstruction.version}`:''}</span><span className="line-clamp-3 leading-6">{order.supplierDesignInstruction.paragraph}</span></button>}
                                                     {order.instructions ? (
                                                         <button
                                                             type="button"
@@ -908,6 +912,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                         </button>
                                                     </div>
                                                     <div className="flex gap-2 flex-wrap">
+                                                        {(order.designUrl||order.designRevisionId||order.designSubmittedAt)&&<button type="button" onClick={()=>setViewingDesign(order)} className="min-h-9 cursor-pointer rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-800 transition-colors hover:bg-cyan-100 focus-visible:ring-2 focus-visible:ring-cyan-600">عرض التصميم</button>}
                                                         {order.stlUrl && (
                                                             <button
                                                                 type="button"
@@ -998,6 +1003,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 </div>
             )}
 
+            {viewingDesign&&<DesignerDesignViewer orderId={viewingDesign.id} caseId={viewingDesign.caseId} legacyUrl={viewingDesign.designUrl} onClose={()=>setViewingDesign(null)}/>}
             {showDesignModal && selectedOrder && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
                     <div role="dialog" aria-modal="true" aria-label="تسليم التصميم" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
