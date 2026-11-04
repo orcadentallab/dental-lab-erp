@@ -43,8 +43,9 @@ SELECT id::text,id,jsonb_build_object('sub',id::text,'email',email,'email_verifi
 INSERT INTO public.users(id,auth_id,username,role,name,is_active,email)
 SELECT ('fc000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,('fc000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'qc_browser_'||n,(ARRAY['admin','coordinator','designer','designer'])[n],(ARRAY['QC Browser Admin','QC Browser Coordinator','QC Browser Former Designer','QC Browser Replacement'])[n],true,'qc-browser-'||n||'@local.test' FROM generate_series(1,4)n ON CONFLICT(id) DO UPDATE SET email=EXCLUDED.email WHERE public.users.username=EXCLUDED.username AND public.users.auth_id=EXCLUDED.auth_id;
 INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name) VALUES('fc000000-0000-0000-0000-000000000010','Synthetic QC doctor','01000000000','Local QA','QC-BROWSER','Test') ON CONFLICT(id) DO NOTHING;
-INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,design_price)
-VALUES('__ORDER_ID__','QC-BROWSER-__ORDER_ID__','fc000000-0000-0000-0000-000000000010','Synthetic QC patient','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-0000-0000-000000000003',100);
+INSERT INTO public.suppliers(id,name,phone) VALUES('fc000000-0000-4000-8000-000000000011','Synthetic QC supplier','01000000001') ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,design_price,supplier_id)
+VALUES('__ORDER_ID__','QC-BROWSER-__ORDER_ID__','fc000000-0000-0000-0000-000000000010','Synthetic QC patient','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-0000-0000-000000000003',100,'fc000000-0000-4000-8000-000000000011');
 COMMIT;
 '@
 $qcSeed.Replace('__ORDER_ID__',$qcOrderId) | & docker exec -i supabase_db_design-qc-qa psql -U postgres -d postgres -v ON_ERROR_STOP=1 > $null

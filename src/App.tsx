@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from './constants/externalRegistration';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/DashboardNew';
 import Orders from './pages/Orders';
@@ -15,6 +15,7 @@ const Doctors = lazy(() => import('./pages/Doctors'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const DesignerStats = lazy(() => import('./pages/DesignerStats'));
+const DesignerDashboard = lazy(() => import('./pages/DesignerDashboard'));
 const Suppliers = lazy(() => import('./pages/Suppliers'));
 const Accounts = lazy(() => import('./pages/Accounts'));
 const UsersPage = lazy(() => import('./pages/Users'));
@@ -56,6 +57,11 @@ import TitleUpdater from './components/TitleUpdater';
 // page, so the existing production build is unaffected.
 const SHOW_MARKETING = import.meta.env.VITE_SHOW_MARKETING !== 'false';
 
+function DashboardEntry() {
+  const {user}=useAuth();
+  return user?.role==='designer'?<DesignerDashboard/>:<Dashboard/>;
+}
+
 function App() {
   return (
     <LanguageProvider>
@@ -86,7 +92,7 @@ function App() {
                   <Route element={<ProtectedRoute />}>
                     <Route element={<ProtectedRoute allowedRoles={['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer']} />}>
                       <Route element={<DashboardLayout />}>
-                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/dashboard" element={<DashboardEntry />} />
                         <Route element={<ProtectedRoute requiredCapability="view_orders" />}>
                           <Route path="/orders" element={<Orders />} />
                         </Route>

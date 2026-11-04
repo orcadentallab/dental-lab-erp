@@ -49,11 +49,12 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  const assigned=await signIn(browser,3);
  await expect(assigned.page.getByText('Synthetic technical paragraph: margin 0.05 mm',{exact:true})).toBeVisible();
  await expect(assigned.page.getByText('Private source Synthetic QC supplier',{exact:true})).toHaveCount(0);
- await assigned.page.evaluate(()=>sessionStorage.setItem('designer-dashboard-cache-v2','stale commercial cache'));
+ await assigned.page.evaluate(()=>{sessionStorage.setItem('designer-dashboard-cache-v2','stale commercial cache');sessionStorage.setItem('dashboard-cache-v1','stale commercial dashboard');});
  await assigned.page.goto('/dashboard');
  await expect(assigned.page.getByText('Synthetic QC patient',{exact:true}).first()).toBeVisible();
  expect(await assigned.page.evaluate(()=>sessionStorage.getItem('designer-dashboard-cache-v2'))).toBeNull();
  expect(await assigned.page.evaluate(()=>sessionStorage.getItem('designer-dashboard-cache-v3'))).toBeNull();
+ expect(await assigned.page.evaluate(()=>sessionStorage.getItem('dashboard-cache-v1'))).toBeNull();
  for(const table of ['orders','suppliers','doctors']){
   const raw=await localApi(assigned.page,`rest/v1/${table}?select=*`,'GET');
   expect(raw.status).toBe(200);expect(raw.data).toEqual([]);

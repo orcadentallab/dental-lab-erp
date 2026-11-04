@@ -36,6 +36,7 @@ const mockDatabase: Record<string, any[]> = {
         }
     ],
 };
+const roleApi=vi.hoisted(()=>({role:'admin',error:null as null|{message:string},calls:[] as string[]}));
 
 vi.mock('../../src/lib/supabase', () => {
     let currentTable = '';
@@ -60,6 +61,12 @@ vi.mock('../../src/lib/supabase', () => {
     };
 
     const mockSupabase = {
+        rpc: async(name:string)=>{
+            roleApi.calls.push(name);
+            if(name==='get_my_role')return {data:roleApi.role,error:roleApi.error};
+            if(name==='get_designer_workspace')return {data:[{id:'11111111-1111-1111-1111-111111111111',case_id:'C01',patient_name:'Assigned technical case',order_items:[]}],error:null};
+            throw new Error(`Unexpected RPC: ${name}`);
+        },
         from: (table: string) => {
             currentTable = table;
             for (const key of Object.keys(inFilters)) delete inFilters[key];
@@ -102,5 +109,21 @@ describe('getOrdersByIds', () => {
         expect(order2).toBeDefined();
         expect(order2?.patientName).toBe('Patient B');
         expect(order2?.isDeleted).toBe(true);
+    });
+    it('uses the scoped server projection for designers',async()=>{
+        roleApi.role='designer';roleApi.calls=[];
+        try{
+            const result=await getOrdersByIds(['11111111-1111-1111-1111-111111111111']);
+            expect(result).toHaveLength(1);
+            expect(result[0].patientName).toBe('Assigned technical case');
+            expect(result[0].supplierId).toBeUndefined();
+            expect(result[0].totalPrice).toBeUndefined();
+            expect(roleApi.calls).toEqual(['get_my_role','get_designer_workspace']);
+        }finally{roleApi.role='admin';}
+    });
+    it('does not fall back to raw orders when role lookup fails',async()=>{
+        roleApi.error={message:'Role lookup unavailable'};
+        try{await expect(getOrdersByIds(['11111111-1111-1111-1111-111111111111'])).rejects.toThrow();}
+        finally{roleApi.error=null;}
     });
 });

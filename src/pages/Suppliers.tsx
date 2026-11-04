@@ -4,6 +4,7 @@ import { db, type Supplier, type Service } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Edit2, X, Building2, Package, Truck, Filter } from 'lucide-react';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
+import SupplierDesignInstructions from '../components/orders/SupplierDesignInstructions';
 import { useToast } from '../context/ToastContext';
 
 const SUPPLIER_TYPE_LABELS: Record<'external_lab' | 'material_vendor' | 'courier', { label: string; icon: typeof Building2; color: string }> = {
@@ -468,6 +469,7 @@ export default function Suppliers() {
                                 </div>
                             )}
 
+                            {editingSupplier && user?.role === 'admin' && formData.supplierType === 'external_lab' && <SupplierDesignInstructions key={editingSupplier.id} supplierId={editingSupplier.id} />}
                             {editingSupplier && formData.supplierType === 'external_lab' && (
                                 <div className="border-t border-gray-100 pt-6">
                                     <BillingSettingsPanel
