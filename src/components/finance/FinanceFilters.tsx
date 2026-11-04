@@ -3,24 +3,25 @@ import React from 'react';
 import clsx from 'clsx';
 
 
-export type FilterType = 'day' | 'week' | 'month' | 'year' | 'all';
+export type FilterType = 'day' | 'week' | 'last7' | 'last30' | 'month' | 'year' | 'all';
 
 interface DateFilterProps {
     activeFilter: FilterType;
     onFilterChange: (filter: FilterType) => void;
+    rollingPeriods?: boolean;
 }
 
-export const DateFilter: React.FC<DateFilterProps> = ({ activeFilter, onFilterChange }) => {
+export const DateFilter: React.FC<DateFilterProps> = ({ activeFilter, onFilterChange, rollingPeriods = false }) => {
     const filters: { id: FilterType; label: string }[] = [
-        { id: 'day', label: 'يوم' },
-        { id: 'week', label: 'أسبوع' },
+        { id: rollingPeriods ? 'last7' : 'day', label: rollingPeriods ? 'آخر 7 أيام' : 'يوم' },
+        { id: rollingPeriods ? 'last30' : 'week', label: rollingPeriods ? 'آخر 30 يوم' : 'أسبوع' },
         { id: 'month', label: 'شهر' },
         { id: 'year', label: 'سنة' },
         { id: 'all', label: 'الكل' },
     ];
 
     return (
-        <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg w-fit">
+        <div className="flex flex-wrap items-center gap-2 bg-gray-50 p-1 rounded-lg w-fit">
             {filters.map(f => (
                 <button
                     key={f.id}
@@ -54,6 +55,13 @@ export function filterEntries<T extends { date: string }>(entries: T[], filter: 
         const entryTime = entryDate.getTime();
 
         switch (filter) {
+            case 'last7':
+            case 'last30': {
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                start.setDate(start.getDate() - (filter === 'last7' ? 6 : 29));
+                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+                return entryTime >= start.getTime() && entryTime < end.getTime();
+            }
             case 'day': {
                 const entryStartOfDay = new Date(entryDate.getFullYear(), entryDate.getMonth(), entryDate.getDate()).getTime();
                 return entryStartOfDay === startOfDay;

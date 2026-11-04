@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
 import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../constants/externalRegistration';
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
-import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2, Car, Landmark, Building2, Wrench } from 'lucide-react';
+import { Banknote, Users, Truck, Megaphone, Coffee, Package, Trash2, Edit2, Car, Landmark, Building2, Wrench, Receipt, ChevronDown } from 'lucide-react';
 import { db, type Transaction, type Doctor, type Supplier, type User, type Order } from '../services/db';
 import { isLedgerTransaction } from '../utils/transactions';
 import clsx from 'clsx';
@@ -576,58 +576,39 @@ export default function Finance() {
             {activeTab === 'expenses' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-1 lg:self-start">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:overscroll-contain">
-                            <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
-                                <span className="w-1 h-6 bg-red-500 rounded-full"></span>
-                                تسجيل مصروف
-                            </h3>
-                            <form onSubmit={handleAddExpense} className="space-y-5">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">تاريخ المصروف (الدفع الفعلي)</label>
-                                        <DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">الشهر المالي المستحق (لتوزيع الأرباح)</label>
-                                        { }
-                                        <input aria-label="الشهر المالي" required type="month" value={effectiveDate ? effectiveDate.substring(0, 7) : ''} onChange={e => setEffectiveDate(`${e.target.value}-01`)} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all" />
+                        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label="تسجيل مصروف">
+                            <header className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
+                                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-red-50 text-red-600"><Receipt size={20} aria-hidden="true" /></span>
+                                <div><h3 className="text-base font-bold text-slate-900">{editingTransaction ? 'تعديل المصروف' : 'تسجيل مصروف'}</h3><p className="mt-0.5 text-xs text-slate-500">سجّل المبلغ وحدّد تفاصيل الدفع</p></div>
+                            </header>
+                            <form onSubmit={handleAddExpense} className="space-y-4 p-5 [&_label]:text-xs [&_label]:font-semibold [&_label]:text-slate-600 [&_select]:cursor-pointer [&_select]:bg-white [&_select]:min-h-11 [&_input]:min-w-0 [&_input]:max-w-full">
+                                <div className="rounded-xl border border-red-100 bg-red-50/50 px-4 py-3">
+                                    <label htmlFor="expense-amount" className="block">المبلغ المطلوب دفعه</label>
+                                    <div className="mt-1 flex items-center gap-3">
+                                        <input id="expense-amount" aria-label="المبلغ" required type="number" min="0" step="any" inputMode="decimal" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full rounded-md bg-transparent py-1 text-3xl font-bold tabular-nums text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400" placeholder="0.00" />
+                                        <span className="shrink-0 text-sm font-medium text-slate-500">ج.م</span>
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">نوع المصروف</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {expenseCategories.map(cat => (
-                                            <button
-                                                key={cat.id}
-                                                type="button"
-                                                onClick={() => setCategory(cat.label)}
-                                                className={clsx(
-                                                    "p-3 text-xs border rounded-xl flex flex-col items-center gap-2 transition-all duration-200",
-                                                    category === cat.label
-                                                        ? "bg-red-50 border-red-500 text-red-700 font-bold shadow-sm"
-                                                        : "hover:bg-gray-50 border-gray-100 text-gray-600"
-                                                )}
-                                            >
-                                                <cat.icon size={18} />
-                                                <span>{cat.label}</span>
-                                            </button>
-                                        ))}
+                                    <label htmlFor="expense-category" className="mb-2 block">نوع المصروف</label>
+                                    <div className="relative">
+                                        <select id="expense-category" required value={category} onChange={e => setCategory(e.target.value)} className="min-h-11 w-full appearance-none rounded-xl border border-slate-200 py-2.5 ps-3 pe-10 text-sm text-slate-800 transition-colors hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-red-400">
+                                            <option value="" disabled>اختر نوع المصروف</option>
+                                            {expenseCategories.map(cat => <option key={cat.id} value={cat.label}>{cat.label}</option>)}
+                                        </select>
+                                        <ChevronDown size={16} aria-hidden="true" className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">المبلغ (ج.م)</label>
-                                    <input aria-label="المبلغ" required type="number" min="0" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 transition-all font-bold text-lg" placeholder="0.00" />
+                                <div className="grid grid-cols-2 items-start gap-3">
+                                    <div><label className="mb-2 block">تاريخ الدفع</label><DateField ariaLabel="تاريخ المعاملة" required clearable={false} max={todayDate} value={transactionDate} onChange={setTransactionDate} /></div>
+                                    <div><label htmlFor="expense-month" className="mb-2 block">الشهر المالي</label><input id="expense-month" aria-label="الشهر المالي" required type="month" value={effectiveDate ? effectiveDate.substring(0, 7) : ''} onChange={e => setEffectiveDate(e.target.value ? e.target.value+'-01' : '')} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-400" /></div>
                                 </div>
+                                <p className="!mt-2 text-[11px] leading-relaxed text-slate-500">تاريخ الدفع للحركة النقدية، والشهر المالي لتوزيع الأرباح.</p>
                                 <CashboxFields includeFee tone="red" />
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">ملاحظات</label>
-                                    <textarea aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 transition-all" placeholder="تفاصيل المصروف..." />
-                                </div>
-                                <button disabled={isSubmitting} type="submit" className={clsx("w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 transition-all active:scale-[0.98]", isSubmitting && "opacity-50 cursor-not-allowed")}>
-                                    {isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث المصروف' : 'تسجيل المصروف')}
-                                </button>
+                                <div><label htmlFor="expense-notes" className="mb-2 block">ملاحظات المصروف</label><textarea id="expense-notes" aria-label="الوصف" required value={description} onChange={e => setDescription(e.target.value)} rows={2} className="min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-400" placeholder="المصروف كان مقابل إيه؟" /></div>
+                                <button disabled={isSubmitting} type="submit" className="flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-50"><Receipt size={17} aria-hidden="true" />{isSubmitting ? 'جاري التسجيل...' : (editingTransaction ? 'تحديث المصروف' : 'تسجيل المصروف')}</button>
                             </form>
-                        </div>
+                        </section>
                     </div>
                     <div className="lg:col-span-2 space-y-4">
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -648,7 +629,7 @@ export default function Finance() {
                                             <option key={expenseCategory} value={expenseCategory}>{expenseCategory}</option>
                                         ))}
                                     </select>
-                                    <DateFilter activeFilter={expenseFilter} onFilterChange={setExpenseFilter} />
+                                    <DateFilter activeFilter={expenseFilter} onFilterChange={setExpenseFilter} rollingPeriods />
                                 </div>
                             </div>
                             <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3 text-sm">
@@ -753,7 +734,7 @@ export default function Finance() {
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                             <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                                 <h3 className="font-bold text-gray-800">سجل الإيرادات العامة</h3>
-                                <DateFilter activeFilter={revenueFilter} onFilterChange={setRevenueFilter} />
+                                <DateFilter activeFilter={revenueFilter} onFilterChange={setRevenueFilter} rollingPeriods />
                             </div>
                             <table className="w-full text-sm text-right">
                                 <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الوصف</th><th className="p-4 font-medium">الصندوق</th><th className="p-4 font-medium">المبلغ</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
@@ -861,7 +842,7 @@ export default function Finance() {
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800">سجل تحصيلات الأطباء</h3>
-                            <DateFilter activeFilter={doctorPaymentFilter} onFilterChange={setDoctorPaymentFilter} />
+                            <DateFilter activeFilter={doctorPaymentFilter} onFilterChange={setDoctorPaymentFilter} rollingPeriods />
                         </div>
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">الطبيب</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
@@ -957,7 +938,7 @@ export default function Finance() {
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800">سجل مدفوعات الموردين</h3>
-                            <DateFilter activeFilter={supplierPaymentFilter} onFilterChange={setSupplierPaymentFilter} />
+                            <DateFilter activeFilter={supplierPaymentFilter} onFilterChange={setSupplierPaymentFilter} rollingPeriods />
                         </div>
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المورد</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
@@ -1053,7 +1034,7 @@ export default function Finance() {
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-center gap-4">
                             <h3 className="font-bold text-gray-800">سجل مدفوعات المصممين</h3>
-                            <DateFilter activeFilter={designerPaymentFilter} onFilterChange={setDesignerPaymentFilter} />
+                            <DateFilter activeFilter={designerPaymentFilter} onFilterChange={setDesignerPaymentFilter} rollingPeriods />
                         </div>
                         <table className="w-full text-sm text-right">
                             <thead className="text-gray-500 bg-gray-50/50"><tr><th className="p-4 font-medium">التاريخ</th><th className="p-4 font-medium">المصمم</th><th className="p-4 font-medium">البيان</th><th className="p-4 font-medium">المبلغ</th><th className="p-4 font-medium">الصندوق</th>{LEGACY_EXTERNAL_REGISTRATION_ENABLED && <th className="p-4 font-medium text-center">الحالة</th>}{['admin', 'accountant'].includes(user?.role || '') && <th className="p-4 font-medium text-center">إجراءات</th>}</tr></thead>
