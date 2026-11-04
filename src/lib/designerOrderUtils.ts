@@ -72,7 +72,8 @@ export function getDesignerAssignedAt(order: Order): string | null {
 }
 
 export function getDesignSubmittedAt(order: Order): string | null {
-    if (!order.designUrl) return null;
+    if(order.designSubmittedAt)return order.designSubmittedAt;
+    if (!order.designUrl && !order.designRevisionId) return null;
 
     const commentTimestamp = [...(order.comments || [])]
         .reverse()
@@ -95,7 +96,7 @@ export function isDesignSubmitted(order: Order): boolean {
         return false;
     }
 
-    return Boolean(order.designUrl || getDesignSubmittedAt(order));
+    return Boolean(order.designUrl || order.designRevisionId || getDesignSubmittedAt(order));
 }
 
 export function getDesignerWorkDurationMs(order: Order, nowMs: number = Date.now()): number | null {

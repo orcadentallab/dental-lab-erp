@@ -47,6 +47,7 @@ import { flagReconciliationIssue } from './reconciliationFlags';
 
 // Helper to handle joined data which isn't in DbOrder type
 interface DbOrderWithRelations extends DbOrder {
+    design_qc_revision_id?: string | null;
     order_items?: DbOrderItemRow[];
     order_comments?: DbOrderCommentRow[];
     needs_accounting_reregistration?: boolean | null;
@@ -1029,6 +1030,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         workflowType: dbOrder.workflow_type || undefined,
         designerId: dbOrder.designer_id || undefined,
         designUrl: dbOrder.design_url || undefined,
+        designRevisionId: dbOrder.design_qc_revision_id || undefined,
         designStatus: dbOrder.design_status || undefined,
         designPrice: dbOrder.design_price || undefined,
         manualDesignPrice: dbOrder.manual_design_price ?? undefined,

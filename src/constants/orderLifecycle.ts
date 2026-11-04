@@ -76,6 +76,8 @@ type LifecycleOrder = Partial<Order> & {
     productionStatus?: string | null;
     production_status?: string | null;
     designUrl?: string | null;
+    designRevisionId?: string | null;
+    design_qc_revision_id?: string | null;
     design_url?: string | null;
     issueState?: string | null;
     issue_state?: string | null;
@@ -450,6 +452,7 @@ export function canTransitionTo(order: LifecycleOrder, targetStatus: ProductionS
         workflowType: order.workflowType,
         deliveryType: order.deliveryType,
         designUrl: order.designUrl || order.design_url,
+        designRevisionId: order.designRevisionId || order.design_qc_revision_id,
     });
 }
 

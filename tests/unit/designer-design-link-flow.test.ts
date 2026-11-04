@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 const dashboardSource = readFileSync(resolve('src/pages/DesignerDashboard.tsx'), 'utf8');
 const ordersSource = readFileSync(resolve('src/services/supabase/orders.ts'), 'utf8');
+const deliverySource = readFileSync(resolve('src/services/supabase/designQc.ts'), 'utf8');
 
 function between(source: string, start: string, end: string): string {
     const startIndex = source.indexOf(start);
@@ -24,10 +25,12 @@ describe('designer design-link flow', () => {
     });
 
     test('submitting a design link does not manufacture an order comment', () => {
-        const submission = between(dashboardSource, 'const submitDesign = async', 'const handleAddComment');
+        const submission = between(deliverySource, 'export async function submitDesignDelivery', 'export const decideDesignRevision');
         const helper = between(ordersSource, 'export async function submitDesignForApproval', 'export async function getDoctorTotalCost');
 
         expect(submission).not.toContain('comment');
+        expect(dashboardSource).toContain('<DesignDeliveryForm');
+        expect(dashboardSource).not.toContain("updateOrderStatus(selectedOrder.id, 'Under Production'");
         expect(helper).not.toContain('comment:');
     });
 

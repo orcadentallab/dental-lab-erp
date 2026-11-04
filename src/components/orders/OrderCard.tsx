@@ -420,20 +420,20 @@ function OrderCard({
                             {onUpdateDesignUrl && canAccessDesignerFeatures(currentUser) && (
                                 <Button
                                     size="sm"
-                                    variant={order.designUrl ? 'outline' : 'primary'}
+                                    variant={(order.designUrl || order.designRevisionId) ? 'outline' : 'primary'}
                                     className={clsx(
                                         "min-h-10 min-w-10 h-10 px-2 text-xs sm:min-h-0 sm:min-w-0 sm:h-6",
-                                        !order.designUrl ? "bg-orange-600 hover:bg-orange-700 text-white border-orange-600" : "text-blue-600 border-blue-200 hover:bg-blue-50"
+                                        !(order.designUrl || order.designRevisionId) ? "bg-orange-600 hover:bg-orange-700 text-white border-orange-600" : "text-blue-600 border-blue-200 hover:bg-blue-50"
                                     )}
                                     onClick={() => onUpdateDesignUrl(order)}
-                                    title={order.designUrl ? "تحديث رابط التصميم" : "رفع رابط التصميم"}
+                                    title={(order.designUrl || order.designRevisionId) ? "تحديث رابط التصميم" : "رفع رابط التصميم"}
                                 >
                                     <LinkIcon size={12} />
-                                    <span className="hidden sm:inline ml-1">{order.designUrl ? 'تحديث' : 'رفع تصميم'}</span>
+                                    <span className="hidden sm:inline ml-1">{(order.designUrl || order.designRevisionId) ? 'تحديث' : 'رفع تصميم'}</span>
                                 </Button>
                             )}
 
-                            {order.designUrl && (
+                            {(order.designUrl || order.designRevisionId) && (
                                 <>
                                     <Button
                                         size="sm"

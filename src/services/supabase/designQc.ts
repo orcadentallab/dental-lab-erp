@@ -1,7 +1,7 @@
 import { supabase } from '../../lib/supabase';
 import { validateDesignFiles } from '../../lib/designPreview';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
-export interface DesignRevision { id:string; order_id:string; revision_no:number; execution_path:string; preview_path:string|null; execution_url:string; without_preview_reason:string|null; submitted_at:string; requires_qc:boolean }
+export interface DesignRevision { id:string; order_id:string; revision_no:number; execution_path:string|null; preview_path:string|null; execution_url:string|null; without_preview_reason:string|null; submitted_at:string; requires_qc:boolean }
 export interface DesignReviewEvent { id:string; revision_id:string|null; action:string; note:string; actor_role:string; actor_id:string; actor_name?:string; needs_followup:boolean; created_at:string }
 export interface DesignQcState { enabled:boolean; currentRevisionId:string|null; required:boolean; revisions:DesignRevision[]; events:DesignReviewEvent[] }
 export interface DesignQueueItem { id:string; caseId:string; revisionId:string|null; required:boolean; state:string }
@@ -45,6 +45,25 @@ export async function submitDesignRevision(orderId:string,executionUrl:string,ex
     // Failed finalization leaves private, immutable unreferenced files; no lossy cleanup.
     return rpc<string>('submit_design_revision',{p_order_id:orderId,p_revision_id:id,p_execution_url:executionUrl,p_without_preview_reason:html?'':reason});
 }
+export interface DesignDeliveryInput {mode:'link'|'file';url:string;execution:File|null;html:File|null;reason:string}
+export async function submitDesignDelivery(orderId:string,input:DesignDeliveryInput):Promise<string>{
+    const url=input.url.trim();
+    if(input.mode==='link'){
+        if(input.execution)throw new Error('اختر رابطًا أو ملفًا واحدًا للتنفيذ');
+        try{const parsed=new URL(url);if(parsed.protocol!=='https:')throw new Error();}catch{throw new Error('اكتب رابط HTTPS صالحًا للتصميم');}
+    }else{
+        if(url||!input.execution)throw new Error('اختر ملف التنفيذ دون رابط إضافي');
+        validateDesignFiles(input.execution,input.html);
+    }
+    if(input.html&&(!/\.html?$/i.test(input.html.name)||input.html.size<1||input.html.size>10*1024*1024))throw new Error('اختر HTML مستقلًا لا يتجاوز 10 ميجا');
+    if(!input.html&&!input.reason.trim())throw new Error('اكتب سبب التسليم بدون معاينة');
+    const id=crypto.randomUUID(),bucket=supabase.storage.from('design-qc-files');
+    for(const [file,name,type] of [[input.execution,'execution.zip','application/zip'],[input.html,'preview.html','text/html']] as const){
+        if(!file)continue;
+        const {error}=await bucket.upload(`${orderId}/${id}/${name}`,file,{upsert:false,contentType:type});if(error)throw new Error(error.message);
+    }
+    return rpc<string>('submit_design_delivery',{p_order_id:orderId,p_revision_id:id,p_mode:input.mode,p_execution_url:input.mode==='link'?url:null,p_without_preview_reason:input.html?'':input.reason.trim()});
+}
 export const decideDesignRevision=(revisionId:string,action:'approved'|'rejected'|'bypassed',note:string)=>rpc<string>('decide_design_revision',{p_revision_id:revisionId,p_event_id:crypto.randomUUID(),p_action:action,p_note:note});
 export const releaseDesignRevision=(orderId:string)=>rpc<void>('release_design_revision',{p_order_id:orderId});
 export const returnDesignRevision=(orderId:string,designerId:string,note:string)=>rpc<void>('return_design_revision',{p_order_id:orderId,p_designer_id:designerId,p_note:note});
@@ -55,8 +74,10 @@ export async function getDesignAssetUrl(path:string):Promise<string> {
     return data.signedUrl;
 }
 export async function designExecutionUrl(orderId:string,legacyUrl?:string|null,stageId?:string):Promise<string> {
-    const path=stageId?await rpc<string|null>('get_stage_design_execution_path',{p_stage_id:stageId}):await rpc<string|null>('get_design_execution_path',{p_order_id:orderId});
-    return path ? getDesignAssetUrl(path) : ensureAbsoluteUrl(legacyUrl);
+    const asset=await rpc<{path:string|null;url:string|null}|null>('get_design_delivery_asset',{p_order_id:orderId,p_stage_id:stageId??null});
+    if(asset?.path)return getDesignAssetUrl(asset.path);
+    if(asset){if(!asset.url||!/^https:\/\//i.test(asset.url))throw new Error('رابط التنفيذ غير متاح');return asset.url;}
+    return ensureAbsoluteUrl(legacyUrl);
 }
 export async function openDesignExecution(orderId:string,legacyUrl?:string|null,stageId?:string):Promise<void> {
     const url=await designExecutionUrl(orderId,legacyUrl,stageId);

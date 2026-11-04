@@ -9,14 +9,13 @@ import {
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted, isDesignerDashboardOrderVisible, getDesignSubmissionError } from '../lib/designerOrderUtils';
-import { ErrorHandler } from '../lib/errorHandler';
 import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
-import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
+import { ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
 import DateRangeField from '../components/ui/DateRangeField';
-import {Link} from 'react-router-dom';
+import DesignDeliveryForm from '../components/orders/DesignDeliveryForm';
 import {designExecutionUrl,openDesignExecution} from '../services/supabase/designQc';
 import { getEffectiveIssueState, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
@@ -91,8 +90,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     // Modal State
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showDesignModal, setShowDesignModal] = useState(false);
-    const [designUrl, setDesignUrl] = useState('');
-    const [designSubmitting, setDesignSubmitting] = useState(false);
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
@@ -360,51 +357,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         }
     };
 
-    const submitDesign = async () => {
-        if (!selectedOrder || !user || designSubmitting) return;
-
-        const cleanedUrl = cleanUrl(designUrl);
-        if (!cleanedUrl) {
-            toastError('يرجى إدخال رابط التصميم');
-            return;
-        }
-        if (!isValidUrl(cleanedUrl)) {
-            toastError('رابط التصميم غير صالح. يرجى التأكد من إدخال رابط صحيح (مثال: drive.google.com)');
-            return;
-        }
-        const absoluteUrl = ensureAbsoluteUrl(cleanedUrl);
-
-        setDesignSubmitting(true);
-        try {
-            const currentOrder = await db.getOrder(selectedOrder.id);
-            if (!currentOrder) throw new Error('الحالة غير موجودة أو لم يعد لديك صلاحية الوصول إليها.');
-            updateOrderInState(currentOrder);
-            const unavailable = getDesignSubmissionError(currentOrder);
-            if (unavailable) {
-                toastError(unavailable);
-                return;
-            }
-            const updatedOrder = await db.updateOrderStatus(selectedOrder.id, 'Under Production', {
-                designUrl: absoluteUrl,
-                userId: user.id,
-                userName: user.name || user.role || 'مصمم',
-                actorRole: user.role,
-            });
-            updateOrderInState(updatedOrder);
-            setShowDesignModal(false);
-            setSelectedOrder(null);
-            setDesignUrl('');
-            setDesignQueueView('submitted');
-        } catch (error) {
-            const message = error instanceof Error ? error.message : '';
-            toastError(message.includes('Order is not available for design submission')
-                ? 'تغيرت حالة الطلب ولم يعد متاحاً للتصميم. حدّث القائمة وتأكد أن الحالة قيد التصميم ولا توجد مشكلة معلقة.'
-                : ErrorHandler.getUserMessage(error));
-        } finally {
-            setDesignSubmitting(false);
-        }
-    };
-
     const handleAddComment = async (order: Order) => {
         if (!user) return;
         const text = (commentDrafts[order.id] || '').trim();
@@ -514,7 +466,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         const unavailable = getDesignSubmissionError(order);
         if (unavailable) { toastError(unavailable); return; }
         setSelectedOrder(order);
-        setDesignUrl(order.designUrl || '');
         setShowDesignModal(true);
     };
 
@@ -950,10 +901,10 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                         <button
                                                             type="button"
                                                             onClick={() => openDesignUploadModal(order)}
-                                                            className={`text-xs flex items-center gap-1 px-2 py-1 rounded-md border transition ${order.designUrl ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
+                                                            className={`text-xs flex items-center gap-1 px-2 py-1 rounded-md border transition ${(order.designUrl || order.designRevisionId) ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
                                                         >
                                                             <LinkIcon size={12} />
-                                                            {order.designUrl ? 'تحديث التصميم' : 'رفع التصميم'}
+                                                            {(order.designUrl || order.designRevisionId) ? 'تحديث التصميم' : 'رفع التصميم'}
                                                         </button>
                                                     </div>
                                                     <div className="flex gap-2 flex-wrap">
@@ -975,7 +926,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                                 <FolderKanban size={12} /> صور
                                                             </button>
                                                         )}
-                                                        {order.designUrl && (
+                                                        {(order.designUrl || order.designRevisionId) && (
                                                             <>
                                                                 <button
                                                                     type="button"
@@ -1047,51 +998,11 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 </div>
             )}
 
-            {/* Design Completion Modal */}
-            {showDesignModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
-                        <h3 className="text-xl font-bold text-gray-900 mb-4">تسليم التصميم</h3>
-                        <p className="text-sm text-gray-500 mb-6">
-                            أثناء إيقاف QC يستمر تسليم الرابط المعتاد. عند تشغيله استخدم مسار النسخ الثابتة أدناه.
-                        </p>
-                        <Link className="block text-blue-700 underline mb-4" to={`/design-qc?order=${selectedOrder?.id||''}`}>تسليم ملفات نسخة ثابتة وDesign QC</Link>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">رابط التصميم (WeTransfer, Dropbox, Google Drive)</label>
-                                <input
-                                    type="url"
-                                    value={designUrl}
-                                    onChange={(e) => setDesignUrl(e.target.value)}
-                                    placeholder="https://..."
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-left ltr"
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                                <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
-                                <span>بعد الرفع ستنتقل الحالة مباشرة إلى <strong>قيد التنفيذ</strong> عند المعمل.</span>
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-3 mt-8">
-                            <button
-                                disabled={designSubmitting}
-                                onClick={() => { setShowDesignModal(false); setSelectedOrder(null); }}
-                                className="px-6 py-2.5 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors"
-                            >
-                                إلغاء
-                            </button>
-                            <button
-                                onClick={submitDesign}
-                                disabled={!designUrl || designSubmitting}
-                                className="px-6 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                            >
-                                <CheckCircle2 size={18} />
-                                {designSubmitting ? 'جاري التسليم...' : 'تأكيد التسليم'}
-                            </button>
-                        </div>
+            {showDesignModal && selectedOrder && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+                    <div role="dialog" aria-modal="true" aria-label="تسليم التصميم" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+                        <div className="mb-5 flex items-center justify-between"><span className="text-sm font-medium text-slate-500">{selectedOrder.caseId}</span><button type="button" className="min-h-11 cursor-pointer rounded-lg px-3 text-sm text-slate-600 hover:bg-slate-100" onClick={()=>{setShowDesignModal(false);setSelectedOrder(null);}}>إغلاق</button></div>
+                        <DesignDeliveryForm orderId={selectedOrder.id} onSubmitted={async()=>{updateOrderInState(await db.getOrder(selectedOrder.id));setShowDesignModal(false);setSelectedOrder(null);setDesignQueueView('submitted');success('تم حفظ نسخة التصميم');}}/>
                     </div>
                 </div>
             )}

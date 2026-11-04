@@ -18,10 +18,12 @@ async function signIn(browser:Browser,n:number){
 }
 function zip(comment:string){const header=Buffer.alloc(22);header.writeUInt32LE(0x06054b50,0);header.writeUInt16LE(Buffer.byteLength(comment),20);return Buffer.concat([header,Buffer.from(comment)]);}
 async function submit(page:Page,version:number){
- await page.getByLabel('رابط حزمة التنفيذ الكاملة',{exact:true}).fill('https://files.example.test/reference-only');
- await page.getByLabel('نسخة ZIP ثابتة من ملفات التنفيذ',{exact:true}).setInputFiles({name:'execution.zip',mimeType:'application/zip',buffer:zip(`synthetic revision ${version}`)});
- await page.getByLabel('معاينة HTML مستقلة',{exact:true}).setInputFiles({name:'preview.html',mimeType:'text/html',buffer:Buffer.from('<html><body><h1>معاينة اصطناعية</h1><script>document.body.dataset.rendered="yes"</script></body></html>')});
- await page.getByRole('button',{name:'حفظ نسخة الملفات',exact:true}).click();
+ await page.getByRole('tab',{name:'رفع ملف',exact:true}).click();
+ await expect(page.getByLabel('رابط ملفات التصميم',{exact:true})).toHaveCount(0);
+ await page.getByLabel('ملف التنفيذ ZIP',{exact:true}).setInputFiles({name:'execution.zip',mimeType:'application/zip',buffer:zip(`synthetic revision ${version}`)});
+ await page.locator('summary').filter({hasText:'معاينة HTML'}).click();
+ await page.getByLabel('ملف معاينة HTML',{exact:true}).setInputFiles({name:'preview.html',mimeType:'text/html',buffer:Buffer.from('<html><body><h1>معاينة اصطناعية</h1><script>document.body.dataset.rendered="yes"</script></body></html>')});
+ await page.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();
  await expect(page.getByRole('heading',{name:`النسخة الحالية ${version}`,exact:true})).toBeVisible();
 }
 async function localApi(page:Page,path:string,method='POST',body:unknown={},contentType='application/json'){
@@ -38,11 +40,11 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  const admin=await signIn(browser,1);const page=admin.page;
  await page.goto('/suppliers');
  await page.locator('div.bg-white').filter({has:page.getByText('Synthetic QC supplier',{exact:true})}).filter({has:page.getByRole('button',{name:'تعديل',exact:true})}).last().getByRole('button',{name:'تعديل',exact:true}).click();
- await page.getByLabel('الفقرة الفنية للمصمم',{exact:true}).fill('Synthetic technical paragraph: margin 0.05 mm');
- await page.getByLabel('مرجع المصدر الخاص بالأدمن').fill('Private source Synthetic QC supplier');
- await page.getByLabel('مرفقات فنية منزوعة هوية المورد').setInputFiles({name:'private-original-name.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nSynthetic technical fixture\n%%EOF')});
- await page.getByRole('checkbox',{name:/راجعت النص ومحتوى المرفقات/}).check();
- await page.getByRole('button',{name:'حفظ نسخة فنية جديدة',exact:true}).click();
+ await page.getByLabel('التعليمات الفنية للمصمم',{exact:true}).fill('Synthetic technical paragraph: margin 0.05 mm');
+ await expect(page.getByLabel('مرجع المصدر الخاص بالأدمن')).toHaveCount(0);
+ await expect(page.getByLabel('حالة التعليمات')).toHaveCount(0);
+ await expect(page.getByLabel('مرفقات فنية منزوعة هوية المورد')).toHaveCount(0);
+ await page.getByRole('button',{name:'حفظ التعليمات',exact:true}).click();
  await expect(page.getByText('سجل التعليمات (1)',{exact:true})).toBeVisible();
  await page.goto(`/design-qc?order=${orderId}`);
  await expect(page.getByText('Synthetic technical paragraph: margin 0.05 mm',{exact:true})).toBeVisible();
@@ -65,6 +67,7 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  expect(accepted.status).toBe(204);
  await assigned.context.close();
  await expect(page.getByText('Design QC موقوف حتى يعيد الأدمن تشغيله',{exact:true})).toBeVisible();
+ await page.getByText('إعدادات المراجعة',{exact:true}).click();
  await page.getByLabel('سبب تشغيل أو إيقاف المراجعة').fill('Synthetic local acceptance');
  await page.getByRole('button',{name:'تشغيل Design QC',exact:true}).click();
  await expect(page.getByText('Design QC مفعّل',{exact:true})).toBeVisible();
@@ -103,6 +106,7 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  expect(JSON.stringify(overwrite.data)).toMatch(/row-level security|not allowed|Unauthorized|permission/i);
  const existingFile=await localApi(page,`storage/v1/object/sign/design-qc-files/${String(filePath.data)}`,'POST',{expiresIn:60});
  expect(existingFile.status).toBe(200);
+ await page.getByText('إعادة التكليف وتسوية التصميم السابق',{exact:true}).click();
  await page.getByLabel('المصمم البديل',{exact:true}).selectOption('fc000000-0000-0000-0000-000000000004');
  await page.getByLabel('المستحق النهائي للمصمم السابق (ج.م)',{exact:true}).fill('80');
  await page.getByLabel('تعديل أجر البديل (اختياري)',{exact:true}).fill('90');
@@ -121,7 +125,23 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  expect(deniedFile.status).toBeGreaterThanOrEqual(400);
  await former.page.goto('/accounts?tab=designers&entity=fc000000-0000-0000-0000-000000000003&mode=detail');
  await expect(former.page.getByText(/تصميم سابق/).first()).toBeVisible().catch(async error=>{await former.page.screenshot({path:'.tmp/design-qc-former-account.png',fullPage:true});throw error;});
- await coordinator.context.close();await former.context.close();await admin.context.close();
+ const replacement=await signIn(browser,4);
+ await replacement.page.goto('/dashboard');
+ await replacement.page.getByRole('button',{name:'تحديث التصميم',exact:true}).click();
+ const deliveryDialog=replacement.page.getByRole('dialog',{name:'تسليم التصميم',exact:true});
+ await expect(deliveryDialog.getByRole('tab',{name:'رابط التصميم',exact:true})).toBeVisible();
+ await expect(deliveryDialog.getByRole('tab',{name:'رفع ملف',exact:true})).toBeVisible();
+ await expect(deliveryDialog.getByRole('link')).toHaveCount(0);
+ await deliveryDialog.getByLabel('رابط ملفات التصميم',{exact:true}).fill('https://drive.google.com/file/d/synthetic-replacement');
+ await deliveryDialog.getByLabel('سبب التسليم بدون معاينة',{exact:true}).fill('HTML not available for link-only sample');
+ await deliveryDialog.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();
+ await expect(deliveryDialog).toHaveCount(0);
+ await replacement.page.goto(`/design-qc?order=${orderId}`);
+ await expect(replacement.page.getByRole('heading',{name:'النسخة الحالية 4',exact:true})).toBeVisible();
+ await expect(replacement.page.getByRole('button',{name:'فتح رابط التنفيذ',exact:true})).toBeVisible();
+ const linkAsset=await localApi(replacement.page,'rest/v1/rpc/get_design_delivery_asset','POST',{p_order_id:orderId,p_stage_id:null});
+ expect(linkAsset.status).toBe(200);expect(linkAsset.data).toMatchObject({path:null,url:'https://drive.google.com/file/d/synthetic-replacement'});
+ await replacement.context.close();await coordinator.context.close();await former.context.close();await admin.context.close();
 });
 for(const width of [375,1280])test(`opaque HTML sandbox protects ERP credentials at ${width}px`,async({page})=>{
  await page.setViewportSize({width,height:812});
