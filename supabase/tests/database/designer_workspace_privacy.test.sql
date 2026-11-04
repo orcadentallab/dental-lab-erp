@@ -21,6 +21,9 @@ SELECT is((public.get_designer_workspace(NULL,true)->0->>'design_price')::numeri
 SELECT throws_ok($$SELECT public.update_designer_workspace('ac100000-0000-4000-8000-000000000012','{"total_price":1}',NULL)$$,'42501','Designer field denied','Scoped write rejects money changes');
 SELECT lives_ok($$SELECT public.update_designer_workspace('ac100000-0000-4000-8000-000000000012','{"technician_status":"Approved"}',NULL)$$,'Scoped write preserves designer acceptance');
 RESET ROLE;
+INSERT INTO public.app_settings(key,value) VALUES('workflow_issue_v2_write','on') ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value;
+SELECT public.request_designer_rejection_v2('ac100000-0000-4000-8000-000000000012','Technical rejection reason','ac100000-0000-4000-8000-000000000050',NULL,NULL);
+SELECT ok(public.get_designer_workspace('ac100000-0000-4000-8000-000000000012',false)::text LIKE '%Technical rejection reason%','Designer rejection reason remains in scoped technical history');
 SELECT is((SELECT total_price FROM public.orders WHERE id='ac100000-0000-4000-8000-000000000012'),999::numeric,'Technical writes do not touch selling price');
 SELECT is((SELECT cost FROM public.orders WHERE id='ac100000-0000-4000-8000-000000000012'),777::numeric,'Technical writes do not touch laboratory cost');
 SELECT set_config('request.jwt.claim.sub','ac100000-0000-4000-8000-000000000003',true);
