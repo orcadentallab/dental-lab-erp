@@ -128,6 +128,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         workflowType: order.workflowType,
         deliveryType: order.deliveryType,
         designUrl: order.designUrl,
+        designRevisionId: order.designRevisionId,
         intakeState: order.intakeState,
     });
 

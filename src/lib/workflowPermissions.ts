@@ -229,6 +229,7 @@ export function canChangeProductionStatus(
         workflowType?: 'full' | 'split' | string | null;
         deliveryType?: 'Final' | 'TryIn' | string | null;
         designUrl?: string | null;
+        designRevisionId?: string | null;
     } = {}
 ): boolean {
     if (role === 'admin') return true;
@@ -270,7 +271,7 @@ export function canChangeProductionStatus(
                 // sent the work. On anything else the design is the external
                 // lab's too, so there is nothing here to wait for -- mirrors
                 // getForwardActions('designing', ...).
-                return context.workflowType !== 'split' || !!context.designUrl;
+                return context.workflowType !== 'split' || !!(context.designUrl || context.designRevisionId);
             }
             return false;
 

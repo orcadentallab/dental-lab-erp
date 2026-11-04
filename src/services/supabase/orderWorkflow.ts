@@ -263,6 +263,7 @@ export async function changeProductionStatus(
             workflowType: order.workflowType,
             deliveryType: order.deliveryType,
             designUrl: order.designUrl,
+            designRevisionId: order.designRevisionId,
         }
     );
 
