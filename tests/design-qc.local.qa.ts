@@ -36,10 +36,38 @@ async function localApi(page:Page,path:string,method='POST',body:unknown={},cont
 }
 test('real local API: switch, immutable upload, approval, rejection, bypass and priced handoff',async({browser})=>{
  const admin=await signIn(browser,1);const page=admin.page;
+ await page.goto('/suppliers');
+ await page.locator('div.bg-white').filter({has:page.getByText('Synthetic QC supplier',{exact:true})}).filter({has:page.getByRole('button',{name:'تعديل',exact:true})}).last().getByRole('button',{name:'تعديل',exact:true}).click();
+ await page.getByLabel('الفقرة الفنية للمصمم',{exact:true}).fill('Synthetic technical paragraph: margin 0.05 mm');
+ await page.getByLabel('مرجع المصدر الخاص بالأدمن').fill('Private source Synthetic QC supplier');
+ await page.getByLabel('مرفقات فنية منزوعة هوية المورد').setInputFiles({name:'private-original-name.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4\nSynthetic technical fixture\n%%EOF')});
+ await page.getByRole('checkbox',{name:/راجعت النص ومحتوى المرفقات/}).check();
+ await page.getByRole('button',{name:'حفظ نسخة فنية جديدة',exact:true}).click();
+ await expect(page.getByText('سجل التعليمات (1)',{exact:true})).toBeVisible();
+ await page.goto(`/design-qc?order=${orderId}`);
+ await expect(page.getByText('Synthetic technical paragraph: margin 0.05 mm',{exact:true})).toBeVisible();
+ const assigned=await signIn(browser,3);
+ await expect(assigned.page.getByText('Synthetic technical paragraph: margin 0.05 mm',{exact:true})).toBeVisible();
+ await expect(assigned.page.getByText('Private source Synthetic QC supplier',{exact:true})).toHaveCount(0);
+ await assigned.page.evaluate(()=>sessionStorage.setItem('designer-dashboard-cache-v2','stale commercial cache'));
+ await assigned.page.goto('/dashboard');
+ await expect(assigned.page.getByText('Synthetic QC patient',{exact:true}).first()).toBeVisible();
+ expect(await assigned.page.evaluate(()=>sessionStorage.getItem('designer-dashboard-cache-v2'))).toBeNull();
+ expect(await assigned.page.evaluate(()=>sessionStorage.getItem('designer-dashboard-cache-v3'))).toBeNull();
+ for(const table of ['orders','suppliers','doctors']){
+  const raw=await localApi(assigned.page,`rest/v1/${table}?select=*`,'GET');
+  expect(raw.status).toBe(200);expect(raw.data).toEqual([]);
+ }
+ const scoped=await localApi(assigned.page,'rest/v1/rpc/get_designer_workspace','POST',{p_order_id:orderId,p_finance:false});
+ expect(scoped.status).toBe(200);expect(JSON.stringify(scoped.data)).not.toMatch(/Synthetic QC supplier|Private source|total_price|lab_cost|doctor_id/);
+ const accepted=await localApi(assigned.page,'rest/v1/rpc/update_designer_workspace','POST',{p_order_id:orderId,p_updates:{technician_status:'Approved'},p_comments:null});
+ expect(accepted.status).toBe(204);
+ await assigned.context.close();
  await expect(page.getByText('Design QC موقوف حتى يعيد الأدمن تشغيله',{exact:true})).toBeVisible();
  await page.getByLabel('سبب تشغيل أو إيقاف المراجعة').fill('Synthetic local acceptance');
  await page.getByRole('button',{name:'تشغيل Design QC',exact:true}).click();
  await expect(page.getByText('Design QC مفعّل',{exact:true})).toBeVisible();
+ await expect(page.getByText(/المراجعة مفعّلة للتسليمات الجديدة/)).toBeVisible();
  await page.reload();await expect(page.getByText('Design QC مفعّل',{exact:true})).toBeVisible();
  await submit(page,1);
  await page.getByRole('button',{name:'فتح المعاينة المعزولة',exact:true}).click();
