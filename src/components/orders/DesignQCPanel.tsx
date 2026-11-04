@@ -1,3 +1,4 @@
+import {OrderDesignInstructions} from './SupplierDesignInstructions';
 import {useCallback,useEffect,useState} from 'react';
 import {useAuth} from '../../context/AuthContext';
 import {db} from '../../services/db';
@@ -24,6 +25,7 @@ export default function DesignQCPanel({orderId,onChanged}:{orderId:string;onChan
   {!state?<p>جاري تحميل المراجعة…</p>:<>
    <p className="text-sm">{state.enabled?'المراجعة مفعّلة للتسليمات الجديدة':'المراجعة موقوفة حتى يعيد الأدمن تشغيلها'} · {state.required?'هذه النسخة تحتاج قرارًا قبل التنفيذ':'لا توجد مراجعة مفروضة بأثر رجعي على هذه النسخة'}</p>
    {state.events.some(e=>e.needs_followup)&&<p role="status" className="bg-amber-50 p-3">رفض بعد تجاوز: مطلوب متابعة المنسق. لم يتم إيقاف الإنتاج تلقائيًا.</p>}
+   <OrderDesignInstructions orderId={orderId}/>
    <form className="space-y-2" onSubmit={e=>{e.preventDefault();if(execution)void run(()=>submitDesignRevision(orderId,url,execution,html,exception));}}>
     <h3 className="font-semibold">تسليم نسخة جديدة</h3>
     <label className="block">رابط حزمة التنفيذ الكاملة<input className="block border p-2 w-full" type="url" required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://…"/></label>
@@ -34,6 +36,7 @@ export default function DesignQCPanel({orderId,onChanged}:{orderId:string;onChan
     <button className="border rounded p-2 bg-blue-50" disabled={busy||!execution}>حفظ نسخة الملفات</button>
    </form>
    {current&&<>
+    <OrderDesignInstructions orderId={orderId} revisionId={current.id}/>
     <h3 className="font-semibold">النسخة الحالية {current.revision_no} {current.preview_path?'':'— بدون معاينة'}</h3>
     <button className="border rounded p-2" disabled={busy} onClick={()=>void run(async()=>{window.open(await getDesignAssetUrl(current.execution_path),'_blank','noopener,noreferrer');})}>تحميل نسخة التنفيذ الثابتة</button>
     {current.preview_path&&<button className="border rounded p-2" disabled={busy} onClick={()=>void run(async()=>{const response=await fetch(await getDesignAssetUrl(current.preview_path!),{credentials:'omit',cache:'no-store'});if(!response.ok)throw new Error('تعذر قراءة المعاينة');setPreview(isolatedDesignHtml(await response.text()));},false)}>فتح المعاينة المعزولة</button>}

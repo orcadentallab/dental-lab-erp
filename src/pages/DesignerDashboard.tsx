@@ -30,7 +30,7 @@ interface ExpandedTextPreview {
     accentClass: string;
 }
 
-const DESIGNER_DASHBOARD_CACHE_KEY = 'designer-dashboard-cache-v2';
+const DESIGNER_DASHBOARD_CACHE_KEY = 'designer-dashboard-cache-v3';
 const DESIGNER_DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface DesignerDashboardCache {
@@ -133,7 +133,9 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         let restoredFromCache = false;
 
         try {
-            const rawCache = sessionStorage.getItem(DESIGNER_DASHBOARD_CACHE_KEY);
+            sessionStorage.removeItem('designer-dashboard-cache-v2');
+            if(user.role==='designer')sessionStorage.removeItem('dashboard-cache-v1');
+            const rawCache = isRestrictedDesigner ? null : sessionStorage.getItem(DESIGNER_DASHBOARD_CACHE_KEY);
             if (rawCache) {
                 const cache = JSON.parse(rawCache) as DesignerDashboardCache;
                 const isSameUser = cache.userId === user.id && cache.userRole === user.role;
@@ -158,7 +160,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         try {
             const promises: Promise<any>[] = [
                 db.getDesignerDashboardOrders(isRestrictedDesigner ? user.id : undefined),
-                db.getDoctors(),
+                isRestrictedDesigner ? Promise.resolve([]) : db.getDoctors(),
             ];
 
             // Only non-designer-only users need users list for filtering
@@ -172,6 +174,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             const allUsers = results[2] || []; // Undefined if not fetched
 
             setOrders(dashboardOrders);
+            setSelectedOrder(current=>current?dashboardOrders.find(order=>order.id===current.id)??null:null);
             setDoctors(allDoctors);
             const designerUsers = allUsers.filter((u: any) => isDesignerUser(u));
             setUsers(designerUsers);
@@ -185,7 +188,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     doctors: allDoctors,
                     users: designerUsers,
                 };
-                sessionStorage.setItem(DESIGNER_DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
+                if(!isRestrictedDesigner)sessionStorage.setItem(DESIGNER_DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
             } catch (error) {
                 console.warn('Could not save designer dashboard cache:', error);
             }
@@ -199,6 +202,14 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     useEffect(() => {
         loadData();
     }, [loadData]);
+
+    useEffect(()=>{
+        if(!isRestrictedDesigner)return;
+        const refresh=()=>{void loadData();};
+        window.addEventListener('focus',refresh);
+        const timer=window.setInterval(refresh,30000);
+        return()=>{window.removeEventListener('focus',refresh);window.clearInterval(timer);};
+    },[isRestrictedDesigner,loadData]);
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -280,11 +291,11 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 doctors,
                 users,
             };
-            sessionStorage.setItem(DESIGNER_DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
+            if(!isRestrictedDesigner)sessionStorage.setItem(DESIGNER_DASHBOARD_CACHE_KEY, JSON.stringify(cachePayload));
         } catch (error) {
             console.warn('Could not update designer dashboard cache:', error);
         }
-    }, [doctors, orders, user, users]);
+    }, [doctors, orders, user, users,isRestrictedDesigner]);
 
     const handleDesignerDecision = async (
         order: Order,

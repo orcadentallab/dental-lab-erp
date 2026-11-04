@@ -8,6 +8,9 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    '.deployment/**',
+    '.design-qc-qa/**',
+    '.tmp/**',
     'supabase/.temp/**',
     'supabase/functions/**',
     'scratch/**',

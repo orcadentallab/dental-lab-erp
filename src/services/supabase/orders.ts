@@ -58,6 +58,18 @@ interface DbOrderWithRelations extends DbOrder {
     accounting_last_review_type?: AccountingReviewType | null;
 }
 
+async function isPrimaryDesigner(): Promise<boolean> {
+    const {data,error}=await supabase.rpc('get_my_role');
+    if(error) throw ErrorHandler.handle(error,'getDesignerRole');
+    return data==='designer';
+}
+
+async function designerWorkspace(orderId?:string, finance=false): Promise<Order[]> {
+    const {data,error}=await supabase.rpc('get_designer_workspace',{p_order_id:orderId??null,p_finance:finance});
+    if(error) throw ErrorHandler.handle(error,'getDesignerWorkspace');
+    return (data??[]).map(dbToOrder);
+}
+
 export interface OrderEventActorContext {
     userId?: string;
     actorRole?: string;
@@ -1550,6 +1562,7 @@ export async function getOrdersWithComments(): Promise<Order[]> {
  * This avoids loading the entire orders table just to filter on the client.
  */
 export async function getDesignerDashboardOrders(designerId?: string): Promise<Order[]> {
+    if(await isPrimaryDesigner()) return designerWorkspace();
     const allData: DbOrderWithRelations[] = [];
     const pageSize = 1000;
     let from = 0;
@@ -1823,6 +1836,7 @@ interface FinanceSummaryDbRow {
 }
 
 export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
+    if(await isPrimaryDesigner()) return designerWorkspace(undefined,true);
     let allData: FinanceSummaryDbRow[] = [];
     let from = 0;
     const limit = 1000;
@@ -1894,6 +1908,14 @@ export async function fetchFullEntityStatement(
     entityType: 'doctor' | 'supplier' | 'designer'
 ): Promise<{ orders: Order[], transactions: Transaction[] }> {
 
+    const designerOnly=await isPrimaryDesigner();
+    if(designerOnly && entityType!=='designer') throw new ValidationError('لا تملك صلاحية كشف الحساب');
+    if(designerOnly){
+        const {data,error}=await supabase.rpc('get_my_user_id');
+        if(error)throw ErrorHandler.handle(error,'getDesignerStatementOwner');
+        if(data!==entityId)throw new ValidationError('لا تملك صلاحية كشف الحساب');
+    }
+
     let entityIdsToFetch = [entityId];
 
     if (entityType === 'doctor') {
@@ -1909,10 +1931,11 @@ export async function fetchFullEntityStatement(
 
     // 1. Fetch Orders for this Entity
     const ordersData: DbOrderWithRelations[] = [];
+    const designerOrders=designerOnly?await designerWorkspace(undefined,true):null;
     const pageSize = 1000;
     let orderFrom = 0;
 
-    while (true) {
+    while (!designerOnly) {
         let orderQuery = supabase
             .from('orders')
             .select('*, order_items(*), order_comments(*)')
@@ -1991,7 +2014,7 @@ export async function fetchFullEntityStatement(
     });
 
     return {
-        orders: ordersData.map(d => dbToOrder(d)),
+        orders: designerOrders??ordersData.map(d => dbToOrder(d)),
         transactions: mappedTransactions
     };
 }
@@ -2001,6 +2024,8 @@ export async function getOrder(id: string): Promise<Order | null> {
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         throw new ValidationError('معرف الطلب غير صحيح');
     }
+
+    if(await isPrimaryDesigner()) return (await designerWorkspace(id))[0]??null;
 
     const { data, error } = await supabase
         .from('orders')
@@ -2023,6 +2048,8 @@ export async function getOrdersByIds(ids: string[]): Promise<Order[]> {
     const validIds = uniqueIds.filter(id => id && typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
     
     if (validIds.length === 0) return [];
+
+    if(await isPrimaryDesigner()) return (await designerWorkspace()).filter(order=>validIds.includes(order.id));
 
     const { data, error } = await supabase
         .from('orders')
@@ -2522,7 +2549,11 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     const { items: _items, comments: _comments, ...cleanUpdates } = dbUpdates as unknown as Record<string, unknown>;
 
     try {
-        const { error } = await supabase.rpc('update_order_atomic', {
+        const designerOnly=await isPrimaryDesigner();
+        const commentPayload=updates.comments ? updates.comments.map(c=>({text:c.text,userId:c.userId==='system'?null:c.userId,userName:c.userName,createdAt:c.createdAt})):null;
+        const { error } = designerOnly ? await supabase.rpc('update_designer_workspace',{
+            p_order_id:id,p_updates:cleanUpdates,p_comments:commentPayload,
+        }) : await supabase.rpc('update_order_atomic', {
             p_order_id: id,
             p_updates: cleanUpdates,
             p_items: updates.items ? updates.items.map(i => ({
@@ -3415,16 +3446,8 @@ export async function requestDesignerRejection(
     });
     if (error) throw ErrorHandler.handle(error, 'requestDesignerRejectionV2');
 
-    // Also insert comment into order_comments so the rejection reason is visible in comments history everywhere
-    try {
-        await supabase.from('order_comments').insert({
-            order_id: orderId,
-            content: `[رفض المصمم]: ${reason.trim()}`,
-            user_name: 'المصمم',
-        });
-    } catch (commentErr) {
-        console.warn('Could not insert order comment for designer rejection:', commentErr);
-    }
+    // Recorded atomically by the rejection-event trigger for primary and
+    // secondary designers, without exposing raw comment access or retry duplicates.
 }
 
 /**

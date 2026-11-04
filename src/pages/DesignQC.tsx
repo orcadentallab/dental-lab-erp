@@ -20,6 +20,6 @@ export default function DesignQC(){
  <button className="border p-2 rounded" onClick={()=>void load().catch(e=>setError(e.message))}>تحديث القائمة</button>
  <label>عرض<select className="border p-2 mx-2" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">كل الحالات المصرح بها</option><option value="pending">بانتظار المراجعة</option><option value="bypassed">التجاوزات — بما فيها تجاوزات الأدمن</option><option value="rejected">الرفض ومتابعة المنسق</option></select></label>
  <div className="flex gap-2 flex-wrap">{queue.filter(q=>filter==='all'||q.state===filter).map(q=><button className="border rounded p-2 bg-white" key={q.id} onClick={()=>setParams({order:q.id})}>{q.caseId} · {q.revisionId?labels[q.state]:'لا توجد نسخة جديدة'}</button>)}</div>
- {params.get('order')&&<DesignQCPanel key={params.get('order')} orderId={params.get('order')!} onChanged={()=>void load()}/>}
+ {params.get('order')&&<DesignQCPanel key={`${params.get('order')}/${enabled}`} orderId={params.get('order')!} onChanged={()=>void load()}/>}
  </main>;
 }
