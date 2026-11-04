@@ -37,15 +37,20 @@ $qcOrderId=[guid]::NewGuid().ToString()
 $qcSeed=@'
 BEGIN;
 INSERT INTO auth.users(id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change_token_new,email_change)
-SELECT ('fc000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','qc-browser-'||n||'@local.test',extensions.crypt('Local-QC-Only-2026!',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','' FROM generate_series(1,4)n ON CONFLICT(id) DO NOTHING;
+SELECT ('fc000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'00000000-0000-0000-0000-000000000000','authenticated','authenticated','qc-browser-'||n||'@local.test',extensions.crypt('Local-QC-Only-2026!',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{}',now(),now(),'','','','' FROM generate_series(1,4)n ON CONFLICT(id) DO NOTHING;
 INSERT INTO auth.identities(provider_id,user_id,identity_data,provider,created_at,updated_at)
-SELECT id::text,id,jsonb_build_object('sub',id::text,'email',email,'email_verified',true),'email',now(),now() FROM auth.users WHERE id::text LIKE 'fc000000-0000-0000-0000-%' ON CONFLICT(provider_id,provider) DO NOTHING;
+SELECT id::text,id,jsonb_build_object('sub',id::text,'email',email,'email_verified',true),'email',now(),now() FROM auth.users WHERE id::text LIKE 'fc000000-0000-4000-8000-%' ON CONFLICT(provider_id,provider) DO NOTHING;
 INSERT INTO public.users(id,auth_id,username,role,name,is_active,email)
-SELECT ('fc000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,('fc000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'qc_browser_'||n,(ARRAY['admin','coordinator','designer','designer'])[n],(ARRAY['QC Browser Admin','QC Browser Coordinator','QC Browser Former Designer','QC Browser Replacement'])[n],true,'qc-browser-'||n||'@local.test' FROM generate_series(1,4)n ON CONFLICT(id) DO UPDATE SET email=EXCLUDED.email WHERE public.users.username=EXCLUDED.username AND public.users.auth_id=EXCLUDED.auth_id;
-INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name) VALUES('fc000000-0000-0000-0000-000000000010','Synthetic QC doctor','01000000000','Local QA','QC-BROWSER','Test') ON CONFLICT(id) DO NOTHING;
+SELECT ('fc000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,('fc000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'qc_browser_'||n,(ARRAY['admin','coordinator','designer','designer'])[n],(ARRAY['QC Browser Admin','QC Browser Coordinator','QC Browser Former Designer','QC Browser Replacement'])[n],true,'qc-browser-'||n||'@local.test' FROM generate_series(1,4)n ON CONFLICT(id) DO UPDATE SET email=EXCLUDED.email WHERE public.users.username=EXCLUDED.username AND public.users.auth_id=EXCLUDED.auth_id;
+INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name) VALUES('fc000000-0000-4000-8000-000000000010','Synthetic QC doctor','01000000000','Local QA','QC-BROWSER','Test') ON CONFLICT(id) DO NOTHING;
 INSERT INTO public.suppliers(id,name,phone) VALUES('fc000000-0000-4000-8000-000000000011','Synthetic QC supplier','01000000001') ON CONFLICT(id) DO NOTHING;
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,design_price,supplier_id)
-VALUES('__ORDER_ID__','QC-BROWSER-__ORDER_ID__','fc000000-0000-0000-0000-000000000010','Synthetic QC patient','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-0000-0000-000000000003',100,'fc000000-0000-4000-8000-000000000011');
+VALUES('__ORDER_ID__','QC-BROWSER-__ORDER_ID__','fc000000-0000-4000-8000-000000000010','Synthetic QC patient','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-4000-8000-000000000003',100,'fc000000-0000-4000-8000-000000000011');
+INSERT INTO public.suppliers(id,name,phone) VALUES('fc000000-0000-4000-8000-000000000013','Paused QC source','01000000002');
+INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,design_price,supplier_id)
+VALUES('fc000000-0000-4000-8000-000000000014','QC-PAUSED-POPUP','fc000000-0000-4000-8000-000000000010','Paused QC patient','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-4000-8000-000000000003',100,'fc000000-0000-4000-8000-000000000013');
+SELECT set_config('request.jwt.claim.sub','fc000000-0000-4000-8000-000000000001',true);
+SELECT public.save_supplier_design_text('fc000000-0000-4000-8000-000000000013','fc000000-0000-4000-8000-000000000201','تعليمات تجربة المصمم: راجع حدود التحضير.');
 COMMIT;
 '@
 $qcSeed.Replace('__ORDER_ID__',$qcOrderId) | & docker exec -i supabase_db_design-qc-qa psql -U postgres -d postgres -v ON_ERROR_STOP=1 > $null
@@ -59,7 +64,7 @@ try{
  # Restore the initially paused local switch even if browser QA failed.
  @'
 BEGIN;
-SELECT set_config('request.jwt.claim.sub','fc000000-0000-0000-0000-000000000001',true);
+SELECT set_config('request.jwt.claim.sub','fc000000-0000-4000-8000-000000000001',true);
 SELECT public.set_design_qc_enabled(false,'Restore paused state after local browser QA');
 COMMIT;
 '@ | & docker exec -i supabase_db_design-qc-qa psql -U postgres -d postgres -v ON_ERROR_STOP=1 > $null

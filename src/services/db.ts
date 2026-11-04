@@ -315,6 +315,7 @@ export interface Order {
     manualDesignPrice?: number | null; // Admin override for designPrice
     designUrl?: string | null; // Design Link (STL/Zip)
     designRevisionId?: string; // Current saved link/upload revision.
+    supplierDesignInstruction?: {paragraph:string;version?:number};
 
     // QA & Delivery Tracking
     actualDeliveryDate?: string; // When status becomes Delivered

@@ -43,11 +43,14 @@ import {
     reallocatePaymentsAfterObligationVoid,
 } from './financialObligations';
 import { flagReconciliationIssue } from './reconciliationFlags';
+import {getQcCompensations} from './designQc';
+import {designQcCompensationRows} from '../../lib/designQcCompensations';
 
 
 // Helper to handle joined data which isn't in DbOrder type
 interface DbOrderWithRelations extends DbOrder {
     design_qc_revision_id?: string | null;
+    supplier_design_instruction?: {paragraph:string;version?:number} | null;
     order_items?: DbOrderItemRow[];
     order_comments?: DbOrderCommentRow[];
     needs_accounting_reregistration?: boolean | null;
@@ -1031,6 +1034,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         designerId: dbOrder.designer_id || undefined,
         designUrl: dbOrder.design_url || undefined,
         designRevisionId: dbOrder.design_qc_revision_id || undefined,
+        supplierDesignInstruction: dbOrder.supplier_design_instruction || undefined,
         designStatus: dbOrder.design_status || undefined,
         designPrice: dbOrder.design_price || undefined,
         manualDesignPrice: dbOrder.manual_design_price ?? undefined,
@@ -2014,8 +2018,11 @@ export async function fetchFullEntityStatement(
         };
     });
 
+    const contributionOrders=entityType==='designer'
+        ?designQcCompensationRows((await getQcCompensations()).filter(row=>row.designerId===entityId))
+        :[];
     return {
-        orders: designerOrders??ordersData.map(d => dbToOrder(d)),
+        orders: [...(designerOrders??ordersData.map(d => dbToOrder(d))),...contributionOrders],
         transactions: mappedTransactions
     };
 }
