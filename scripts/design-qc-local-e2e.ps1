@@ -51,6 +51,15 @@ INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,co
 VALUES('fc000000-0000-4000-8000-000000000014','QC-PAUSED-POPUP','fc000000-0000-4000-8000-000000000010','Paused QC patient','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-4000-8000-000000000003',100,'fc000000-0000-4000-8000-000000000013');
 SELECT set_config('request.jwt.claim.sub','fc000000-0000-4000-8000-000000000001',true);
 SELECT public.save_supplier_design_text('fc000000-0000-4000-8000-000000000013','fc000000-0000-4000-8000-000000000201','تعليمات تجربة المصمم: راجع حدود التحضير.');
+INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,design_price)
+SELECT ('fc000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,CASE n WHEN 15 THEN 'QC-AGING-OLD' ELSE 'QC-AGING-NEW' END,'fc000000-0000-4000-8000-000000000010','Synthetic aging fixture','[]',900,400,'A1','designing',current_date,'split','fc000000-0000-4000-8000-000000000004',100 FROM generate_series(15,16)n;
+SELECT public.set_design_qc_enabled(true,'Synthetic local age fixtures');
+SELECT public.submit_design_delivery('fc000000-0000-4000-8000-000000000015','fc000000-0000-4000-8000-000000000215','link','https://example.test/aging-old','No preview');
+SELECT public.submit_design_delivery('fc000000-0000-4000-8000-000000000016','fc000000-0000-4000-8000-000000000216','link','https://example.test/aging-new','No preview');
+-- Synthetic QA timestamps only, inside the fixture transaction; no history repair.
+UPDATE public.design_revisions SET submitted_at=clock_timestamp()-interval '2 hours' WHERE id='fc000000-0000-4000-8000-000000000215';
+UPDATE public.design_revisions SET submitted_at=clock_timestamp()-interval '10 minutes' WHERE id='fc000000-0000-4000-8000-000000000216';
+SELECT public.set_design_qc_enabled(false,'Start browser acceptance paused');
 COMMIT;
 '@
 $qcSeed.Replace('__ORDER_ID__',$qcOrderId) | & docker exec -i supabase_db_design-qc-qa psql -U postgres -d postgres -v ON_ERROR_STOP=1 > $null

@@ -1,10 +1,11 @@
 import { supabase } from '../../lib/supabase';
 import { validateDesignFiles } from '../../lib/designPreview';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
+import {DESIGN_QC_CHANGED} from '../../lib/designQcQueue';
 export interface DesignRevision { id:string; order_id:string; revision_no:number; execution_path:string|null; preview_path:string|null; execution_url:string|null; without_preview_reason:string|null; submitted_at:string; requires_qc:boolean }
 export interface DesignReviewEvent { id:string; revision_id:string|null; action:string; note:string; actor_role:string; actor_id:string; actor_name?:string; needs_followup:boolean; created_at:string }
 export interface DesignQcState { enabled:boolean; currentRevisionId:string|null; required:boolean; revisions:DesignRevision[]; events:DesignReviewEvent[] }
-export interface DesignQueueItem { id:string; caseId:string; revisionId:string|null; required:boolean; state:string }
+export interface DesignQueueItem { id:string; caseId:string; revisionId:string|null; required:boolean; state:string;submittedAt?:string|null;awaitingReview?:boolean }
 export interface DesignOption {id:string;name:string;price:number;salaried:boolean}
 export interface QcCompensation {id:string;orderId:string;caseId:string;designerId:string;amount:number;date:string}
 async function rpc<T>(name:string, args:Record<string,unknown>={}):Promise<T> {
@@ -20,10 +21,12 @@ async function rpc<T>(name:string, args:Record<string,unknown>={}):Promise<T> {
         'Valid fees and reason required':'اكتب مبالغ صحيحة غير سالبة وسبب إعادة التكليف.'
     };
     if(error) throw new Error(messages[error.message]||error.message);
+    if(typeof window!=='undefined'&&['submit_design_revision','submit_design_delivery','decide_design_revision','release_design_revision','return_design_revision','reassign_design_revision','set_design_qc_enabled'].includes(name))window.dispatchEvent(new Event(DESIGN_QC_CHANGED));
     return data as T;
 }
 export const getDesignQcState=(orderId:string)=>rpc<DesignQcState>('get_design_qc_state',{p_order_id:orderId});
 export const getDesignQcQueue=()=>rpc<DesignQueueItem[]>('get_design_qc_queue');
+export const getPendingDesignQcCount=()=>rpc<number>('get_pending_design_qc_count');
 export const getDesignQcOptions=(orderId:string)=>rpc<DesignOption[]>('get_design_qc_designer_options',{p_order_id:orderId});
 export const setDesignQcEnabled=(enabled:boolean,reason:string)=>rpc<{enabled:boolean}>('set_design_qc_enabled',{p_enabled:enabled,p_reason:reason});
 export async function getDesignQcEnabled():Promise<boolean> {

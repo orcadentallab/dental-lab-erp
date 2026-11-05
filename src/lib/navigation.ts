@@ -52,7 +52,7 @@ export interface WorkspaceTab extends Destination {
     badge?: BadgeKey;
 }
 
-export type BadgeKey = 'unregisteredCases' | 'myOpenTasks';
+export type BadgeKey = 'unregisteredCases' | 'myOpenTasks' | 'pendingDesignQc';
 
 /* ------------------------------------------------------------------ *
  * Workspaces -- layer 2
@@ -70,7 +70,7 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             path: '/production/my-tasks', capability: 'view_my_tasks',
             badge: 'myOpenTasks', aliases: ['شغلي', 'الطابور', 'queue', 'tasks'],
         },
-        {id:'production.designQc',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
+        {id:'production.designQc',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',badge:'pendingDesignQc',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
         {
             id: 'production.inventory', labelAr: 'المخزن والخامات', labelEn: 'Inventory & Materials',
             path: '/inventory', capability: 'view_inventory',
@@ -305,7 +305,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
  * ------------------------------------------------------------------ */
 
 export const SIDEBAR: SidebarEntry[] = [
-    {id:'designQc.standalone',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',section:'operations',fallbackFor:'production',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
+    {id:'designQc.standalone',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',badge:'pendingDesignQc',section:'operations',fallbackFor:'production',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
     {
         id: 'dashboard', labelAr: 'لوحة التحكم', labelEn: 'Dashboard',
         path: '/dashboard', capability: 'view_dashboard', section: 'top',

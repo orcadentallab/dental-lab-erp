@@ -34,6 +34,22 @@ async function localApi(page:Page,path:string,method='POST',body:unknown={},cont
   return {status:response.status,data};
  },{path,method,body,contentType,anon:process.env.DESIGN_QC_ANON_KEY!});
 }
+test('admin QC queue shows upload age, oldest pending first and live page/navigation counts',async({browser})=>{
+ const admin=await signIn(browser,1),page=admin.page;
+ const count=page.getByRole('status',{name:'عدد حالات التصميم بانتظار المراجعة',exact:true});
+ await expect(count).toHaveText('2');
+ await expect(page.getByRole('link',{name:'مراجعات تصميم معلقة: 2',exact:true})).toBeVisible();
+ const cases=page.getByRole('complementary').filter({has:page.getByRole('heading',{name:/^الحالات/})});
+ await expect(cases.locator('button[aria-pressed]').first()).toHaveAttribute('aria-label','QC-AGING-OLD · بانتظار المراجعة');
+ const old=page.getByRole('button',{name:'QC-AGING-OLD · بانتظار المراجعة',exact:true});
+ await expect(old.locator('time')).toHaveAttribute('datetime',/T/);await expect(old.locator('time')).not.toContainText('غير متاح');
+ await old.click();await page.getByRole('button',{name:'موافقة على النسخة',exact:true}).click();
+ await expect(count).toHaveText('1');await expect(page.getByRole('link',{name:'مراجعات تصميم معلقة: 1',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'QC-AGING-NEW · بانتظار المراجعة',exact:true}).click();await page.getByRole('button',{name:'موافقة على النسخة',exact:true}).click();
+ await expect(count).toHaveText('0');await expect(page.getByRole('link',{name:/مراجعات تصميم معلقة:/})).toHaveCount(0);
+ await admin.context.close();
+});
+
 test('designer dashboard with QC OFF: inline instructions, upload popup, saved preview and explicit HTML skip',async({browser})=>{
  const designer=await signIn(browser,3,false),page=designer.page;
  const qcNavigations:string[]=[];page.on('framenavigated',frame=>{if(frame===page.mainFrame()&&frame.url().includes('/design-qc'))qcNavigations.push(frame.url());});
@@ -108,11 +124,13 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  await expect(page.getByText(/المراجعة مفعّلة للتسليمات الجديدة/)).toBeVisible();
  await page.reload();await expect(page.getByText('Design QC مفعّل',{exact:true})).toBeVisible();
  await submit(page,1);
+ await expect(page.getByRole('status',{name:'عدد حالات التصميم بانتظار المراجعة',exact:true})).toHaveText('1');
  await page.getByRole('button',{name:'فتح المعاينة المعزولة',exact:true}).click();
  await expect(page.frameLocator('iframe[title="معاينة التصميم المعزولة"]').getByRole('heading',{name:'معاينة اصطناعية'})).toBeVisible();
  await expect(page.locator('iframe')).toHaveAttribute('sandbox','allow-scripts');
  await page.getByRole('button',{name:'إغلاق المعاينة',exact:true}).click();
  await page.getByRole('button',{name:'موافقة على النسخة',exact:true}).click();
+ await expect(page.getByRole('status',{name:'عدد حالات التصميم بانتظار المراجعة',exact:true})).toHaveText('0');
  await expect(page.getByRole('button',{name:`${caseId} · معتمد`,exact:true})).toBeVisible();
  await page.getByRole('button',{name:'إرسال للتنفيذ',exact:true}).click();
  await submit(page,2);
@@ -129,6 +147,7 @@ test('real local API: switch, immutable upload, approval, rejection, bypass and 
  await coordinator.page.getByLabel('ملاحظات القرار أو سبب التجاوز').fill('Documented urgent exception');
  await coordinator.page.getByRole('button',{name:'تجاوز موثّق',exact:true}).click();
  await expect(coordinator.page.getByRole('button',{name:`${caseId} · تجاوز ينتظر مراجعة الأدمن`,exact:true})).toBeVisible();
+ await expect(coordinator.page.getByRole('status',{name:'عدد حالات التصميم بانتظار المراجعة',exact:true})).toHaveText('1');
  await page.reload();
  await page.getByLabel('ملاحظات القرار أو سبب التجاوز').fill('Later admin review rejection');
  await page.getByRole('button',{name:'رفض النسخة',exact:true}).click();

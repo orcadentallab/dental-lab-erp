@@ -180,6 +180,8 @@ export default function Sidebar() {
                         </button>
                     </div>
 
+                    {user?.role==='admin'&&!!badges.pendingDesignQc&&<Link to="/design-qc" onClick={()=>setIsOpen(false)} aria-label={`مراجعات تصميم معلقة: ${badges.pendingDesignQc}`} className="mx-3 mt-3 flex min-h-11 items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-amber-500">{!isCollapsed&&<span>مراجعات تصميم معلّقة</span>}<span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-red-600 px-1.5 font-bold text-white">{badges.pendingDesignQc}</span></Link>}
+
                     {/* Favourites -- "my work". Chips, not rows: the whole point
                         is that they cost one line, not four. */}
                     {favourites.length > 0 && !isCollapsed && (
@@ -294,6 +296,7 @@ export default function Sidebar() {
 
 /** Favourite chips carry their destination's badge, so the count follows. */
 function badgeFor(id: string, badges: BadgeCounts): number | undefined {
+    if(id==='production.designQc'||id==='designQc.standalone')return badges.pendingDesignQc;
     if (id === 'finance' || id === 'finance.caseRegistration') return badges.unregisteredCases;
     if (id === 'production' || id === 'production.myTasks') return badges.myOpenTasks;
     return undefined;
