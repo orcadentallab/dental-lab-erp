@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {FileCheck2,Download,Eye,Check,RotateCcw,History,ChevronDown,AlertTriangle,UserRoundCog} from 'lucide-react';
 import {OrderDesignInstructions} from './SupplierDesignInstructions';
 import DesignDeliveryForm from './DesignDeliveryForm';
@@ -10,13 +10,23 @@ const actions:Record<string,string>={submitted:'تسليم تصميم',approved:
 const box='rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900';
 const button='inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-cyan-300 hover:bg-cyan-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 disabled:cursor-default disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700';
 const field='mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 outline-none focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
-export default function DesignQCPanel({orderId,onChanged}:{orderId:string;onChanged?:()=>void}){
+export default function DesignQCPanel({orderId,onChanged,revisionId}:{orderId:string;onChanged?:()=>void;revisionId?:string|null}){
  const {user}=useAuth();
  const [state,setState]=useState<DesignQcState|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[note,setNote]=useState('');
  const [preview,setPreview]=useState(''),[options,setOptions]=useState<DesignOption[]>([]),[designer,setDesigner]=useState(''),[currentDesigner,setCurrentDesigner]=useState(''),[oldFee,setOldFee]=useState(''),[newFee,setNewFee]=useState('');
  const staff=user?.role==='admin'||user?.role==='coordinator';
- const load=useCallback(async()=>{setPreview('');const data=await getDesignQcState(orderId);setState(data);if(staff){const [opts,order]=await Promise.all([getDesignQcOptions(orderId),db.getOrder(orderId)]);setOptions(opts);setCurrentDesigner(order?.designerId||'');setDesigner(order?.designerId||'');}},[orderId,staff]);
- useEffect(()=>{let active=true;void load().catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[load]);
+ const loadedRevision=useRef<string|null>(null),loadSequence=useRef(0);
+ const load=useCallback(async()=>{
+  const sequence=++loadSequence.current;
+  const data=await getDesignQcState(orderId);
+  const extras=staff?await Promise.all([getDesignQcOptions(orderId),db.getOrder(orderId)]):null;
+  if(sequence!==loadSequence.current)return;
+  setPreview('');
+  if(loadedRevision.current!==data.currentRevisionId){setNote('');setOldFee('');setNewFee('');}
+  loadedRevision.current=data.currentRevisionId;setState(data);
+  if(extras){const [opts,order]=extras;setOptions(opts);setCurrentDesigner(order?.designerId||'');setDesigner(order?.designerId||'');}
+ },[orderId,staff]);
+ useEffect(()=>{let active=true;void load().catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[load,revisionId]);
  async function run(task:()=>Promise<unknown>,refresh=true){setBusy(true);setError('');try{await task();if(refresh){await load();onChanged?.();}}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
  const current=state?.revisions.find(r=>r.id===state.currentRevisionId);
  const decision=state?.events.find(e=>e.revision_id===current?.id&&['approved','rejected','bypassed'].includes(e.action));
