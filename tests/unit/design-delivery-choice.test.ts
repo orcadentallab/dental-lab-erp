@@ -20,4 +20,10 @@ describe('owner choice: one execution source',()=>{
   await expect(submitDesignDelivery('case',{mode:'link',url:'https://drive.google.com/file/d/example',execution:null,html:null,reason:'   '})).rejects.toThrow('سبب');
   expect(api.rpc).not.toHaveBeenCalled();expect(api.upload).not.toHaveBeenCalled();
  });
+ it('normalizes Windows ZIP MIME on the actual uploaded Blob without changing bytes',async()=>{
+  const execution=new File(['zip bytes'],'case.zip',{type:'application/x-zip-compressed'});
+  await submitDesignDelivery('case',{mode:'file',url:'',execution,html:null,reason:'No preview'});
+  const body=api.upload.mock.calls[0][1] as Blob;
+  expect(body.type).toBe('application/zip');expect(await body.text()).toBe('zip bytes');
+ });
 });
