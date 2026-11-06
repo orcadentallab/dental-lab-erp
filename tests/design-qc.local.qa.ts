@@ -59,8 +59,16 @@ test('designer dashboard with QC OFF: inline instructions, upload popup, saved p
  await row().getByRole('button',{name:'رفع التصميم',exact:true}).click();
  let dialog=page.getByRole('dialog',{name:'تسليم التصميم',exact:true});
  await dialog.getByRole('tab',{name:'رفع ملف',exact:true}).click();
- await dialog.getByLabel('ملف التنفيذ ZIP',{exact:true}).setInputFiles({name:'execution.zip',mimeType:'application/zip',buffer:zip('paused designer upload')});
- await dialog.getByLabel('ملف معاينة HTML',{exact:true}).setInputFiles({name:'preview.html',mimeType:'text/html',buffer:Buffer.from('<html><body><h1>معاينة من لوحة المصمم</h1></body></html>')});
+ const drop=async(kind:'zip'|'html',name:string,type:string,bytes:number[])=>{
+  const transfer=await designer.page.evaluateHandle(({name,type,bytes})=>{const data=new DataTransfer();data.items.add(new File([new Uint8Array(bytes)],name,{type}));return data;},{name,type,bytes});
+  await dialog.locator(`[data-design-drop="${kind}"]`).dispatchEvent('drop',{dataTransfer:transfer});await transfer.dispose();
+ };
+ await drop('zip','wrong.txt','text/plain',[65]);
+ await expect(dialog.getByRole('alert')).toContainText('ZIP');
+ await drop('zip','execution.zip','application/x-zip-compressed',Array.from(zip('paused designer upload')));
+ await drop('html','preview.html','text/html',Array.from(Buffer.from('<html><body><h1>معاينة من لوحة المصمم</h1></body></html>')));
+ await expect(dialog.getByText('execution.zip',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('preview.html',{exact:true})).toBeVisible();
  await dialog.getByRole('button',{name:'حفظ نسخة التصميم',exact:true}).click();await expect(dialog).toHaveCount(0);
  const saved=await localApi(page,'rest/v1/rpc/get_design_qc_state','POST',{p_order_id:'fc000000-0000-4000-8000-000000000014'});
  expect(saved.status).toBe(200);expect(saved.data).toMatchObject({enabled:false,required:false});

@@ -1,5 +1,6 @@
+import DesignFileDrop from './DesignFileDrop';
 import {useState} from 'react';
-import {Link2,Upload,FileArchive,LoaderCircle} from 'lucide-react';
+import {Link2,Upload,LoaderCircle} from 'lucide-react';
 import {submitDesignDelivery} from '../../services/supabase/designQc';
 
 const field='mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
@@ -13,9 +14,10 @@ export default function DesignDeliveryForm({orderId,onSubmitted}:{orderId:string
    {([{value:'link',label:'رابط التصميم',Icon:Link2},{value:'file',label:'رفع ملف',Icon:Upload}] as const).map(({value,label,Icon})=><button type="button" role="tab" aria-selected={mode===value} key={value} disabled={busy} onClick={()=>{setMode(value);setError('');}} className={`flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-600 ${mode===value?'bg-white text-cyan-800 shadow-sm dark:bg-slate-700 dark:text-cyan-200':'text-slate-600 hover:text-slate-900 dark:text-slate-300'}`}><Icon size={17}/>{label}</button>)}
   </div>
   {mode==='link'?<label className="block text-sm font-medium text-slate-700 dark:text-slate-200">رابط ملفات التصميم<input aria-label="رابط ملفات التصميم" type="url" required dir="ltr" value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://drive.google.com/…" className={field}/><span className="mt-2 block text-xs leading-5 text-slate-600 dark:text-slate-300">رابط Drive أو خدمة مشاركة الملفات. عند تعديل التصميم سلّم نسخة جديدة هنا؛ محتوى الرابط الخارجي لا يُحفظ داخل النظام.</span></label>:
-   <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-cyan-300 bg-cyan-50/50 p-6 text-center text-sm text-cyan-900 transition-colors hover:bg-cyan-50 focus-within:ring-2 focus-within:ring-cyan-600 dark:bg-slate-800 dark:text-cyan-200"><FileArchive size={26}/><span className="font-semibold">{execution?.name||'اختيار ملف التنفيذ ZIP'}</span><span className="text-xs">حتى 50 ميجا — لا تحتاج إضافة رابط</span><input aria-label="ملف التنفيذ ZIP" type="file" accept=".zip" required className="sr-only" onChange={e=>setExecution(e.target.files?.[0]??null)}/></label>}
+   <DesignFileDrop label="ملف التنفيذ ZIP" file={execution} kind="zip" disabled={busy} onChange={setExecution} onError={setError}/>}
+
   <fieldset className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><legend className="px-1 text-sm font-semibold text-slate-700 dark:text-slate-200">معاينة التصميم HTML</legend>
-   {!skipHtml&&<label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-slate-50 p-3 text-sm text-cyan-800 focus-within:ring-2 focus-within:ring-cyan-600 dark:bg-slate-800 dark:text-cyan-200"><Upload size={17}/>{html?.name||'اختيار ملف HTML'}<input aria-label="ملف معاينة HTML" type="file" required accept=".html,.htm" className="sr-only" onChange={e=>setHtml(e.target.files?.[0]??null)}/></label>}
+   {!skipHtml&&<DesignFileDrop label="ملف معاينة HTML" file={html} kind="html" disabled={busy} onChange={setHtml} onError={setError}/> }
    <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200"><input type="checkbox" checked={skipHtml} onChange={e=>setSkipHtml(e.target.checked)} className="h-4 w-4 accent-cyan-700"/>تخطي رفع HTML مع كتابة السبب</label>
    {skipHtml&&<label className="block text-sm font-medium text-slate-700 dark:text-slate-200">سبب التسليم بدون معاينة<input required value={reason} onChange={e=>setReason(e.target.value)} placeholder="مثال: المعاينة غير متاحة من برنامج التصميم" className={field}/></label>}
   </fieldset>

@@ -39,10 +39,10 @@ export async function submitDesignRevision(orderId:string,executionUrl:string,ex
     if(!html&&!reason.trim()) throw new Error('اكتب سبب التسليم بدون معاينة');
     const id=crypto.randomUUID();
     const bucket=supabase.storage.from('design-qc-files');
-    const {error}=await bucket.upload(`${orderId}/${id}/execution.zip`,execution,{upsert:false,contentType:'application/zip'});
+    const {error}=await bucket.upload(`${orderId}/${id}/execution.zip`,execution.slice(0,execution.size,'application/zip'),{upsert:false,contentType:'application/zip'});
     if(error) throw new Error(error.message);
     if(html) {
-        const {error:htmlError}=await bucket.upload(`${orderId}/${id}/preview.html`,html,{upsert:false,contentType:'text/html'});
+        const {error:htmlError}=await bucket.upload(`${orderId}/${id}/preview.html`,html.slice(0,html.size,'text/html'),{upsert:false,contentType:'text/html'});
         if(htmlError) throw new Error(htmlError.message);
     }
     // Failed finalization leaves private, immutable unreferenced files; no lossy cleanup.
@@ -63,7 +63,7 @@ export async function submitDesignDelivery(orderId:string,input:DesignDeliveryIn
     const id=crypto.randomUUID(),bucket=supabase.storage.from('design-qc-files');
     for(const [file,name,type] of [[input.execution,'execution.zip','application/zip'],[input.html,'preview.html','text/html']] as const){
         if(!file)continue;
-        const {error}=await bucket.upload(`${orderId}/${id}/${name}`,file,{upsert:false,contentType:type});if(error)throw new Error(error.message);
+        const {error}=await bucket.upload(`${orderId}/${id}/${name}`,file.slice(0,file.size,type),{upsert:false,contentType:type});if(error)throw new Error(error.message);
     }
     return rpc<string>('submit_design_delivery',{p_order_id:orderId,p_revision_id:id,p_mode:input.mode,p_execution_url:input.mode==='link'?url:null,p_without_preview_reason:input.html?'':input.reason.trim()});
 }
