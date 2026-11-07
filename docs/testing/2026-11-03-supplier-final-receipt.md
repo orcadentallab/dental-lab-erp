@@ -32,7 +32,7 @@ The 21 new SQL guarantees cover Ready, Try-In ready/receipt, final Ready, an act
 
 - Paid-supplier reassignment and allocation-actor fixtures now use `final_delivered`; their expected payment, amount, party and actor checks are unchanged. Their stale legacy Ready label remains deliberately irrelevant.
 - Unit and pure-helper tests replace Ready-earning expectations with final receipt. Existing rejection/return/credit and historical-preview assertions remain intact.
-- `admin_production_status_correction.test.sql` was already untracked work from the previous owner session. It was read in full before alignment. Its Ready fixture now expects no AP, and financial-failure injection targets Delivered (the actual accrual boundary) rather than Ready. All audit/rollback/permission/designer checks remain. It stays untracked rather than being silently absorbed into this commit; the narrow delta is preserved in `2026-11-03-admin-production-supplier-timing.patch`, applicable to the prior version. The corresponding pre-existing migration was not edited or staged.
+- `admin_production_status_correction.test.sql` was already untracked work from the previous owner session. It was read in full before alignment. Its Ready fixture now expects no AP, and financial-failure injection targets Delivered (the actual accrual boundary) rather than Ready. All audit/rollback/permission/designer checks remain. The untracked test and the corresponding pre-existing migration are outside this release.
 - An initial migration attempt failed closed on CRLF-sensitive matching and rolled back. Matching was made whitespace-tolerant; the compatibility assertions remain. The migration was then applied locally successfully.
 
 ## Boundaries and next release review
