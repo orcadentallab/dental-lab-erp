@@ -30,7 +30,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(9);
+SELECT plan(10);
 
 INSERT INTO public.doctors (
     id, name, phone, address, doctor_code, representative_name
@@ -87,9 +87,9 @@ INSERT INTO public.orders (
     --     closed -- it will be delivered again later.
     ('40000000-0000-0000-0000-000000000506', 'CNT-REWORK',
      '10000000-0000-0000-0000-000000000501', 'Back on the bench', '[]',
-     800, 'A1', 'Returned for Adjustments', DATE '2026-07-18', NULL, 300,
-     'in_production', 'none', FALSE, TIMESTAMPTZ '2026-07-06 09:00+03',
-     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+     800, 'A1', 'Under Production', DATE '2026-07-18', NULL, 300,
+     'in_production', 'returned', FALSE, TIMESTAMPTZ '2026-07-06 09:00+03',
+     NULL, NULL, NULL, NULL, NULL, NULL, NULL, TIMESTAMPTZ '2026-07-12 12:00+03'),
 
     -- (5) Still in production, created inside the window. Pipeline, not settled.
     ('40000000-0000-0000-0000-000000000505', 'CNT-IN-PROGRESS',
@@ -103,6 +103,12 @@ UPDATE public.orders
  WHERE id = '40000000-0000-0000-0000-000000000504';
 
 SET LOCAL session_replication_role = origin;
+
+SELECT is(
+    (SELECT public.derive_order_display_status_v2(production_status, issue_state, intake_state)
+     FROM public.orders WHERE case_id='CNT-REWORK'),
+    'Returned for Adjustments', 'V2 identifies rework independently of stale legacy Under Production'
+);
 
 -- ─── Rule 1 + 2: the settlement window ────────────────────────────────────
 -- Orders 1, 3 and 4 settle inside July. Order 2 slipped to August, order 5

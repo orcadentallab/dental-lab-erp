@@ -6,7 +6,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap;
 SET search_path TO public, extensions;
 
-SELECT plan(18);
+SELECT plan(19);
 
 -- ─── 1. Fixtures ────────────────────────────────────────────────────────────
 
@@ -27,11 +27,12 @@ VALUES ('e7000000-0000-0000-0000-000000000001', 'Dr. Costing Test', '01011112222
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.orders (
-    id, case_id, doctor_id, patient_name, items, total_price, cost, shade, status, delivery_date
+    id, case_id, doctor_id, patient_name, items, total_price, cost, shade, status, delivery_date,
+    production_status, issue_state
 ) VALUES (
     'e6000000-0000-0000-0000-000000000001', 'CASE-COST-01', 'e7000000-0000-0000-0000-000000000001',
     'Patient Cost', '[{"service_name": "Zirconia Crown", "quantity": 2}]'::jsonb,
-    2000.00, 600.00, 'A2', 'Delivered', CURRENT_DATE
+    2000.00, 600.00, 'A2', 'Delivered', CURRENT_DATE, 'final_delivered', 'none'
 );
 
 SELECT set_config('request.jwt.claim.sub', 'e9000000-0000-0000-0000-000000000001', TRUE);
@@ -133,11 +134,24 @@ SELECT is(
 
 -- C4: a cancelled case was never worked -- zero cost AND zero revenue (plan 3).
 INSERT INTO public.orders (
-    id, case_id, doctor_id, patient_name, items, total_price, cost, shade, status, delivery_date
+    id, case_id, doctor_id, patient_name, items, total_price, cost, shade, status, delivery_date,
+    production_status, issue_state
 ) VALUES (
     'e6000000-0000-0000-0000-000000000002', 'CASE-COST-CANCELLED',
     'e7000000-0000-0000-0000-000000000001', 'Patient Cancelled', '[]'::jsonb,
-    5000.00, 1500.00, 'A2', 'Cancelled', CURRENT_DATE
+    5000.00, 1500.00, 'A2', 'New Case', CURRENT_DATE, 'not_started', 'none'
+);
+
+-- Use the real V2 cancellation path, including guards and financial zeroing.
+SELECT public.apply_order_issue_transition_v2(
+    'e6000000-0000-0000-0000-000000000002', 'cancel_order',
+    'Cost regression cancellation', 'e5000000-0000-0000-0000-000000000002', 'zero'
+);
+
+SELECT is(
+    (SELECT public.derive_order_display_status_v2(production_status, issue_state, intake_state)
+     FROM public.orders WHERE id='e6000000-0000-0000-0000-000000000002'),
+    'Cancelled', 'C4: cancellation is derived from V2 even with stale legacy New Case'
 );
 
 SELECT is(
@@ -157,7 +171,9 @@ SELECT is(
 -- orders.cost and reports them at zero cost and 100% margin.
 INSERT INTO public.production_jobs (id, order_id, route_id, round_no, unit_count, status, is_backfilled)
 SELECT 'e5500000-0000-0000-0000-000000000001', 'e6000000-0000-0000-0000-000000000001',
-       r.id, 1, 2, 'done', TRUE
+       -- Round 1 is created by the normal order-insert production trigger.
+       -- This separate historical round deliberately coexists with that job.
+       r.id, 2, 2, 'done', TRUE
   FROM public.production_routes r ORDER BY r.is_fallback DESC, r.created_at LIMIT 1;
 
 INSERT INTO public.production_stage_runs (job_id, stage_id, seq, execution, status, units_in, units_passed, completed_at)

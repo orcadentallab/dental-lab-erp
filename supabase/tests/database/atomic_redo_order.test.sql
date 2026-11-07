@@ -94,7 +94,7 @@ SELECT ok(
 );
 
 SELECT ok((
-    SELECT status = 'Doctor Rejected'
+    SELECT public.derive_order_display_status_v2(production_status, issue_state, intake_state) = 'Redo'
        AND issue_state = 'redo'
        AND production_status = 'not_started'
        AND actual_delivery_date IS NULL

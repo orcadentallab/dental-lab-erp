@@ -476,7 +476,7 @@ SELECT is(
 );
 
 SELECT is(
-    (SELECT status || ':' || issue_state || ':' || production_status
+    (SELECT public.derive_order_display_status_v2(production_status, issue_state, intake_state) || ':' || issue_state || ':' || production_status
      FROM public.orders WHERE id = '49100000-0000-0000-0000-000000000001'),
     'Delivered:none:final_delivered',
     'clearing the issue restores the delivered case to its evidenced state'
