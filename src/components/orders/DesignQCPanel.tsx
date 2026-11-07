@@ -60,7 +60,7 @@ export default function DesignQCPanel({orderId,onChanged,revisionId}:{orderId:st
       <details className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
        <summary className="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200"><UserRoundCog size={18}/>إعادة تكليف مصمم آخر<ChevronDown size={15} className="ms-auto"/></summary>
        <div className="mt-4 space-y-4">
-        <label className="block text-sm">المصمم البديل<select className={field} value={designer} onChange={e=>{setDesigner(e.target.value);setNewFee('');}}><option value={currentDesigner}>اختر المصمم البديل</option>{options.filter(o=>o.id!==currentDesigner).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
+        <label className="block text-sm">المصمم البديل<select aria-label="المصمم البديل" className={field} value={designer} onChange={e=>{setDesigner(e.target.value);setNewFee('');}}><option value={currentDesigner}>اختر المصمم البديل</option>{options.filter(o=>o.id!==currentDesigner).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
         <div className="grid gap-4 sm:grid-cols-2">
          <label className="block text-sm">المستحق النهائي للمصمم السابق (ج.م)<input type="number" min="0" step="0.01" className={field} value={oldFee} onChange={e=>setOldFee(e.target.value)}/></label>
          <label className="block text-sm">تعديل أجر البديل (اختياري)<input type="number" min="0" step="0.01" className={field} value={newFee} onChange={e=>setNewFee(e.target.value)}/></label>
