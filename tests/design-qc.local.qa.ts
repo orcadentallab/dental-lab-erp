@@ -7,7 +7,8 @@ async function signIn(browser:Browser,n:number,openQc=true){
  const page=await context.newPage();
  await page.route('**/*',route=>route.request().url().startsWith('http://127.0.0.1:')?route.continue():route.abort());
  await page.goto('/login');
- await page.getByRole('button',{name:'طاقم العمل',exact:true}).click();
+ const staffLogin=page.getByRole('button',{name:'طاقم العمل',exact:true});
+ if(await staffLogin.isVisible()) await staffLogin.click();
  await page.locator('input[type="text"],input[type="email"]').first().fill(`qc_browser_${n}`);
  await page.locator('input[type="password"]').fill('Local-QC-Only-2026!');
  await page.locator('button[type="submit"]').click();
