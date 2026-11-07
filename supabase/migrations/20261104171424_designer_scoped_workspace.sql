@@ -1,7 +1,7 @@
 BEGIN;
 -- Match the six states already used by the designer UI and V2 RPCs. Unknown
 -- states remain invalid; no order is rewritten and no finance rule changes.
-ALTER TABLE public.orders DROP CONSTRAINT orders_design_status_check;
+ALTER TABLE public.orders DROP CONSTRAINT IF EXISTS orders_design_status_check;
 ALTER TABLE public.orders ADD CONSTRAINT orders_design_status_check CHECK(design_status IN('pending','accepted','in_progress','waiting_approval','completed','returned'));
 -- Primary designers read an explicit technical/personal-finance projection.
 -- Other operational roles retain their existing policies and responsibilities.
