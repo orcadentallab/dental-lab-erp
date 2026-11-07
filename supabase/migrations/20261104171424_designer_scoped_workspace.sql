@@ -17,7 +17,8 @@ DO $$ DECLARE definition text; BEGIN
  EXECUTE replace(definition,'RETURN public.get_dashboard_data_privileged_20260801();','IF public.get_my_role()=''designer'' THEN RAISE EXCEPTION ''Designer cannot read commercial dashboard'' USING ERRCODE=''42501''; END IF; RETURN public.get_dashboard_data_privileged_20260801();');
 END $$;
 CREATE FUNCTION public.designer_can_read_case_asset(p_bucket text,p_path text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,auth AS $$
- SELECT public.get_my_role()='designer' AND EXISTS(SELECT 1 FROM public.orders o WHERE o.designer_id=public.get_my_user_id() AND NOT coalesce(o.is_deleted,false) AND (o.id::text=split_part(p_path,'/',1) OR EXISTS(SELECT 1 FROM public.order_attachments a WHERE a.order_id=o.id AND a.storage_bucket=p_bucket AND a.storage_path=p_path)))
+ -- Older attachments without a bucket column belong to the original case-files bucket.
+ SELECT public.get_my_role()='designer' AND EXISTS(SELECT 1 FROM public.orders o WHERE o.designer_id=public.get_my_user_id() AND NOT coalesce(o.is_deleted,false) AND (o.id::text=split_part(p_path,'/',1) OR EXISTS(SELECT 1 FROM public.order_attachments a WHERE a.order_id=o.id AND a.storage_path=p_path AND coalesce(to_jsonb(a)->>'storage_bucket','case-files')=p_bucket)))
 $$;
 CREATE POLICY designer_case_asset_scope ON storage.objects AS RESTRICTIVE FOR SELECT TO authenticated USING(public.get_my_role() IS DISTINCT FROM 'designer' OR bucket_id NOT IN('case-scans','case-files') OR public.designer_can_read_case_asset(bucket_id,name));
 CREATE POLICY designer_case_asset_write_scope ON storage.objects AS RESTRICTIVE FOR INSERT TO authenticated WITH CHECK(public.get_my_role() IS DISTINCT FROM 'designer' OR bucket_id NOT IN('case-scans','case-files') OR public.designer_can_read_case_asset(bucket_id,name));
