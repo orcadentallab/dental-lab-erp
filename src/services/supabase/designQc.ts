@@ -5,7 +5,7 @@ import {DESIGN_QC_CHANGED} from '../../lib/designQcQueue';
 export interface DesignRevision { id:string; order_id:string; revision_no:number; execution_path:string|null; preview_path:string|null; execution_url:string|null; without_preview_reason:string|null; submitted_at:string; requires_qc:boolean }
 export interface DesignReviewEvent { id:string; revision_id:string|null; action:string; note:string; actor_role:string; actor_id:string; actor_name?:string; needs_followup:boolean; created_at:string }
 export interface DesignQcState { enabled:boolean; currentRevisionId:string|null; required:boolean; revisions:DesignRevision[]; events:DesignReviewEvent[] }
-export interface DesignQueueItem { id:string; caseId:string; revisionId:string|null; required:boolean; state:string;submittedAt?:string|null;awaitingReview?:boolean }
+export interface DesignQueueItem { id:string; caseId:string; revisionId:string|null; required:boolean; state:string;submittedAt?:string|null;awaitingReview?:boolean; canBypass?:boolean; needsFollowup?:boolean; feedback?:string|null }
 export interface DesignOption {id:string;name:string;price:number;salaried:boolean}
 export interface QcCompensation {id:string;orderId:string;caseId:string;designerId:string;amount:number;date:string}
 async function rpc<T>(name:string, args:Record<string,unknown>={}):Promise<T> {
@@ -15,13 +15,16 @@ async function rpc<T>(name:string, args:Record<string,unknown>={}):Promise<T> {
         'Design QC approval or permitted bypass required':'التنفيذ يحتاج موافقة على النسخة الحالية أو تجاوزًا مسموحًا ومسببًا.',
         'Design access denied':'لم يعد لديك صلاحية لهذه الحالة.',
         'Admin role required':'هذا الإجراء للأدمن فقط.',
+        'Design cannot be released in its current state':'الحالة الحالية لا تسمح بإرسال التصميم للتنفيذ.',
+        'Design no longer awaits QC':'الحالة لم تعد بانتظار المراجعة. حدّث القائمة وراجع وضعها الحالي.',
+        'Await a new design submission':'الحالة رجعت للتصميم. انتظر التسليم الجديد.',
         'Reason required':'اكتب الملاحظات أو سبب الإجراء.',
         'Review the current revision':'النسخة تغيّرت؛ حدّث البيانات وراجع النسخة الحالية.',
         'Fixed-salary designer has no per-case settlement':'المصمم براتب ثابت؛ لا تُنشأ له تسوية أجر للحالة.',
         'Valid fees and reason required':'اكتب مبالغ صحيحة غير سالبة وسبب إعادة التكليف.'
     };
     if(error) throw new Error(messages[error.message]||error.message);
-    if(typeof window!=='undefined'&&['submit_design_revision','submit_design_delivery','decide_design_revision','release_design_revision','return_design_revision','reassign_design_revision','set_design_qc_enabled'].includes(name))window.dispatchEvent(new Event(DESIGN_QC_CHANGED));
+    if(typeof window!=='undefined'&&['submit_design_revision','submit_design_delivery','decide_design_revision','approve_and_release_design_revision','resolve_design_qc_review','bypass_and_release_design_revision','release_design_revision','return_design_revision','reassign_design_revision','set_design_qc_enabled'].includes(name))window.dispatchEvent(new Event(DESIGN_QC_CHANGED));
     return data as T;
 }
 export const getDesignQcState=(orderId:string)=>rpc<DesignQcState>('get_design_qc_state',{p_order_id:orderId});
@@ -69,6 +72,14 @@ export async function submitDesignDelivery(orderId:string,input:DesignDeliveryIn
 }
 export const decideDesignRevision=(revisionId:string,action:'approved'|'rejected'|'bypassed',note:string)=>rpc<string>('decide_design_revision',{p_revision_id:revisionId,p_event_id:crypto.randomUUID(),p_action:action,p_note:note});
 export const releaseDesignRevision=(orderId:string)=>rpc<void>('release_design_revision',{p_order_id:orderId});
+export const approveAndReleaseDesignRevision=(revisionId:string,note:string)=>rpc<void>('approve_and_release_design_revision',{p_revision_id:revisionId,p_event_id:crypto.randomUUID(),p_note:note});
+export const bypassAndReleaseDesignRevision=(revisionId:string,note:string)=>rpc<void>('bypass_and_release_design_revision',{p_revision_id:revisionId,p_event_id:crypto.randomUUID(),p_note:note});
+export function resolveDesignQcReview(revisionId:string,action:'changes'|'reject',note:string,destination:'current'|'replacement'|'none',replacement?:{id:string;oldAmount:number;newAmount:number|null}){
+    return rpc<void>('resolve_design_qc_review',{
+        p_revision_id:revisionId,p_command_id:crypto.randomUUID(),p_action:action,p_note:note,p_destination:destination,
+        p_designer_id:replacement?.id??null,p_old_amount:replacement?.oldAmount??null,p_new_amount:replacement?.newAmount??null,
+    });
+}
 export const returnDesignRevision=(orderId:string,designerId:string,note:string)=>rpc<void>('return_design_revision',{p_order_id:orderId,p_designer_id:designerId,p_note:note});
 export const reassignDesignRevision=(orderId:string,designerId:string,note:string,oldAmount:number,newAmount:number|null)=>rpc<void>('reassign_design_revision',{p_order_id:orderId,p_designer_id:designerId,p_note:note,p_old_amount:oldAmount,p_new_amount:newAmount,p_command_id:crypto.randomUUID()});
 export async function getDesignAssetUrl(path:string):Promise<string> {

@@ -7,9 +7,10 @@ import { getLandingRoute } from '../lib/navigation';
 interface ProtectedRouteProps {
     allowedRoles?: string[];
     requiredCapability?: Capability;
+    capabilityFallback?: string;
 }
 
-export default function ProtectedRoute({ allowedRoles, requiredCapability }: ProtectedRouteProps) {
+export default function ProtectedRoute({ allowedRoles, requiredCapability, capabilityFallback }: ProtectedRouteProps) {
     const { user, isAuthenticated, isLoading } = useAuth();
 
     if (isLoading) {
@@ -21,7 +22,7 @@ export default function ProtectedRoute({ allowedRoles, requiredCapability }: Pro
     }
 
     if (requiredCapability && !hasCapability(user, requiredCapability)) {
-        return <Navigate to={getLandingRoute(user)} replace />;
+        return <Navigate to={capabilityFallback ?? getLandingRoute(user)} replace />;
     }
 
     const matchesAllowedRole = !allowedRoles || !user || allowedRoles.includes(user.role) || (allowedRoles.includes('designer') && isDesignerUser(user));

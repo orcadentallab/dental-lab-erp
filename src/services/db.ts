@@ -166,7 +166,7 @@ export interface Supplier {
     id: string;
     name: string;
     supplierCode?: string;
-    username: string; // for login
+    username?: string; // optional legacy login
     phone: string;
     isActive?: boolean;
     supplierType?: 'external_lab' | 'material_vendor' | 'courier';

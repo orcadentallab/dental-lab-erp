@@ -35,7 +35,7 @@ function makeUser(role: Role, overrides: Partial<User> = {}): User {
  * and not here, the mismatch tests below are the ones that fail.
  */
 const ROUTE_ROLES: Record<string, Role[]> = {
-    '/design-qc': ['admin','coordinator','designer'],
+    '/design-qc': ['admin'],
     '/dashboard': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
     '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant'],
     '/doctors': ['admin', 'representative', 'coordinator'],

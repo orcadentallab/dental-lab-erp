@@ -152,7 +152,7 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     // own capability list, so it cannot drift out of step with either.
     const isCoordinator = role === 'coordinator';
     if(isAdmin || isFloor || isCoordinator || (isDesigner && role!=='designer')) caps.add('view_production_workspace');
-    if(isAdmin || isCoordinator || isDesigner) caps.add('view_design_qc');
+    if(isAdmin) caps.add('view_design_qc');
     const hasAccountantScope = role === 'accountant' || isCoordinator;
     const hasRepScope = role === 'representative' || isCoordinator;
 

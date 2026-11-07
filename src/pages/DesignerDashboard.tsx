@@ -1,3 +1,4 @@
+import {getDesignQcQueue,type DesignQueueItem} from '../services/supabase/designQc';
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, type Order } from '../services/db';
@@ -90,6 +91,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
     // Modal State
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+    const [returnedDesigns, setReturnedDesigns] = useState<Record<string, DesignQueueItem>>({});
     const [showDesignModal, setShowDesignModal] = useState(false);
     const [viewingDesign,setViewingDesign]=useState<Order|null>(null);
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
@@ -167,7 +169,8 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 promises.push(db.getUsers());
             }
 
-            const results = await Promise.all(promises);
+            const [results, qcQueue] = await Promise.all([Promise.all(promises), getDesignQcQueue().catch(() => [])]);
+            setReturnedDesigns(Object.fromEntries(qcQueue.filter(item => item.state === 'returned').map(item => [item.id, item])));
             const dashboardOrders: Order[] = results[0].filter(isDesignerDashboardOrderVisible);
             const allDoctors = results[1];
             const allUsers = results[2] || []; // Undefined if not fetched
@@ -432,13 +435,13 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     );
 
     const pendingOrders = useMemo(
-        () => filteredOrders.filter(order => !isDesignSubmitted(order)),
-        [filteredOrders]
+        () => filteredOrders.filter(order => !isDesignSubmitted(order) || returnedDesigns[order.id]?.revisionId === order.designRevisionId && !!returnedDesigns[order.id]),
+        [filteredOrders, returnedDesigns]
     );
 
     const submittedOrders = useMemo(
-        () => filteredOrders.filter(order => isDesignSubmitted(order)),
-        [filteredOrders]
+        () => filteredOrders.filter(order => isDesignSubmitted(order) && !(returnedDesigns[order.id]?.revisionId === order.designRevisionId && returnedDesigns[order.id])),
+        [filteredOrders, returnedDesigns]
     );
 
     const visibleOrders = designQueueView === 'submitted' ? submittedOrders : pendingOrders;
@@ -828,6 +831,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                             )}
                                             <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1.5 min-w-[220px] max-w-[280px]">
+                                                    {returnedDesigns[order.id]?.revisionId===order.designRevisionId&&returnedDesigns[order.id]?.feedback&&<p className="mb-2 whitespace-pre-wrap break-words rounded-lg bg-amber-50 p-2 text-xs text-amber-950"><strong>مطلوب تعديل التصميم</strong><br/>{returnedDesigns[order.id].feedback}</p>}
                                                     {order.supplierDesignInstruction?.paragraph&&<button type="button" onClick={()=>openTextPreview('التعليمات الفنية للمصمم',order.supplierDesignInstruction?.paragraph??'','bg-cyan-50 border-cyan-100 text-cyan-900')} className="w-full cursor-pointer rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-right text-xs text-cyan-900 transition-colors hover:bg-cyan-100 focus-visible:ring-2 focus-visible:ring-cyan-600"><span className="mb-1 block font-bold">التعليمات الفنية للمصمم{order.supplierDesignInstruction.version?` · نسخة ${order.supplierDesignInstruction.version}`:''}</span><span className="line-clamp-3 leading-6">{order.supplierDesignInstruction.paragraph}</span></button>}
                                                     {order.instructions ? (
                                                         <button
@@ -1008,6 +1012,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
                     <div role="dialog" aria-modal="true" aria-label="تسليم التصميم" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
                         <div className="mb-5 flex items-center justify-between"><span className="text-sm font-medium text-slate-500">{selectedOrder.caseId}</span><button type="button" className="min-h-11 cursor-pointer rounded-lg px-3 text-sm text-slate-600 hover:bg-slate-100" onClick={()=>{setShowDesignModal(false);setSelectedOrder(null);}}>إغلاق</button></div>
+                        {returnedDesigns[selectedOrder.id]?.revisionId===selectedOrder.designRevisionId&&returnedDesigns[selectedOrder.id]?.feedback&&<p className="mb-4 whitespace-pre-wrap break-words rounded-xl bg-amber-50 p-3 text-sm text-amber-950"><strong>ملاحظات المراجعة</strong><br/>{returnedDesigns[selectedOrder.id].feedback}</p>}
                         <DesignDeliveryForm orderId={selectedOrder.id} onSubmitted={async()=>{updateOrderInState(await db.getOrder(selectedOrder.id));setShowDesignModal(false);setSelectedOrder(null);setDesignQueueView('submitted');success('تم حفظ نسخة التصميم');}}/>
                     </div>
                 </div>

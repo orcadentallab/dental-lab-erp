@@ -3,6 +3,7 @@ import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from './constants/externalRegist
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/DashboardNew';
+import CoordinatorDesignQc from './components/dashboard/CoordinatorDesignQc';
 import Orders from './pages/Orders';
 
 import ProtectedRoute from './components/ProtectedRoute';
@@ -59,7 +60,8 @@ const SHOW_MARKETING = import.meta.env.VITE_SHOW_MARKETING !== 'false';
 
 function DashboardEntry() {
   const {user}=useAuth();
-  return user?.role==='designer'?<DesignerDashboard/>:<Dashboard/>;
+  if (user?.role === 'designer') return <DesignerDashboard />;
+  return <>{user?.role === 'coordinator' && <CoordinatorDesignQc />}<Dashboard /></>;
 }
 
 function App() {
@@ -115,7 +117,7 @@ function App() {
                     </Route>
                   </Route>
 
-                  <Route element={<ProtectedRoute requiredCapability="view_design_qc" />}>
+                  <Route element={<ProtectedRoute requiredCapability="view_design_qc" capabilityFallback="/dashboard" />}>
                     <Route element={<DashboardLayout />}><Route path="/design-qc" element={<DesignQC />} /></Route>
                   </Route>
                   {/* Production floor. The technician role exists only here:

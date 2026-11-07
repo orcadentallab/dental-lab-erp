@@ -32,7 +32,6 @@ export default function Suppliers() {
     const [formData, setFormData] = useState<{
         name: string;
         supplierCode: string;
-        username: string;
         phone: string;
         isActive: boolean;
         supplierType: 'external_lab' | 'material_vendor' | 'courier';
@@ -42,7 +41,6 @@ export default function Suppliers() {
     }>({
         name: '',
         supplierCode: '',
-        username: '',
         phone: '',
         isActive: true,
         supplierType: 'external_lab',
@@ -77,7 +75,6 @@ export default function Suppliers() {
             setFormData({
                 name: supplier.name,
                 supplierCode: supplier.supplierCode || '',
-                username: supplier.username,
                 phone: supplier.phone,
                 isActive: supplier.isActive !== false,
                 supplierType: supplier.supplierType || 'external_lab',
@@ -90,7 +87,6 @@ export default function Suppliers() {
             setFormData({
                 name: '',
                 supplierCode: '',
-                username: '',
                 phone: '',
                 isActive: true,
                 supplierType: 'external_lab',
@@ -287,7 +283,7 @@ export default function Suppliers() {
                                     <div className="flex items-center gap-2">
                                         {supplier.supplierCode && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-xs">{supplier.supplierCode}</span>}
                                         {supplier.isActive === false && <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-xs font-bold">غير فعال</span>}
-                                        <p className="text-xs text-gray-500 font-mono">@{supplier.username}</p>
+                                        {supplier.username && <p className="text-xs text-gray-500 font-mono">@{supplier.username}</p>}
                                     </div>
                                 </div>
                                 {user?.role !== 'accountant' && (
@@ -381,17 +377,6 @@ export default function Suppliers() {
                                         onChange={e => setFormData({ ...formData, supplierCode: e.target.value })}
                                         className="w-full p-2.5 border border-gray-200 rounded-xl text-sm font-mono"
                                         placeholder="مثلاً: SUP001"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">اسم المستخدم (للدخول)</label>
-                                    <input
-                                        required
-                                        type="text"
-                                        value={formData.username}
-                                        onChange={e => setFormData({ ...formData, username: e.target.value })}
-                                        className="w-full p-2.5 border border-gray-200 rounded-xl text-sm font-mono"
-                                        aria-label="اسم المستخدم (للدخول)"
                                     />
                                 </div>
                                 <div>
