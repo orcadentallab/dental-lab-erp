@@ -9,27 +9,30 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install PostgreSQL 17 client
+      - name: Install PostgreSQL 17 client and age
         run: |
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl --fail --silent --show-error --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
+          sudo apt-get install -y postgresql-client-17 age
 
-      - name: Create backup
+      - name: Create encrypted backup
+        shell: bash
         env:
+          PGHOST: ${{ secrets.SUPABASE_DB_HOST }}
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          BACKUP_RECIPIENT: age1lm8qup84vgv0rssd07xp2hphg7y3hdp9xny8w0am3fln9vqhhu2squ4yfa
         run: |
-          pg_dump -h ${{ secrets.SUPABASE_DB_HOST }} \
-                  -p 6543 \
-                  -U postgres.piuiiwcjnfvjwyewczuz \
-                  -d postgres \
-                  -F c \
-                  -f backup_$(date +%Y%m%d).dump
+          /usr/lib/postgresql/17/bin/pg_dump --port=6543 \
+            --username=postgres.piuiiwcjnfvjwyewczuz --dbname=postgres --format=custom \
+            | age --encrypt --recipient "$BACKUP_RECIPIENT" --output "backup_$(date -u +%Y%m%d).dump.age"
 
-      - name: Upload backup to GitHub Artifacts
+      - name: Upload encrypted backup to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: database-backup-${{ github.run_number }}
-          path: "*.dump"
+          path: "backup_*.dump.age"
+          if-no-files-found: error
           retention-days: 30
