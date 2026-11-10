@@ -7,6 +7,10 @@ export function canViewSupplierAndDesignerStatements(role: User['role'] | undefi
     return role !== 'coordinator';
 }
 
+export function usesAuditedOrderEdit(role: string | undefined): boolean {
+    return role === 'representative' || role === 'coordinator';
+}
+
 export function hasCustomPermission(user: User | null | undefined, permission: string): boolean {
     return Boolean(user?.customPermissions?.[permission]);
 }

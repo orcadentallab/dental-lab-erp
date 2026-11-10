@@ -20,7 +20,7 @@ import clsx from 'clsx';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
-import { isDesignerUser, canBeOrderRepresentative } from '../lib/userRoles';
+import { isDesignerUser, canBeOrderRepresentative, usesAuditedOrderEdit } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
@@ -42,6 +42,7 @@ export default function Orders() {
 function OrdersPage() {
     const { state: navigationState } = useLocation();
     const { user } = useAuth();
+    const auditedOrderEdit = usesAuditedOrderEdit(user?.role);
     const { error: toastError } = useToast();
     const [searchParams, setSearchParams] = useSearchParams();
     const initialModalRef = useRef({
@@ -263,7 +264,8 @@ function OrdersPage() {
                 if (!order || cancelled) return;
 
                 if (modal === 'edit') {
-                    setFullEditingOrder(order);
+                    if (auditedOrderEdit) setRepEditingOrder(order);
+                    else setFullEditingOrder(order);
                 } else if (modal === 'notes') {
                     setNoteEditingOrder(order);
                     setNewComment('');
@@ -285,7 +287,7 @@ function OrdersPage() {
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [auditedOrderEdit]);
 
     // CONSOLIDATED: Single debounced effect for all filter and search changes
     useEffect(() => {
@@ -341,7 +343,7 @@ function OrdersPage() {
     };
 
     const handleUpdateOrder = async (orderData: Partial<Order>) => {
-        if (!fullEditingOrder) return;
+        if (auditedOrderEdit || !fullEditingOrder) return;
         try {
             const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments'];
             const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
@@ -433,8 +435,9 @@ function OrdersPage() {
         clearOpenOrderParams();
     };
 
-    const openFullEdit = (order: Order) => {
-        setFullEditingOrder(order);
+    const openOrderEdit = (order: Order) => {
+        if (auditedOrderEdit) setRepEditingOrder(order);
+        else setFullEditingOrder(order);
         setOrderPageParams({ modal: 'edit', order: order.id });
     };
 
@@ -1196,13 +1199,7 @@ function OrdersPage() {
                     orders={orders}
                     onStatusChange={handleStatusUpdate}
                     userRole={user?.role}
-                    onEdit={(order) => {
-                        if (user?.role === 'representative') {
-                            setRepEditingOrder(order);
-                        } else {
-                            openFullEdit(order);
-                        }
-                    }}
+                    onEdit={openOrderEdit}
                     onAddNote={openAddNote}
                     onDelete={handleDeleteOrder}
                     onUpdateDesignUrl={openDesignLinkModal}
@@ -1218,13 +1215,7 @@ function OrdersPage() {
                     orders={orders}
                     onStatusChange={handleStatusUpdate}
                     userRole={user?.role}
-                    onEdit={(order) => {
-                        if (user?.role === 'representative') {
-                            setRepEditingOrder(order);
-                        } else {
-                            openFullEdit(order);
-                        }
-                    }}
+                    onEdit={openOrderEdit}
                     onAddNote={openAddNote}
                     onRedo={(order) => setRedoOrder(order)}
                 />
@@ -1292,7 +1283,7 @@ function OrdersPage() {
                     </motion.div>
                 )}
 
-                {fullEditingOrder && (
+                {!auditedOrderEdit && fullEditingOrder && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
                         <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="h-[100dvh] w-full max-w-4xl overflow-y-auto bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-3xl">
                             <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
@@ -1410,11 +1401,14 @@ function OrdersPage() {
                         </motion.div>
                     </motion.div>
                 )}
-                {repEditingOrder && (
+                {auditedOrderEdit && repEditingOrder && (
                     <RepEditModal
                         order={repEditingOrder}
                         isOpen={!!repEditingOrder}
-                        onClose={() => setRepEditingOrder(null)}
+                        onClose={() => {
+                            setRepEditingOrder(null);
+                            clearOpenOrderParams();
+                        }}
                         onSuccess={refreshOrders}
                         suppliers={suppliers}
                         designers={users.filter(u => isDesignerUser(u))}

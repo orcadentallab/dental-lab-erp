@@ -19,7 +19,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { canAccessDesignerFeatures } from '../../lib/userRoles';
+import { canAccessDesignerFeatures, usesAuditedOrderEdit } from '../../lib/userRoles';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import ProductionStatusBadge from './ProductionStatusBadge';
@@ -903,7 +903,7 @@ function OrderCard({
 
                         {/* Business tools are never part of the designer workspace. */}
                         {!isDesigner && <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
-                            {(userRole === 'admin' || userRole === 'representative' || currentUser?.customPermissions?.edit_orders) && onEdit && (
+                            {(userRole === 'admin' || usesAuditedOrderEdit(userRole) || currentUser?.customPermissions?.edit_orders) && onEdit && (
                                 <Button size="sm" variant="ghost" aria-label="تعديل الأوردر" className="min-h-10 h-10 w-10 p-0 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />
                                 </Button>
