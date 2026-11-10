@@ -103,6 +103,8 @@ SET LOCAL ROLE authenticated;
 SELECT is((SELECT count(*) FROM public.design_revisions WHERE order_id='fb000000-0000-0000-0000-000000000011'),0::bigint,'Previous designer cannot read raw revision rows');
 SELECT is((SELECT count(*) FROM storage.objects WHERE bucket_id='design-qc-files' AND name LIKE 'fb000000-0000-0000-0000-000000000011/%'),0::bigint,'Previous designer cannot mint new storage links');
 SELECT is((SELECT sum((x->>'amount')::numeric) FROM jsonb_array_elements(public.get_design_qc_compensations()) x),80::numeric,'Former designer still reads their financial right independently of case access');
+SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000002',true);
+SELECT is(public.get_design_qc_compensations(),'[]'::jsonb,'Coordinator cannot read another designer settlement from the statement projection');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000004',true);
 SELECT is(jsonb_array_length(public.get_design_qc_state('fb000000-0000-0000-0000-000000000011')->'revisions'),4,'Replacement designer receives all distinct file revisions, without duplicate-byte versions');

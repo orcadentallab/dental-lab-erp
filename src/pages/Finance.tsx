@@ -19,7 +19,7 @@ import type { Adjustment, Cashbox } from '../services/financeService';
 import { DateFilter, filterEntries, calculateTotal } from '../components/finance/FinanceFilters';
 import type { FilterType } from '../components/finance/FinanceFilters';
 import { useToast } from '../context/ToastContext';
-import { isDesignerUser } from '../lib/userRoles';
+import { canViewSupplierAndDesignerStatements, isDesignerUser } from '../lib/userRoles';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import CashboxPanel from '../components/finance/CashboxPanel';
 import { ALL_EXPENSE_CATEGORIES, EXPENSE_CATEGORY, normalizeExpenseCategory } from '../constants/expenseCategories';
@@ -44,6 +44,7 @@ const SECTION_TABS: Record<string, ActiveTab[]> = {
 
 export default function Finance() {
     const { user } = useAuth();
+    const showPayableStatements = canViewSupplierAndDesignerStatements(user?.role);
     const { success: toastSuccess, error: toastError } = useToast();
     const [searchParams] = useSearchParams();
     const isDev = searchParams.get('dev') === 'true';
@@ -59,7 +60,10 @@ export default function Finance() {
     const todayDate = new Date().toISOString().split('T')[0];
 
     const sectionTabs = SECTION_TABS[section] || SECTION_TABS.transactions;
-    const [activeTab, setActiveTab] = useState<ActiveTab>(sectionTabs[0]);
+    const [selectedTab, setActiveTab] = useState<ActiveTab>(sectionTabs[0]);
+    const activeTab = !showPayableStatements && (selectedTab === 'suppliers' || selectedTab === 'designers')
+        ? sectionTabs[0]
+        : selectedTab;
 
     // An unknown :section (or one this role cannot open) sends the visitor
     // back to the tab everyone with view_finance can reach, instead of a
@@ -552,8 +556,10 @@ export default function Finance() {
             {['doctors', 'suppliers', 'designers', 'adjustments', 'obligations', 'allocationPreview', 'historicalObligationsPreview', 'historicalBackfillDryRun'].includes(activeTab) && (
                 <div className="flex justify-center flex-wrap gap-2 mb-6">
                     <button onClick={() => setActiveTab('doctors')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'doctors' ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الأطباء</button>
-                    <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'suppliers' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الموردين</button>
-                    <button onClick={() => setActiveTab('designers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'designers' ? "bg-pink-100 text-pink-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات المصممين</button>
+                    {showPayableStatements && <>
+                        <button onClick={() => setActiveTab('suppliers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'suppliers' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات الموردين</button>
+                        <button onClick={() => setActiveTab('designers')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'designers' ? "bg-pink-100 text-pink-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>حسابات المصممين</button>
+                    </>}
                     {['admin', 'accountant'].includes(user?.role || '') && (
                         <button onClick={() => setActiveTab('adjustments')} className={clsx("px-4 py-1.5 rounded-full text-sm font-bold", activeTab === 'adjustments' ? "bg-teal-100 text-teal-700" : "bg-gray-100 text-gray-600 hover:bg-gray-200")}>القيود والتسويات</button>
                     )}

@@ -3,6 +3,10 @@ import type { User } from '../services/db';
 export const DUAL_ROLE_DESIGNER_PERMISSION = 'secondary_designer';
 export const FIXED_SALARY_DESIGNER_PERMISSION = 'designer_fixed_salary';
 
+export function canViewSupplierAndDesignerStatements(role: User['role'] | undefined): boolean {
+    return role !== 'coordinator';
+}
+
 export function hasCustomPermission(user: User | null | undefined, permission: string): boolean {
     return Boolean(user?.customPermissions?.[permission]);
 }

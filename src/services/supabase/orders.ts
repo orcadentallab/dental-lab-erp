@@ -62,10 +62,14 @@ interface DbOrderWithRelations extends DbOrder {
     accounting_last_review_type?: AccountingReviewType | null;
 }
 
-async function isPrimaryDesigner(): Promise<boolean> {
+async function getOrderReaderRole(): Promise<string | null> {
     const {data,error}=await supabase.rpc('get_my_role');
-    if(error) throw ErrorHandler.handle(error,'getDesignerRole');
-    return data==='designer';
+    if(error) throw ErrorHandler.handle(error,'getOrderReaderRole');
+    return data;
+}
+
+async function isPrimaryDesigner(): Promise<boolean> {
+    return (await getOrderReaderRole()) === 'designer';
 }
 
 async function designerWorkspace(orderId?:string, finance=false): Promise<Order[]> {
@@ -1913,7 +1917,11 @@ export async function fetchFullEntityStatement(
     entityType: 'doctor' | 'supplier' | 'designer'
 ): Promise<{ orders: Order[], transactions: Transaction[] }> {
 
-    const designerOnly=await isPrimaryDesigner();
+    const role = await getOrderReaderRole();
+    if (role === 'coordinator' && entityType !== 'doctor') {
+        throw new ValidationError('لا تملك صلاحية كشف الحساب');
+    }
+    const designerOnly = role === 'designer';
     if(designerOnly && entityType!=='designer') throw new ValidationError('لا تملك صلاحية كشف الحساب');
     if(designerOnly){
         const {data,error}=await supabase.rpc('get_my_user_id');

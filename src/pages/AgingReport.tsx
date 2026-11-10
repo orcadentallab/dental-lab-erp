@@ -12,7 +12,7 @@ import {
     isStatementVisibleOrder,
 } from '../constants/orderStatementFinancials';
 import { financeService, type Adjustment } from '../services/financeService';
-import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
+import { canViewSupplierAndDesignerStatements, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Clock, Search, AlertTriangle, 
@@ -135,9 +135,11 @@ function round2(n: number): number {
 
 export default function AgingReport() {
     const { user } = useAuth();
+    const showPayableStatements = canViewSupplierAndDesignerStatements(user?.role);
 
     // ─ State
-    const [activeTab, setActiveTab] = useState<TabType>('doctors');
+    const [selectedTab, setActiveTab] = useState<TabType>('doctors');
+    const activeTab = showPayableStatements ? selectedTab : 'doctors';
     const [search, setSearch] = useState('');
     const [minAmount, setMinAmount] = useState<number>(0);
     const [asOfDate, setAsOfDate] = useState(todayDateString());
@@ -178,8 +180,8 @@ export default function AgingReport() {
                     db.getTransactionsForFinanceSummary(),
                     financeService.getAdjustments(),
                     db.getDoctors(),
-                    db.getSuppliers(),
-                    db.getUsers()
+                    showPayableStatements ? db.getSuppliers() : [],
+                    showPayableStatements ? db.getUsers() : []
                 ]);
                 setOrders(o || []);
                 setTransactions(t || []);
@@ -212,7 +214,7 @@ export default function AgingReport() {
             }
         };
         load();
-    }, [activeTab]);
+    }, [activeTab, showPayableStatements]);
 
     // ── Reload data after an adjustment is saved
     const reloadData = async () => {
@@ -709,26 +711,28 @@ export default function AgingReport() {
                         <Users size={14} />
                         تحصيلات الأطباء
                     </button>
-                    <button
-                        onClick={() => { setActiveTab('suppliers'); setSearch(''); setSelectedId(null); setSelectedBucketFilter('all'); }}
-                        className={clsx(
-                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
-                            activeTab === 'suppliers' ? 'bg-indigo-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'
-                        )}
-                    >
-                        <Factory size={14} />
-                        مستحقات الموردين
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab('designers'); setSearch(''); setSelectedId(null); setSelectedBucketFilter('all'); }}
-                        className={clsx(
-                            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
-                            activeTab === 'designers' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'
-                        )}
-                    >
-                        <Palette size={14} />
-                        أتعاب المصممين
-                    </button>
+                    {showPayableStatements && <>
+                        <button
+                            onClick={() => { setActiveTab('suppliers'); setSearch(''); setSelectedId(null); setSelectedBucketFilter('all'); }}
+                            className={clsx(
+                                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                                activeTab === 'suppliers' ? 'bg-indigo-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'
+                            )}
+                        >
+                            <Factory size={14} />
+                            مستحقات الموردين
+                        </button>
+                        <button
+                            onClick={() => { setActiveTab('designers'); setSearch(''); setSelectedId(null); setSelectedBucketFilter('all'); }}
+                            className={clsx(
+                                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                                activeTab === 'designers' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-800'
+                            )}
+                        >
+                            <Palette size={14} />
+                            أتعاب المصممين
+                        </button>
+                    </>}
                 </div>
             </div>
 

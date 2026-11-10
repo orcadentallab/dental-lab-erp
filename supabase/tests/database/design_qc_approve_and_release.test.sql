@@ -60,6 +60,6 @@ DROP TRIGGER qc_test_fail_release ON public.orders;
 SELECT lives_ok($$SELECT public.bypass_and_release_design_revision('ab100000-0000-4000-8000-000000000023','ab100000-0000-4000-8000-000000000033','Urgent')$$,'Coordinator can bypass and release atomically');
 SELECT is((SELECT production_status::text FROM public.orders WHERE case_id='QC-COMBINED'),'in_production','Bypass sends the case to production');
 SELECT is((SELECT note FROM public.design_qc_events WHERE id='ab100000-0000-4000-8000-000000000033'),'Urgent','The bypass reason is saved');
-SELECT throws_ok($$UPDATE public.orders SET production_status='designing' WHERE case_id='QC-COMBINED'$$,'P0001','accountant cannot change workflow or delivery fields','Coordinator still cannot change production status directly');
+SELECT throws_ok($$UPDATE public.orders SET production_status='finalization' WHERE case_id='QC-COMBINED'$$,'P0001','انتقال الحالة غير مسموح للمنسق من المرحلة الحالية','Coordinator cannot skip the Try-In step');
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, Link, Navigate } from 'react-router-dom';
 import {getQcCompensations} from '../services/supabase/designQc';
 import {designQcCompensationRows} from '../lib/designQcCompensations';
 import { useAuth } from '../context/AuthContext';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type EntityBillingSettings } from '../services/db';
 import { financeService, type Adjustment } from '../services/financeService';
 import DateRangeField from '../components/ui/DateRangeField';
-import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
+import { canViewSupplierAndDesignerStatements, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
 import {
     getDesignerStatementAmount,
@@ -149,8 +149,17 @@ const monthLabel = (monthStr: string) => {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function StatementsPage() {
-    useAuth();
+    const { user } = useAuth();
+    const [searchParams] = useSearchParams();
+    const showPayableStatements = canViewSupplierAndDesignerStatements(user?.role);
+    const tab = searchParams.get('tab');
+    if (!showPayableStatements && tab && tab !== 'doctors') {
+        return <Navigate to="/statements?tab=doctors" replace />;
+    }
+    return <Statements showPayableStatements={showPayableStatements} />;
+}
 
+function Statements({ showPayableStatements }: { showPayableStatements: boolean }) {
     // ─ Global data
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -208,10 +217,10 @@ export default function StatementsPage() {
                     db.getOrdersForFinanceSummary(),
                     db.getTransactionsForFinanceSummary(),
                     db.getDoctors(),          // ALL doctors including children (parentId set)
-                    db.getSuppliers(),
-                    db.getUsers(),
+                    showPayableStatements ? db.getSuppliers() : [],
+                    showPayableStatements ? db.getUsers() : [],
                     financeService.getAdjustments(),
-                    supabase
+                    showPayableStatements ? supabase
                         .from('external_work_orders')
                         .select(`
                             id, stage_run_id, supplier_id, agreed_cost, sent_at, returned_at, status, units,
@@ -224,16 +233,19 @@ export default function StatementsPage() {
                                 )
                             )
                         `)
-                        .in('status', ['returned'])
+                        .in('status', ['returned']) : null
                 ]);
-                setOrders([...(Array.isArray(o) ? o as Order[] : []),...designQcCompensationRows(await getQcCompensations())]);
+                const statementOrders = Array.isArray(o) ? o as Order[] : [];
+                setOrders(showPayableStatements
+                    ? [...statementOrders, ...designQcCompensationRows(await getQcCompensations())]
+                    : statementOrders);
                 setTransactions(Array.isArray(t) ? t as Transaction[] : []);
                 setAllDoctors(Array.isArray(doc) ? doc : []);
                 setSuppliers(Array.isArray(sup) ? sup : []);
                 setDesigners((Array.isArray(usr) ? usr : []).filter(isDesignerUser));
                 setAdjustments(Array.isArray(adj) ? adj : []);
 
-                const rawEwo = ewoRes.data || [];
+                const rawEwo = ewoRes?.data || [];
                 const parsedSteps: Array<{
                     id: string;
                     supplierId: string;
@@ -270,7 +282,7 @@ export default function StatementsPage() {
             }
         };
         load();
-    }, []);
+    }, [showPayableStatements]);
 
     // ─ Load billing settings when selected entity changes
     useEffect(() => {
@@ -856,7 +868,7 @@ export default function StatementsPage() {
         { id: 'doctors' as TabType, label: 'الأطباء', icon: Users },
         { id: 'suppliers' as TabType, label: 'الموردين', icon: Factory },
         { id: 'designers' as TabType, label: 'المصممين', icon: Palette },
-    ];
+    ].filter(tab => tab.id === 'doctors' || showPayableStatements);
 
     const tabActiveClass = { doctors: 'bg-teal-600 text-white', suppliers: 'bg-indigo-600 text-white', designers: 'bg-amber-500 text-white' }[activeTab];
     const tabBadgeClass = { doctors: 'bg-teal-100 text-teal-700', suppliers: 'bg-indigo-100 text-indigo-700', designers: 'bg-amber-100 text-amber-700' }[activeTab];
@@ -872,7 +884,7 @@ export default function StatementsPage() {
                 </div>
                 <div>
                     <h1 className="text-xl font-bold text-slate-900">كشوف الحسابات والفواتير</h1>
-                    <p className="text-sm text-slate-500">أطباء · موردين · مصممين</p>
+                    <p className="text-sm text-slate-500">{showPayableStatements ? 'أطباء · موردين · مصممين' : 'الأطباء'}</p>
                 </div>
             </div>
 
