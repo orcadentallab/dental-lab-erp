@@ -26,7 +26,12 @@ describe('order issue actions V2', () => {
         expect(ids(true)).not.toContain('lab_reject');
     });
 
-    it('allows only admin and representative issue actions', () => {
+    it('gives coordinators the same issue actions as representatives', () => {
+        expect(ids(false, 'coordinator')).toEqual(ids(false));
+        expect(ids(true, 'coordinator')).toEqual(ids(true));
+    });
+
+    it('keeps issue actions unavailable to designers and doctors', () => {
         expect(ids(true, 'designer')).toEqual([]);
         expect(ids(true, 'doctor')).toEqual([]);
     });

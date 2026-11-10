@@ -1,3 +1,4 @@
+import { hasRepresentativeScope } from '../../lib/userRoles';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Package, Star } from 'lucide-react';
@@ -220,7 +221,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const handleTechAction = useCallback(async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
             const order = orders.find(o => o.id === orderId);
-            const isReviewer = userRole === 'admin' || userRole === 'representative';
+            const isReviewer = userRole === 'admin' || hasRepresentativeScope(userRole);
             if (order?.technicianStatus === 'Rejected' && isReviewer && action !== 'PMMA_First') {
                 if (action === 'Approved') {
                     // Reviewer accepts the case, overruling the designer's rejection and returning it to design

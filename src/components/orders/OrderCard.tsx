@@ -19,7 +19,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { canAccessDesignerFeatures, usesAuditedOrderEdit } from '../../lib/userRoles';
+import { canAccessDesignerFeatures, hasRepresentativeScope } from '../../lib/userRoles';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import ProductionStatusBadge from './ProductionStatusBadge';
@@ -197,7 +197,7 @@ function OrderCard({
     const [eventsLoading, setEventsLoading] = useState(false);
     const [eventsError, setEventsError] = useState(false);
     const [eventsData, setEventsData] = useState<OrderEvent[]>([]);
-    const canViewBusinessTimeline = ['admin', 'accountant', 'representative'].includes(userRole || '');
+    const canViewBusinessTimeline = userRole === 'admin' || userRole === 'accountant' || hasRepresentativeScope(userRole);
 
     const handleShowHistory = async () => {
         setShowHistory(true);
@@ -379,7 +379,7 @@ function OrderCard({
                             ))}
                             {redoReason && <span className="rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800">سبب الإعادة: {redoReason}</span>}
 
-                            {(userRole === 'admin' || userRole === 'representative') && order.representativeId && users[order.representativeId] && (
+                            {(userRole === 'admin' || hasRepresentativeScope(userRole)) && order.representativeId && users[order.representativeId] && (
                                 <span
                                     className="inline-flex max-w-[160px] items-center gap-1.5 rounded-md border border-blue-100 bg-blue-50 px-2 py-0.5 text-xs dark:border-blue-800/30 dark:bg-blue-900/10"
                                     title={`المندوب: ${users[order.representativeId]}`}
@@ -868,7 +868,7 @@ function OrderCard({
 
                             {/* Tech Actions - Only for admin, designer, lab */}
                             {onTechAction && (canAccessDesignerFeatures(currentUser)
-                                || ((userRole === 'admin' || userRole === 'representative') && order.technicianStatus === 'Rejected')) && (
+                                || ((userRole === 'admin' || hasRepresentativeScope(userRole)) && order.technicianStatus === 'Rejected')) && (
                                 <>
                                     <div className="h-4 w-px bg-surface-300 mx-1 hidden sm:block"></div>
                                     <div className="flex bg-white rounded-lg border border-surface-200 p-0.5 shadow-sm">
@@ -886,7 +886,7 @@ function OrderCard({
                                         >
                                             <MessageCircle size={14} />
                                         </button>
-                                        {(userRole === 'admin' || (userRole === 'representative' && order.technicianStatus === 'Rejected')) && (
+                                        {(userRole === 'admin' || (hasRepresentativeScope(userRole) && order.technicianStatus === 'Rejected')) && (
                                             <button
                                                 onClick={() => onTechAction(order.id, 'Rejected')}
                                                 className={`grid min-h-10 min-w-10 place-items-center rounded hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors sm:min-h-0 sm:min-w-0 sm:p-1.5 ${order.technicianStatus === 'Rejected' ? 'bg-red-100 text-red-700' : ''}`}
@@ -903,7 +903,7 @@ function OrderCard({
 
                         {/* Business tools are never part of the designer workspace. */}
                         {!isDesigner && <div className="flex items-center justify-end gap-1.5 sm:gap-2 mt-2 sm:mt-0 border-t border-surface-200/50 sm:border-0 pt-2 sm:pt-0">
-                            {(userRole === 'admin' || usesAuditedOrderEdit(userRole) || currentUser?.customPermissions?.edit_orders) && onEdit && (
+                            {(userRole === 'admin' || hasRepresentativeScope(userRole) || currentUser?.customPermissions?.edit_orders) && onEdit && (
                                 <Button size="sm" variant="ghost" aria-label="تعديل الأوردر" className="min-h-10 h-10 w-10 p-0 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => onEdit(order)} title="تعديل">
                                     <Settings size={14} />
                                 </Button>

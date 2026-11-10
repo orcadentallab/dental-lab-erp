@@ -7,7 +7,7 @@ export function canViewSupplierAndDesignerStatements(role: User['role'] | undefi
     return role !== 'coordinator';
 }
 
-export function usesAuditedOrderEdit(role: string | undefined): boolean {
+export function hasRepresentativeScope(role: string | undefined): boolean {
     return role === 'representative' || role === 'coordinator';
 }
 
@@ -162,7 +162,7 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     if(isAdmin || isFloor || isCoordinator || (isDesigner && role!=='designer')) caps.add('view_production_workspace');
     if(isAdmin) caps.add('view_design_qc');
     const hasAccountantScope = role === 'accountant' || isCoordinator;
-    const hasRepScope = role === 'representative' || isCoordinator;
+    const hasRepScope = hasRepresentativeScope(role);
 
     // 'lab' is an external supplier with no part in running the place. It
     // keeps exactly the four screens its own row-scoped policies still feed

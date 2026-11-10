@@ -1,3 +1,4 @@
+import { hasRepresentativeScope } from '../../lib/userRoles';
 import { useState, useRef, useEffect } from 'react';
 import {
     Play, PenTool, ArrowRight, Package, PackageCheck, Truck,
@@ -142,12 +143,12 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         actualDeliveryDate: order.actualDeliveryDate,
         productionStatus,
     });
-    const canRedo = (userRole === 'admin' || userRole === 'representative')
+    const canRedo = (userRole === 'admin' || hasRepresentativeScope(userRole))
         && !!onRedo
         && hasDeliveryEvidence
         && issueState !== 'cancelled'
         && issueState !== 'redo';
-    const redoBlockedByReplacement = (userRole === 'admin' || userRole === 'representative')
+    const redoBlockedByReplacement = (userRole === 'admin' || hasRepresentativeScope(userRole))
         && !!onRedo
         && issueState === 'redo';
     // Repairing a mis-clicked issue state is an admin-only correction, not a

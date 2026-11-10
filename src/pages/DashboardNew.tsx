@@ -20,7 +20,7 @@ import { issueCauseLabel, getStageForCause } from '../constants/issueCauses';
 import { Button } from '../components/ui/Button';
 import DesignerDashboard from './DesignerDashboard';
 import { useTranslation } from '../translations';
-import { isDesignerUser } from '../lib/userRoles';
+import { hasRepresentativeScope, isDesignerUser } from '../lib/userRoles';
 import { useToast } from '../context/ToastContext';
 import { ErrorHandler } from '../lib/errorHandler';
 import { useNavigate } from 'react-router-dom';
@@ -127,10 +127,10 @@ export default function DashboardNew() {
     const isDualRepDesigner = user?.role === 'representative' && isDesignerUser(user);
     const canViewDesignerWorkspace = Boolean(user && isDesignerUser(user) && user.role !== 'admin');
     const canViewCommentAlerts = user?.role === 'admin';
-    const canViewWorkloadCards = user?.role === 'admin' || user?.role === 'representative' || user?.role === 'production_manager';
-    const canViewFloorBoard = user?.role === 'admin' || user?.role === 'production_manager' || user?.role === 'technician' || user?.role === 'representative';
-    const canViewDeliveryFollowUp = user?.role === 'admin' || user?.role === 'representative';
-    const canEditDeliveryDates = user?.role === 'admin' || user?.role === 'representative';
+    const canViewWorkloadCards = user?.role === 'admin' || hasRepresentativeScope(user?.role) || user?.role === 'production_manager';
+    const canViewFloorBoard = user?.role === 'admin' || user?.role === 'production_manager' || user?.role === 'technician' || hasRepresentativeScope(user?.role);
+    const canViewDeliveryFollowUp = user?.role === 'admin' || hasRepresentativeScope(user?.role);
+    const canEditDeliveryDates = user?.role === 'admin' || hasRepresentativeScope(user?.role);
     const goToOrder = (order: Order) => {
         const params = new URLSearchParams({
             q: order.caseId,
@@ -686,6 +686,10 @@ export default function DashboardNew() {
     };
 
     const openDeliveryDateEditor = async (order: Order) => {
+        if (hasRepresentativeScope(user?.role)) {
+            navigate(`/orders?modal=edit&order=${encodeURIComponent(order.id)}`);
+            return;
+        }
         let fullOrder = order;
         if (!order.comments || order.comments.length === 0) {
             try {
@@ -888,7 +892,7 @@ export default function DashboardNew() {
 
                 {/* Quick Actions */}
                 <div className="flex gap-2">
-                    {(user?.role === 'admin' || user?.role === 'representative') && (
+                    {(user?.role === 'admin' || hasRepresentativeScope(user?.role)) && (
                         <>
                             <button
                                 onClick={() => setShowOrderForm(true)}
@@ -1307,7 +1311,7 @@ export default function DashboardNew() {
             )}
 
             {/* Contact Inquiries from Marketing Page */}
-            {contactInquiries.length > 0 && (user?.role === 'admin' || user?.role === 'representative') && (
+            {contactInquiries.length > 0 && (user?.role === 'admin' || hasRepresentativeScope(user?.role)) && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-teal-200 dark:border-teal-800 overflow-hidden shadow-sm">
                     <div className="p-4 border-b border-teal-100 dark:border-teal-800 bg-teal-50 dark:bg-teal-900/20 flex justify-between items-center">
                         <h3 className="font-bold text-teal-900 dark:text-teal-100 flex items-center gap-2 text-sm">
@@ -2065,6 +2069,10 @@ export default function DashboardNew() {
                         designerName={getDesignerName(order.designerId)}
                         onAccept={(o) => {
                             setActiveModal(null); // Close list modal
+                            if (user?.role === 'coordinator') {
+                                navigate(`/orders?modal=accept&order=${encodeURIComponent(o.id)}`);
+                                return;
+                            }
                             setAcceptingOrder(o); // Open accept modal
                         }}
                     />

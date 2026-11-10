@@ -2127,11 +2127,12 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: 
     const dbOrder = orderToDb(order);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { items: _items, comments: _comments, ...orderRow } = dbOrder; // Separate items/comments
+    const createsItemsWithOrder = context.actorRole === 'coordinator';
 
     // 1. Insert Order
     const { data: insertedOrder, error } = await supabase
         .from('orders')
-        .insert(orderRow)
+        .insert(createsItemsWithOrder ? { ...orderRow, items: order.items || [] } : orderRow)
         .select()
         .single();
 
@@ -2142,7 +2143,7 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: 
     const newOrderId = insertedOrder.id;
 
     // 2. Insert Items
-    if (order.items && order.items.length > 0) {
+    if (!createsItemsWithOrder && order.items && order.items.length > 0) {
         const itemRows = order.items.map(i => ({
             order_id: newOrderId,
             product_type: i.serviceType,

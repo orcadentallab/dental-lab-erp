@@ -7,6 +7,7 @@ import OrderForm from '../components/orders/OrderForm';
 import DateRangeField from '../components/ui/DateRangeField';
 
 import { db } from '../services/db';
+import { supabase } from '../lib/supabase';
 import type { Order, Doctor, Supplier, User } from '../services/db';
 import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Filter, User as UserIcon, ChevronDown, LayoutList, Columns } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -20,7 +21,7 @@ import clsx from 'clsx';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
-import { isDesignerUser, canBeOrderRepresentative, usesAuditedOrderEdit } from '../lib/userRoles';
+import { isDesignerUser, canBeOrderRepresentative, hasRepresentativeScope } from '../lib/userRoles';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
@@ -42,7 +43,7 @@ export default function Orders() {
 function OrdersPage() {
     const { state: navigationState } = useLocation();
     const { user } = useAuth();
-    const auditedOrderEdit = usesAuditedOrderEdit(user?.role);
+    const auditedOrderEdit = hasRepresentativeScope(user?.role);
     const { error: toastError } = useToast();
     const [searchParams, setSearchParams] = useSearchParams();
     const initialModalRef = useRef({
@@ -552,6 +553,22 @@ function OrdersPage() {
         if (!acceptingOrder) return;
 
         try {
+            if (user?.role === 'coordinator') {
+                const { error } = await supabase.rpc('accept_coordinator_order', {
+                    p_order_id: acceptingOrder.id,
+                    p_case_id: data.caseId,
+                    p_workflow_type: data.workflowType,
+                    p_supplier_id: data.supplierId || null,
+                    p_designer_id: data.designerId || null,
+                    p_received_at: new Date(data.receivedDate).toISOString(),
+                    p_delivery_date: data.deliveryDate,
+                });
+                if (error) throw new Error(error.message);
+                closeAcceptOrder();
+                await refreshOrders();
+                return;
+            }
+
             // 1. Update Order with new details
             const orderUpdate = {
                 caseId: data.caseId,
@@ -617,7 +634,7 @@ function OrdersPage() {
         }
     };
 
-    const canFilterByDoctorAndSupplier = user?.role === 'admin' || user?.role === 'representative';
+    const canFilterByDoctorAndSupplier = user?.role === 'admin' || auditedOrderEdit;
     const filterSelectClass = (isActive: boolean, withLeftIcon = false) => clsx(
         'w-full py-2 border-none rounded-lg text-xs focus:ring-2 focus:ring-primary-500/50 appearance-none cursor-pointer group-hover:bg-white transition-colors',
         withLeftIcon ? 'pl-8 pr-8' : 'pl-2 pr-6',
@@ -773,7 +790,7 @@ function OrdersPage() {
             <div className="sticky top-2 z-20 mb-4 lg:hidden">
                 <Card className="border-none bg-white/95 p-2 shadow-lg ring-1 ring-surface-950/5 backdrop-blur-md">
                     <div className="flex items-center gap-2">
-                        {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
+                        {(user?.role === 'admin' || auditedOrderEdit) && !isAccountant && (
                             <Button
                                 onClick={openNewOrder}
                                 aria-label={t.orders.newOrder}
@@ -946,7 +963,7 @@ function OrdersPage() {
                             {/* Actions & Search */}
                             <div className="flex flex-1 items-center gap-3 w-full">
                                 {/* New Order Button */}
-                                {(user?.role === 'admin' || user?.role === 'representative') && !isAccountant && (
+                                {(user?.role === 'admin' || auditedOrderEdit) && !isAccountant && (
                                     <Button onClick={openNewOrder} className="gap-2 shadow-sm shadow-primary-500/20 bg-primary-600 hover:bg-primary-700 text-white border-0 ring-0 h-9 px-4 rounded-xl whitespace-nowrap">
                                         <Plus size={16} />
                                         <span className="font-bold text-sm hidden xl:inline">{t.orders.newOrder}</span>

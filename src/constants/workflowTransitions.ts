@@ -1,3 +1,4 @@
+import { hasRepresentativeScope } from '../lib/userRoles';
 import type { ProductionStatus, IssueState } from './workflow';
 import type { OrderIntakeState } from './orderDerivedStatusV2';
 
@@ -164,7 +165,7 @@ export function getIssueActions(
         issueState === 'redo'
     ) return [];
 
-    if (userRole !== 'admin' && userRole !== 'representative') return [];
+    if (userRole !== 'admin' && !hasRepresentativeScope(userRole)) return [];
 
     const actions: WorkflowAction[] = [];
     const wasDelivered = Boolean(
