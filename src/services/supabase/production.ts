@@ -29,6 +29,22 @@ export type StageRunStatus =
  */
 export type DrivenBy = 'my_tasks' | 'designer_dashboard' | 'external_wo' | 'order_status';
 
+export const MIXED_TRY_IN_ROUTE_ID = 'ba100000-0000-4000-8000-000000000001';
+export const CATALOG_PRINT_ROUTE_ID = 'ba500000-0000-4000-8000-000000000001';
+export const CATALOG_EXTERNAL_ROUTE_ID = 'ba500000-0000-4000-8000-000000000002';
+
+export function isCatalogProductionRoute(routeId: string | null | undefined) {
+    return routeId === CATALOG_PRINT_ROUTE_ID || routeId === CATALOG_EXTERNAL_ROUTE_ID;
+}
+
+export function isExplicitProductionRoute(routeId: string | null | undefined) {
+    return routeId === MIXED_TRY_IN_ROUTE_ID || isCatalogProductionRoute(routeId);
+}
+
+export function usesPrivateProductionQuote(routeId: string | null | undefined) {
+    return routeId === MIXED_TRY_IN_ROUTE_ID || routeId === CATALOG_EXTERNAL_ROUTE_ID;
+}
+
 export interface ProductionStage {
     id: string;
     code: string;
@@ -125,8 +141,17 @@ export interface RouteStep {
 
 /** A case sitting in a stage queue, with everything the card needs. */
 export interface StageRunCard {
+    isSupplierReplacement?: boolean;
+    previousSupplierId?: string;
+    canExecute?: boolean;
     id: string;
     jobId: string;
+    routeId?: string;
+    doctorApprovedAt?: string | null;
+    doctorWait?: { reason: string; startedAt: string };
+    failedPhysicalQc?: string;
+    reworkReason?: string;
+    reprintsFailedUnits?: boolean;
     orderId: string;
     caseId: string;
     doctorName: string;
@@ -199,11 +224,9 @@ export async function getStages(): Promise<ProductionStage[]> {
     }));
 }
 
-export async function getRoutes(): Promise<ProductionRoute[]> {
-    const { data, error } = await supabase
-        .from('production_routes')
-        .select('*')
-        .eq('is_active', true)
+export async function getRoutes(includeInactive = false): Promise<ProductionRoute[]> {
+    const query = supabase.from('production_routes').select('*');
+    const { data, error } = await (includeInactive ? query : query.eq('is_active', true))
         .order('is_fallback', { ascending: true })
         .order('name_ar', { ascending: true });
 
@@ -385,6 +408,9 @@ export async function getEffectiveRouteStages(
 export interface ServiceRouteLink {
     id: string;
     name: string;
+    catalogRouteKind: 'production' | 'add_on' | 'logistics' | null;
+    catalogRouteId: string | null;
+    catalogTryInRouteId: string | null;
     routeId: string | null;
     familyId: string | null;
     familyName: string | null;
@@ -399,6 +425,9 @@ export async function getServicesForRouting(): Promise<ServiceRouteLink[]> {
             id,
             name,
             route_id,
+            catalog_route_kind,
+            catalog_route_id,
+            catalog_try_in_route_id,
             family_id,
             service_families:family_id (
                 id,
@@ -406,6 +435,7 @@ export async function getServicesForRouting(): Promise<ServiceRouteLink[]> {
                 default_route_id
             )
         `)
+        .eq('is_active', true)
         .order('name', { ascending: true });
 
     if (error) throw ErrorHandler.handle(error, 'getServicesForRouting');
@@ -414,6 +444,9 @@ export async function getServicesForRouting(): Promise<ServiceRouteLink[]> {
         id: string;
         name: string;
         route_id: string | null;
+        catalog_route_kind: ServiceRouteLink['catalogRouteKind'];
+        catalog_route_id: string | null;
+        catalog_try_in_route_id: string | null;
         family_id: string | null;
         service_families: {
             id: string;
@@ -427,18 +460,34 @@ export async function getServicesForRouting(): Promise<ServiceRouteLink[]> {
         id: r.id,
         name: r.name,
         routeId: r.route_id ?? null,
+        catalogRouteKind: r.catalog_route_kind ?? null,
+        catalogRouteId: r.catalog_route_id ?? null,
+        catalogTryInRouteId: r.catalog_try_in_route_id ?? null,
         familyId: r.family_id ?? null,
         familyName: r.service_families ? r.service_families.name_ar : null,
         familyRouteId: r.service_families ? (r.service_families.default_route_id ?? null) : null,
     }));
 }
 
-export async function setServiceRoute(serviceId: string, routeId: string | null): Promise<void> {
+export async function setServiceRoute(serviceId: string, routeId: string, linked: boolean): Promise<void> {
+    const target = linked ? routeId : null;
+    const update = isExplicitProductionRoute(routeId)
+        ? { catalog_route_id: target, catalog_route_kind: 'production' as const,
+            ...(linked && routeId === MIXED_TRY_IN_ROUTE_ID ? {} : { catalog_try_in_route_id: null }) }
+        : { route_id: target };
     const { error } = await supabase
         .from('services')
-        .update({ route_id: routeId })
+        .update(update)
         .eq('id', serviceId);
     if (error) throw ErrorHandler.handle(error, 'setServiceRoute');
+}
+
+export async function setServiceTryInAvailability(serviceId: string, enabled: boolean): Promise<void> {
+    const { error } = await supabase.from('services')
+        .update({ catalog_try_in_route_id: enabled ? MIXED_TRY_IN_ROUTE_ID : null })
+        .eq('id', serviceId)
+        .eq('catalog_route_id', MIXED_TRY_IN_ROUTE_ID);
+    if (error) throw ErrorHandler.handle(error, 'setServiceTryInAvailability');
 }
 
 export async function setFamilyRoute(familyId: string, routeId: string | null): Promise<void> {
@@ -462,16 +511,17 @@ export async function setFamilyRoute(familyId: string, routeId: string | null): 
 const RUN_CARD_SELECT = `
     id, job_id, stage_id, seq, execution, advance_mode, status, blocked_reason,
     queued_at, started_at, units_in, assignee_id, supplier_id, rework_of,
-    variant_label, name_override, allowed_roles, driven_by,
+    variant_label, name_override, allowed_roles, driven_by, doctor_approved_at, failure_cause_code, units_passed, qc_followup_run_id, notes, on_fail_goto_stage_id, is_supplier_replacement,
     production_stages:stage_id ( code, name_ar ),
     users:assignee_id ( name ),
     suppliers:supplier_id ( name ),
     production_jobs (
-        order_id, priority, due_at,
+        order_id, route_id, priority, due_at, status,
         orders (
             case_id, patient_name, shade, instructions, design_url, design_qc_revision_id, stl_url,
             images_url, delivery_date, status, production_status, is_deleted, supplier_id,
             doctors ( name, lab_instructions ),
+            production_doctor_waits ( reason, started_at, ended_at ),
             order_items ( product_type, teeth_numbers )
         )
     )
@@ -481,11 +531,20 @@ const RUN_CARD_SELECT = `
 function toCard(r: any): StageRunCard {
     const job = r.production_jobs || {};
     const order = job.orders || {};
+    const wait = order.production_doctor_waits?.find((entry: { ended_at: string | null }) => !entry.ended_at);
     const items = (order.order_items || []) as { product_type: string; teeth_numbers: unknown }[];
 
     return {
         id: r.id,
         jobId: r.job_id,
+        routeId: job.route_id,
+        doctorApprovedAt: r.doctor_approved_at ?? null,
+        doctorWait: wait ? { reason: wait.reason, startedAt: wait.started_at } : undefined,
+        failedPhysicalQc: isExplicitProductionRoute(job.route_id) && job.status === 'blocked'
+            && r.production_stages?.code === 'qc' && r.status === 'done' && !r.units_passed && !r.qc_followup_run_id
+            ? r.failure_cause_code ?? undefined : undefined,
+        reworkReason: job.route_id === MIXED_TRY_IN_ROUTE_ID && r.rework_of ? r.notes ?? undefined : undefined,
+        reprintsFailedUnits: r.production_stages?.code === 'printing' && r.execution === 'internal' && !r.on_fail_goto_stage_id,
         orderId: job.order_id,
         caseId: order.case_id ?? '—',
         doctorName: order.doctors?.name ?? '—',
@@ -519,7 +578,9 @@ function toCard(r: any): StageRunCard {
         unitsIn: r.units_in ?? 0,
         assigneeId: r.assignee_id ?? null,
         assigneeName: r.users?.name ?? null,
-        supplierId: r.supplier_id || order.supplier_id || null,
+        supplierId: r.supplier_id || (!r.is_supplier_replacement ? order.supplier_id : null) || null,
+        isSupplierReplacement: r.is_supplier_replacement === true,
+        previousSupplierId: r.is_supplier_replacement ? order.supplier_id : undefined,
         supplierName: r.suppliers?.name ?? null,
         isRework: Boolean(r.rework_of),
         teeth: items.flatMap((i) =>
@@ -530,11 +591,14 @@ function toCard(r: any): StageRunCard {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /** Everything currently on the floor, for the board. */
-export async function getOpenStageRuns(): Promise<StageRunCard[]> {
+export async function getOpenStageRuns(includeFailedQc = false): Promise<StageRunCard[]> {
     const { data, error } = await supabase
         .from('production_stage_runs')
         .select(RUN_CARD_SELECT)
-        .in('status', ['ready', 'in_progress', 'waiting_external'])
+        .or(includeFailedQc
+            ? 'status.in.(ready,in_progress,waiting_external),and(status.eq.done,units_passed.eq.0,failure_cause_code.not.is.null)'
+            : 'status.in.(ready,in_progress,waiting_external)')
+        .is('production_jobs.orders.production_doctor_waits.ended_at', null)
         .order('seq', { ascending: true })
         .order('queued_at', { ascending: true });
 
@@ -550,7 +614,8 @@ export async function getOpenStageRuns(): Promise<StageRunCard[]> {
             }
             return true;
         })
-        .map(toCard);
+        .map(toCard)
+        .filter(run => run.status !== 'done' || run.failedPhysicalQc);
 }
 
 /**
@@ -577,9 +642,9 @@ export async function getOpenStageRuns(): Promise<StageRunCard[]> {
  * counts eight while the screen shows three is how people stop trusting the
  * menu.
  */
-export async function getMyTasks(userId: string): Promise<StageRunCard[]> {
+export async function getMyTasks(userId: string, includeFailedQc = false, openRuns?: StageRunCard[]): Promise<StageRunCard[]> {
     const [runs, { data: me }] = await Promise.all([
-        getOpenStageRuns(),
+        openRuns ?? getOpenStageRuns(includeFailedQc),
         supabase.from('users').select('role').eq('id', userId).maybeSingle(),
     ]);
 
@@ -587,7 +652,8 @@ export async function getMyTasks(userId: string): Promise<StageRunCard[]> {
 
     // RULE 4: In qc_gate stages, prevent self-inspection if other qualified staff exist.
     const disallowedRunIds = new Set<string>();
-    const qcReadyRuns = runs.filter((r) => r.advanceMode === 'qc_gate' && r.status === 'ready');
+    const qcReadyRuns = runs.filter(r => r.advanceMode === 'qc_gate' && r.status === 'ready' && !isExplicitProductionRoute(r.routeId)
+        && (myRole !== 'coordinator' || r.allowedRoles.includes(myRole)));
     if (qcReadyRuns.length > 0) {
         const { count: otherTechCount } = await supabase
             .from('users')
@@ -619,8 +685,13 @@ export async function getMyTasks(userId: string): Promise<StageRunCard[]> {
     return runs
         .filter((r) => r.execution === 'internal')
         .filter((r) => r.drivenBy === 'my_tasks')
-        .filter((r) => r.allowedRoles.length === 0 || r.allowedRoles.includes(myRole))
-        .filter((r) => !disallowedRunIds.has(r.id))
+        .filter((r) => !r.doctorWait)
+        .filter((r) => includeFailedQc || myRole === 'coordinator' || !r.failedPhysicalQc)
+        .filter((r) => myRole === 'coordinator' || r.allowedRoles.length === 0 || r.allowedRoles.includes(myRole))
+        .filter(r => myRole === 'coordinator' || !disallowedRunIds.has(r.id))
+        .map(r => myRole === 'coordinator'
+            ? { ...r, canExecute: r.allowedRoles.includes(myRole) && !disallowedRunIds.has(r.id) }
+            : r)
         .sort((a, b) => {
             const mine = (r: StageRunCard) =>
                 r.status === 'in_progress' && r.assigneeId === userId ? 0 : 1;
@@ -634,6 +705,10 @@ export async function getMyTasks(userId: string): Promise<StageRunCard[]> {
 
             return (a.queuedAt ?? '') < (b.queuedAt ?? '') ? -1 : 1;
         });
+}
+
+export function isExternalWorkReady(run: StageRunCard): boolean {
+    return !run.doctorWait && run.execution === 'external' && run.status === 'ready' && run.drivenBy !== 'order_status';
 }
 
 // ─── The two taps ────────────────────────────────────────────────────────
@@ -701,9 +776,12 @@ export async function reassignOrderRoute(orderId: string, newRouteId: string, no
 // ─── External work orders ────────────────────────────────────────────────
 
 export interface ExternalWorkOrderRow {
+    canEditMixedPrice?: boolean;
     id: string;
     stageRunId: string;
     orderId?: string;
+    routeId?: string;
+    repairReason?: string;
     supplierId: string;
     supplierName: string;
     caseId: string;
@@ -718,21 +796,34 @@ export interface ExternalWorkOrderRow {
     status: string;
 }
 
-export async function getExternalWorkOrders(onlyOpen = true): Promise<ExternalWorkOrderRow[]> {
+export async function getSentExternalCaseIds(): Promise<string[]> {
+    const { data, error } = await supabase.from('external_work_orders')
+        .select('stage_run_id, production_stage_runs(production_jobs(order_id))')
+        .eq('status', 'sent');
+    if (error) throw ErrorHandler.handle(error, 'getSentExternalCaseIds');
+    const rows = (data ?? []) as unknown as {
+        stage_run_id: string;
+        production_stage_runs: { production_jobs: { order_id: string } | null } | null;
+    }[];
+    return rows.map(row => row.production_stage_runs?.production_jobs?.order_id ?? row.stage_run_id);
+}
+
+export async function getExternalWorkOrders(onlyOpen = true, supplierId?: string): Promise<ExternalWorkOrderRow[]> {
     let query = supabase
         .from('external_work_orders')
         .select(`
             id, stage_run_id, supplier_id, units, sent_at, expected_return_at,
             returned_at, agreed_cost, invoice_ref, status,
             suppliers ( name ),
-            production_stage_runs (
+            production_stage_runs ( name_override, rework_of, notes, is_supplier_replacement,
                 production_stages:stage_id ( name_ar ),
-                production_jobs ( order_id, orders ( id, case_id, doctors ( name ) ) )
+                production_jobs ( order_id, route_id, active_supplier_quote_run_id, orders ( id, case_id, doctors ( name ) ) )
             )
         `)
         .order('sent_at', { ascending: false });
 
     if (onlyOpen) query = query.eq('status', 'sent');
+    if (supplierId) query = query.eq('supplier_id', supplierId);
 
     const { data, error } = await query;
     if (error) throw ErrorHandler.handle(error, 'getExternalWorkOrders');
@@ -741,12 +832,19 @@ export async function getExternalWorkOrders(onlyOpen = true): Promise<ExternalWo
     return ((data || []) as any[]).map((r) => ({
         id: r.id,
         stageRunId: r.stage_run_id,
+        routeId: r.production_stage_runs?.production_jobs?.route_id,
+        repairReason: r.production_stage_runs?.production_jobs?.route_id === MIXED_TRY_IN_ROUTE_ID &&
+            r.production_stage_runs?.rework_of ? r.production_stage_runs?.notes ?? undefined : undefined,
+        canEditMixedPrice: usesPrivateProductionQuote(r.production_stage_runs?.production_jobs?.route_id) &&
+            (r.production_stage_runs.production_jobs.active_supplier_quote_run_id
+                ? r.production_stage_runs.production_jobs.active_supplier_quote_run_id === r.stage_run_id
+                : !r.production_stage_runs.rework_of),
         orderId: r.production_stage_runs?.production_jobs?.order_id || r.production_stage_runs?.production_jobs?.orders?.id || undefined,
         supplierId: r.supplier_id,
         supplierName: r.suppliers?.name ?? '—',
         caseId: r.production_stage_runs?.production_jobs?.orders?.case_id ?? '—',
         doctorName: r.production_stage_runs?.production_jobs?.orders?.doctors?.name ?? '—',
-        stageNameAr: r.production_stage_runs?.production_stages?.name_ar ?? '—',
+        stageNameAr: r.production_stage_runs?.name_override ?? r.production_stage_runs?.production_stages?.name_ar ?? '—',
         units: r.units,
         sentAt: r.sent_at,
         expectedReturnAt: r.expected_return_at,
@@ -914,14 +1012,15 @@ export async function getActiveStagesForOrders(orderIds: string[]): Promise<Reco
     const { data, error } = await supabase
         .from('production_stage_runs')
         .select(`
-            id, status, queued_at, started_at, name_override,
+            id, status, queued_at, started_at, completed_at, name_override, failure_cause_code, units_passed, qc_followup_run_id,
             production_stages:stage_id ( id, code, name_ar ),
             production_jobs!inner (
-                order_id,
-                orders ( production_status, is_deleted )
+                order_id, route_id, status,
+                orders ( production_status, is_deleted, production_doctor_waits ( started_at, ended_at ) )
             )
         `)
-        .in('status', ['ready', 'in_progress', 'waiting_external'])
+        .or('status.in.(ready,in_progress,waiting_external),and(status.eq.done,units_passed.eq.0,failure_cause_code.not.is.null)')
+        .is('production_jobs.orders.production_doctor_waits.ended_at', null)
         .in('production_jobs.order_id', orderIds);
 
     if (error) {
@@ -940,19 +1039,106 @@ export async function getActiveStagesForOrders(orderIds: string[]): Promise<Reco
             continue;
         }
         const stage = row.production_stages;
-        const stageName = row.name_override || stage?.name_ar || '';
-        const since = row.started_at || row.queued_at || null;
+        const failed = row.status === 'done' && !row.qc_followup_run_id && row.production_jobs?.status === 'blocked' &&
+            isExplicitProductionRoute(row.production_jobs?.route_id) && stage?.code === 'qc';
+        if (row.status === 'done' && !failed) continue;
+        const wait = order?.production_doctor_waits?.[0];
+        const stageName = wait ? 'On Hold · انتظار الطبيب' : failed ? 'متوقفة بعد رسوب الفحص' : row.name_override || stage?.name_ar || '';
+        const since = wait?.started_at || (failed ? row.completed_at : row.started_at || row.queued_at) || null;
         if (!result[orderId] || row.status === 'in_progress') {
             result[orderId] = {
                 orderId,
                 stageId: stage?.id || '',
-                stageCode: stage?.code || '',
+                stageCode: wait ? 'doctor_input_wait' : stage?.code || '',
                 stageName,
-                status: row.status,
+                status: failed ? 'failed' : row.status,
                 since,
             };
         }
     }
     /* eslint-enable @typescript-eslint/no-explicit-any */
     return result;
+}
+
+export type MixedTryInDoctorAction = 'approve' | 'request_design_change' | 'reprint';
+
+export async function recordMixedTryInDoctorAction(runId: string, action: MixedTryInDoctorAction, notes?: string) {
+    const { error } = await supabase.rpc('mixed_try_in_doctor_action', { p_run: runId, p_action: action, p_notes: notes ?? null });
+    if (error) throw ErrorHandler.handle(error, 'recordMixedTryInDoctorAction');
+}
+
+export async function setProductionDoctorWait(orderId: string, waiting: boolean, reason?: string) {
+    const { error } = await supabase.rpc('set_production_doctor_wait', { p_order: orderId, p_wait: waiting, p_reason: reason ?? null });
+    if (error) throw ErrorHandler.handle(error, 'setProductionDoctorWait');
+}
+
+export async function getOpenDoctorWaits() {
+    const { data, error } = await supabase.from('production_doctor_waits')
+        .select('order_id, reason, started_at, orders!inner(case_id, patient_name, doctors(name))')
+        .is('ended_at', null)
+        .not('orders.is_deleted', 'is', true)
+        .not('orders.is_archived', 'is', true)
+        .neq('orders.production_status', 'final_delivered')
+        .order('started_at')
+        .overrideTypes<{
+            order_id: string;
+            reason: string;
+            started_at: string;
+            orders: { case_id: string; patient_name: string; doctors: { name: string } | null };
+        }[], { merge: false }>();
+    if (error) throw ErrorHandler.handle(error, 'getOpenDoctorWaits');
+    return data ?? [];
+}
+
+export async function getPhysicalQcFailures(startDate?: string, endDate?: string) {
+    let query = supabase.from('production_stage_runs')
+        .select('id, name_override, units_failed, failure_cause_code, completed_at, qc_followup_run_id, production_stages!stage_id!inner(code), production_jobs!inner(route_id, orders!inner(id, case_id, patient_name, designer_id, supplier_id))')
+        .eq('production_stages.code', 'qc')
+        .eq('production_jobs.route_id', MIXED_TRY_IN_ROUTE_ID)
+        .not('production_jobs.orders.is_deleted', 'is', true)
+        .eq('status', 'done').gt('units_failed', 0).not('completed_at', 'is', null)
+        .order('completed_at', { ascending: false });
+    if (startDate) query = query.gte('completed_at', startDate);
+    if (endDate) query = query.lte('completed_at', endDate);
+    const { data, error } = await query.overrideTypes<{
+        id: string;
+        name_override: string | null;
+        units_failed: number;
+        failure_cause_code: string | null;
+        completed_at: string;
+        qc_followup_run_id: string | null;
+        production_jobs: { orders: { id: string; case_id: string; patient_name: string; designer_id: string | null; supplier_id: string | null } };
+    }[], { merge: false }>();
+    if (error) throw ErrorHandler.handle(error, 'getPhysicalQcFailures');
+    return data ?? [];
+}
+
+export async function getProductionCaseTimes(orderId: string) {
+    const { data, error } = await supabase.rpc('production_case_times', { p_order: orderId }).maybeSingle();
+    if (error) throw ErrorHandler.handle(error, 'getProductionCaseTimes');
+    return data as { design_minutes: number; production_minutes: number; doctor_minutes: number } | null;
+}
+
+export type MixedPhysicalQcAction = 'retry' | 'bypass' | 'return_design' | 'return_lab' | 'replace_lab';
+
+export async function recordMixedPhysicalQcAction(runId: string, action: MixedPhysicalQcAction, reason: string) {
+    const { error } = await supabase.rpc('mixed_physical_qc_action', { p_run: runId, p_action: action, p_reason: reason });
+    if (error) throw ErrorHandler.handle(error, 'recordMixedPhysicalQcAction');
+}
+
+export async function getOrderProductionQuote(orderId: string) {
+    const { data, error } = await supabase.rpc('get_order_production_quote', { p_order: orderId }).maybeSingle();
+    if (error) throw ErrorHandler.handle(error, 'getOrderProductionQuote');
+    return data as { estimated: number | null; agreed: number | null } | null;
+}
+
+export async function getMixedTryInPrice(runId: string, supplierId?: string) {
+    const { data, error } = await supabase.rpc('get_mixed_try_in_price', { p_run: runId, p_supplier: supplierId ?? null });
+    if (error) throw ErrorHandler.handle(error, 'getMixedTryInPrice');
+    return data as number | null;
+}
+
+export async function updateMixedTryInPrice(runId: string, amount: number, reason: string) {
+    const { error } = await supabase.rpc('update_mixed_try_in_price', { p_run: runId, p_amount: amount, p_reason: reason });
+    if (error) throw ErrorHandler.handle(error, 'updateMixedTryInPrice');
 }

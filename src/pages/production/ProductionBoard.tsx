@@ -9,13 +9,17 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
+import { refreshNavBadges } from '../../hooks/useNavBadges';
 import { db } from '../../services/db';
 import {
-    getOpenStageRuns, getStages,
-    type StageRunCard, type ProductionStage,
+    getOpenStageRuns, getStages, MIXED_TRY_IN_ROUTE_ID, recordMixedTryInDoctorAction, setProductionDoctorWait, getProductionCaseTimes, getOpenDoctorWaits,
+    type StageRunCard, type ProductionStage, type MixedTryInDoctorAction,
 } from '../../services/supabase/production';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import {openDesignExecution} from '../../services/supabase/designQc';
+import { Link } from 'react-router-dom';
+import { hasCapability } from '../../lib/userRoles';
 import {
     RefreshCw, AlertTriangle, Building2,
     LayoutGrid, Columns, ChevronLeft, ChevronRight, User,
@@ -72,11 +76,19 @@ function getDeliveryUrgency(deliveryDate: string | null): {
 type FilterChip = 'all' | 'urgent' | 'stale' | 'external' | 'blocked' | 'rework';
 
 export default function ProductionBoard() {
+    const { user } = useAuth();
+    const [doctorActionDraft, setDoctorActionDraft] = useState<{ runId: string; action: MixedTryInDoctorAction } | null>(null);
+    const [doctorActionNotes, setDoctorActionNotes] = useState('');
+    const [doctorActionBusy, setDoctorActionBusy] = useState(false);
     const { error: toastError } = useToast();
     const [runs, setRuns] = useState<StageRunCard[]>([]);
     const [stages, setStages] = useState<ProductionStage[]>([]);
     const [suppliers, setSuppliers] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
+    const [queueTab, setQueueTab] = useState<'floor' | 'doctor'>(() => {
+        const tab = new URLSearchParams(window.location.search).get('tab');
+        return tab === 'doctor' ? 'doctor' : 'floor';
+    });
 
     // 1. View Mode (Grid vs Scroll)
     const [viewMode, setViewMode] = useState<'grid' | 'scroll'>(() => {
@@ -90,13 +102,22 @@ export default function ProductionBoard() {
     });
 
     // 3. Search & Filter State
-    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(window.location.search).get('case') ?? '');
     const [filterChip, setFilterChip] = useState<FilterChip>('all');
 
     // 4. Selected Card for Drawer Details
     const [selectedRun, setSelectedRun] = useState<StageRunCard | null>(null);
+    const [doctorWaits, setDoctorWaits] = useState<Awaited<ReturnType<typeof getOpenDoctorWaits>>>([]);
+    const [selectedWait, setSelectedWait] = useState<typeof doctorWaits[number] | null>(null);
+    const [resumingWait, setResumingWait] = useState(false);
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const holdColumnRef = useRef<HTMLElement>(null);
+    useEffect(() => {
+        if (!loading && new URLSearchParams(window.location.search).get('tab') === 'input') {
+            holdColumnRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+    }, [loading]);
 
     const handleViewModeChange = (mode: 'grid' | 'scroll') => {
         setViewMode(mode);
@@ -127,13 +148,15 @@ export default function ProductionBoard() {
 
     const load = useCallback(async () => {
         try {
-            const [r, s, sups] = await Promise.all([
-                getOpenStageRuns(),
+            const [r, s, sups, waits] = await Promise.all([
+                getOpenStageRuns(true),
                 getStages(),
                 db.getSuppliers(),
+                getOpenDoctorWaits(),
             ]);
             setRuns(r);
             setStages(s);
+            setDoctorWaits(waits);
             const supMap: Record<string, string> = {};
             (sups || []).forEach((sup) => {
                 supMap[sup.id] = sup.name;
@@ -171,7 +194,7 @@ export default function ProductionBoard() {
             urgent: runs.filter((r) => r.priority === 'Urgent').length,
             stale: runs.filter((r) => (ageHours(r.queuedAt) ?? 0) > STALE_HOURS).length,
             external: runs.filter((r) => r.execution === 'external').length,
-            blocked: runs.filter((r) => Boolean(r.blockedReason)).length,
+            blocked: runs.filter((r) => Boolean(r.blockedReason || r.failedPhysicalQc)).length,
             rework: runs.filter((r) => r.isRework).length,
         };
     }, [runs]);
@@ -192,11 +215,12 @@ export default function ProductionBoard() {
                 }
             }
 
+            if (r.doctorWait || r.stageCode === 'doctor_review') return false;
             // Filter chip
             if (filterChip === 'urgent' && r.priority !== 'Urgent') return false;
             if (filterChip === 'stale' && (ageHours(r.queuedAt) ?? 0) <= STALE_HOURS) return false;
             if (filterChip === 'external' && r.execution !== 'external') return false;
-            if (filterChip === 'blocked' && !r.blockedReason) return false;
+            if (filterChip === 'blocked' && !r.blockedReason && !r.failedPhysicalQc) return false;
             if (filterChip === 'rework' && !r.isRework) return false;
 
             return true;
@@ -216,16 +240,119 @@ export default function ProductionBoard() {
         return allColumns.filter((s) => activeStageIds.has(s.id));
     }, [allColumns, hideEmpty, filteredRuns]);
 
+    const doctorQueue = runs.filter(run => run.routeId === MIXED_TRY_IN_ROUTE_ID && run.stageCode === 'doctor_review' && run.status === 'ready' && !run.doctorWait);
+    const waitingRuns = new Map(runs.filter(run => run.doctorWait).map(run => [run.orderId, run]));
+    const holdSearch = searchQuery.trim().toLowerCase();
+    const matchingHolds = doctorWaits.filter(wait => [wait.orders.case_id, wait.orders.patient_name, wait.orders.doctors?.name, wait.reason]
+        .some(value => value?.toLowerCase().includes(holdSearch)));
+    const floorCount = new Set([...runs.filter(run => run.stageCode !== 'doctor_review').map(run => run.orderId),
+        ...doctorWaits.map(wait => wait.order_id)]).size;
+    const canRecordDoctor = user?.role === 'admin' || user?.role === 'coordinator';
+    const canHold = canRecordDoctor || user?.role === 'production_manager';
+    async function resumeWait(orderId: string) {
+        setResumingWait(true);
+        try {
+            await setProductionDoctorWait(orderId, false);
+            setSelectedWait(null);
+            refreshNavBadges();
+            await load();
+        } catch (error) {
+            toastError(error instanceof Error ? error.message : 'تعذّر استئناف الحالة');
+        } finally {
+            setResumingWait(false);
+        }
+    }
+    const holdColumn = (!hideEmpty || matchingHolds.length > 0) && (
+        <section ref={holdColumnRef} aria-label="On Hold · انتظار الطبيب" className="rounded-2xl border border-amber-200 bg-amber-50 p-2">
+            <header className="mb-2 flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2">
+                <div>
+                    <h2 className="text-sm font-bold text-amber-950">On Hold · انتظار الطبيب</h2>
+                    <p className="text-[11px] text-amber-800">منتظرة مدخلات من الطبيب</p>
+                </div>
+                <span className="rounded-lg bg-amber-100 px-2 py-1 text-xs font-bold text-amber-950">{matchingHolds.length}</span>
+            </header>
+            <div className="max-h-[380px] space-y-2 overflow-y-auto">
+                {matchingHolds.length === 0 && <p className="py-6 text-center text-xs text-amber-900">مفيش حالات مطابقة.</p>}
+                {matchingHolds.map(wait => (
+                    <button key={wait.order_id} type="button" onClick={() => {
+                        const run = waitingRuns.get(wait.order_id);
+                        if (run) setSelectedRun(run);
+                        else setSelectedWait(wait);
+                    }} className="block w-full rounded-xl border border-amber-200 bg-white p-3 text-right text-xs hover:border-amber-500">
+                        <span className="block font-bold text-slate-900">{wait.orders.case_id} · {wait.orders.patient_name}</span>
+                        <span className="mt-1 block text-slate-600">د. {wait.orders.doctors?.name}</span>
+                        <span className="mt-1 block break-words text-amber-900">{wait.reason} · {ageLabel(wait.started_at)}</span>
+                    </button>
+                ))}
+            </div>
+        </section>
+    );
+    const doctorChoices = [
+        { action: 'approve', label: 'تسجيل موافقة الطبيب' },
+        { action: 'request_design_change', label: 'طلب تعديل التصميم' },
+        { action: 'reprint', label: 'إعادة طباعة البروفة' },
+    ] as const;
+    async function submitDoctorAction(run: StageRunCard, action: MixedTryInDoctorAction) {
+        setDoctorActionBusy(true);
+        try {
+            await recordMixedTryInDoctorAction(run.id, action, doctorActionNotes);
+            setDoctorActionDraft(null);
+            setDoctorActionNotes('');
+            refreshNavBadges();
+            await load();
+        } catch (error) {
+            toastError(error instanceof Error ? error.message : 'تعذر تسجيل إجراء البروفة');
+        } finally {
+            setDoctorActionBusy(false);
+        }
+    }
+
     if (loading) return <div className="p-8 text-center text-slate-500">جارِ التحميل…</div>;
 
     return (
         <div className="space-y-4" dir="rtl">
+            <nav aria-label="قوائم الإنتاج" className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+                <FilterChipButton active={queueTab === 'floor'} onClick={() => setQueueTab('floor')} label="أرض الإنتاج" count={floorCount} />
+                <FilterChipButton active={queueTab === 'doctor'} onClick={() => setQueueTab('doctor')} label="عند الطبيب · بروفة" count={doctorQueue.length} />
+            </nav>
+            {queueTab === 'doctor' && (
+                <section aria-label="رد الطبيب على البروفة" className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <h2 className="font-bold text-amber-950">رد الطبيب على البروفة</h2>
+                    {doctorQueue.length === 0 && <p className="text-sm text-slate-600">مفيش بروفات عند الطبيب دلوقتي.</p>}
+                    {doctorQueue.filter(run => !searchQuery || run.caseId.toLowerCase().includes(searchQuery.toLowerCase())).map(run => (
+                        <article key={run.id} className="space-y-2 rounded-xl bg-white p-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="font-semibold">{run.caseId} · د. {run.doctorName} · عند الطبيب من {ageLabel(run.queuedAt)}</p>
+                                <button type="button" onClick={() => setSelectedRun(run)} className="min-h-11 rounded-lg border px-3 font-semibold">تفاصيل الحالة</button>
+                            </div>
+                            {canRecordDoctor && (run.doctorApprovedAt ? (
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <span className="text-emerald-800">موافقة مسجّلة من قبل</span>
+                                    <button type="button" disabled={doctorActionBusy} onClick={() => void submitDoctorAction(run, 'approve')} className="min-h-11 rounded-lg bg-cyan-700 px-3 text-white">استكمال الموافقة السابقة</button>
+                                </div>
+                            ) : doctorActionDraft?.runId === run.id ? (
+                                <div className="space-y-2">
+                                    <label className="block">{doctorActionDraft.action === 'approve' ? 'ملاحظات الطبيب (اختياري)' : 'تفاصيل طلب الطبيب'}<textarea maxLength={1000} value={doctorActionNotes} onChange={event => setDoctorActionNotes(event.target.value)} className="block w-full rounded-lg border p-2" /></label>
+                                    <button type="button" disabled={doctorActionBusy || doctorActionDraft.action !== 'approve' && !doctorActionNotes.trim()} onClick={() => void submitDoctorAction(run, doctorActionDraft.action)} className="min-h-11 rounded-lg bg-cyan-700 px-3 text-white disabled:opacity-50">{doctorActionDraft.action === 'approve' ? 'حفظ الموافقة وبدء التنفيذ النهائي' : 'تسجيل الطلب'}</button>
+                                    <button type="button" disabled={doctorActionBusy} onClick={() => setDoctorActionDraft(null)} className="ms-2 min-h-11 rounded-lg border px-3">إلغاء</button>
+                                </div>
+                            ) : <div className="flex flex-wrap gap-2">
+                                {doctorChoices.map(({ action, label }) => <button key={action} type="button" onClick={() => {
+                                    setDoctorActionDraft({ runId: run.id, action });
+                                    setDoctorActionNotes('');
+                                }} className="min-h-11 rounded-lg border border-amber-300 px-3">{label}</button>)}
+                            </div>)}
+                        </article>
+                    ))}
+                </section>
+            )}
+            {queueTab === 'floor' && <>
             {/* Header: Title, Floor KPIs, and Controls */}
             <div className="flex items-center justify-between flex-wrap gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">لوحة الإنتاج</h1>
                     <div className="flex items-center gap-2 flex-wrap text-sm text-slate-500 mt-1">
-                        <span>{runs.length} حالة على الأرض</span>
+                        <span>{floorCount} حالة على اللوحة</span>
                         {counts.stale > 0 && (
                             <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
                                 ⏳ {counts.stale} قاعدة أكتر من يوم
@@ -403,7 +530,7 @@ export default function ProductionBoard() {
             )}
 
             {/* If filters yielded 0 results while runs exist */}
-            {runs.length > 0 && filteredRuns.length === 0 && (
+            {runs.length > 0 && filteredRuns.length === 0 && matchingHolds.length === 0 && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-2">
                     <p className="text-base text-slate-700 font-bold">لا توجد حالات تطابق البحث أو الفلتر المحدد</p>
                     <button
@@ -428,6 +555,7 @@ export default function ProductionBoard() {
                             maxCardHeight="max-h-[380px]"
                         />
                     ))}
+                    {holdColumn}
                 </div>
             ) : (
                 <div
@@ -445,14 +573,34 @@ export default function ProductionBoard() {
                             />
                         </div>
                     ))}
+                    {holdColumn && <div className="w-[270px] shrink-0">{holdColumn}</div>}
                 </div>
             )}
 
+            </>}
             {/* Case Details Slide-over Drawer */}
+            {selectedWait && (
+                <div role="dialog" aria-modal="true" aria-label="تفاصيل الحالة المتوقفة" className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
+                    <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-5">
+                        <h2 className="font-bold">{selectedWait.orders.case_id} · {selectedWait.orders.patient_name}</h2>
+                        <p className="whitespace-pre-wrap break-words text-sm">{selectedWait.reason}</p>
+                        <div className="flex flex-wrap gap-2">
+                            {canHold && <button type="button" disabled={resumingWait} onClick={() => void resumeWait(selectedWait.order_id)} className="min-h-11 rounded-lg bg-teal-700 px-3 text-sm font-bold text-white">وصل المطلوب · استئناف الحالة</button>}
+                            <button type="button" onClick={() => setSelectedWait(null)} className="min-h-11 rounded-lg border px-3 text-sm">إغلاق</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {selectedRun && (
                 <CaseDetailsDrawer
                     run={selectedRun}
                     suppliers={suppliers}
+                    canHold={canHold}
+                    onChanged={async () => {
+                        setSelectedRun(null);
+                        refreshNavBadges();
+                        await load();
+                    }}
                     onClose={() => setSelectedRun(null)}
                 />
             )}
@@ -707,11 +855,41 @@ function StageColumn({
 interface CaseDetailsDrawerProps {
     run: StageRunCard;
     suppliers: Record<string, string>;
+    canHold: boolean;
+    onChanged: () => Promise<void>;
     onClose: () => void;
 }
 
-function CaseDetailsDrawer({ run, suppliers, onClose }: CaseDetailsDrawerProps) {
+function CaseDetailsDrawer({ run, suppliers, canHold, onChanged, onClose }: CaseDetailsDrawerProps) {
     const {error:toastError}=useToast();
+    const { user } = useAuth();
+    const [times, setTimes] = useState<Awaited<ReturnType<typeof getProductionCaseTimes>>>(null);
+    const [showHoldForm, setShowHoldForm] = useState(false);
+    const [holdReason, setHoldReason] = useState('');
+    const [savingHold, setSavingHold] = useState(false);
+    useEffect(() => {
+        let active = true;
+        void getProductionCaseTimes(run.orderId).then(result => { if (active) setTimes(result); }).catch(console.error);
+        return () => { active = false; };
+    }, [run.orderId]);
+
+    async function saveHold(waiting: boolean) {
+        setSavingHold(true);
+        try {
+            await setProductionDoctorWait(run.orderId, waiting, holdReason);
+            await onChanged();
+        } catch (error) {
+            toastError(error instanceof Error ? error.message : 'تعذر تسجيل انتظار الطبيب');
+        } finally {
+            setSavingHold(false);
+        }
+    }
+
+    const taskPath = run.drivenBy === 'my_tasks' && hasCapability(user, 'view_my_tasks') ? '/production/my-tasks'
+        : run.drivenBy === 'external_wo' ? '/production/external'
+        : run.stageCode === 'shipping' ? '/production/shipments' : undefined;
+    const canStartHold = canHold && run.execution === 'internal' && ['ready', 'in_progress'].includes(run.status);
+    const formatMinutes = (minutes: number) => `${Math.floor(minutes / 60)} س ${minutes % 60} د`;
     const extLabName = run.supplierName || (run.supplierId ? suppliers[run.supplierId] : null);
     const urgency = getDeliveryUrgency(run.deliveryDate);
     const isStale = (ageHours(run.queuedAt) ?? 0) > STALE_HOURS;
@@ -756,6 +934,28 @@ function CaseDetailsDrawer({ run, suppliers, onClose }: CaseDetailsDrawerProps) 
 
                     {/* Drawer Content */}
                     <div className="p-5 overflow-y-auto space-y-5 flex-1 scrollbar-thin">
+                        {times && <dl className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-sm">
+                            <div><dt>التصميم</dt><dd className="font-semibold">{formatMinutes(times.design_minutes)}</dd></div>
+                            <div><dt>الإنتاج</dt><dd className="font-semibold">{formatMinutes(times.production_minutes)}</dd></div>
+                            <div><dt>انتظار الطبيب</dt><dd className="font-semibold">{formatMinutes(times.doctor_minutes)}</dd></div>
+                        </dl>}
+                        {run.failedPhysicalQc && <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-900">الحالة متوقفة بعد رسوب الفحص. افتح مهامي لاختيار الإجراء المناسب.</p>}
+                        {run.doctorWait ? <div className="space-y-2 rounded-xl bg-amber-50 p-3">
+                            <p className="text-sm font-semibold text-amber-950">منتظرة الطبيب · {run.doctorWait.reason}</p>
+                            {canHold && <button type="button" disabled={savingHold} onClick={() => void saveHold(false)} className="min-h-11 rounded-lg bg-cyan-700 px-3 text-sm font-semibold text-white">وصل المطلوب · استئناف الحالة</button>}
+                        </div> : <div className="flex flex-wrap gap-2">
+                            {taskPath && <Link to={`${taskPath}?case=${encodeURIComponent(run.caseId)}`} className="flex min-h-11 items-center rounded-lg bg-cyan-700 px-3 text-sm font-semibold text-white">فتح مكان تنفيذ المرحلة</Link>}
+                            {canStartHold && <button type="button" onClick={() => setShowHoldForm(value => !value)} className="min-h-11 rounded-lg border border-amber-300 px-3 text-sm font-semibold text-amber-950">On Hold · انتظار شيء من الطبيب</button>}
+                        </div>}
+                        {showHoldForm && !run.doctorWait && <form className="space-y-2 rounded-xl bg-amber-50 p-3" onSubmit={event => {
+                            event.preventDefault();
+                            if (holdReason.trim()) void saveHold(true);
+                        }}>
+                            <label className="block text-sm font-semibold">إيه المطلوب من الطبيب؟
+                                <textarea required maxLength={1000} value={holdReason} onChange={event => setHoldReason(event.target.value)} placeholder="مثلاً إعادة السكان أو إرسال الأباتمنت" className="mt-1 block w-full rounded-lg border border-amber-200 p-2" />
+                            </label>
+                            <button type="submit" disabled={savingHold || !holdReason.trim()} className="min-h-11 rounded-lg bg-amber-800 px-3 text-sm font-semibold text-white disabled:opacity-50">تعليق الحالة</button>
+                        </form>}
                         {/* Urgent / Stale Warning Banner */}
                         {(run.priority === 'Urgent' || isStale || urgency.status === 'overdue') && (
                             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1 text-xs">

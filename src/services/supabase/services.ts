@@ -2,11 +2,15 @@
 import { supabase } from '../../lib/supabase';
 import type { DbService, DbServiceInsert, DbServiceUpdate } from './types';
 import type { Service } from '../db';
-import { ErrorHandler } from '../../lib/errorHandler';
+import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 
 function dbToService(dbService: DbService): Service {
     return {
         id: dbService.id,
+        isActive: dbService.is_active ?? true,
+        catalogRouteId: dbService.catalog_route_id,
+        catalogTryInRouteId: dbService.catalog_try_in_route_id,
+        catalogRouteKind: dbService.catalog_route_kind,
         familyId: (dbService as unknown as Record<string, unknown>).family_id as string | undefined ?? undefined,
         name: dbService.name,
         sellingPrice: dbService.selling_price,
@@ -34,6 +38,7 @@ function serviceToDb(service: Omit<Service, 'id'>): DbServiceInsert {
     if (service.designerPrice !== undefined) {
         dbService.designer_price = service.designerPrice;
     }
+    if (service.isActive !== undefined) dbService.is_active = service.isActive;
 
     return dbService;
 }
@@ -67,8 +72,19 @@ export async function addService(service: Omit<Service, 'id'>): Promise<Service>
     return dbToService(data);
 }
 
+export async function ensureServicesAreActive(serviceNames: string[]): Promise<void> {
+    const names = [...new Set(serviceNames.filter(Boolean))];
+    if (names.length === 0) return;
+
+    const { data, error } = await supabase.from('services').select('name, is_active').in('name', names);
+    if (error) throw ErrorHandler.handle(error, 'ensureServicesAreActive');
+    const inactive = (data || []).filter(service => service.is_active === false).map(service => service.name);
+    if (inactive.length > 0) throw new ValidationError(`الخدمات التالية غير فعالة: ${inactive.join('، ')}`);
+}
+
 export async function updateService(id: string, updates: Partial<Omit<Service, 'id'>>): Promise<Service | null> {
     const dbUpdates: DbServiceUpdate = {};
+    if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.sellingPrice !== undefined) dbUpdates.selling_price = updates.sellingPrice;
     if (updates.costPrice !== undefined) dbUpdates.cost_price = updates.costPrice;

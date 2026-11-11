@@ -4,6 +4,10 @@ SET search_path TO public, extensions;
 
 SELECT plan(8);
 
+-- Compare the contribution of this fixture on both seeded and empty QA.
+CREATE TEMP TABLE analytics_test_baseline AS
+SELECT public.get_analytics_summary_privileged_20260801(NULL,NULL) AS summary;
+
 -- ─── Rejection / issue bucketing ────────────────────────────────────────
 -- Regression check for migration 093_add_doctor_and_lab_rejected_statuses:
 -- 'Rejected' was renamed to 'Doctor Rejected' and 'Lab Rejected' was added,
@@ -66,25 +70,29 @@ INSERT INTO public.orders (
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'doctor_rejected_count')::int,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'doctor_rejected_count')::int -
+    coalesce((SELECT (summary->>'doctor_rejected_count')::int FROM analytics_test_baseline),0),
     1,
     'Doctor Rejected order is counted in doctor_rejected_count'
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'lab_rejected_count')::int,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'lab_rejected_count')::int -
+    coalesce((SELECT (summary->>'lab_rejected_count')::int FROM analytics_test_baseline),0),
     1,
     'Lab Rejected order is counted in lab_rejected_count, separately from doctor_rejected_count'
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'redo_count')::int,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'redo_count')::int -
+    coalesce((SELECT (summary->>'redo_count')::int FROM analytics_test_baseline),0),
     1,
     'is_redo order is counted in redo_count regardless of its current status'
 );
 
 SELECT ok(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'active_order_count')::int = 1,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'active_order_count')::int -
+    coalesce((SELECT (summary->>'active_order_count')::int FROM analytics_test_baseline),0) = 1,
     'Doctor Rejected / Lab Rejected orders no longer leak into active_order_count (only the in-progress redo counts as active)'
 );
 
@@ -128,13 +136,15 @@ INSERT INTO public.transactions (
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'aging_90_plus')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'aging_90_plus')::numeric -
+    coalesce((SELECT (summary->>'aging_90_plus')::numeric FROM analytics_test_baseline),0),
     0::numeric,
     'the paid-off old order does not appear in the 90+ aging bucket'
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'aging_0_30')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'aging_0_30')::numeric -
+    coalesce((SELECT (summary->>'aging_0_30')::numeric FROM analytics_test_baseline),0),
     500::numeric,
     'the unpaid balance is aged off the recent order date (0-30 bucket), not the doctor''s oldest order'
 );
@@ -169,13 +179,15 @@ INSERT INTO public.adjustments (
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'aging_31_60')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'aging_31_60')::numeric -
+    coalesce((SELECT (summary->>'aging_31_60')::numeric FROM analytics_test_baseline),0),
     2500::numeric,
     'a charge exceeding the order total is not dropped: full 1000 + 1500 residual lands in the 31-60 bucket'
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_receivables')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_receivables')::numeric -
+    coalesce((SELECT (summary->>'total_receivables')::numeric FROM analytics_test_baseline),0),
     3000::numeric,
     'total_receivables sums all three doctors correctly (500 FIFO-unpaid + 2500 charged)'
 );

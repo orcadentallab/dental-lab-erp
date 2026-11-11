@@ -44,7 +44,7 @@ export default function NewOrderRequest() {
                 db.getServiceFamilies(),
                 db.getDoctors()
             ]);
-            setServices(data.sort((a, b) => a.name.localeCompare(b.name)));
+            setServices(data.filter(service => service.isActive !== false).sort((a, b) => a.name.localeCompare(b.name)));
             setFamilies(familiesData);
             setDoctors(doctorsData);
 

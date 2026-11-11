@@ -193,6 +193,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     const [items, setItems] = useState<FormOrderItem[]>([]);
 
     const [services, setServices] = useState<Service[]>([]);
+    const activeServices = services.filter(service => service.isActive !== false);
     const [families, setFamilies] = useState<ServiceFamily[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
 
@@ -363,11 +364,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     };
 
     const handleAddItem = () => {
-        if (services.length > 0) {
-            setItems([...items, { serviceType: services[0].name, teethNumbers: [], price: 0 }]);
-        } else {
-            setItems([...items, { serviceType: '', teethNumbers: [], price: 0 }]);
-        }
+        setItems([...items, { serviceType: activeServices[0]?.name ?? '', teethNumbers: [], price: 0 }]);
     };
 
     const updateItem = (index: number, field: keyof FormOrderItem, value: string | number | string[]) => {
@@ -742,8 +739,12 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                                                     disabled={!isFieldEnabled('items')}
                                                     className="w-full bg-transparent font-bold text-xs outline-none text-surface-800 cursor-pointer border border-surface-200 rounded px-2 py-1 bg-white disabled:opacity-50"
                                                 >
+                                                    <option value="" disabled>{activeServices.length ? 'اختر الخدمة' : 'مفيش خدمات فعالة'}</option>
+                                                    {item.serviceType && !activeServices.some(s => s.name === item.serviceType) && (
+                                                        <option value={item.serviceType} disabled>{item.serviceType}{services.some(s => s.name === item.serviceType && s.isActive === false) ? ' (غير فعالة)' : ''}</option>
+                                                    )}
                                                     {families.map(family => {
-                                                        const familyServices = services.filter(s => s.familyId === family.id);
+                                                        const familyServices = activeServices.filter(s => s.familyId === family.id);
                                                         if (familyServices.length === 0) return null;
                                                         return (
                                                             <optgroup key={family.id} label={`🔷 ${family.nameAr}`}>
@@ -758,9 +759,9 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                                                             </optgroup>
                                                         );
                                                     })}
-                                                    {services.filter(s => !s.familyId).length > 0 && (
+                                                    {activeServices.some(s => !s.familyId) && (
                                                         <optgroup label="🔹 خدمات فردية">
-                                                            {services.filter(s => !s.familyId).map(s => (
+                                                            {activeServices.filter(s => !s.familyId).map(s => (
                                                                 <option key={s.id} value={s.name}>{s.name}</option>
                                                             ))}
                                                         </optgroup>

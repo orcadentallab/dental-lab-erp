@@ -89,6 +89,7 @@ export type Capability =
     | 'view_orders'
     | 'view_production'
     | 'view_my_tasks'
+    | 'work_production_tasks'
     | 'manage_production_routes'
     | 'view_finance'
     /** Admin-only tabs inside the Finance workspace: cash boxes and the
@@ -101,6 +102,8 @@ export type Capability =
      *  workspace -- separate from view_accounts, which is the single
      *  /accounts route every internal role can read for its own ledger. */
     | 'view_client_accounts'
+    | 'view_scan_visits'
+    | 'record_own_scan_visit'
     | 'view_external_work'
     | 'view_doctors'
     | 'view_doctor_retention'
@@ -182,11 +185,12 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     // The floor board and the shadow report are a supervisory view; the
     // designers work exclusively in their dashboard. Route guards in
     // App.tsx already draw that line, so the capabilities must too.
-    // The coordinator reads the board -- knowing where a case is, is the job
-    // -- but never moves a stage run. That separation is enforced in the
-    // database by can_work_production(); this only matches it in the UI.
+    // A coordinator can execute bench tasks assigned to their role in the route.
     if (isAdmin || isFloor || isCoordinator) caps.add('view_production');
-    if (isAdmin || isFloor || (isDesigner && role !== 'designer')) caps.add('view_my_tasks');
+    if (isAdmin || isFloor || isCoordinator || (isDesigner && role !== 'designer')) {
+        caps.add('work_production_tasks');
+        caps.add('view_my_tasks');
+    }
     if (isAdmin || isFloor || hasAccountantScope) {
         caps.add('view_external_work');
         caps.add('view_inventory');
@@ -200,6 +204,8 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
         caps.add('manage_inventory');
     }
     if (isAdmin || hasRepScope) caps.add('view_doctors');
+    if (isAdmin || hasAccountantScope || role === 'representative') caps.add('view_scan_visits');
+    if (role === 'representative') caps.add('record_own_scan_visit');
     // Retention moved out of the directory into the client-accounts
     // workspace (it reads the whole client base's activity and the
     // follow-up log -- a management decision), but it stays admin-only.

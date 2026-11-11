@@ -2,21 +2,21 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { db, type Doctor, type Order, type Service, type ServiceFamily, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
-import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock, Sparkles, Loader2, Printer } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock, Printer } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { Input } from '../ui/Input';
 import DateField from '../ui/DateField';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { TeethTagsInput } from '../ui/TeethTagsInput';
+import { isFdiTooth, TeethTagsInput } from '../ui/TeethTagsInput';
 import clsx from 'clsx';
 import { isDesignerUser, isRepresentativeUser, canBeOrderRepresentative, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
 import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
 import { canEditOrderField, type WorkflowRole } from '../../lib/workflowPermissions';
 import { getEffectiveProductionStatus, getEffectiveIssueState } from '../../constants/orderLifecycle';
 import type { ProductionStatus, IssueState } from '../../constants/workflow';
-import { getEffectiveRouteStages, type EffectiveRouteStage } from '../../services/supabase/production';
+import { MIXED_TRY_IN_ROUTE_ID, isExplicitProductionRoute, getRoutes, getEffectiveRouteStages, getOrderProductionQuote, usesPrivateProductionQuote, type EffectiveRouteStage } from '../../services/supabase/production';
 
 interface OrderFormProps {
     onCancel: () => void;
@@ -38,7 +38,6 @@ import { DoctorSelect } from './DoctorSelect';
 import CaseAttachments from './CaseAttachments';
 import CaseSlipPrint from './CaseSlipPrint';
 import { uploadCaseFilesBatch } from '../../lib/storage';
-import { capacityService } from '../../services/supabase/capacityService';
 import { getOrderFormDesigners, loadOrderFormList } from '../../lib/orderFormLoading';
 
 const calculateOrderCost = (
@@ -131,11 +130,31 @@ const normalizeArabic = (text: string): string => {
 };
 
 export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }: OrderFormProps) {
+    const [quotedShippingFee, setQuotedShippingFee] = useState('');
     const { user } = useAuth();
     const { error: toastError } = useToast();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<Service[]>([]);
+    const activeServices = services.filter(service => service.isActive !== false);
     const [families, setFamilies] = useState<ServiceFamily[]>([]);
+    const serviceGroups = useMemo(() => {
+        const preferred = ['Zirconia', 'Emax', 'PFM', 'Extras', 'Implant', 'Removable', 'Try-ins & Resin'];
+        const order = (name: string) => preferred.includes(name) ? (preferred.indexOf(name) + 1) * 10 : 1000;
+        const compareServices = (a: Service, b: Service) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity) || a.name.localeCompare(b.name, 'en', { numeric: true });
+        const groups = families.filter(family => family.nameEn?.trim()).map(family => ({
+            id: family.id,
+            name: family.nameEn!.trim(),
+            sortOrder: family.sortOrder || order(family.nameEn!.trim()),
+            services: services.filter(service => service.isActive !== false && service.familyId === family.id)
+                .sort(compareServices),
+        })).filter(group => group.services.length > 0);
+        groups.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'en'));
+        const groupedIds = new Set(groups.map(group => group.id));
+        const other = services.filter(service => service.isActive !== false && !groupedIds.has(service.familyId ?? ''))
+            .sort(compareServices);
+        if (other.length > 0) groups.push({ id: 'other', name: 'Other Services', sortOrder: Infinity, services: other });
+        return groups;
+    }, [families, services]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [representatives, setRepresentatives] = useState<User[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
@@ -278,14 +297,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [instructions, setInstructions] = useState(initialData?.instructions || '');
     const [selectedSupplier, setSelectedSupplier] = useState(initialData?.supplierId || '');
     const [executionMode, setExecutionMode] = useState<'internal' | 'external'>(
-        initialData?.supplierId ? 'external' : 'internal'
+        !initialData || (initialData.supplierId && !isExplicitProductionRoute(initialData.routeOverrideId)) ? 'external' : 'internal'
     );
-    const [isEstimatingDate, setIsEstimatingDate] = useState(false);
-    const [dateEstimateInfo, setDateEstimateInfo] = useState<{
-        date: string;
-        confidence: 'high' | 'moderate' | 'default_estimate';
-        days: number | null;
-    } | null>(null);
     const [representativeId, setRepresentativeId] = useState(initialData?.representativeId || '');
     const [routeStagesPreview, setRouteStagesPreview] = useState<EffectiveRouteStage[]>([]);
     const [isLoadingRouteStages, setIsLoadingRouteStages] = useState(false);
@@ -296,6 +309,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [designerId, setDesignerId] = useState(initialData?.designerId || '');
 
     const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(initialData?.deliveryType || 'Final');
+    const [routeOptions, setRouteOptions] = useState<Awaited<ReturnType<typeof getRoutes>>>([]);
+    const [chosenServiceRoute, setChosenServiceRoute] = useState('');
+    const mixedRouteAvailable = routeOptions.some(route => route.id === MIXED_TRY_IN_ROUTE_ID && route.isActive);
+    const [mixedTryInChoice, setMixedTryInChoice] = useState<boolean | null>(initialData ? initialData.routeOverrideId === MIXED_TRY_IN_ROUTE_ID : null);
+
+    useEffect(() => {
+        if (initialData) return;
+        let active = true;
+        void getRoutes(true).then(routes => {
+            if (active) setRouteOptions(routes);
+        }).catch(() => { if (active) setRouteOptions([]); });
+        return () => { active = false; };
+    }, [initialData]);
+
     const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
     const [receivedDate, setReceivedDate] = useState(initialData?.createdAt ? new Date(initialData.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
     const [manualCost, setManualCost] = useState<number | null>(initialData?.manualCost ?? null);
@@ -336,55 +363,51 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     );
 
     const visibleSuppliers = useMemo(
-        () => suppliers.filter(supplier => supplier.isActive !== false || supplier.id === selectedSupplier),
-        [suppliers, selectedSupplier]
+        () => suppliers.filter(supplier => supplier.id === initialData?.supplierId ||
+            (supplier.isActive !== false && (supplier.supplierType ?? 'external_lab') === 'external_lab')),
+        [suppliers, initialData?.supplierId]
     );
 
-    const unroutedItems = useMemo(() => {
-        if (executionMode !== 'internal') return [];
-        return items.filter(item => {
-            if (!item.serviceType) return false;
-            const svc = services.find(s => s.name === item.serviceType);
-            if (!svc) return false;
-            const hasRoute = Boolean(
-                svc.routeId || (svc.familyId && families.find(f => f.id === svc.familyId)?.defaultRouteId)
-            );
-            return !hasRoute;
-        });
-    }, [executionMode, items, services, families]);
-
-    const handleEstimateDeliveryDate = async () => {
-        if (items.length === 0 || !items[0].serviceType) {
-            toastError('يرجى اختيار خدمة أولاً لحساب موعد التسليم المقترح');
-            return;
-        }
-        const primaryItem = items[0];
-        const svc = services.find(s => s.name === primaryItem.serviceType);
-        if (!svc) {
-            toastError('الخدمة المختارة غير معرفة في قائمة الخدمات');
-            return;
-        }
-        const totalUnits = items.reduce((sum, item) => sum + (item.teethNumbers?.length || 1), 0);
-        setIsEstimatingDate(true);
-        try {
-            const estimate = await capacityService.estimateDeliveryTime(svc.id, totalUnits);
-            if (estimate?.estimated_delivery_date) {
-                setDeliveryDate(estimate.estimated_delivery_date);
-                setDateEstimateInfo({
-                    date: estimate.estimated_delivery_date,
-                    confidence: estimate.confidence_level,
-                    days: estimate.estimated_calendar_days,
-                });
-            } else {
-                toastError('تعذر احتساب الموعد، لم يتم ضبط تقويم العمل');
-            }
-        } catch (err: any) {
-            console.error('Failed to estimate delivery date:', err);
-            toastError('حدث خطأ أثناء احتساب موعد التسليم المقترح');
-        } finally {
-            setIsEstimatingDate(false);
-        }
+    const getConfiguredRouteId = (serviceName: string): string | null => {
+        const service = services.find(entry => entry.name === serviceName);
+        if (service?.catalogRouteKind === 'production') return service.catalogRouteId ?? null;
+        return service?.routeId ?? families.find(family => family.id === service?.familyId)?.defaultRouteId ?? null;
     };
+    const getServiceRouteId = (serviceName: string): string | null => {
+        const routeId = getConfiguredRouteId(serviceName);
+        return routeOptions.some(route => route.id === routeId && route.isActive) ? routeId : null;
+    };
+    const isRouteAddOn = (serviceName: string) => services.some(service => service.name === serviceName && service.catalogRouteKind === 'add_on');
+    const productionItems = items.filter(item => item.serviceType && !isRouteAddOn(item.serviceType));
+    const unavailableItems = executionMode === 'internal'
+        ? productionItems.filter(item => !getServiceRouteId(item.serviceType))
+        : [];
+    const unroutedItems = unavailableItems.filter(item => !getConfiguredRouteId(item.serviceType));
+    const pausedItems = unavailableItems.filter(item => getConfiguredRouteId(item.serviceType));
+    const useCatalogTrial = productionItems.length > 0 && productionItems.every(item =>
+        services.some(service => service.name === item.serviceType && service.catalogRouteId === MIXED_TRY_IN_ROUTE_ID && service.catalogTryInRouteId === MIXED_TRY_IN_ROUTE_ID));
+    const hasReviewedItems = productionItems.some(item => services.some(service => service.name === item.serviceType && service.catalogRouteKind));
+    const canChooseMixedRoute = mixedRouteAvailable && (!hasReviewedItems || useCatalogTrial);
+    const suggestedMixedRoute = !initialData && canChooseMixedRoute && (unroutedItems.length > 0 || useCatalogTrial);
+    const mixedTryInSelected = mixedTryInChoice ?? suggestedMixedRoute;
+    const useMixedTryIn = deliveryType === 'TryIn' && executionMode === 'internal' && (initialData?.routeOverrideId === MIXED_TRY_IN_ROUTE_ID || canChooseMixedRoute && (useCatalogTrial || mixedTryInSelected));
+
+    const millingQuote = useMemo(() => {
+        let total = 0;
+        let priced = false;
+        for (const item of items) {
+            if (!item.serviceType) continue;
+            const service = services.find(entry => entry.name === item.serviceType);
+            const rate = service?.millingPrice ?? 0;
+            if (rate <= 0) {
+                if (service?.catalogRouteKind === 'add_on') continue;
+                return null;
+            }
+            total += rate * (item.teethNumbers.length || 1);
+            priced = true;
+        }
+        return priced ? total : null;
+    }, [items, services]);
 
     useEffect(() => {
         setInstructions(initialData?.instructions || '');
@@ -424,8 +447,9 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     return;
                 }
 
-                if (!initialData && servicesData.length > 0) {
-                    setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: servicesData[0].name } : i));
+                const firstActiveService = servicesData.find(service => service.isActive !== false);
+                if (!initialData && firstActiveService) {
+                    setItems(items.map(i => i.serviceType === '' ? { ...i, serviceType: firstActiveService.name } : i));
                 }
 
                 if (initialData) {
@@ -544,11 +568,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     };
 
     const handleAddItem = () => {
-        if (services.length > 0) {
-            setItems([...items, { serviceType: services[0].name, teethNumbers: [], price: 0 }]);
-        } else {
-            setItems([...items, { serviceType: '', teethNumbers: [], price: 0 }]);
-        }
+        setItems([...items, { serviceType: activeServices[0]?.name ?? '', teethNumbers: [], price: 0 }]);
     };
 
     const updateItem = (index: number, field: keyof FormOrderItem, value: string | number | string[]) => {
@@ -599,33 +619,63 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const calculateAutomaticCost = () => {
         return calculateOrderCost(effectiveWorkflowType, items, services, suppliers, selectedSupplier, designers, designerId);
     };
+    const totalDesignPrice = effectiveWorkflowType === 'split'
+        ? (isAdmin ? manualDesignPrice : null) ?? calculateAutomaticDesignPrice(items, services, designers, designerId)
+        : 0;
+    const serviceRouteIds = [...new Set(items.flatMap(item => {
+        const routeId = getServiceRouteId(item.serviceType);
+        return routeId ? [routeId] : [];
+    }))];
+    const routeConflict = !initialData && executionMode === 'internal' && !useMixedTryIn && serviceRouteIds.length > 1;
+    const conflictRouteId = routeConflict && isAdmin && serviceRouteIds.includes(chosenServiceRoute) ? chosenServiceRoute : undefined;
+    const primaryRouteId = executionMode !== 'internal' ? null
+        : useMixedTryIn ? MIXED_TRY_IN_ROUTE_ID
+        : initialData?.routeOverrideId ?? (serviceRouteIds.length === 1 ? serviceRouteIds[0] : conflictRouteId);
+    const trialUnavailable = !initialData && deliveryType === 'TryIn'
+        && isExplicitProductionRoute(primaryRouteId) && !useMixedTryIn;
 
-    const getServiceRouteId = (serviceName: string): string | null => {
-        const svc = services.find(s => s.name === serviceName);
-        if (!svc) return null;
-        if (svc.routeId) return svc.routeId;
-        if (svc.familyId) {
-            const fam = families.find(f => f.id === svc.familyId);
-            if (fam?.defaultRouteId) return fam.defaultRouteId;
-        }
-        return null;
-    };
+    const hasCatalogRoute = isExplicitProductionRoute(primaryRouteId);
+    const finalLabCost = hasCatalogRoute ? initialData?.labCost ?? 0
+        : (isAdmin ? manualCost : null) ?? (effectiveWorkflowType === 'split'
+            ? calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier)
+            : calculateAutomaticCost());
+    const finalCost = finalLabCost + (isSalaried ? 0 : totalDesignPrice);
 
-    const primaryServiceName = items[0]?.serviceType;
-    const primaryRouteId = useMemo(() => {
-        if (executionMode !== 'internal' || !primaryServiceName) return null;
-        return getServiceRouteId(primaryServiceName);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [executionMode, primaryServiceName, services, families]);
+    const hasManufacturingQuote = usesPrivateProductionQuote(primaryRouteId);
+    const quoteOrderId = isAdmin && hasManufacturingQuote ? initialData?.id : undefined;
+    const [savedQuote, setSavedQuote] = useState<{
+        orderId: string;
+        estimated: number | null;
+        agreed: number | null;
+        failed?: boolean;
+    } | null>(null);
 
     useEffect(() => {
-        if (!primaryRouteId) {
+        if (!quoteOrderId) return;
+        let cancelled = false;
+        getOrderProductionQuote(quoteOrderId).then(quote => {
+            if (!cancelled) setSavedQuote({ orderId: quoteOrderId, estimated: null, agreed: null, ...quote });
+        }).catch(() => {
+            if (!cancelled) setSavedQuote({ orderId: quoteOrderId, estimated: null, agreed: null, failed: true });
+        });
+        return () => { cancelled = true; };
+    }, [quoteOrderId]);
+
+    const orderQuote = savedQuote?.orderId === quoteOrderId ? savedQuote : null;
+    const agreedManufacturingCost = orderQuote?.agreed ?? null;
+    const manufacturingCost = agreedManufacturingCost ?? (quoteOrderId ? orderQuote?.estimated ?? null : millingQuote);
+    const designCost = isSalaried ? 0 : totalDesignPrice;
+    const formatCost = (amount: number) => `${amount.toLocaleString()} ج.م`;
+
+    useEffect(() => {
+        if (!primaryRouteId || trialUnavailable) {
             setRouteStagesPreview([]);
+            setIsLoadingRouteStages(false);
             return;
         }
         let active = true;
         setIsLoadingRouteStages(true);
-        getEffectiveRouteStages(primaryRouteId)
+        getEffectiveRouteStages(primaryRouteId, { delivery_type: deliveryType, workflow_type: effectiveWorkflowType })
             .then(stgs => {
                 if (active) setRouteStagesPreview(stgs);
             })
@@ -637,7 +687,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 if (active) setIsLoadingRouteStages(false);
             });
         return () => { active = false; };
-    }, [primaryRouteId]);
+    }, [primaryRouteId, deliveryType, effectiveWorkflowType, trialUnavailable]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -663,43 +713,44 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
 
 
-        const invalidItems = items.filter(i => i.teethNumbers.length === 0);
+        const invalidItems = items.filter(i => i.teethNumbers.length === 0 || (!initialData && i.teethNumbers.some(tooth => !isFdiTooth(tooth))));
         if (invalidItems.length > 0) {
             toastError('يرجى إدخال أرقام الأسنان بشكل صحيح');
             return;
         }
 
-        if (executionMode === 'external' && !selectedSupplier) {
+        if (executionMode === 'external' && !visibleSuppliers.some(supplier => supplier.id === selectedSupplier)) {
             toastError('يرجى اختيار المعمل الخارجي المنفذ');
             return;
         }
 
-        if (executionMode === 'internal') {
-            const unroutedServices = items
-                .map(i => i.serviceType)
-                .filter(st => Boolean(st) && !getServiceRouteId(st));
-
-            if (unroutedServices.length > 0) {
-                const unique = Array.from(new Set(unroutedServices));
-                toastError(`الخدمة (${unique.join('، ')}) لسه مالهاش مسار داخلي. يرجى ربط الخدمة بمسار إنتاج أولاً أو اختيار معمل خارجي.`);
-                return;
-            }
+        if (!initialData && isExplicitProductionRoute(primaryRouteId) && !designerId) {
+            toastError('اختر مصممًا للحالة');
+            return;
+        }
+        if (trialUnavailable) {
+            toastError('البروفة غير متاحة لكل الأصناف المختارة. اختار Final أو راجع ربط الأصناف بالخريطة.');
+            return;
+        }
+        if (useMixedTryIn && !initialData && millingQuote === null) {
+            toastError('حدّد سعر الخراطة لكل خدمة مختارة من قائمة الخدمات قبل حفظ الأوردر');
+            return;
         }
 
-        const calculatedCost = calculateAutomaticCost();
-
-        let totalDesignPrice = 0;
-        let finalCost = calculatedCost;
-        if (effectiveWorkflowType === 'split') {
-            if (isAdmin && manualDesignPrice !== null) {
-                totalDesignPrice = manualDesignPrice;
-            } else {
-                totalDesignPrice = calculateAutomaticDesignPrice(items, services, designers, designerId);
+        if (executionMode === 'internal' && productionItems.length === 0) {
+            toastError('اختر خدمة أساسية عشان الإضافات تتبع خريطة إنتاجها');
+            return;
+        }
+        if (executionMode === 'internal' && !useMixedTryIn) {
+            if (routeConflict && !conflictRouteId) {
+                toastError('الخدمات مختارة من خرائط مختلفة. الأدمن يحدد خريطة الأوردر قبل الحفظ.');
+                return;
             }
-            const finalMillingCost = (isAdmin && manualCost !== null) ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier);
-            finalCost = finalMillingCost + (isSalaried ? 0 : totalDesignPrice);
-        } else if (isAdmin && manualCost !== null) {
-            finalCost = manualCost;
+            if (unavailableItems.length > 0) {
+                toastError(pausedItems.length > 0 ? 'فيه أصناف خرائطها مش متاحة للتشغيل. اختار معمل خارجي عشان تحفظ الأوردر.'
+                    : 'فيه أصناف من غير خريطة إنتاج. اربطها من خرائط الإنتاج أو اختار معمل خارجي.');
+                return;
+            }
         }
 
         setIsSubmitting(true);
@@ -734,22 +785,22 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 stlUrl: stlUrl || undefined,
                 imagesUrl: imagesUrl || undefined,
                 status: initialData?.status || 'New Case',
-                productionStatus: initialData?.productionStatus || 'not_started',
+                productionStatus: initialData?.productionStatus || (isExplicitProductionRoute(primaryRouteId) ? 'designing' as const : 'not_started' as const),
+                routeOverrideId: initialData ? initialData.routeOverrideId : primaryRouteId ?? undefined,
                 issueState: initialData?.issueState || 'none',
                 intakeState: initialData?.intakeState || 'accepted',
                 technicianStatus: initialData?.technicianStatus || 'Pending',
                 deliveryDate,
                 createdAt: new Date(receivedDate).toISOString(),
                 totalPrice: total,
+                ...(!initialData && Number(quotedShippingFee) > 0 ? { quotedShippingFee: Number(quotedShippingFee) } : {}),
                 // The form knows both components directly, so it records them
                 // and lets the database add them up. cost is sent too and must
                 // agree; it is the same sum by construction.
                 cost: finalCost,
-                labCost: effectiveWorkflowType === 'split'
-                    ? ((isAdmin && manualCost !== null) ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier))
-                    : finalCost,
+                labCost: finalLabCost,
                 designerCost: effectiveWorkflowType === 'split' && !isSalaried ? totalDesignPrice : 0,
-                manualCost: (isAdmin && manualCost !== null) ? manualCost : null,
+                manualCost: hasCatalogRoute ? initialData?.manualCost ?? null : (isAdmin && manualCost !== null) ? manualCost : null,
                 workflowType: effectiveWorkflowType,
                 designerId: effectiveWorkflowType === 'split' ? designerId : undefined,
                 designStatus: initialData ? initialData.designStatus : (effectiveWorkflowType === 'split' ? 'pending' : undefined),
@@ -760,7 +811,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 deliveryType,
                 needsDesignReview: initialData?.needsDesignReview || false,
                 isUrgent,
-                supplierId: executionMode === 'external' ? (selectedSupplier || undefined) : undefined,
+                supplierId: isExplicitProductionRoute(primaryRouteId) ? initialData?.supplierId : executionMode === 'external' ? (selectedSupplier || undefined) : undefined,
                 representativeId: representativeId || undefined,
                 comments: initialData?.comments || []
             };
@@ -781,7 +832,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
         }
     };
 
-    const sidebarCardClass = "p-3.5 bg-white border border-surface-100 shadow-sm";
+    const sidebarCardClass = "p-4 bg-white border border-slate-200 shadow-sm";
     const selectClass = "h-10 w-full rounded-lg border border-surface-200 bg-white px-3 text-base text-surface-800 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 sm:h-9 sm:text-sm";
     const segmentWrapClass = "grid grid-cols-2 rounded-lg border border-surface-200 bg-surface-50 p-0.5";
     const segmentButtonClass = "h-7 rounded-md text-xs font-bold transition-all";
@@ -836,13 +887,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 </div>
             </div>
 
-            <fieldset disabled={readOnly} className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <fieldset disabled={readOnly} className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-5">
 
                 {/* LEFT COLUMN: Main Inputs (8) */}
-                <div className="lg:col-span-8 space-y-5">
+                <div className="min-w-0 space-y-4 lg:col-span-8">
 
                     {/* 1. Patient & Doctor Info (Horizontal Dense) */}
-                    <Card className="p-4 bg-white dark:bg-surface-800 border border-surface-100 shadow-sm">
+                    <Card className="p-4 bg-white dark:bg-surface-800 border border-slate-200 shadow-sm">
+                        <h3 className="mb-3 border-b border-slate-100 pb-2 text-sm font-bold text-slate-800 dark:text-slate-100">الطبيب وبيانات الحالة</h3>
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
                             {/* 1. Doctor / Center */}
                             <div className="md:col-span-6 min-w-0">
@@ -980,7 +1032,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     </Card>
 
                     {/* 2. Items List */}
-                    <Card className="p-5 min-h-[14rem] bg-white border border-surface-100 shadow-sm">
+                    <Card className="border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
                             <div className="flex flex-wrap items-center gap-3">
                                 <h3 className="font-bold text-surface-700 flex items-center gap-2 text-sm">
@@ -1026,45 +1078,32 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                                     ? doctorSpecialPrice
                                                     : (svc?.sellingPrice || 0);
                                 return (
-                                    <div key={index} className="flex gap-2 items-center bg-surface-50/50 p-1.5 rounded-xl border border-surface-100 group hover:border-indigo-200 transition-colors">
+                                    <div key={index} className="group flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2 transition-colors focus-within:border-cyan-500 sm:flex-nowrap sm:has-[.tooth-chart[open]]:flex-wrap">
                                         <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs shadow-sm border border-surface-100 shrink-0">
                                             {index + 1}
                                         </div>
-                                        <div className="w-1/4">
-                                            <select
-                                                title="Service Type"
-                                                aria-label="Select Service Type"
-                                                className="w-full bg-transparent font-bold text-sm outline-none text-surface-800 cursor-pointer"
-                                                value={item.serviceType}
-                                                onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
-                                            >
-                                                {families.map(family => {
-                                                    const familyServices = services.filter(s => s.familyId === family.id);
-                                                    if (familyServices.length === 0) return null;
-                                                    return (
-                                                        <optgroup key={family.id} label={`🔷 ${family.nameAr}`}>
-                                                            {familyServices.map(s => {
-                                                                const isDefault = family.defaultServiceId === s.id;
-                                                                return (
-                                                                    <option key={s.id} value={s.name}>
-                                                                        {s.name} {isDefault ? '⭐ (افتراضي)' : ''}
-                                                                    </option>
-                                                                );
-                                                            })}
-                                                        </optgroup>
-                                                    );
-                                                })}
-                                                {services.filter(s => !s.familyId).length > 0 && (
-                                                    <optgroup label="🔹 خدمات فردية">
-                                                        {services.filter(s => !s.familyId).map(s => (
-                                                            <option key={s.id} value={s.name}>{s.name}</option>
-                                                        ))}
-                                                    </optgroup>
+                                        <div className="min-w-0 flex-1 sm:w-[30%] sm:flex-none">
+                                            <select aria-label="Select Service Type" dir="ltr" value={item.serviceType}
+                                                onChange={event => updateItem(index, 'serviceType', event.target.value)}
+                                                className="order-service-select min-h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-center text-sm font-semibold text-slate-800 focus-visible:ring-2 focus-visible:ring-cyan-600">
+                                                <option value="" disabled>اختر الخدمة</option>
+                                                {item.serviceType && !activeServices.some(service => service.name === item.serviceType) && (
+                                                    <option value={item.serviceType} disabled>{item.serviceType}{svc?.isActive === false ? ' (غير فعالة)' : ''}</option>
                                                 )}
+                                                {serviceGroups.map(group => <optgroup key={group.id} label={group.name}>
+                                                    <legend>{group.name}</legend>
+                                                    {group.services.map(service => <option key={service.id} value={service.name}>{service.name}</option>)}
+                                                </optgroup>)}
                                             </select>
                                         </div>
-                                        <div className="flex-1">
+                                        <div className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1 sm:has-[.tooth-chart[open]]:order-last sm:has-[.tooth-chart[open]]:basis-full">
+                                            {!readOnly && index > 0 && items[index - 1].teethNumbers.length > 0 && <button type="button"
+                                                onClick={() => updateItem(index, 'teethNumbers', [...new Set([...item.teethNumbers, ...items[index - 1].teethNumbers])])}
+                                                className="mb-1 rounded-md px-1.5 py-1 text-xs font-semibold text-cyan-800 hover:bg-cyan-50 focus-visible:ring-2 focus-visible:ring-cyan-700">
+                                                نسخ أسنان الصنف السابق
+                                            </button>}
                                             <TeethTagsInput
+                                                useToothChart={!initialData}
                                                 value={item.teethNumbers}
                                                 onChange={(teeth) => {
                                                     const newItems = [...items];
@@ -1092,7 +1131,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                             </div>
                                         )}
                                         {items.length > 1 && !readOnly && (
-                                            <button onClick={() => handleRemoveItem(index)} aria-label="Remove Item" className="p-1.5 text-surface-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button>
+                                            <button type="button" onClick={() => handleRemoveItem(index)} aria-label="حذف الصنف" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-red-50 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-cyan-600"><Trash2 size={16} /></button>
                                         )}
                                     </div>
                                 );
@@ -1163,7 +1202,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 </div>
 
                 {/* RIGHT COLUMN: Sidebar (4) */}
-                <div className="lg:col-span-4 space-y-3">
+                <div className="min-w-0 space-y-3 lg:col-span-4">
 
                     {/* Dates & Delivery */}
                     <Card className={clsx(sidebarCardClass, "transition-colors", isUrgent && "border-red-200 bg-red-50/40")}>
@@ -1183,7 +1222,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             </label>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2.5">
+                        <div className="grid grid-cols-2 items-start gap-x-3 gap-y-2">
                             <div>
                                 <label className="text-[10px] font-bold text-surface-500 block mb-1">تاريخ الاستلام</label>
                                 <DateField
@@ -1194,49 +1233,14 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 />
                             </div>
                             <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="text-[10px] font-bold text-surface-500 block">موعد التسليم</label>
-                                    {!readOnly && (
-                                        <button
-                                            type="button"
-                                            onClick={handleEstimateDeliveryDate}
-                                            disabled={isEstimatingDate || isFieldDisabled('delivery_date')}
-                                            className="text-[10px] text-primary-600 hover:text-primary-700 font-bold flex items-center gap-1 hover:underline disabled:opacity-50"
-                                            title="حساب موعد التسليم المقترح آلياً بناءً على طاقة المعمل والتاريخ"
-                                        >
-                                            {isEstimatingDate ? (
-                                                <Loader2 size={10} className="animate-spin" />
-                                            ) : (
-                                                <Sparkles size={10} />
-                                            )}
-                                            <span>حساب المقترح</span>
-                                        </button>
-                                    )}
-                                </div>
+                                <label className="mb-1 block text-[10px] font-bold text-surface-500">موعد التسليم</label>
                                 <DateField
                                     ariaLabel="موعد التسليم"
                                     size="sm"
                                     value={deliveryDate}
-                                    onChange={(val) => {
-                                        setDeliveryDate(val);
-                                        setDateEstimateInfo(null);
-                                    }}
+                                    onChange={setDeliveryDate}
                                     disabled={isFieldDisabled('delivery_date')}
                                 />
-                                {dateEstimateInfo && (
-                                    <div className="mt-1 text-[10px] text-primary-700 bg-primary-50 border border-primary-100 rounded px-1.5 py-0.5 flex items-center justify-between">
-                                        <span>
-                                            {dateEstimateInfo.confidence === 'high'
-                                                ? 'ثقة عالية'
-                                                : dateEstimateInfo.confidence === 'moderate'
-                                                ? 'ثقة متوسطة'
-                                                : 'تقدير افتراضي'}
-                                        </span>
-                                        {dateEstimateInfo.days !== null && (
-                                            <span>({dateEstimateInfo.days} يوم)</span>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         </div>
                         <div className={clsx(segmentWrapClass, "mt-3")}>
@@ -1309,9 +1313,30 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     </select>
                                 </div>
 
-                                <div className="rounded-lg bg-emerald-50/60 border border-emerald-200/60 p-2 text-center text-xs text-emerald-800 font-medium">
-                                    يتم التصميم والتصنيع بالكامل داخل المعمل
-                                </div>
+                                {!initialData && deliveryType === 'TryIn' && canChooseMixedRoute && !hasReviewedItems && (
+                                    <label className="mb-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-950">
+                                        <input type="checkbox" checked={mixedTryInSelected} onChange={event => setMixedTryInChoice(event.target.checked)} className="h-4 w-4 accent-cyan-700" />
+                                        <span><strong className="block">بروفة داخلية ثم خراطة وفينش خارجي</strong><span className="text-xs">اختيار المعمل الخارجي عند إرسال النهائي. السعر من قائمة الخدمات.</span></span>
+                                    </label>
+                                )}
+                                <p className="rounded-lg bg-surface-50 p-2 text-xs text-surface-700">
+                                    {useMixedTryIn ? 'البروفة تُطبع داخليًا. الخراطة والفينش يبدأان عند المعمل الخارجي بعد موافقة الطبيب.' : 'خطوات التنفيذ تتبع خريطة الخدمة.'}
+                                </p>
+                                {trialUnavailable && <p className="mt-2 text-xs font-semibold text-amber-800">
+                                    البروفة غير متاحة لكل الأصناف المختارة.
+                                </p>}
+                                {routeConflict && <div className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                                    <p>الخدمات المختارة لها خرائط إنتاج مختلفة.</p>
+                                    {isAdmin ? <label className="block">خريطة هذا الأوردر
+                                        <select value={conflictRouteId ?? ''} onChange={event => setChosenServiceRoute(event.target.value)} className={selectClass}>
+                                            <option value="">اختار خريطة مناسبة…</option>
+                                            {routeOptions.filter(route => serviceRouteIds.includes(route.id)).map(route => <option key={route.id} value={route.id}>{route.nameAr}</option>)}
+                                        </select>
+                                    </label> : <p>الأدمن يحدد الخريطة قبل الحفظ.</p>}
+                                </div>}
+                                {useMixedTryIn && <p className="mt-2 text-sm font-semibold text-cyan-900">
+                                    {millingQuote === null ? 'يحتاج المسار سعر خراطة لكل خدمة مختارة.' : isAdmin ? `الخراطة والفينش · ${millingQuote.toLocaleString('ar-EG')} ج.م من سعر الخراطة في الخدمات` : 'سعر الخراطة والفينش محدد من الخدمات.'}
+                                </p>}
 
                                 {/* Route Steps Preview (Phase B2) */}
                                 {isLoadingRouteStages && (
@@ -1324,20 +1349,23 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                         <span className="text-[10px] font-bold text-surface-500 block mb-1.5">
                                             خطوات مسار الإنتاج:
                                         </span>
-                                        <div className="flex items-center gap-1 flex-wrap text-xs">
+                                        <div className="flex flex-wrap items-center gap-1 text-xs" dir="rtl">
                                             {routeStagesPreview.map((stg, idx) => (
-                                                <span key={stg.stageId + '-' + idx} className="inline-flex items-center gap-1">
-                                                    <span className={clsx(
+                                                <span key={stg.stageId + '-' + idx} className="inline-flex max-w-full items-center gap-1">
+                                                    <span title={stg.drivenBy === 'external_wo'
+                                                        ? suppliers.find(supplier => supplier.id === stg.supplierId)?.name ?? 'المعمل يتحدد عند الإرسال'
+                                                        : undefined}
+                                                        className={clsx(
                                                         "px-2 py-0.5 rounded text-[10px] font-medium border",
                                                         stg.execution === 'external'
                                                             ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"
                                                             : "bg-white text-surface-700 border-surface-200 dark:bg-surface-700 dark:text-surface-200 dark:border-surface-600"
                                                     )}>
                                                         {stg.nameAr}
-                                                        {stg.execution === 'external' && <span className="text-[9px] text-amber-600 font-bold mr-1">(خارجي)</span>}
+                                                        {stg.execution === 'external' && <span className="ms-1 text-[9px] font-bold">(خارجي)</span>}
                                                     </span>
                                                     {idx < routeStagesPreview.length - 1 && (
-                                                        <span className="text-surface-400 text-[10px]">←</span>
+                                                        <span aria-hidden="true" className="text-[10px] text-surface-400">←</span>
                                                     )}
                                                 </span>
                                             ))}
@@ -1425,15 +1453,21 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         )}
 
                         {/* Unrouted items alert for Internal mode */}
-                        {unroutedItems.length > 0 && (
+                        {unavailableItems.length > 0 && !useMixedTryIn && (
                             <div className="mt-2.5 rounded-lg border border-amber-200 bg-amber-50/80 p-2.5 text-xs text-amber-800">
                                 <div className="flex items-center gap-1.5 font-bold mb-1 text-amber-900">
                                     <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-                                    <span>تنبيه: خدمات بدون مسار إنتاج مخصص</span>
+                                    <span>التنفيذ الداخلي مش متاح للأصناف دي</span>
                                 </div>
-                                <p className="leading-relaxed text-[11px] text-amber-700">
-                                    الخدمة <span className="font-bold">({unroutedItems.map(i => i.serviceType).join('، ')})</span> غير مربوطة بمسار إنتاج مخصص وستعتمد على المسار الافتراضي.
-                                </p>
+                                {pausedItems.length > 0 && <p className="leading-relaxed text-amber-800">خريطة متربطة ومش متاحة للتشغيل: <b>{[...new Set(pausedItems.map(item => item.serviceType))].join('، ')}</b></p>}
+                                {unroutedItems.length > 0 && <p className="leading-relaxed text-amber-800">أصناف من غير خريطة: <b>{[...new Set(unroutedItems.map(item => item.serviceType))].join('، ')}</b></p>}
+                                <button type="button" onClick={() => setExecutionMode('external')} className="mt-2 rounded-md border border-amber-300 bg-white px-3 py-2 font-semibold">اختيار معمل خارجي</button>
+                                {suggestedMixedRoute && deliveryType === 'Final' && <button type="button" onClick={() => {
+                                    setDeliveryType('TryIn');
+                                    setMixedTryInChoice(true);
+                                }} className="mt-2 rounded-md border border-amber-300 bg-white px-3 py-2 font-semibold">
+                                    تحويل الأوردر لـ Try-In واستخدام خريطة البروفة
+                                </button>}
                             </div>
                         )}
                     </Card>
@@ -1441,7 +1475,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     {/* Summary */}
                     <Card className="p-3.5 bg-surface-900 text-white border border-surface-800 shadow-xl shadow-surface-900/10">
                         <div className="mb-3 border-b border-white/10 pb-3">
-                            <span className="text-xs font-bold text-surface-400">الإجمالي النهائي</span>
+                            <span className="text-xs font-bold text-slate-300">ملخص السعر · قيمة الحالة بعد الخصم</span>
                             <div className="mt-1 flex items-end justify-between gap-3">
                                 <span className="text-2xl font-black leading-none tracking-tight">{total.toLocaleString()}</span>
                                 <span className="text-xs font-bold text-surface-500">جنيه</span>
@@ -1463,22 +1497,47 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             </div>
                         </div>
 
+                        {!initialData && !readOnly && <div className="mt-3 border-t border-white/15 pt-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <label htmlFor="quoted-shipping-fee" className="text-sm font-semibold text-slate-100">رسوم الشحن <span className="text-xs font-normal text-slate-300">اختياري</span></label>
+                                <input id="quoted-shipping-fee" type="number" min="0" max="9999999999.99" step="0.01" value={quotedShippingFee}
+                                    onChange={event => setQuotedShippingFee(event.target.value)} aria-describedby="shipping-fee-note"
+                                    className="min-h-11 w-28 rounded-lg border border-white/20 bg-white/10 px-2 text-right text-base text-white placeholder:text-slate-300 focus-visible:ring-2 focus-visible:ring-cyan-300" placeholder="0.00" />
+                            </div>
+                            <p id="shipping-fee-note" className="mt-1 text-xs text-slate-300">تُضاف للفاتورة عند التسليم النهائي.</p>
+                            {Number(quotedShippingFee) > 0 && <div className="mt-3 flex justify-between gap-2 border-t border-white/15 pt-2 text-sm font-bold">
+                                <span>المتوقع على الطبيب</span><span>{(total + Number(quotedShippingFee)).toLocaleString()} ج.م</span>
+                            </div>}
+                        </div>}
+
+                        {isAdmin && (hasManufacturingQuote ? (
+                            <dl className="mt-3 space-y-2 border-t border-white/15 pt-3 text-sm" aria-label="مختصر تكلفة الحالة">
+                                <div className="flex justify-between gap-2">
+                                    <dt>تكلفة المصمم</dt><dd className="tabular-nums">{formatCost(designCost)}</dd>
+                                </div>
+                                <div className="flex justify-between gap-2">
+                                    <dt>{agreedManufacturingCost === null ? 'التصنيع المتوقع' : 'التصنيع المتفق عليه'}</dt>
+                                    <dd className="tabular-nums">{manufacturingCost !== null ? formatCost(manufacturingCost)
+                                        : quoteOrderId && !orderQuote ? 'جاري التحميل…'
+                                        : orderQuote?.failed ? 'تعذر تحميل السعر'
+                                        : 'سعر الخراطة غير محدد'}</dd>
+                                </div>
+                                <div className="flex justify-between gap-2 border-t border-white/15 pt-2 font-bold">
+                                    <dt>{agreedManufacturingCost === null ? 'الإجمالي التقديري' : 'إجمالي التكلفة المتفق عليها'}</dt>
+                                    <dd className="tabular-nums">{manufacturingCost === null ? '—' : formatCost(designCost + manufacturingCost)}</dd>
+                                </div>
+                            </dl>
+                        ) : (
+                            <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/15 pt-3 text-sm font-bold" aria-label="إجمالي التكلفة للحالة">
+                                <span>إجمالي التكلفة للحالة</span><span className="tabular-nums">{formatCost(finalCost)}</span>
+                            </div>
+                        ))}
+                        {isAdmin && <details className="mt-1">
+                            <summary className="cursor-pointer rounded-md py-2 text-sm font-semibold text-slate-100 focus-visible:ring-2 focus-visible:ring-cyan-300">تفاصيل التكلفة وتعديلها</summary>
                         {/* Admin-only: Lab and Designer Cost Split */}
                         {isAdmin && effectiveWorkflowType === 'split' && (
                             <div className="mt-4 border-t border-white/10 pt-4">
-                                <div className="mb-4">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm font-bold text-surface-200">إجمالي التكلفة للحالة</span>
-                                        <span className="text-lg font-black text-white">
-                                            {((manualCost !== null ? manualCost : calculateAutomaticMillingPrice(items, services, suppliers, selectedSupplier)) + 
-                                              (isSalaried ? 0 : (manualDesignPrice !== null ? manualDesignPrice : calculateAutomaticDesignPrice(items, services, designers, designerId)))).toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <p className="text-[10px] text-surface-500 mt-1 text-left">مجموع تكلفة المعمل والمصمم (يحفظ كالتكلفة الإجمالية)</p>
-                                </div>
-
-                                {/* Milling Cost Section */}
-                                <div className="mb-4 rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
+                                {!hasCatalogRoute && <div className="mb-4 rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
                                     <div className="flex items-center gap-1.5 mb-3 border-b border-surface-700/50 pb-2">
                                         <Lock size={12} className="text-amber-400" />
                                         <span className="text-xs font-bold text-amber-400">تكلفة المعمل (التصنيع)</span>
@@ -1503,7 +1562,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                             />
                                         </div>
                                     </div>
-                                </div>
+                                </div>}
 
                                 {/* Designer Cost Section */}
                                 <div className="rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
@@ -1550,16 +1609,6 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         {/* Admin-only: Manual Cost Override (Full Workflow) */}
                         {isAdmin && effectiveWorkflowType === 'full' && (
                             <div className="mt-4 border-t border-white/10 pt-4">
-                                <div className="mb-4">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm font-bold text-surface-200">إجمالي التكلفة للحالة</span>
-                                        <span className="text-lg font-black text-white">
-                                            {(manualCost !== null ? manualCost : calculateAutomaticCost()).toLocaleString()}
-                                        </span>
-                                    </div>
-                                    <p className="text-[10px] text-surface-500 mt-1 text-left">التكلفة الإجمالية للمعمل (شاملة)</p>
-                                </div>
-
                                 {/* Lab Cost Section */}
                                 <div className="rounded-xl bg-surface-800/50 p-3 border border-surface-700/50">
                                     <div className="flex items-center gap-1.5 mb-3 border-b border-surface-700/50 pb-2">
@@ -1589,6 +1638,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 </div>
                             </div>
                         )}
+                        </details>}
                     </Card>
 
                 </div>

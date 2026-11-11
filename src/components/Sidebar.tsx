@@ -24,7 +24,7 @@ import clsx from 'clsx';
 import { getUserRoleDisplay, getCapabilities } from '../lib/userRoles';
 import {
     SECTION_ORDER, SECTION_LABELS, visibleSidebarEntries,
-    activeSidebarEntry, type SidebarEntry,
+    activeSidebarEntry, WORKSPACES, type SidebarEntry,
 } from '../lib/navigation';
 import { useNavBadges, type BadgeCounts } from '../hooks/useNavBadges';
 import { useFavourites, useRecents } from '../hooks/useFavourites';
@@ -298,8 +298,11 @@ export default function Sidebar() {
 function badgeFor(id: string, badges: BadgeCounts): number | undefined {
     if(id==='production.designQc'||id==='designQc.standalone')return badges.pendingDesignQc;
     if (id === 'finance' || id === 'finance.caseRegistration') return badges.unregisteredCases;
-    if (id === 'production' || id === 'production.myTasks') return badges.myOpenTasks;
-    return undefined;
+    if (id === 'production') return badges.productionCases;
+    if (id === 'shipments') return badges.shippingCases;
+    if (id === 'externalWork') return badges.externalCases;
+    const productionBadge = WORKSPACES.production.find(tab => tab.id === id)?.badge;
+    return productionBadge ? badges[productionBadge] : undefined;
 }
 
 function Badge({ count, small = false }: { count?: number; small?: boolean }) {

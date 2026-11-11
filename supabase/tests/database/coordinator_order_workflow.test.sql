@@ -64,6 +64,9 @@ SELECT throws_ok($$SELECT public.accept_coordinator_order('51cc0000-0000-4000-80
     'Order is not awaiting intake', 'Intake operation cannot edit the case a second time');
 SELECT lives_ok($$SELECT public.apply_order_issue_transition_v2('51cc0000-0000-4000-8000-000000000014',
     'cancel_order','Synthetic cancellation',gen_random_uuid())$$, 'Coordinator can cancel using the workflow RPC');
+-- Each client RPC runs in its own transaction. This rollback-only fixture
+-- shares one transaction, so clear the operation before the next request.
+SELECT set_config('app.order_issue_operation', '', true);
 SELECT throws_ok($$SELECT public.update_order_atomic('51cc0000-0000-4000-8000-000000000011',
     '{"production_status":"final_ready"}', NULL, NULL)$$, 'P0001',
     'انتقال الحالة غير مسموح للمنسق من المرحلة الحالية', 'Coordinator cannot skip the Try-In');
@@ -86,6 +89,7 @@ SELECT lives_ok($$SELECT public.record_order_final_delivery_v2('51cc0000-0000-40
     now(), gen_random_uuid())$$, 'Coordinator can record final delivery');
 SELECT is((SELECT production_status FROM public.orders WHERE case_id = 'COORD-FINAL'),
     'final_delivered', 'Delivery persists the final stage');
+SELECT set_config('app.order_issue_operation', '', true);
 SELECT throws_ok($$SELECT public.update_order_atomic('51cc0000-0000-4000-8000-000000000013',
     '{"production_status":"in_production"}', NULL, NULL)$$, 'P0001',
     'انتقال الحالة غير مسموح للمنسق من المرحلة الحالية', 'Split case still requires a design');

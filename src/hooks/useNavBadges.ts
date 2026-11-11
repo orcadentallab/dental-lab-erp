@@ -29,33 +29,52 @@ let lastArgs: { caps: Set<Capability>; userId: string } | null = null;
 
 async function fetchCounts(caps: Set<Capability>, userId: string): Promise<BadgeCounts> {
     const counts: BadgeCounts = {};
-    if(caps.has('view_design_qc')){
-        try{counts.pendingDesignQc=await getPendingDesignQcCount();}
-        catch(error){console.error('Failed to count waiting Design QC',error);}
+    const requests: Promise<void>[] = [];
+    function tally(key: BadgeKey, request: Promise<number>) {
+        requests.push(request.then(value => { counts[key] = value; })
+            .catch(error => { console.error(`Failed to refresh badge ${key}`, error); }));
     }
 
+    const canReviewDesign = caps.has('view_design_qc');
+    if (canReviewDesign) tally('pendingDesignQc', getPendingDesignQcCount());
     if (LEGACY_EXTERNAL_REGISTRATION_ENABLED && caps.has('view_finance')) {
-        try {
-            // Optimized: replaces heavy getOrdersForAccountingRegistration() full table download.
-            // The count is computed via getUnregisteredCasesCount() which evaluates
-            // isAccountingRegistrationCandidate(order, 'pending') on candidate rows.
-            counts.unregisteredCases = await db.getUnregisteredCasesCount();
-        } catch (error) {
-            // A badge is never worth breaking navigation over.
-            console.error('Failed to count unregistered cases', error);
-        }
+        // Like getOrdersForAccountingRegistration, this uses
+        // isAccountingRegistrationCandidate(order, 'pending') without loading complete order cards.
+        tally('unregisteredCases', db.getUnregisteredCasesCount());
+    }
+    if (caps.has('view_shipments')) {
+        tally('shippingCases', import('../services/supabase/shippingService').then(({ shippingService }) => shippingService.getOpenCaseCount()));
     }
 
-    if (caps.has('view_production') && userId) {
-        try {
-            const { getMyTasks } = await import('../services/supabase/production');
-            const tasks = await getMyTasks(userId);
-            counts.myOpenTasks = tasks.length;
-        } catch (error) {
-            console.error('Failed to count open production tasks', error);
+    const canViewBoard = caps.has('view_production');
+    const canViewTasks = caps.has('view_my_tasks') && Boolean(userId);
+    const canViewExternal = caps.has('view_external_work');
+    if (canViewBoard || canViewTasks || canViewExternal) {
+        const production = import('../services/supabase/production');
+        const openRuns = production.then(service => service.getOpenStageRuns(canViewBoard || canReviewDesign));
+        if (canViewBoard) {
+            const waits = production.then(service => service.getOpenDoctorWaits());
+            tally('productionCases', Promise.all([openRuns, waits]).then(([runs, holds]) =>
+                new Set([...runs.map(run => run.orderId), ...holds.map(hold => hold.order_id)]).size
+            ));
+        }
+        if (canViewTasks) {
+            tally('myOpenTasks', Promise.all([production, openRuns]).then(async ([service, runs]) => {
+                const tasks = await service.getMyTasks(userId, canReviewDesign, runs);
+                return new Set(tasks.map(task => task.orderId)).size;
+            }));
+        }
+        if (canViewExternal) {
+            const sentCases = production.then(service => service.getSentExternalCaseIds());
+            tally('externalCases', Promise.all([production, openRuns, sentCases]).then(([service, runs, sent]) =>
+                new Set([
+                    ...runs.filter(service.isExternalWorkReady).map(run => run.orderId),
+                    ...sent,
+                ]).size
+            ));
         }
     }
-
+    await Promise.all(requests);
     return counts;
 }
 

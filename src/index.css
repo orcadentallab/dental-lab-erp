@@ -74,3 +74,51 @@
   /* surface-500 at 50% opacity */
 }
 /* aria-label placeholder */
+
+.order-service-select {
+  text-align-last: center;
+}
+
+@supports selector(::picker(select)) {
+  .order-service-select,
+  .order-service-select::picker(select) {
+    appearance: base-select;
+  }
+
+  .order-service-select {
+    position: relative;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 1.25rem;
+  }
+
+  .order-service-select::picker-icon {
+    position: absolute;
+    inset-inline-end: 0.5rem;
+    inset-block-start: 50%;
+    translate: 0 -50%;
+  }
+
+  .order-service-select::picker(select) {
+    max-height: 20rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    background: white;
+    color: #1e293b;
+  }
+
+  .order-service-select optgroup legend {
+    display: block;
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    background: #f1f5f9;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .order-service-select option {
+    padding: 0.3rem 0.5rem;
+    text-align: left;
+    text-align-last: left;
+  }
+}

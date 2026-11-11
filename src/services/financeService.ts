@@ -21,6 +21,8 @@ export type FixedAsset = {
 };
 
 export type Adjustment = {
+    service_charge_kind?: 'shipping' | 'scan_visit' | null;
+    shipping_order_id?: string | null;
     id: string;
     entity_type: 'doctor' | 'supplier' | 'designer';
     entity_id: string;

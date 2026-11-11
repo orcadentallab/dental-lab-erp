@@ -8,34 +8,42 @@ INSERT INTO auth.users(id,email) SELECT ('fb000000-0000-0000-0000-'||lpad(n::tex
 INSERT INTO public.users(id,auth_id,username,role,name) SELECT ('fb000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,('fb000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,'qc_user_'||n,(ARRAY['admin','coordinator','designer','designer'])[n],'QC user '||n FROM generate_series(1,4)n;
 INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name) VALUES('fb000000-0000-0000-0000-000000000010','QC doctor','01000000000','Local','QC-TEST','Test');
 SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000001',true);
+SELECT public.set_design_qc_enabled(false,'Start waiting-count fixture paused');
+-- The production count is global. Subtract unrelated cases from the same queue.
+CREATE TEMP VIEW fixture_pending_qc AS
+SELECT public.get_pending_design_qc_count() - (
+    SELECT count(*) FROM jsonb_array_elements(public.get_design_qc_queue()) q
+    WHERE (q->>'awaitingReview')::boolean IS TRUE AND q->>'caseId' IS DISTINCT FROM 'QC-CASE'
+) AS count;
+
 INSERT INTO public.orders(id,case_id,doctor_id,patient_name,items,total_price,cost,shade,production_status,delivery_date,workflow_type,designer_id,design_price)
 VALUES('fb000000-0000-0000-0000-000000000011','QC-CASE','fb000000-0000-0000-0000-000000000010','QC patient','[]',900,400,'A1','designing',current_date,'split','fb000000-0000-0000-0000-000000000003',100),
 ('fb000000-0000-0000-0000-000000000012','QC-HISTORY','fb000000-0000-0000-0000-000000000010','Historical design','[]',900,400,'A1','in_production',current_date,'split','fb000000-0000-0000-0000-000000000003',100);
 SELECT public.submit_design_delivery('fb000000-0000-0000-0000-000000000011','fb000000-0000-0000-0000-000000000021','link','https://example.test/paused','No preview');
-SELECT is(public.get_pending_design_qc_count(),0::bigint,'Submission while paused creates no mandatory waiting work');
+SELECT is((SELECT count FROM fixture_pending_qc),0::bigint,'Submission while paused creates no mandatory waiting work');
 SELECT is((SELECT (q->>'submittedAt')::timestamptz FROM jsonb_array_elements(public.get_design_qc_queue())q WHERE q->>'caseId'='QC-CASE'),(SELECT submitted_at FROM public.design_revisions WHERE id='fb000000-0000-0000-0000-000000000021'),'Queue exposes the current revision upload timestamp');
 SELECT is((SELECT q->>'submittedAt' FROM jsonb_array_elements(public.get_design_qc_queue())q WHERE q->>'caseId'='QC-HISTORY'),NULL::text,'No timestamp invented for cases without a submitted revision');
 SELECT public.set_design_qc_enabled(true,'Waiting work test');
 SELECT public.submit_design_delivery('fb000000-0000-0000-0000-000000000011','fb000000-0000-0000-0000-000000000022','link','https://example.test/required','No preview');
-SELECT is(public.get_pending_design_qc_count(),1::bigint,'Required pending current revision is counted once');
+SELECT is((SELECT count FROM fixture_pending_qc),1::bigint,'Required pending current revision is counted once');
 UPDATE public.orders SET updated_at=clock_timestamp()+interval '2 hours' WHERE case_id='QC-CASE';
 SELECT is((SELECT (q->>'submittedAt')::timestamptz FROM jsonb_array_elements(public.get_design_qc_queue())q WHERE q->>'caseId'='QC-CASE'),(SELECT submitted_at FROM public.design_revisions WHERE id='fb000000-0000-0000-0000-000000000022'),'Unrelated order changes do not reset waiting age');
 SELECT public.decide_design_revision('fb000000-0000-0000-0000-000000000022',gen_random_uuid(),'approved','');
-SELECT is(public.get_pending_design_qc_count(),0::bigint,'Approval clears the waiting count');
+SELECT is((SELECT count FROM fixture_pending_qc),0::bigint,'Approval clears the waiting count');
 SELECT public.submit_design_delivery('fb000000-0000-0000-0000-000000000011','fb000000-0000-0000-0000-000000000023','link','https://example.test/new','No preview');
-SELECT is(public.get_pending_design_qc_count(),1::bigint,'Older revision history is not double-counted');
+SELECT is((SELECT count FROM fixture_pending_qc),1::bigint,'Older revision history is not double-counted');
 SELECT public.decide_design_revision('fb000000-0000-0000-0000-000000000023',gen_random_uuid(),'bypassed','Urgent');
-SELECT is(public.get_pending_design_qc_count(),1::bigint,'Bypass still owes an explicit admin review');
+SELECT is((SELECT count FROM fixture_pending_qc),1::bigint,'Bypass still owes an explicit admin review');
 SELECT public.decide_design_revision('fb000000-0000-0000-0000-000000000023',gen_random_uuid(),'rejected','Amend');
-SELECT is(public.get_pending_design_qc_count(),0::bigint,'Rejected follow-up is separate from pending QC');
+SELECT is((SELECT count FROM fixture_pending_qc),0::bigint,'Rejected follow-up is separate from pending QC');
 SELECT public.set_design_qc_enabled(false,'Pause');
 SELECT public.submit_design_delivery('fb000000-0000-0000-0000-000000000011','fb000000-0000-0000-0000-000000000024','link','https://example.test/paused-again','No preview');
-SELECT is(public.get_pending_design_qc_count(),0::bigint,'Paused new uploads stay out of the mandatory count');
+SELECT is((SELECT count FROM fixture_pending_qc),0::bigint,'Paused new uploads stay out of the mandatory count');
 SELECT public.decide_design_revision('fb000000-0000-0000-0000-000000000024',gen_random_uuid(),'bypassed','Documented admin review still needed');
 SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000004',true);
 SELECT is(public.get_pending_design_qc_count(),0::bigint,'Another designer cannot learn global waiting counts');
 SELECT is(public.get_design_qc_queue(),'[]'::jsonb,'Another designer cannot learn upload ages');
 SELECT set_config('request.jwt.claim.sub','fb000000-0000-0000-0000-000000000001',true);
-SELECT is(public.get_pending_design_qc_count(),1::bigint,'Admin sees its outstanding bypass review even during pause');
+SELECT is((SELECT count FROM fixture_pending_qc),1::bigint,'Admin sees its outstanding bypass review even during pause');
 SELECT * FROM finish();
 ROLLBACK;

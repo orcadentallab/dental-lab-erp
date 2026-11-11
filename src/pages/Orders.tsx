@@ -12,6 +12,7 @@ import type { Order, Doctor, Supplier, User } from '../services/db';
 import { Plus, X, Search, Send, MessageCircle, FileSpreadsheet, Printer, Filter, User as UserIcon, ChevronDown, LayoutList, Columns } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { refreshNavBadges } from '../hooks/useNavBadges';
 import { exportToExcelWithHeaders } from '../lib/exportUtils';
 import { generateDoctorInvoicePDF, generateOrdersListPDF } from '../services/pdfService';
 import { calculateOpeningBalance, DEFAULT_LAB_INFO } from '../utils/finance';
@@ -334,6 +335,7 @@ function OrdersPage() {
             });
             setIsFormOpen(false);
             clearOpenOrderParams();
+            refreshNavBadges();
             await refreshOrders();
             return created;
         } catch (error) {
@@ -411,6 +413,7 @@ function OrdersPage() {
                     actorRole: user?.role,
                 });
             }
+            refreshNavBadges();
             await refreshOrders();
         } catch (error) {
             alert(`فشل تحديث الحالة: ${error instanceof Error ? error.message : 'حدث خطأ غير متوقع'}`);
@@ -420,6 +423,7 @@ function OrdersPage() {
     const handleDeleteOrder = async (order: Order) => {
         try {
             await db.deleteOrder(order.id);
+            refreshNavBadges();
             await refreshOrders();
         } catch {
             alert('Failed to delete order');

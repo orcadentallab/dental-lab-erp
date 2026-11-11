@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { db, type OrderIssue, type Doctor, type Supplier, type User, type OrderItem } from '../services/db';
 import { AlertTriangle, BarChart2, RefreshCw, XCircle, RotateCcw, Ban, UserX } from 'lucide-react';
 import { ResponsiveTable } from '../components/ui/ResponsiveTable';
-import { ISSUE_CAUSE, responsibleStageLabel } from '../constants/issueCauses';
+import { ISSUE_CAUSE, issueCauseLabel, responsibleStageLabel } from '../constants/issueCauses';
+import { getPhysicalQcFailures } from '../services/supabase/production';
 import { analyticsService, type SupplierIssuePerformance } from '../services/supabase/analyticsService';
 import { useReportDateRange } from '../hooks/useReportDateRange';
 import ReportDateRangeFilter from '../components/reports/ReportDateRangeFilter';
@@ -61,6 +62,8 @@ const ISSUE_TYPE_DESCRIPTIONS: Record<string, string> = {
 
 export default function IssuesReport() {
     const [issues, setIssues] = useState<OrderIssue[]>([]);
+    const [qcFailures, setQcFailures] = useState<Awaited<ReturnType<typeof getPhysicalQcFailures>>>([]);
+    const [qcError, setQcError] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [lookupError, setLookupError] = useState<string | null>(null);
     const [reportError, setReportError] = useState<string | null>(null);
@@ -80,6 +83,17 @@ export default function IssuesReport() {
     const [users, setUsers] = useState<User[]>([]);
 
     const designers = useMemo(() => users.filter(u => u.role === 'designer'), [users]);
+    const filteredQcFailures = qcFailures.filter(({ production_jobs: { orders } }) =>
+        (designerFilter === 'all' || orders.designer_id === designerFilter) &&
+        (supplierFilter === 'all' || orders.supplier_id === supplierFilter));
+
+    useEffect(() => {
+        let ignore = false;
+        void getPhysicalQcFailures(rangeStart || undefined, rangeEnd ? `${rangeEnd}T23:59:59` : undefined)
+            .then(rows => { if (!ignore) { setQcFailures(rows); setQcError(false); } })
+            .catch(() => { if (!ignore) { setQcFailures([]); setQcError(true); } });
+        return () => { ignore = true; };
+    }, [rangeStart, rangeEnd]);
 
     useEffect(() => {
         (async () => {
@@ -538,6 +552,20 @@ export default function IssuesReport() {
                     </ResponsiveTable>
                 )}
             </div>
+            <section aria-label="رسوب الفحص الداخلي" className="space-y-3 rounded-xl border border-surface-200 bg-white p-4">
+                <h2 className="font-bold text-surface-900">رسوب الفحص الداخلي <span className="ms-2 text-sm text-surface-500">({filteredQcFailures.length})</span></h2>
+                {qcError ? <p className="text-sm text-red-700">تعذّر تحميل نتائج الفحص.</p> : filteredQcFailures.length === 0 ? (
+                    <p className="text-sm text-surface-500">مفيش حالات رسوب في الفترة المحددة.</p>
+                ) : <div className="grid gap-2 md:grid-cols-2">
+                    {filteredQcFailures.map(failure => (
+                        <article key={failure.id} className="space-y-1 rounded-lg border border-surface-200 p-3 text-sm">
+                            <p className="font-semibold">{failure.production_jobs.orders.case_id} · {failure.production_jobs.orders.patient_name}</p>
+                            <p>{failure.name_override ?? 'الفحص الداخلي'} · {issueCauseLabel(failure.failure_cause_code)} · {failure.units_failed} وحدة</p>
+                            <p className="text-xs text-surface-600">{new Date(failure.completed_at).toLocaleDateString('ar-EG')} · {failure.qc_followup_run_id ? 'اتسجّل إجراء متابعة' : 'في انتظار إجراء'}</p>
+                        </article>
+                    ))}
+                </div>}
+            </section>
         </div>
     );
 }

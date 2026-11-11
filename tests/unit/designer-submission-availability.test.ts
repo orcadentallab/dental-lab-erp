@@ -10,8 +10,11 @@ describe('designer submission availability', () => {
     it('allows an active design even when the legacy status is stale', () => {
         expect(getDesignSubmissionError({ ...order('designing'), status: 'Under Production' })).toBeNull();
     });
-    it('requires acceptance before the first design submission', () => {
-        expect(getDesignSubmissionError(order('not_started'))).toContain('قبول');
+    it('allows the first submission to accept an unstarted case', () => {
+        expect(getDesignSubmissionError(order('not_started'))).toBeNull();
+    });
+    it('blocks submission while the case is on doctor hold', () => {
+        expect(getDesignSubmissionError({ ...order('designing'), doctorWaitReason: 'إعادة السكان' })).toContain('On Hold');
     });
     it.each(['in_production', 'try_in_ready', 'finalization', 'final_ready', 'final_delivered', 'waiting_doctor'])(
         'requires an explicit design revision for %s', status => {

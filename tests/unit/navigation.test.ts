@@ -40,7 +40,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant'],
     '/doctors': ['admin', 'representative', 'coordinator'],
     '/doctors/retention': ['admin'],
-    '/production/my-tasks': ['admin', 'technician', 'production_manager'],
+    '/production/my-tasks': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/board': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/machines': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/shadow': ['admin', 'technician', 'production_manager', 'coordinator'],
@@ -62,6 +62,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/balance-snapshot': ['admin', 'accountant', 'coordinator'],
     '/financial-review': ['admin', 'accountant', 'coordinator'],
     '/statements': ['admin', 'accountant', 'coordinator'],
+    '/production/scan-visits': ['admin', 'accountant', 'coordinator', 'representative'],
     '/aging-report': ['admin', 'accountant', 'coordinator'],
     '/analytics': ['admin'],
     '/ai-analytics': ['admin'],
@@ -275,6 +276,11 @@ describe('landing routes', () => {
         expect(getLandingRoute(makeUser('technician'))).toBe('/production/board');
     });
 
+    it('the coordinator lands on the production board and the accountant lands on finance', () => {
+        expect(getLandingRoute(makeUser('coordinator'))).toBe('/production/board');
+        expect(getLandingRoute(makeUser('accountant'))).toBe('/finance/transactions');
+    });
+
     it('the doctor and the profile-only employee keep their own landings', () => {
         expect(getLandingRoute(makeUser('doctor'))).toBe('/doctor/my-orders');
         const other = makeUser('accountant', { id: 'u-7', employeeType: 'other' });
@@ -400,6 +406,12 @@ describe('the sidebar stays small', () => {
 });
 
 describe('favourites and quick actions', () => {
+    it('lets coordinators open tasks assigned to their role', () => {
+        const caps = getCapabilities(makeUser('coordinator'));
+        expect(caps.has('view_my_tasks')).toBe(true);
+        expect(caps.has('work_production_tasks')).toBe(true);
+    });
+
     it('every seeded favourite resolves and is reachable by that role', () => {
         for (const [role, ids] of Object.entries(DEFAULT_FAVOURITES)) {
             const caps = getCapabilities(makeUser(role as Role));

@@ -6,6 +6,7 @@ export interface ShipmentOrder {
   order_id: string;
   notes: string | null;
   created_at: string;
+  stage?: { name_override: string | null } | null;
   order?: {
     id: string;
     case_id: string;
@@ -13,6 +14,7 @@ export interface ShipmentOrder {
     total_price: number;
     status: string;
     production_status?: string;
+    route_override_id?: string | null;
     shade?: string;
   };
 }
@@ -53,6 +55,13 @@ export interface Shipment {
   orders?: ShipmentOrder[];
 }
 
+interface ShippingClinic {
+  name: string;
+  phone: string | null;
+  address: string | null;
+  branches?: Array<{ name: string; phone?: string; address?: string }> | null;
+}
+
 export interface ReadyToPackOrder {
   id: string;
   case_id: string;
@@ -61,33 +70,46 @@ export interface ReadyToPackOrder {
   total_price: number;
   status: string;
   production_status: string;
+  route_override_id?: string | null;
   shade: string | null;
   delivery_date: string | null;
-  doctor?: {
+  branch_name: string | null;
+  doctor?: ShippingClinic & {
     id: string;
-    name: string;
-    phone: string | null;
-    address: string | null;
+    parent?: ShippingClinic | null;
   } | null;
 }
 
+export const ACTIVE_SHIPMENT_STATUSES: Shipment['status'][] = ['packing', 'ready_for_pickup', 'dispatched'];
+const READY_TO_PACK_STATUSES = ['final_ready', 'try_in_ready'];
+
+async function getActiveShipmentOrderIds(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('shipment_orders')
+    .select('order_id, shipments!inner(status)')
+    .in('shipments.status', ACTIVE_SHIPMENT_STATUSES);
+  if (error) throw error;
+  return [...new Set((data ?? []).map(link => link.order_id))];
+}
+
 export const shippingService = {
+  async getOpenCaseCount(): Promise<number> {
+    const activeOrderIds = await getActiveShipmentOrderIds();
+    let query = supabase.from('orders').select('id', { count: 'exact', head: true })
+      .in('production_status', READY_TO_PACK_STATUSES)
+      .eq('is_deleted', false);
+    if (activeOrderIds.length) query = query.not('id', 'in', `(${activeOrderIds.join(',')})`);
+    const { count, error } = await query;
+    if (error) throw error;
+    return activeOrderIds.length + (count ?? 0);
+  },
+
   /**
    * Get orders that are ready to be packed and shipped
    * (e.g. final_ready or ready status, not in an active shipment)
    */
   async getReadyToPackOrders(): Promise<ReadyToPackOrder[]> {
-    // 1. Get IDs of orders in active shipments
-    const { data: activeLinks, error: linkErr } = await supabase
-      .from('shipment_orders')
-      .select('order_id, shipments!inner(status)')
-      .in('shipments.status', ['packing', 'ready_for_pickup', 'dispatched']);
-
-    if (linkErr) {
-      console.warn('Error fetching active shipment links:', linkErr);
-    }
-
-    const activeOrderIds = (activeLinks || []).map((l: { order_id: string }) => l.order_id);
+    const activeOrderIds = await getActiveShipmentOrderIds();
 
     // 2. Query ready orders
     let query = supabase
@@ -100,11 +122,13 @@ export const shippingService = {
         total_price,
         status,
         production_status,
+        route_override_id,
         shade,
         delivery_date,
-        doctor:doctors(id, name, phone, address)
+        branch_name,
+        doctor:doctors(id, name, phone, address, branches, parent:doctors!parent_id(name, phone, address, branches))
       `)
-      .in('production_status', ['final_ready', 'try_in_ready'])
+      .in('production_status', READY_TO_PACK_STATUSES)
       .eq('is_deleted', false)
       .order('delivery_date', { ascending: true });
 
@@ -139,6 +163,7 @@ export const shippingService = {
           order_id,
           notes,
           created_at,
+          stage:production_stage_runs!production_stage_run_id(name_override),
           order:orders(
             id,
             case_id,
@@ -146,6 +171,7 @@ export const shippingService = {
             total_price,
             status,
             production_status,
+            route_override_id,
             shade
           )
         )
@@ -241,6 +267,7 @@ export const shippingService = {
     status: string;
     orders_in_shipment: number;
     orders_delivered: number;
+    orders_trial_received?: number;
     orders_skipped: Array<{ order_id: string; case_id: string; reason: 'already_delivered' | 'open_issue' }>;
     delivered_at: string;
   }> {

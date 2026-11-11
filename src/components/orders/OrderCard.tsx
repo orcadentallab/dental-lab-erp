@@ -20,6 +20,7 @@ import { Input } from '../ui/Input';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { canAccessDesignerFeatures, hasRepresentativeScope } from '../../lib/userRoles';
+import { isExplicitProductionRoute } from '../../services/supabase/production';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import ProductionStatusBadge from './ProductionStatusBadge';
@@ -243,6 +244,9 @@ function OrderCard({
     const displayedDesignCost = order.manualDesignPrice ?? order.designPrice ?? 0;
     const showDesignerCost = Boolean(order.designerId && designerFixedSalary[order.designerId] === false);
     const productionStatus = getEffectiveProductionStatus(order);
+    const managedByProduction = isExplicitProductionRoute(order.routeOverrideId) || Boolean(activeStage && !order.supplierId);
+    const canOpenProduction = ['admin', 'coordinator', 'production_manager', 'technician'].includes(userRole ?? '');
+    const productionTab = activeStage?.stageCode === 'doctor_input_wait' ? 'input' : activeStage?.stageCode === 'doctor_review' ? 'doctor' : 'floor';
     const issueState = getEffectiveIssueState(order);
     const usesRejectionCost = issueState === 'doctor_rejected' || issueState === 'redo';
     const hasZeroEffectiveCost = isNonProductiveOrder(order);
@@ -556,9 +560,9 @@ function OrderCard({
                                     <p className="text-[10px] sm:text-xs text-surface-500">اسم المريض</p>
                                     {/* WF-4: Workflow status badges */}
                                     <div className="flex items-center gap-1 flex-wrap mt-1">
-                                        <ProductionStatusBadge status={getEffectiveProductionStatus(order)} />
+                                        {(!managedByProduction || !activeStage) && <ProductionStatusBadge status={getEffectiveProductionStatus(order)} />}
                                         <IssueStateBadge state={getEffectiveIssueState(order)} />
-                                        {!isDesigner && <CaseLocationChip
+                                        {!isDesigner && (!managedByProduction || !activeStage) && <CaseLocationChip
                                             location={getCaseLocation(
                                                 getEffectiveProductionStatus(order),
                                                 getEffectiveIssueState(order),
@@ -579,7 +583,7 @@ function OrderCard({
                                                 )}
                                                 title={`مرحلة الإنتاج الحالية: ${activeStage.stageName}`}
                                             >
-                                                {activeStage.stageName}
+                                                {activeStage.stageName}{activeStage.since && ` · ${formatStageDuration(activeStage.since)}`}
                                             </span>
                                         )}
                                     </div>
@@ -831,6 +835,11 @@ function OrderCard({
                     <div className="bg-black/5 dark:bg-white/5 px-2 sm:px-3 py-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-2 border-t border-black/5 dark:border-white/5 flex flex-col sm:flex-row flex-wrap justify-between items-stretch sm:items-center gap-3">
                         {/* Left: Quick Actions */}
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1">
+                            {managedByProduction && canOpenProduction && !isDelivered && (
+                                <Link to={`/production/board?case=${encodeURIComponent(order.caseId)}&tab=${productionTab}`} className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-900 hover:bg-cyan-100">
+                                    فتح الحالة في الإنتاج
+                                </Link>
+                            )}
                             {/* Workflow Action Bar (WF-4) */}
                             {!isDesigner && <WorkflowActionBar
                                 order={order}
@@ -839,6 +848,7 @@ function OrderCard({
                                 onRedo={onRedo}
                                 showRejectedDesignerCost={showDesignerCost}
                                 showLegacyFallback={userRole === 'admin'}
+                                managedByProduction={managedByProduction}
                                 disabled={userRole === 'lab' && isDelivered}
                             />}
 

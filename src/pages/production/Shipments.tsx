@@ -15,11 +15,33 @@ import {
 } from 'lucide-react';
 import {
   shippingService,
+  ACTIVE_SHIPMENT_STATUSES,
   type Shipment,
   type ReadyToPackOrder
 } from '../../services/supabase/shippingService';
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
+import { refreshNavBadges } from '../../hooks/useNavBadges';
+import { getOpenStageRuns, MIXED_TRY_IN_ROUTE_ID } from '../../services/supabase/production';
+import { Link } from 'react-router-dom';
+
+function clinicRecipient(order: ReadyToPackOrder) {
+  const doctor = order.doctor;
+  const parent = doctor?.parent;
+  const childBranch = doctor?.branches?.find(branch => branch.name === order.branch_name);
+  const parentBranch = parent?.branches?.find(branch => branch.name === order.branch_name);
+  const branch = childBranch ?? parentBranch;
+  const clinic = !childBranch && parentBranch ? parent : doctor;
+  return {
+    name: [clinic?.name, order.branch_name].filter(Boolean).join(' · '),
+    phone: branch?.phone || clinic?.phone || parent?.phone || '',
+    address: branch?.address || clinic?.address || parent?.address || '',
+  };
+}
+
+function shipmentCaseCount(shipments: Shipment[]) {
+  return new Set(shipments.flatMap(shipment => shipment.orders?.map(order => order.order_id) ?? [])).size;
+}
 
 export const Shipments: React.FC = () => {
   const { success: toastSuccess, error: toastError, warning: toastWarning } = useToast();
@@ -37,7 +59,9 @@ export const Shipments: React.FC = () => {
   const [readyOrders, setReadyOrders] = useState<ReadyToPackOrder[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [couriers, setCouriers] = useState<Array<{ id: string; name: string; phone?: string }>>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(window.location.search).get('case') ?? '');
+  const [trialWithDoctorCount, setTrialWithDoctorCount] = useState(0);
+  const canOpenProduction = ['admin', 'coordinator', 'production_manager', 'technician'].includes(role ?? '');
 
   // Multi-selection for packing
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -47,6 +71,10 @@ export const Shipments: React.FC = () => {
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [selectedShipmentForDelivery, setSelectedShipmentForDelivery] = useState<Shipment | null>(null);
   const [selectedShipmentDetails, setSelectedShipmentDetails] = useState<Shipment | null>(null);
+  const isTrialOnlyShipment = !!selectedShipmentForDelivery?.orders?.length &&
+    selectedShipmentForDelivery.orders.every(({ order }) =>
+      order?.route_override_id === MIXED_TRY_IN_ROUTE_ID && order.production_status === 'try_in_ready'
+    );
 
   // Form State: Create Shipment
   const [formCourierId, setFormCourierId] = useState('');
@@ -74,13 +102,16 @@ export const Shipments: React.FC = () => {
       setReadyOrders(readyRes);
       setShipments(shipRes);
       setCouriers(courierRes);
+      if (canOpenProduction) {
+        void getOpenStageRuns().then(runs => setTrialWithDoctorCount(runs.filter(run => run.routeId === MIXED_TRY_IN_ROUTE_ID && run.stageCode === 'doctor_review' && !run.doctorWait).length)).catch(console.error);
+      }
     } catch (err: unknown) {
       console.error('Failed to load shipping data:', err);
       toastError('فشل تحميل بيانات الشحن');
     } finally {
       setLoading(false);
     }
-  }, [toastError]);
+  }, [toastError, canOpenProduction]);
 
   useEffect(() => {
     loadData();
@@ -103,24 +134,25 @@ export const Shipments: React.FC = () => {
     const map = new Map<string, { doctorName: string; doctorId: string; address?: string; phone?: string; orders: ReadyToPackOrder[] }>();
     filteredReadyOrders.forEach(ord => {
       const docId = ord.doctor_id || 'unassigned';
-      const docName = ord.doctor?.name || 'طبيب غير محدد';
-      if (!map.has(docId)) {
-        map.set(docId, {
-          doctorId: docId,
-          doctorName: docName,
-          address: ord.doctor?.address || '',
-          phone: ord.doctor?.phone || '',
+      const groupKey = JSON.stringify([docId, ord.branch_name]);
+      const clinic = clinicRecipient(ord);
+      if (!map.has(groupKey)) {
+        map.set(groupKey, {
+          doctorId: groupKey,
+          doctorName: clinic.name || 'طبيب غير محدد',
+          address: clinic.address,
+          phone: clinic.phone,
           orders: []
         });
       }
-      map.get(docId)?.orders.push(ord);
+      map.get(groupKey)?.orders.push(ord);
     });
     return Array.from(map.values());
   }, [filteredReadyOrders]);
 
   // Filtered Active Shipments
   const activeShipments = useMemo(() => {
-    return shipments.filter(s => ['packing', 'ready_for_pickup', 'dispatched'].includes(s.status));
+    return shipments.filter(s => ACTIVE_SHIPMENT_STATUSES.includes(s.status));
   }, [shipments]);
 
   // Filtered Delivered Shipments
@@ -129,17 +161,19 @@ export const Shipments: React.FC = () => {
   }, [shipments]);
 
   // Handle open create modal from selected orders
-  const handleOpenPackSelected = (orderIdsToPack: string[], docInfo?: { name: string; phone?: string; address?: string }) => {
-    setSelectedOrderIds(orderIdsToPack);
-    if (docInfo) {
-      setFormRecipientName(docInfo.name);
-      setFormRecipientPhone(docInfo.phone || '');
-      setFormDeliveryAddress(docInfo.address || '');
-    } else {
-      setFormRecipientName('');
-      setFormRecipientPhone('');
-      setFormDeliveryAddress('');
+  const handleOpenPackSelected = (orderIdsToPack: string[]) => {
+    const orders = readyOrders.filter(order => orderIdsToPack.includes(order.id));
+    const firstOrder = orders[0];
+    if (!firstOrder) return;
+    if (orders.some(order => order.doctor_id !== firstOrder.doctor_id || order.branch_name !== firstOrder.branch_name)) {
+      toastError('اختار حالات لنفس العيادة والفرع لتجهيزها في طرد واحد');
+      return;
     }
+    const docInfo = clinicRecipient(firstOrder);
+    setSelectedOrderIds(orderIdsToPack);
+    setFormRecipientName(docInfo.name);
+    setFormRecipientPhone(docInfo.phone);
+    setFormDeliveryAddress(docInfo.address);
     setFormCourierId(couriers[0]?.id || '');
     setFormTrackingRef('');
     setFormNotes('');
@@ -186,6 +220,7 @@ export const Shipments: React.FC = () => {
       setIsCreateModalOpen(false);
       setSelectedOrderIds([]);
       setActiveTab('active');
+      refreshNavBadges();
       loadData();
     } catch (err: unknown) {
       console.error('Failed to create shipment:', err);
@@ -203,6 +238,7 @@ export const Shipments: React.FC = () => {
 
     try {
       await shippingService.dispatchShipment(shipment.id, tracking);
+      refreshNavBadges();
       toastSuccess(`تم تسليم الشحنة ${shipment.shipment_code} للمندوب/شركة الشحن`);
       loadData();
     } catch (err: unknown) {
@@ -238,7 +274,7 @@ export const Shipments: React.FC = () => {
       // Confirming delivery is what bills the doctor. Any case the delivery RPC
       // refused (open issue, already delivered) was NOT billed, so a flat
       // "تم بنجاح" would hide a case nobody charged for.
-      if (result.orders_skipped.length > 0) {
+      if ((result.orders_skipped ?? []).length > 0) {
         const cases = result.orders_skipped
           .map(o => `${o.case_id} (${o.reason === 'open_issue' ? 'عليها مشكلة مفتوحة' : 'مسلّمة قبل كده'})`)
           .join('، ');
@@ -246,12 +282,15 @@ export const Shipments: React.FC = () => {
           `الشحنة ${selectedShipmentForDelivery.shipment_code}: اتسجّل تسليم ${result.orders_delivered} من ${result.orders_in_shipment}. ` +
           `الحالات دي متحسبتش على حساب الطبيب: ${cases}`
         );
+      } else if (result.orders_trial_received) {
+        toastSuccess(`تم تأكيد وصول ${result.orders_trial_received} بروفة. الحالات تنتظر رد الطبيب.${result.orders_delivered ? ` وتم تأكيد الاستلام النهائي لـ${result.orders_delivered} حالة.` : ''}`);
       } else {
         toastSuccess(
           `تم تأكيد تسليم الشحنة ${selectedShipmentForDelivery.shipment_code} — ${result.orders_delivered} حالة اتسجّلت على حساب الطبيب`
         );
       }
       setIsDeliveryModalOpen(false);
+      refreshNavBadges();
       setSelectedShipmentForDelivery(null);
       setDeliveryProofFile(null);
       setDeliveryNotes('');
@@ -274,6 +313,7 @@ export const Shipments: React.FC = () => {
     try {
       await shippingService.cancelShipment(shipment.id, 'تم الإلغاء من قبل المستخدم');
       toastSuccess('تم إلغاء الشحنة وإعادة الأوردرات');
+      refreshNavBadges();
       loadData();
     } catch (err: unknown) {
       console.error('Failed to cancel shipment:', err);
@@ -366,7 +406,7 @@ export const Shipments: React.FC = () => {
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
-            جاهز للتغليف ({readyOrders.length})
+            جاهز لتجهيز الشحن ({readyOrders.length} حالة)
           </button>
           <button
             onClick={() => setActiveTab('active')}
@@ -376,7 +416,7 @@ export const Shipments: React.FC = () => {
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
-            الشحنات النشطة ({activeShipments.length})
+            الشحنات النشطة ({shipmentCaseCount(activeShipments)} حالة)
           </button>
           <button
             onClick={() => setActiveTab('delivered')}
@@ -386,8 +426,11 @@ export const Shipments: React.FC = () => {
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
-            سجل التسليمات ({deliveredShipments.length})
+            سجل التسليمات ({shipmentCaseCount(deliveredShipments)} حالة)
           </button>
+          {canOpenProduction && <Link to="/production/board?tab=doctor" className="rounded-xl px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-50">
+            عند الأطباء ({trialWithDoctorCount} حالة)
+          </Link>}
         </div>
 
         <div className="flex items-center gap-3">
@@ -465,11 +508,7 @@ export const Shipments: React.FC = () => {
                     {isAuthorized && (
                       <button
                         onClick={() =>
-                          handleOpenPackSelected(allGroupIds, {
-                            name: group.doctorName,
-                            phone: group.phone,
-                            address: group.address
-                          })
+                          handleOpenPackSelected(allGroupIds)
                         }
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition"
                       >
@@ -504,6 +543,11 @@ export const Shipments: React.FC = () => {
                             <div>
                               <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                                 <span>{order.case_id}</span>
+                                {order.route_override_id === MIXED_TRY_IN_ROUTE_ID && (
+                                  <span className="rounded bg-cyan-50 px-2 py-0.5 text-xs text-cyan-900">
+                                    {order.production_status === 'try_in_ready' ? 'شحن البروفة' : 'شحن النهائي'}
+                                  </span>
+                                )}
                                 {order.shade && (
                                   <span className="text-xs px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded">
                                     {order.shade}
@@ -529,11 +573,7 @@ export const Shipments: React.FC = () => {
                             {isAuthorized && (
                               <button
                                 onClick={() =>
-                                  handleOpenPackSelected([order.id], {
-                                    name: group.doctorName,
-                                    phone: group.phone,
-                                    address: group.address
-                                  })
+                                  handleOpenPackSelected([order.id])
                                 }
                                 className="px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 rounded-lg font-medium transition"
                               >
@@ -659,6 +699,7 @@ export const Shipments: React.FC = () => {
                             className="px-2 py-1 text-xs bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-md font-mono"
                           >
                             {so.order?.case_id || 'أوردر'} - {so.order?.patient_name}
+                            {so.stage?.name_override && <span className="mr-2 font-semibold text-cyan-800">· {so.stage.name_override}</span>}
                           </span>
                         ))}
                       </div>
@@ -790,11 +831,12 @@ export const Shipments: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="shipment-recipient" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     اسم المستلم (الطبيب/العيادة)
                   </label>
                   <input
                     type="text"
+                    id="shipment-recipient"
                     value={formRecipientName}
                     onChange={e => setFormRecipientName(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500"
@@ -802,11 +844,12 @@ export const Shipments: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  <label htmlFor="shipment-phone" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     رقم الهاتف
                   </label>
                   <input
-                    type="text"
+                    id="shipment-phone"
+                    type="tel"
                     value={formRecipientPhone}
                     onChange={e => setFormRecipientPhone(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500"
@@ -815,11 +858,12 @@ export const Shipments: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                <label htmlFor="shipment-address" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   عنوان التسليم
                 </label>
                 <input
                   type="text"
+                  id="shipment-address"
                   value={formDeliveryAddress}
                   onChange={e => setFormDeliveryAddress(e.target.value)}
                   className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500"
@@ -897,7 +941,7 @@ export const Shipments: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-lg">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span>تأكيد تسليم الشحنة</span>
+                <span>{isTrialOnlyShipment ? 'تأكيد وصول البروفة للطبيب' : 'تأكيد تسليم الشحنة'}</span>
               </div>
               <button
                 onClick={() => setIsDeliveryModalOpen(false)}
@@ -956,7 +1000,7 @@ export const Shipments: React.FC = () => {
                   disabled={isSubmitting}
                   className="px-5 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-medium transition shadow-sm flex items-center gap-2"
                 >
-                  {isSubmitting ? 'جاري التأكيد...' : 'تأكيد التسليم النهائي'}
+                  {isSubmitting ? 'جاري التأكيد...' : 'تأكيد الاستلام'}
                 </button>
               </div>
             </form>

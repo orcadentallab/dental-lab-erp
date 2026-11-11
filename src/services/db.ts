@@ -75,6 +75,10 @@ export type UpdateServiceFamilyPayload = Partial<{
 
 export interface Service {
     id: string;
+    isActive?: boolean;
+    catalogRouteId?: string | null;
+    catalogTryInRouteId?: string | null;
+    catalogRouteKind?: 'production' | 'add_on' | 'logistics' | null;
     familyId?: string | null;
     name: string;
     sellingPrice: number;
@@ -255,6 +259,7 @@ export interface OrderItem {
 }
 
 export interface Order {
+    quotedShippingFee?: number;
     id: string; // Internal ID
     caseId: string; // Generated ID
     doctorId: string;
@@ -315,6 +320,7 @@ export interface Order {
     manualDesignPrice?: number | null; // Admin override for designPrice
     designUrl?: string | null; // Design Link (STL/Zip)
     designRevisionId?: string; // Current saved link/upload revision.
+    doctorWaitReason?: string;
     supplierDesignInstruction?: {paragraph:string;version?:number};
 
     // QA & Delivery Tracking

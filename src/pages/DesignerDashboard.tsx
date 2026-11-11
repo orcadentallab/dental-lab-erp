@@ -13,6 +13,8 @@ import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs
 import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
+import { refreshNavBadges } from '../hooks/useNavBadges';
+import { setProductionDoctorWait } from '../services/supabase/production';
 import { ensureAbsoluteUrl } from '../lib/urlUtils';
 import IssueCauseFields from '../components/orders/IssueCauseFields';
 import DateRangeField from '../components/ui/DateRangeField';
@@ -97,13 +99,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
-    const [decisionOrder, setDecisionOrder] = useState<Order | null>(null);
-    const [decisionNotes, setDecisionNotes] = useState('');
-    // Explicit lab-rejection cause/stage, captured at the moment the designer
-    // rejects a case (issueContext="lab_rejection") -- required only for the
-    // 'returned' decision, which is what drives requestDesignerRejection.
-    const [decisionRejectCause, setDecisionRejectCause] = useState('');
-    const [decisionRejectStage, setDecisionRejectStage] = useState('');
     const [techActionPending, setTechActionPending] = useState<{
         orderId: string;
         action: 'Rejected' | 'NeedDetails';
@@ -111,7 +106,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         causeCategory: string;
         responsibleStage: string;
     } | null>(null);
-    const [decisionLoading, setDecisionLoading] = useState(false);
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     const isRestrictedDesigner = useMemo(
@@ -244,21 +238,18 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 setTechActionPending(null);
                 return;
             }
-            const updates: Partial<Order> = { technicianStatus: action };
-            if (reason && reason.trim() && order) {
-                const label = action === 'NeedDetails' ? 'طلب تفاصيل' : 'قرار المصمم';
-                updates.comments = [
-                    ...(order.comments || []),
-                    {
-                        id: crypto.randomUUID(),
-                        text: `[${label}]: ${reason.trim()}`,
-                        userId: user?.id || '',
-                        userName: user?.name || 'المصمم',
-                        createdAt: new Date().toISOString(),
-                    },
-                ];
+            if (action === 'NeedDetails') {
+                const details = reason?.trim();
+                if (!details) throw new Error('اكتب التفاصيل المطلوبة');
+                await setProductionDoctorWait(orderId, true, details);
+                const updatedOrder = await db.getOrder(orderId);
+                if (updatedOrder) updateOrderInState({ ...updatedOrder, doctorWaitReason: details });
+                setTechActionPending(null);
+                refreshNavBadges();
+                success('انتقلت الحالة إلى On Hold');
+                return;
             }
-            const updatedOrder = await db.updateOrder(orderId, updates);
+            const updatedOrder = await db.updateOrder(orderId, { technicianStatus: action });
             updateOrderInState(updatedOrder);
 
             // Auto-advance: approving a brand-new case moves it into design,
@@ -279,8 +270,9 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             setTechActionPending(null);
         } catch (err) {
             console.error('Tech action error:', err);
+            toastError(err instanceof Error ? err.message : 'تعذّر تسجيل الإجراء');
         }
-    }, [orders, updateOrderInState, user]);
+    }, [orders, updateOrderInState, user, success, toastError]);
 
     useEffect(() => {
         if (!user) return;
@@ -299,69 +291,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
             console.warn('Could not update designer dashboard cache:', error);
         }
     }, [doctors, orders, user, users,isRestrictedDesigner]);
-
-    const handleDesignerDecision = async (
-        order: Order,
-        decision: 'accepted' | 'waiting_approval' | 'returned',
-        notes?: string
-    ) => {
-        setDecisionLoading(true);
-        try {
-            if (decision === 'returned') {
-                if (!notes?.trim()) throw new Error('سبب الرفض مطلوب');
-                if (!decisionRejectCause) throw new Error('سبب رفض المعمل مطلوب');
-                await db.requestDesignerRejection(order.id, notes.trim(), undefined, decisionRejectCause, decisionRejectStage);
-                updateOrderInState(await db.getOrder(order.id));
-                setDecisionOrder(null);
-                setDecisionNotes('');
-                setDecisionRejectCause('');
-                setDecisionRejectStage('');
-                return;
-            }
-            const updates: Partial<Order> = { designStatus: decision };
-            if (decision === 'waiting_approval') {
-                updates.technicianStatus = 'NeedDetails';
-            }
-            if (notes) {
-                updates.comments = [
-                    ...(order.comments || []),
-                    {
-                        id: crypto.randomUUID(),
-                        text: `[قرار المصمم - ${decision === 'accepted' ? 'قبول' : decision === 'waiting_approval' ? 'محتاج تفاصيل' : 'رفض'}]: ${notes}`,
-                        userId: user?.id || '',
-                        userName: user?.name || 'المصمم',
-                        createdAt: new Date().toISOString(),
-                    },
-                ];
-            }
-            
-            // 1. Update non-status fields
-            await db.updateOrder(order.id, updates);
-
-            // 2. Update status via the unified updateOrderStatus
-            let targetStatus: Order['status'] | null = null;
-            if (decision === 'accepted') targetStatus = 'Under Design';
-            if (decision === 'waiting_approval') targetStatus = 'Waiting Dr Approval';
-
-            let updatedOrder = null;
-            if (targetStatus) {
-                updatedOrder = await db.updateOrderStatus(order.id, targetStatus, {
-                    userId: user?.id,
-                    userName: user?.name || 'المصمم',
-                    actorRole: user?.role,
-                });
-            } else {
-                updatedOrder = await db.getOrder(order.id);
-            }
-            updateOrderInState(updatedOrder);
-            setDecisionOrder(null);
-            setDecisionNotes('');
-        } catch (err) {
-            console.error('Designer decision error:', err);
-        } finally {
-            setDecisionLoading(false);
-        }
-    };
 
     const handleAddComment = async (order: Order) => {
         if (!user) return;
@@ -424,15 +353,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         waitingApproval: orders.filter(o => o.designStatus === 'waiting_approval').length,
         completed: orders.filter(o => o.designStatus === 'completed').length,
     }), [orders]);
-
-    const pendingDecisionOrders = useMemo(
-        () => orders.filter(o =>
-            isDesignerDashboardOrderVisible(o) &&
-            (!o.designStatus || o.designStatus === 'pending') &&
-            (isRestrictedDesigner ? o.designerId === user?.id : true)
-        ),
-        [orders, isRestrictedDesigner, user]
-    );
 
     const pendingOrders = useMemo(
         () => filteredOrders.filter(order => !isDesignSubmitted(order) || returnedDesigns[order.id]?.revisionId === order.designRevisionId && !!returnedDesigns[order.id]),
@@ -575,90 +495,6 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 </div>
             </div>
 
-            {/* Pending Designer Decisions */}
-            {pendingDecisionOrders.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                        <AlertCircle size={16} className="text-amber-600" />
-                        <span className="text-sm font-bold text-amber-800">
-                            {pendingDecisionOrders.length} حالة تنتظر قرارك
-                        </span>
-                    </div>
-                    <div className="space-y-2">
-                        {pendingDecisionOrders.map(order => (
-                            <div key={order.id} className="bg-white rounded-lg border border-amber-100 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-                                <div>
-                                    <span className="font-bold text-sm text-gray-800">#{order.caseId}</span>
-                                    <span className="text-xs text-gray-500 mr-2">{order.patientName}</span>
-                                    {order.priority === 'Urgent' && (
-                                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold mr-1">مستعجل</span>
-                                    )}
-                                </div>
-                                {decisionOrder?.id === order.id ? (
-                                    <div className="w-full space-y-2 mt-2">
-                                        {/* Cause/stage only apply to the "رفض" decision below (requestDesignerRejection);
-                                            the shared notes field also covers "محتاج تفاصيل"/"قبول". */}
-                                        <IssueCauseFields
-                                            issueContext="lab_rejection"
-                                            causeCategory={decisionRejectCause}
-                                            onCauseCategoryChange={setDecisionRejectCause}
-                                            responsibleStage={decisionRejectStage}
-                                            onResponsibleStageChange={setDecisionRejectStage}
-                                            notes={decisionNotes}
-                                            onNotesChange={setDecisionNotes}
-                                            notesPlaceholder="اكتب ملاحظة (مطلوب عند رفض أو طلب تفاصيل)..."
-                                        />
-                                        <div className="flex gap-2 flex-wrap">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDesignerDecision(order, 'accepted', decisionNotes)}
-                                                disabled={decisionLoading}
-                                                className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
-                                            >
-                                                قبول
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDesignerDecision(order, 'waiting_approval', decisionNotes)}
-                                                disabled={decisionLoading || !decisionNotes.trim()}
-                                                className="px-4 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition-colors disabled:opacity-50"
-                                                title="اكتب ملاحظة أولاً"
-                                            >
-                                                محتاج تفاصيل
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDesignerDecision(order, 'returned', decisionNotes)}
-                                                disabled={decisionLoading || !decisionNotes.trim() || !decisionRejectCause}
-                                                className="px-4 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
-                                                title="اكتب سبب الرفض واختر السبب أولاً"
-                                            >
-                                                رفض (ينتظر Admin)
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => { setDecisionOrder(null); setDecisionNotes(''); setDecisionRejectCause(''); setDecisionRejectStage(''); }}
-                                                className="px-3 py-1.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-                                            >
-                                                إلغاء
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => { setDecisionOrder(order); setDecisionNotes(''); setDecisionRejectCause(''); setDecisionRejectStage(''); }}
-                                        className="px-4 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition-colors"
-                                    >
-                                        اتخذ قرار
-                                    </button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-
             {/* Orders List */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
@@ -737,6 +573,10 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                             {/* ── مراجعة المصمم column (position 3) ── */}
                                             <td className="px-4 py-4 align-top w-[190px]">
                                                 <div className="flex flex-col gap-2 w-[170px]">
+                                                    {order.doctorWaitReason && <div className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+                                                        <strong>On Hold</strong>
+                                                        <p className="mt-1 break-words">{order.doctorWaitReason}</p>
+                                                    </div>}
                                                     {order.technicianStatus && order.technicianStatus !== 'Pending' && (
                                                         <span className={`inline-flex items-center justify-center text-[11px] font-bold px-3 py-1 rounded-full border ${
                                                             order.technicianStatus === 'Approved'
@@ -754,6 +594,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     )}
                                                     <div className="flex flex-col gap-1">
                                                         <button type="button"
+                                                            disabled={Boolean(order.doctorWaitReason)}
                                                             onClick={() => handleTechAction(order.id, 'Approved')}
                                                             className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
                                                                 order.technicianStatus === 'Approved'
@@ -763,6 +604,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             ✓ قبول
                                                         </button>
                                                         <button type="button"
+                                                            disabled={Boolean(order.doctorWaitReason)}
                                                             onClick={() => setTechActionPending({ orderId: order.id, action: 'NeedDetails', reason: '', causeCategory: '', responsibleStage: '' })}
                                                             className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
                                                                 order.technicianStatus === 'NeedDetails'
@@ -772,6 +614,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                             ? تفاصيل
                                                         </button>
                                                         <button type="button"
+                                                            disabled={Boolean(order.doctorWaitReason)}
                                                             onClick={() => setTechActionPending({ orderId: order.id, action: 'Rejected', reason: '', causeCategory: '', responsibleStage: '' })}
                                                             className={`w-full py-1.5 text-xs font-bold rounded-lg border transition-all ${
                                                                 order.technicianStatus === 'Rejected'
@@ -799,7 +642,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                                     <p className="text-[11px] font-semibold text-gray-500">
                                                                         التفاصيل المطلوبة *
                                                                     </p>
-                                                                    <textarea autoFocus rows={3}
+                                                                    <textarea autoFocus rows={3} maxLength={1000}
                                                                         placeholder="اكتب التفاصيل المطلوبة…"
                                                                         value={techActionPending.reason}
                                                                         onChange={(e) => setTechActionPending(prev => prev ? { ...prev, reason: e.target.value } : null)}
@@ -908,6 +751,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     <div className="flex gap-2 flex-wrap">
                                                         <button
                                                             type="button"
+                                                            disabled={Boolean(order.doctorWaitReason)}
                                                             onClick={() => openDesignUploadModal(order)}
                                                             className={`text-xs flex items-center gap-1 px-2 py-1 rounded-md border transition ${(order.designUrl || order.designRevisionId) ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100' : 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100'}`}
                                                         >

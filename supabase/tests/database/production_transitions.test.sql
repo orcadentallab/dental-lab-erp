@@ -14,7 +14,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(15);
+SELECT plan(19);
 
 -- ─── Fixtures ────────────────────────────────────────────────────────────
 
@@ -213,6 +213,26 @@ SELECT is(
       WHERE id = 'a5000000-0000-0000-0000-000000000001'),
     'not_started',
     'and orders.production_status was not written to');
+
+INSERT INTO auth.users(id,email) VALUES ('a9000000-0000-4000-8000-000000000003','trans-coord@example.test');
+INSERT INTO public.users(id,auth_id,username,role,name) VALUES
+    ('a3000000-0000-4000-8000-000000000003','a9000000-0000-4000-8000-000000000003','trans_coord','coordinator','Transitions coordinator');
+INSERT INTO public.production_stage_runs(id,job_id,stage_id,seq,execution,driven_by,allowed_roles,status,queued_at,units_in)
+SELECT 'a8000000-0000-4000-8000-000000000003', :'job_id', id,900,'internal','my_tasks','{}','ready',now(),2
+FROM public.production_stages WHERE code='packaging';
+SELECT set_config('request.jwt.claim.sub','a9000000-0000-4000-8000-000000000003',TRUE);
+SET LOCAL ROLE authenticated;
+SELECT throws_ok($$SELECT public.start_stage_run('a8000000-0000-4000-8000-000000000003')$$,
+    '42501','دورك غير مسموح له بتنفيذ هذه المرحلة','An empty route assignment does not assign a task to the coordinator');
+RESET ROLE;
+UPDATE public.production_stage_runs SET allowed_roles=ARRAY['coordinator'] WHERE id='a8000000-0000-4000-8000-000000000003';
+SET LOCAL ROLE authenticated;
+SELECT lives_ok($$SELECT public.start_stage_run('a8000000-0000-4000-8000-000000000003')$$,'Coordinator can start assigned packaging');
+SELECT lives_ok($$SELECT public.complete_stage_run('a8000000-0000-4000-8000-000000000003')$$,'Coordinator can finish assigned packaging');
+SELECT set_config('request.jwt.claim.sub','a9000000-0000-0000-0000-000000000001',TRUE);
+SELECT throws_ok($$UPDATE public.production_stage_runs SET allowed_roles=ARRAY['technician'] WHERE id='a8000000-0000-4000-8000-000000000003'$$,
+    '42501','استخدم إجراء المهمة لتحديث المرحلة','Client writes cannot bypass role assignment');
+RESET ROLE;
 
 SELECT * FROM finish();
 ROLLBACK;

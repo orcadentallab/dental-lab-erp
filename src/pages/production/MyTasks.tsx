@@ -22,10 +22,10 @@ import {
     Disc, ChevronUp, ChevronDown, RefreshCw, Layers, CheckCircle2, Play, Star, Clock, Check
 } from 'lucide-react';
 import {
-    getMyTasks, startStageRun, completeStageRun, blockStageRun,
-    type StageRunCard, type BlockReason,
+    getMyTasks, startStageRun, completeStageRun, blockStageRun, isExplicitProductionRoute, recordMixedPhysicalQcAction,
+    type StageRunCard, type BlockReason, type MixedPhysicalQcAction,
 } from '../../services/supabase/production';
-import { ISSUE_CAUSE } from '../../constants/issueCauses';
+import { ISSUE_CAUSE, issueCauseLabel } from '../../constants/issueCauses';
 import CaseAttachments from '../../components/orders/CaseAttachments';
 import { materialService, type MaterialBatch } from '../../services/supabase/materialService';
 import { getMachines, type Machine } from '../../services/supabase/machines';
@@ -39,6 +39,16 @@ const BLOCK_REASONS: { code: BlockReason; label: string }[] = [
 
 /** The causes a bench technician actually picks from, out of the full taxonomy. */
 const QC_CAUSES = ['fit', 'contact', 'occlusion', 'shade', 'crack', 'finish', 'glaze', 'material'] as const;
+const GROUP_NAMES: Record<string, string> = {
+    printing: 'الطباعة', qc: 'الفحص الداخلي', failed_qc: 'فحص يحتاج إجراء', packaging: 'التغليف',
+};
+const QC_ACTIONS: Record<MixedPhysicalQcAction, { label: string; success: string }> = {
+    retry: { label: 'إعادة الفحص', success: 'تمت إعادة الحالة إلى طابور الفحص' },
+    return_design: { label: 'إرجاع للتصميم', success: 'تم إرجاع الحالة للمصمم للتعديل' },
+    return_lab: { label: 'إرجاع للمعمل الخارجي', success: 'الحالة جاهزة لإعادة الإرسال لنفس المعمل من الشغل الخارجي' },
+    replace_lab: { label: 'إرسال لمعمل بديل', success: 'الحالة جاهزة لاختيار معمل بديل من الشغل الخارجي' },
+    bypass: { label: 'تخطي الفحص مع السبب', success: 'تم تسجيل التخطي وانتقلت الحالة للشحن' },
+};
 
 function waitingLabel(since: string | null): string {
     if (!since) return '—';
@@ -59,11 +69,13 @@ function dueLabel(date: string | null): { text: string; late: boolean } {
 
 export default function MyTasks() {
     const { user } = useAuth();
+    const isCoordinator = user?.role === 'coordinator';
     const { success, error: toastError } = useToast();
     const [tasks, setTasks] = useState<StageRunCard[]>([]);
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState<string | null>(null);
     const [failFor, setFailFor] = useState<StageRunCard | null>(null);
+    const [qcAction, setQcAction] = useState<{ task: StageRunCard; action: MixedPhysicalQcAction; reason: string } | null>(null);
     const [failedUnitsCount, setFailedUnitsCount] = useState<number>(1);
     const [blockFor, setBlockFor] = useState<StageRunCard | null>(null);
     const [openBatches, setOpenBatches] = useState<MaterialBatch[]>([]);
@@ -71,6 +83,15 @@ export default function MyTasks() {
     const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
     const [machines, setMachines] = useState<Machine[]>([]);
     const [pickMachineFor, setPickMachineFor] = useState<{ task: StageRunCard; availableMachines: Machine[] } | null>(null);
+    const caseFilter = new URLSearchParams(window.location.search).get('case');
+    const visibleTasks = caseFilter ? tasks.filter(task => task.caseId === caseFilter) : tasks;
+    const taskGroups = new Map<string, { label: string; tasks: StageRunCard[] }>();
+    for (const task of visibleTasks) {
+        const key = task.failedPhysicalQc ? 'failed_qc' : task.stageCode || task.stageNameAr;
+        const group = taskGroups.get(key);
+        if (group) group.tasks.push(task);
+        else taskGroups.set(key, { label: GROUP_NAMES[key] ?? task.stageNameAr, tasks: [task] });
+    }
 
     const loadBatches = useCallback(async () => {
         try {
@@ -86,20 +107,19 @@ export default function MyTasks() {
         if (!user?.id) return;
         try {
             const [taskList, machineList] = await Promise.all([
-                getMyTasks(user.id),
+                getMyTasks(user.id, user.role === 'admin' || isCoordinator),
                 getMachines().catch((): Machine[] => []),
-                loadBatches()
+                isCoordinator ? undefined : loadBatches()
             ]);
             setTasks(taskList);
             setMachines(machineList);
-            refreshNavBadges();
         } catch (e) {
             console.error('[MyTasks] load failed', e);
             toastError('تعذّر تحميل المهام');
         } finally {
             setLoading(false);
         }
-    }, [user?.id, toastError, loadBatches]);
+    }, [user?.id, user?.role, isCoordinator, toastError, loadBatches]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -135,6 +155,7 @@ export default function MyTasks() {
         try {
             await fn();
             success(done);
+            refreshNavBadges();
             await load();
         } catch (e) {
             console.error('[MyTasks] action failed', e);
@@ -178,7 +199,7 @@ export default function MyTasks() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800">مهامي</h1>
                     <p className="text-sm text-slate-500">
-                        {tasks.length} حالة في الطابور — الأولى هي الموصى بيها
+                        {tasks.length} حالة في الطابور
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -264,7 +285,7 @@ export default function MyTasks() {
                 </div>
             )}
 
-            {tasks.length === 0 && (
+            {visibleTasks.length === 0 && (
                 <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center">
                     <p className="text-lg text-slate-600">مفيش حالات في الطابور دلوقتي</p>
                     <p className="text-sm text-slate-400 mt-1">
@@ -273,10 +294,27 @@ export default function MyTasks() {
                 </div>
             )}
 
-            {tasks.map((t, i) => {
+            {Array.from(taskGroups, ([stageKey, { label: stageName, tasks: stageTasks }]) => {
+                return <section key={stageKey} aria-label={stageName} className="space-y-3">
+                    <h2 className="flex items-center gap-3 border-b border-slate-200 pb-2 text-lg font-bold text-slate-900">
+                        {stageName} <span className="rounded-full bg-slate-100 px-2.5 py-1 text-sm text-slate-600">{stageTasks.length}</span>
+                    </h2>
+                    {stageTasks.map((t, i) => {
                 const due = dueLabel(t.deliveryDate);
                 const mine = t.status === 'in_progress' && t.assigneeId === user?.id;
-                const recommended = i === 0 && t.status === 'ready';
+                const canExecute = t.canExecute ?? true;
+                const recommended = canExecute && i === 0 && t.status === 'ready';
+                const isMixedQc = isExplicitProductionRoute(t.routeId) && t.stageCode === 'qc';
+                const qcActions: MixedPhysicalQcAction[] = [];
+                if (isMixedQc && t.failedPhysicalQc && canExecute && user?.role === 'admin') {
+                    qcActions.push('return_design');
+                    if (t.seq >= 50 && t.supplierId) qcActions.push('return_lab', 'replace_lab');
+                    qcActions.push('retry');
+                }
+                if (isMixedQc && !t.failedPhysicalQc && (t.status === 'ready' || t.status === 'in_progress')
+                    && (user?.role === 'admin' || isCoordinator)) {
+                    qcActions.push('bypass');
+                }
 
                 return (
                     <div
@@ -300,13 +338,16 @@ export default function MyTasks() {
                                             مستعجل
                                         </span>
                                     )}
-                                    {t.isRework && (
+                                    {t.isRework && t.stageCode !== 'printing' && (
                                         <span className="text-xs font-bold px-2 py-1 rounded-lg bg-amber-100 text-amber-800">
                                             إعادة شغل
                                         </span>
                                     )}
                                     <span className="text-lg font-bold text-slate-800">{t.caseId}</span>
-                                    <span className="text-sm text-slate-500">{t.stageNameAr}</span>
+                                    <span className="rounded-md bg-cyan-50 px-2 py-1 text-sm font-semibold text-cyan-900">{t.stageNameAr}</span>
+                                    {t.failedPhysicalQc && <span className="rounded-md bg-rose-50 px-2 py-1 text-sm font-semibold text-rose-800">
+                                        لم يجتز الفحص · {issueCauseLabel(t.failedPhysicalQc)}
+                                    </span>}
                                     {/* One printer, three resins. Which one is
                                         the difference between a usable print
                                         and a wasted plate, so it goes on the
@@ -324,7 +365,7 @@ export default function MyTasks() {
                                     <span>{t.patientName}</span>
                                     <span>{t.unitsIn} وحدة</span>
                                     {t.shade && <span>اللون: <b>{t.shade}</b></span>}
-                                    {t.teeth.length > 0 && <span>الأسنان: {t.teeth.join('، ')}</span>}
+                                    {t.teeth.length > 0 && <span>{t.isRework && t.stageCode === 'printing' ? 'أسنان الحالة' : 'الأسنان'}: {t.teeth.join('، ')}</span>}
                                     {t.services.length > 0 && <span>{t.services.join('، ')}</span>}
                                 </div>
 
@@ -392,8 +433,8 @@ export default function MyTasks() {
                             </div>
 
                             {/* Two taps. Large targets: this runs on a tablet, with gloves. */}
-                            <div className="flex flex-col gap-2 min-w-[140px]">
-                                {t.status === 'ready' && (
+                            {canExecute || qcActions.length > 0 ? <div className="flex flex-col gap-2 min-w-[140px]">
+                                {canExecute && t.status === 'ready' && (
                                     <button
                                         disabled={busyId === t.id}
                                         onClick={() => handleStartTask(t)}
@@ -403,7 +444,7 @@ export default function MyTasks() {
                                     </button>
                                 )}
 
-                                {t.status === 'in_progress' && (
+                                {canExecute && t.status === 'in_progress' && (
                                     <>
                                         <button
                                             disabled={busyId === t.id}
@@ -415,31 +456,58 @@ export default function MyTasks() {
                                         <button
                                             onClick={() => {
                                                 setFailFor(t);
-                                                setFailedUnitsCount(1);
+                                                setFailedUnitsCount(isExplicitProductionRoute(t.routeId) && t.stageCode === 'qc' ? t.unitsIn : 1);
                                             }}
                                             className="px-4 py-2 rounded-xl border border-amber-300 text-amber-800 text-sm"
                                         >
-                                            فيه وحدة باظت
+                                            {isExplicitProductionRoute(t.routeId) && t.stageCode === 'qc' ? 'الحالة لم تجتز الفحص' : 'فيه وحدة باظت'}
                                         </button>
                                     </>
                                 )}
 
-                                <button
+                                {qcActions.map(action => <button
+                                    key={action}
+                                    disabled={busyId === t.id}
+                                    onClick={() => setQcAction({ task: t, action, reason: '' })}
+                                    className="rounded-xl border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-900"
+                                >
+                                    {QC_ACTIONS[action].label}
+                                </button>)}
+                                {canExecute && !t.failedPhysicalQc && <button
                                     onClick={() => setBlockFor(t)}
                                     className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm"
                                 >
                                     بلّغ عن مشكلة
-                                </button>
-                            </div>
+                                </button>}
+                            </div> : <span className="self-start rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">للمتابعة</span>}
                         </div>
                     </div>
                 );
+                    })}
+                </section>;
             })}
+
+            {qcAction && <Modal title={QC_ACTIONS[qcAction.action].label} onClose={() => setQcAction(null)}>
+                <form className="space-y-3" onSubmit={event => {
+                    event.preventDefault();
+                    const { task, action, reason } = qcAction;
+                    if (!reason.trim()) return;
+                    setQcAction(null);
+                    void run(task.id, () => recordMixedPhysicalQcAction(task.id, action, reason),
+                        QC_ACTIONS[action].success);
+                }}>
+                    {qcAction.action === 'return_lab' && <p className="text-sm text-slate-600">هتلاقي الحالة تحت جاهزة للإرسال في الشغل الخارجي. استلامها هناك بيفتح فحص جديد.</p>}
+                    <label className="block text-sm font-semibold">السبب
+                        <textarea required maxLength={1000} value={qcAction.reason} onChange={event => setQcAction({ ...qcAction, reason: event.target.value })} className="mt-1 block w-full rounded-xl border border-slate-300 p-3" />
+                    </label>
+                    <button type="submit" disabled={!qcAction.reason.trim()} className="min-h-11 rounded-xl bg-cyan-700 px-4 font-semibold text-white disabled:opacity-50">تأكيد</button>
+                </form>
+            </Modal>}
 
             {/* The one mandatory input in the whole flow: why a unit failed. */}
             {failFor && (
                 <Modal title={`إيه اللي حصل في ${failFor.caseId}؟`} onClose={() => setFailFor(null)}>
-                    {failFor.unitsIn > 1 && (
+                    {failFor.unitsIn > 1 && !(isExplicitProductionRoute(failFor.routeId) && failFor.stageCode === 'qc') && (
                         <div className="mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
                             <label className="block text-xs font-bold text-slate-700 mb-1.5">
                                 عدد الوحدات التالفة / الراسبة (من إجمالي {failFor.unitsIn} وحدة):
@@ -463,7 +531,11 @@ export default function MyTasks() {
                         </div>
                     )}
                     <p className="text-sm text-slate-500 mb-3">
-                        اختار السبب — ده الرقم اللي هيقول لنا نصلّح إيه.
+                        {failFor.reprintsFailedUnits
+                            ? 'اختار سبب التلف. الوحدات التالفة هتظهر في إعادة الطباعة، والحالة هتستنى لحد ما تكتمل.'
+                            : isExplicitProductionRoute(failFor.routeId) && failFor.stageCode === 'qc'
+                            ? 'اختار سبب الرسوب لإيقاف الحالة قبل التغليف والشحن.'
+                            : 'اختار السبب — ده الرقم اللي هيقول لنا نصلّح إيه.'}
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                         {QC_CAUSES.map((code) => (
@@ -480,7 +552,10 @@ export default function MyTasks() {
                                             unitsFailed: actualFailed,
                                             causeCode: code,
                                         }),
-                                        'اتسجّلت وراحت لإعادة الشغل');
+                                        target.reprintsFailedUnits ? 'الوحدات التالفة ظهرت في إعادة الطباعة'
+                                            : isExplicitProductionRoute(target.routeId) && target.stageCode === 'qc'
+                                            ? 'تم تسجيل نتيجة الفحص وإيقاف الحالة'
+                                            : 'اتسجّلت وراحت لإعادة الشغل');
                                 }}
                                 className="px-4 py-4 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50"
                             >

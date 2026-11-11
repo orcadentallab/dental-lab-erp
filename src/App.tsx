@@ -34,6 +34,7 @@ const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
 const BalanceSnapshot = lazy(() => import('./pages/BalanceSnapshot'));
 const FinancialReview = lazy(() => import('./pages/FinancialReview'));
 const Statements = lazy(() => import('./pages/Statements'));
+const ScanVisits = lazy(() => import('./pages/ScanVisits'));
 const AgingReport = lazy(() => import('./pages/AgingReport'));
 const DoctorRetention = lazy(() => import('./pages/DoctorRetention'));
 const DoctorServiceProfitability = lazy(() => import('./pages/DoctorServiceProfitability'));
@@ -141,6 +142,13 @@ function App() {
                       <Route path="/production/external" element={<ExternalWorkOrders />} />
                       <Route path="/inventory" element={<InventoryDashboard />} />
                       <Route path="/production/shipments" element={<Shipments />} />
+                    </Route>
+                  </Route>
+
+                  <Route element={<ProtectedRoute requiredCapability="view_scan_visits" />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/production/scan-visits" element={<ScanVisits />} />
+                      <Route path="/scan-visits" element={<Navigate to="/production/scan-visits" replace />} />
                     </Route>
                   </Route>
 

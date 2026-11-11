@@ -44,6 +44,7 @@ export interface DbOrderFeedback {
 }
 
 export interface DbOrder {
+    quoted_shipping_fee?: number | null;
     id: string;
     case_id: string;
     doctor_id: string;
@@ -142,6 +143,10 @@ export type DbTransactionUpdate = Partial<Omit<DbTransaction, 'id' | 'created_at
 
 export interface DbService {
     id: string;
+    is_active?: boolean;
+    catalog_route_id?: string | null;
+    catalog_try_in_route_id?: string | null;
+    catalog_route_kind?: 'production' | 'add_on' | 'logistics' | null;
     name: string;
     selling_price: number;
     cost_price: number;

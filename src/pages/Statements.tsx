@@ -4,8 +4,11 @@ import { useSearchParams, Link, Navigate } from 'react-router-dom';
 import {getQcCompensations} from '../services/supabase/designQc';
 import {designQcCompensationRows} from '../lib/designQcCompensations';
 import { useAuth } from '../context/AuthContext';
+import { usesPrivateProductionQuote } from '../services/supabase/production';
 import { db, type Doctor, type Supplier, type Order, type Transaction, type User, type EntityBillingSettings } from '../services/db';
 import { financeService, type Adjustment } from '../services/financeService';
+import { addDoctorShippingCharge } from '../services/supabase/scanVisits';
+import { useToast } from '../context/ToastContext';
 import DateRangeField from '../components/ui/DateRangeField';
 import { canViewSupplierAndDesignerStatements, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
@@ -160,10 +163,13 @@ export default function StatementsPage() {
 }
 
 function Statements({ showPayableStatements }: { showPayableStatements: boolean }) {
+    const { user } = useAuth();
     // ─ Global data
     const [orders, setOrders] = useState<Order[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+    const [savingShippingCharge, setSavingShippingCharge] = useState(false);
+    const toast = useToast();
     const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);     // ALL including children
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [designers, setDesigners] = useState<User[]>([]);
@@ -228,7 +234,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
                                 id, name_override,
                                 production_stages:stage_id ( name_ar ),
                                 production_jobs:job_id (
-                                    order_id,
+                                    order_id, route_id,
                                     orders:order_id ( id, case_id, patient_name, is_deleted )
                                 )
                             )
@@ -261,7 +267,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
                     const run = row.production_stage_runs as any;
                     const job = run?.production_jobs as any;
                     const order = job?.orders as any;
-                    if (order?.is_deleted) continue;
+                    if (order?.is_deleted || usesPrivateProductionQuote(job?.route_id)) continue;
                     parsedSteps.push({
                         id: row.id,
                         supplierId: row.supplier_id,
@@ -674,7 +680,12 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
                 if (adj.entity_type !== 'doctor') continue;
                 const pid = doctorParentById.get(adj.entity_id) || adj.entity_id;
                 if (pid !== selectedId) continue;
-                if (adj.date >= monthStart) continue;
+                if (adj.date >= monthStart) {
+                    if (adj.date <= monthEnd && adj.type === 'charge' && adj.service_charge_kind) {
+                        monthOrders.push({ id: adj.id, date: adj.date, description: adj.reason || 'رسوم خدمة', type: 'debit', amount: adj.amount });
+                    }
+                    continue;
+                }
                 if (adj.type === 'charge') openingDebit += adj.amount;
                 else openingCredit += adj.amount;
             }
@@ -1028,7 +1039,43 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
                                             {activeTab === 'doctors' ? 'طبيب' : activeTab === 'suppliers' ? 'مورد' : 'مصمم'}
                                         </span>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {activeTab === 'doctors' && viewMode === 'invoice'
+                                            && invoiceMonth === new Intl.DateTimeFormat('sv-SE', { timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit' }).format(new Date()) && (
+                                            <details className="rounded-xl border border-slate-200 p-2 text-xs">
+                                                <summary className="cursor-pointer font-semibold">إضافة رسوم شحن</summary>
+                                                <form className="mt-2 grid gap-2" onSubmit={async event => {
+                                                    event.preventDefault();
+                                                    if (savingShippingCharge) return;
+                                                    const form = event.currentTarget;
+                                                    const data = new FormData(form);
+                                                    setSavingShippingCharge(true);
+                                                    try {
+                                                        await addDoctorShippingCharge(String(data.get('order')), Number(data.get('amount')));
+                                                        setAdjustments(await financeService.getAdjustments());
+                                                        form.reset();
+                                                        toast.success('تم تسجيل رسوم الشحن على حساب الطبيب');
+                                                    } catch (error) {
+                                                        toast.error((error as { message?: string })?.message || 'تعذر تسجيل رسوم الشحن');
+                                                    } finally { setSavingShippingCharge(false); }
+                                                }}>
+                                                    <label>الأوردر<select name="order" required className="block w-full rounded border p-1.5">
+                                                        <option value="">اختر الأوردر</option>
+                                                        {orders.filter(order => order.doctorId && (doctorParentById.get(order.doctorId) || order.doctorId) === selectedId
+                                                            && getOfficialStatementDate(order).slice(0, 7) === invoiceMonth
+                                                            && isDoctorStatementIncluded(order) && !adjustments.some(adj => adj.shipping_order_id === order.id))
+                                                            .map(order => <option key={order.id} value={order.id}>{order.caseId} · {order.patientName}</option>)}
+                                                    </select></label>
+                                                    <label>المبلغ (ج.م)<input name="amount" required type="number" min="0.01" step="0.01" className="block w-full rounded border p-1.5" /></label>
+                                                    <button disabled={savingShippingCharge} className="rounded bg-teal-700 px-2 py-1 text-white disabled:opacity-50">حفظ الرسوم</button>
+                                                </form>
+                                            </details>
+                                        )}
+                                        {user?.role === 'admin' && activeTab === 'suppliers' && suppliers.some(supplier => supplier.id === selectedId && supplier.supplierType === 'external_lab') && (
+                                            <Link to={`/production/external?supplier=${encodeURIComponent(selectedId)}`} className="rounded-xl border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-800">
+                                                مراجعة أسعار الخراطة والفينش
+                                            </Link>
+                                        )}
                                         {/* View mode toggle (all tabs) */}
                                         <div className="flex bg-slate-100 rounded-xl p-1">
                                             <button onClick={() => setViewMode('statement')}

@@ -12,7 +12,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(16);
+SELECT plan(17);
 
 -- ─── 1. Fixtures ────────────────────────────────────────────────────────────
 
@@ -174,11 +174,9 @@ SELECT is(
     'Batch status transitioned to open'
 );
 
--- Complete stage run -> Trigger auto-attribution
-UPDATE public.production_stage_runs
-   SET status = 'done',
-       completed_at = NOW()
- WHERE id = 'b5500000-0000-0000-0000-000000000001';
+SELECT lives_ok(
+    $$SELECT public.complete_stage_run('b5500000-0000-0000-0000-000000000001')$$,
+    'Technician completes the stage through My Tasks');
 
 SELECT is(
     (SELECT units_attributed FROM public.material_batch_usage WHERE stage_run_id = 'b5500000-0000-0000-0000-000000000001'),

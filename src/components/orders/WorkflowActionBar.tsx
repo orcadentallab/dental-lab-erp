@@ -91,9 +91,10 @@ interface Props {
     onRedo?: (order: Order) => void;
     showLegacyFallback?: boolean;
     disabled?: boolean;
+    managedByProduction?: boolean;
 }
 
-export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled }: Props) {
+export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled, managedByProduction }: Props) {
     const [confirmAction, setConfirmAction] = useState<WorkflowAction | null>(null);
     const [showIssueMenu, setShowIssueMenu] = useState(false);
     const [showIssueCorrection, setShowIssueCorrection] = useState(false);
@@ -125,7 +126,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     const productionStatus = getEffectiveProductionStatus(order);
     const issueState = getEffectiveIssueState(order);
 
-    const forwardActions = getForwardActions(productionStatus, issueState, {
+    const forwardActions = managedByProduction ? [] : getForwardActions(productionStatus, issueState, {
         workflowType: order.workflowType,
         deliveryType: order.deliveryType,
         designUrl: order.designUrl,
@@ -166,7 +167,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
     // there is deliberately no forward action here. Saying that beats an
     // empty bar that reads like the case is broken. Admins still have the "…"
     // override; a non-split case is not gated at all and never reaches this.
-    const blockedOnDesignUpload = productionStatus === 'designing'
+    const blockedOnDesignUpload = !managedByProduction && productionStatus === 'designing'
         && order.workflowType === 'split'
         && !order.designUrl
         && forwardActions.length === 0;
@@ -293,9 +294,9 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
         <>
             <div className="flex flex-wrap items-center gap-1.5">
                 {/* Current Status Pill */}
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-surface-100 border border-surface-300 text-surface-600 dark:bg-surface-800 dark:border-surface-600 dark:text-surface-300 shrink-0 select-none">
+                {!managedByProduction && <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-surface-100 border border-surface-300 text-surface-600 dark:bg-surface-800 dark:border-surface-600 dark:text-surface-300 shrink-0 select-none">
                     {currentStatusLabel}
-                </span>
+                </span>}
 
                 {/* The "ابدأ الإنتاج" button used to live here. It is gone
                     because the chain now builds itself: 20260827000000 puts a
@@ -306,7 +307,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                     chain stamped with today's clock, which reads as a case that
                     took no time at all. */}
 
-                {(forwardActions.length > 0 || hasIssueOptions || blockedOnDesignUpload) && (
+                {!managedByProduction && (forwardActions.length > 0 || hasIssueOptions || blockedOnDesignUpload) && (
                     <span className="text-surface-300 text-xs select-none">←</span>
                 )}
 
@@ -408,7 +409,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 )}
 
                 {/* Admin production override */}
-                {showLegacyFallback && userRole === 'admin' && (
+                {!managedByProduction && showLegacyFallback && userRole === 'admin' && (
                     <div className="relative flex items-center">
                         <button
                             className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-white hover:bg-surface-50 text-surface-500 transition-all focus-within:ring-2 focus-within:ring-primary-500 sm:min-h-0 sm:min-w-0"

@@ -4,6 +4,10 @@ SET search_path TO public, extensions;
 
 SELECT plan(6);
 
+-- Compare the contribution of this fixture on both seeded and empty QA.
+CREATE TEMP TABLE analytics_test_baseline AS
+SELECT public.get_analytics_summary_privileged_20260801(NULL,NULL) AS summary;
+
 -- ─── Doctor side: settled rejection amount counts as sales/receivable ──
 -- Accounts.tsx's getDoctorReceivableAmount counts a doctor-rejected order's
 -- settled amount (rejected_doctor_amount) once rejection_doctor_decision is
@@ -50,13 +54,15 @@ INSERT INTO public.orders (
 SET LOCAL session_replication_role = origin;
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_sales_value')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_sales_value')::numeric -
+    coalesce((SELECT (summary->>'total_sales_value')::numeric FROM analytics_test_baseline),0),
     400::numeric,
     'a settled rejection amount (rejection_doctor_decision recorded) counts as sales; an undecided one does not'
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_receivables')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_receivables')::numeric -
+    coalesce((SELECT (summary->>'total_receivables')::numeric FROM analytics_test_baseline),0),
     400::numeric,
     'the same settled amount is outstanding as a receivable when unpaid'
 );
@@ -107,7 +113,8 @@ INSERT INTO public.orders (
 -- Order 404 (salaried): supplier cost = full 1000 (no design_price subtraction).
 -- Total supplier COGS = 800 + 1000 = 1800.
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_cost_of_goods_suppliers')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_cost_of_goods_suppliers')::numeric -
+    coalesce((SELECT (summary->>'total_cost_of_goods_suppliers')::numeric FROM analytics_test_baseline),0),
     1800::numeric,
     'split-workflow supplier cost excludes design_price only for a non-salaried designer (800), not for a salaried one (full 1000)'
 );
@@ -116,7 +123,8 @@ SELECT is(
 -- Order 404 (salaried): designer cost is always zeroed regardless of design_price.
 -- Total designer COGS = 200 + 0 = 200.
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_cost_of_goods_designers')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_cost_of_goods_designers')::numeric -
+    coalesce((SELECT (summary->>'total_cost_of_goods_designers')::numeric FROM analytics_test_baseline),0),
     200::numeric,
     'non-salaried designer''s design price counts as designer COGS (200); salaried designer''s is zeroed'
 );
@@ -137,7 +145,8 @@ INSERT INTO public.transactions (
 );
 
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_payables_suppliers')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_payables_suppliers')::numeric -
+    coalesce((SELECT (summary->>'total_payables_suppliers')::numeric FROM analytics_test_baseline),0),
     800::numeric,
     'supplier B''s overpayment does not offset what is owed to supplier A -- each entity is floored at zero independently before summing'
 );
@@ -146,7 +155,8 @@ SELECT is(
 -- Salaried designer: balance forced to 0 - payments/charges = 0 (no payments).
 -- Total = 200 + 0 = 200.
 SELECT is(
-    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_payables_designers')::numeric,
+    (public.get_analytics_summary_privileged_20260801(NULL, NULL)->>'total_payables_designers')::numeric -
+    coalesce((SELECT (summary->>'total_payables_designers')::numeric FROM analytics_test_baseline),0),
     200::numeric,
     'non-salaried designer''s unpaid design fee is owed (200); the salaried designer''s payable is zero regardless'
 );

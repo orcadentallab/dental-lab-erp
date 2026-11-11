@@ -20,7 +20,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(6);
+SELECT plan(8);
 
 -- ─── Intentional exceptions ─────────────────────────────────────────────
 -- Functions that MAY remain executable by anon. Adding a name here must be a
@@ -41,13 +41,27 @@ SELECT plan(6);
 --     staff-email-disclosure oracle (returns the email for a real username,
 --     NULL otherwise). Mitigating it properly means moving the lookup behind a
 --     rate-limited edge function; until then it stays deliberately open.
-CREATE TEMP TABLE anon_execute_allowlist (proname text PRIMARY KEY)
+CREATE TEMP TABLE anon_execute_allowlist (signature text PRIMARY KEY, portal_entrypoint boolean NOT NULL DEFAULT false)
     ON COMMIT DROP;
-INSERT INTO anon_execute_allowlist (proname) VALUES
-    ('get_my_role'),
-    ('get_my_user_id'),
-    ('get_my_entity_id'),
-    ('get_email_by_username');
+INSERT INTO anon_execute_allowlist (signature) VALUES
+    ('public.get_my_role()'),
+    ('public.get_my_user_id()'),
+    ('public.get_my_entity_id()'),
+    ('public.get_email_by_username(text)');
+
+-- The isolated QA schema also hosts the newer doctor portal. Its login,
+-- invitation and onboarding clients call these exact RPCs before a session
+-- exists. Portal workflow tests cover the credential and scope checks inside
+-- them. The ERP-only migration chain may have none of these optional RPCs.
+INSERT INTO anon_execute_allowlist (signature, portal_entrypoint) VALUES
+    ('public.request_doctor_phone_otp(text,text,text,text)', true),
+    ('public.verify_and_link_doctor(text,text)', true),
+    ('public.claim_doctor_code(text,text,text)', true),
+    ('public.register_verified_doctor(text,text,jsonb)', true),
+    ('public.find_doctor_registration_matches(text)', true),
+    ('public.inspect_doctor_portal_invitation(text)', true),
+    ('public.register_doctor_password_account(text,text,text,jsonb,text,uuid,text)', true),
+    ('public.resolve_doctor_password_login(text,text)', true);
 
 -- ─── Expected posture per RPC ───────────────────────────────────────────
 --   kind = 'wrapper'    -> anon denied, authenticated allowed
@@ -174,10 +188,10 @@ SELECT is(
      WHERE n.nspname = 'public'
        AND p.prosecdef
        AND p.prorettype <> 'pg_catalog.trigger'::regtype
-       AND p.proname NOT IN (SELECT proname FROM anon_execute_allowlist)
+       AND NOT EXISTS (SELECT 1 FROM anon_execute_allowlist a WHERE to_regprocedure(a.signature) = p.oid)
        AND has_function_privilege('anon', p.oid, 'EXECUTE')),
     NULL,
-    'no SECURITY DEFINER function in public grants EXECUTE to anon'
+    'only the exact approved SECURITY DEFINER signatures in public grant EXECUTE to anon'
 );
 
 -- ─── 3. In-chain RPCs must actually exist ───────────────────────────────
@@ -222,6 +236,24 @@ SELECT is(
        AND NOT has_function_privilege('authenticated', to_regprocedure(sig), 'EXECUTE')),
     NULL,
     'admin-gated wrappers remain executable by authenticated (no over-revoke)'
+);
+
+SELECT is(
+    (SELECT string_agg(a.signature, ', ' ORDER BY a.signature)
+       FROM anon_execute_allowlist a JOIN pg_proc p ON p.oid = to_regprocedure(a.signature)
+      WHERE a.portal_entrypoint AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')),
+    NULL,
+    'installed doctor portal entry points keep pre-login access'
+);
+
+SELECT is(
+    (SELECT string_agg(a.signature, ', ' ORDER BY a.signature)
+       FROM anon_execute_allowlist a JOIN pg_proc p ON p.oid = to_regprocedure(a.signature)
+      WHERE a.portal_entrypoint AND EXISTS (
+          SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) acl
+           WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE')),
+    NULL,
+    'doctor portal entry points deny EXECUTE to the implicit PUBLIC role'
 );
 
 SELECT * FROM finish();

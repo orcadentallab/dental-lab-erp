@@ -1,5 +1,6 @@
  
 import { supabase } from '../../lib/supabase';
+import { ensureServicesAreActive } from './services';
 import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from '../../constants/externalRegistration';
 import type { DbOrder, DbOrderInsert, DbOrderUpdate, DbOrderItemRow, DbOrderCommentRow } from './types';
 import type { AccountingOrderSnapshot, AccountingReviewChange, AccountingReviewType, DoctorOrderSummary, Order, OrderHistoryEntry, OrderItem, Transaction } from '../db';
@@ -49,6 +50,7 @@ import {designQcCompensationRows} from '../../lib/designQcCompensations';
 
 // Helper to handle joined data which isn't in DbOrder type
 interface DbOrderWithRelations extends DbOrder {
+    doctor_wait_reason?: string | null;
     design_qc_revision_id?: string | null;
     supplier_design_instruction?: {paragraph:string;version?:number} | null;
     order_items?: DbOrderItemRow[];
@@ -1003,6 +1005,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         items: items,
         discount: dbOrder.discount,
         totalPrice: dbOrder.total_price,
+        quotedShippingFee: dbOrder.quoted_shipping_fee ?? undefined,
         shade: dbOrder.shade,
         // Keep the compatibility field aligned with the database mirror. Redo is
         // represented by issueState='redo' and remains Doctor Rejected in legacy
@@ -1038,6 +1041,7 @@ function dbToOrder(dbOrder: DbOrderWithRelations): Order {
         designerId: dbOrder.designer_id || undefined,
         designUrl: dbOrder.design_url || undefined,
         designRevisionId: dbOrder.design_qc_revision_id || undefined,
+        doctorWaitReason: dbOrder.doctor_wait_reason || undefined,
         supplierDesignInstruction: dbOrder.supplier_design_instruction || undefined,
         designStatus: dbOrder.design_status || undefined,
         designPrice: dbOrder.design_price || undefined,
@@ -2124,6 +2128,7 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: 
         throw new ValidationError(formatValidationError(error));
     }
 
+    await ensureServicesAreActive(order.items.map(item => item.serviceType));
     const dbOrder = orderToDb(order);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { items: _items, comments: _comments, ...orderRow } = dbOrder; // Separate items/comments
@@ -2132,7 +2137,11 @@ export async function addOrder(order: Omit<Order, 'id' | 'createdAt'>, context: 
     // 1. Insert Order
     const { data: insertedOrder, error } = await supabase
         .from('orders')
-        .insert(createsItemsWithOrder ? { ...orderRow, items: order.items || [] } : orderRow)
+        .insert({
+            ...orderRow,
+            ...(createsItemsWithOrder ? { items: order.items || [] } : {}),
+            ...(order.quotedShippingFee ? { quoted_shipping_fee: order.quotedShippingFee } : {}),
+        })
         .select()
         .single();
 
@@ -3637,6 +3646,7 @@ export async function createMyDoctorOrderRequest(input: {
     deliveryDate: string;
     totalPrice: number;
 }): Promise<string> {
+    await ensureServicesAreActive(input.items.map(item => item.serviceType));
     const { data, error } = await supabase.rpc('create_my_order_request_v2', {
         p_patient_name: input.patientName.trim(),
         p_items: input.items,

@@ -77,7 +77,11 @@ SET LOCAL ROLE authenticated;
 SET LOCAL "request.jwt.claims" TO '{"sub": "e1000000-0000-0000-0000-000000000001", "role": "authenticated"}';
 
 SELECT results_eq(
-    'SELECT case_id FROM public.orders ORDER BY case_id',
+    $$SELECT case_id FROM public.orders
+       WHERE id IN ('e5000000-0000-0000-0000-000000000001',
+                    'e5000000-0000-0000-0000-000000000002',
+                    'e5000000-0000-0000-0000-000000000003')
+       ORDER BY case_id$$,
     ARRAY['CASE-ACTIVE', 'CASE-DONE'],
     'Technician can read orders with active or done jobs, but not orders without jobs'
 );

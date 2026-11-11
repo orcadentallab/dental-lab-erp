@@ -28,7 +28,7 @@ import { useToast } from '../../context/ToastContext';
 import {
     getRoutes, getStages, getRouteSteps, saveRouteSteps, getEffectiveRouteStages,
     createRoute, renameRoute, createStage,
-    getServicesForRouting, setServiceRoute, setFamilyRoute,
+    getServicesForRouting, setServiceRoute, setServiceTryInAvailability, setFamilyRoute, isExplicitProductionRoute, MIXED_TRY_IN_ROUTE_ID, CATALOG_EXTERNAL_ROUTE_ID,
     type ProductionRoute, type ProductionStage, type RouteStep,
     type EffectiveRouteStage, type Execution, type DrivenBy, type ServiceRouteLink,
 } from '../../services/supabase/production';
@@ -48,11 +48,13 @@ import {
  * vendor account. It still renders in ROLE_LABELS so a route that already names
  * it is readable rather than blank.
  */
-const ASSIGNABLE_ROLES: string[] = ['technician', 'designer', 'admin'];
+const ASSIGNABLE_ROLES: string[] = ['technician', 'designer', 'coordinator', 'production_manager', 'admin'];
 
 const ROLE_LABELS: Record<string, string> = {
     technician: 'فني',
     designer: 'مصمم',
+    coordinator: 'منسق',
+    production_manager: 'مسؤول الإنتاج',
     admin: 'أدمن',
     lab: 'معمل خارجي',
 };
@@ -138,6 +140,12 @@ export default function RouteEditor() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const [linkingService, setLinkingService] = useState(false);
+    const isReviewedRoute = isExplicitProductionRoute(routeId);
+    const supportsTryIn = routeId === MIXED_TRY_IN_ROUTE_ID;
+    const linkableServices = services.filter(service => isReviewedRoute
+        ? service.catalogRouteKind === null || service.catalogRouteKind === 'production'
+        : service.catalogRouteKind === null);
     const route = routes.find((r) => r.id === routeId);
     const stageById = useMemo(() => new Map(stages.map((s) => [s.id, s])), [stages]);
 
@@ -150,7 +158,7 @@ export default function RouteEditor() {
 
     useEffect(() => {
         Promise.all([
-            getRoutes(),
+            getRoutes(true),
             getStages(),
             getServicesForRouting(),
             db.getServiceFamilies(),
@@ -327,7 +335,7 @@ export default function RouteEditor() {
         if (!name?.trim()) return;
         try {
             const id = await createRoute(name.trim());
-            setRoutes(await getRoutes());
+            setRoutes(await getRoutes(true));
             setRouteId(id);
             success('الخريطة اتعملت — ضيف خطواتها دلوقتي');
         } catch (e) {
@@ -342,7 +350,7 @@ export default function RouteEditor() {
         if (!name?.trim() || name.trim() === route.nameAr) return;
         try {
             await renameRoute(route.id, name.trim());
-            setRoutes(await getRoutes());
+            setRoutes(await getRoutes(true));
             success('الاسم اتغيّر');
         } catch (e) {
             console.error('[RouteEditor] rename failed', e);
@@ -350,15 +358,19 @@ export default function RouteEditor() {
         }
     };
 
-    const linkService = async (serviceId: string, currentlyOnThisRoute: boolean) => {
-        if (!routeId) return;
+    const linkService = async (serviceId: string, linked: boolean, tryInOnly = false) => {
+        if (!routeId || linkingService) return;
+        setLinkingService(true);
         try {
-            await setServiceRoute(serviceId, currentlyOnThisRoute ? null : routeId);
+            if (tryInOnly) await setServiceTryInAvailability(serviceId, linked);
+            else await setServiceRoute(serviceId, routeId, linked);
             setServices(await getServicesForRouting());
-            success(currentlyOnThisRoute ? 'الخدمة اتشالت من الخريطة' : 'الخدمة اترابطت');
+            success(tryInOnly ? 'إعداد البروفة اتحدّث' : linked ? 'الخدمة اترابطت' : 'الخدمة اتشالت من الخريطة');
         } catch (e) {
             console.error('[RouteEditor] link service failed', e);
             toastError('تعذّر ربط الخدمة');
+        } finally {
+            setLinkingService(false);
         }
     };
 
@@ -396,7 +408,7 @@ export default function RouteEditor() {
             </div>
 
             <div className="flex gap-2 flex-wrap">
-                {routes.map((r) => (
+                {routes.filter(r => r.id !== CATALOG_EXTERNAL_ROUTE_ID).map((r) => (
                     <button
                         key={r.id}
                         onClick={() => guard(() => setRouteId(r.id))}
@@ -408,6 +420,7 @@ export default function RouteEditor() {
                     >
                         {r.nameAr}
                         {r.isFallback && <span className="text-xs opacity-70"> (افتراضية)</span>}
+                        {!r.isActive && <span className="text-xs opacity-70"> (موقوفة للتشغيل)</span>}
                     </button>
                 ))}
             </div>
@@ -607,11 +620,14 @@ export default function RouteEditor() {
                                                     نوع الوظيفة اللي تشتغل الخطوة دي
                                                 </span>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {ASSIGNABLE_ROLES.map((r) => {
+                                                    {ASSIGNABLE_ROLES.filter(role => role !== 'coordinator' ||
+                                                        step.allowedRoles.includes(role) ||
+                                                        ((step.drivenBy ?? stage?.drivenBy) === 'my_tasks' && (step.executionOverride ?? stage?.defaultExecution) === 'internal')).map((r) => {
                                                         const on = step.allowedRoles.includes(r);
                                                         return (
                                                             <button
                                                                 key={r}
+                                                                aria-pressed={on}
                                                                 onClick={() => toggleRole(step, r)}
                                                                 className={`px-3 py-1.5 rounded-lg border ${
                                                                     on
@@ -637,7 +653,7 @@ export default function RouteEditor() {
                                                         ))}
                                                 </div>
                                                 <p className="text-slate-400 mt-1">
-                                                    من غير اختيار: أي حد مسموح له يشتغل إنتاج يقدر ياخدها.
+                                                    من غير اختيار، الخطوة مفتوحة لفريق الإنتاج. تنفيذ المنسق يتطلب اختياره في الخطوة.
                                                 </p>
                                             </div>
 
@@ -927,12 +943,13 @@ export default function RouteEditor() {
                 <div>
                     <h2 className="font-bold text-slate-700 mb-1">الخدمات والعوائل اللي بتمشي على الخريطة دي</h2>
                     <p className="text-xs text-slate-400">
-                        يمكنك ربط **عائلة بالكامل** بالخريطة لتطبيقيها تلقائياً على كل خدمات العائلة، أو تخصيص كل خدمة منفردة.
+                        {supportsTryIn ? 'اربط الصنف بالخريطة وحدد إذا كانت البروفة متاحة له. خطوات البروفة تشتغل عند اختيار Try-in.'
+                            : isReviewedRoute ? 'اختار الأصناف اللي تستخدم الخريطة دي للتنفيذ النهائي.'
+                            : 'اربط عائلة بالكامل بالخريطة أو خصص خريطة لكل خدمة منفردة.'}
                     </p>
                 </div>
 
-                {/* Family Level Linking Section */}
-                {families.length > 0 && (
+                {!isReviewedRoute && families.length > 0 && (
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
                         <span className="text-xs font-bold text-slate-700 block">🔷 ربط عائلة خدمات بالكامل بها:</span>
                         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -971,33 +988,36 @@ export default function RouteEditor() {
                     </div>
                 )}
 
-                {services.length === 0 && (
-                    <p className="text-sm text-slate-400 py-2">مفيش خدمات مسجّلة في السيستم.</p>
+                {linkableServices.length === 0 && (
+                    <p className="text-sm text-slate-400 py-2">مفيش خدمات متاحة للربط بالخريطة دي.</p>
                 )}
 
                 <div className="space-y-1">
                     <span className="text-xs font-bold text-slate-700 block">🔹 ربط وتخصيص الخدمات الفردية:</span>
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {services.map((sv) => {
-                            const onThisService = sv.routeId === routeId;
-                            const onThisFamily = !sv.routeId && sv.familyRouteId === routeId;
+                        {linkableServices.map((sv) => {
+                            const linkedRouteId = isReviewedRoute ? sv.catalogRouteId : sv.routeId;
+                            const onThisService = linkedRouteId === routeId;
+                            const onThisFamily = !isReviewedRoute && !linkedRouteId && sv.familyRouteId === routeId;
                             const onThis = onThisService || onThisFamily;
 
-                            const onOtherService = Boolean(sv.routeId) && !onThisService;
-                            const otherServiceName = routes.find((r) => r.id === sv.routeId)?.nameAr;
+                            const onOtherService = Boolean(linkedRouteId) && !onThisService;
+                            const otherServiceName = routes.find((r) => r.id === linkedRouteId)?.nameAr;
                             const familyRouteName = routes.find((r) => r.id === sv.familyRouteId)?.nameAr;
 
                             return (
-                                <label
+                                <div
                                     key={sv.id}
-                                    className={`flex items-start gap-2 p-2 rounded-xl border cursor-pointer transition-all ${
+                                    className={`p-2 rounded-xl border transition-all ${
                                         onThis ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'
                                     }`}
                                 >
+                                    <label className="flex items-start gap-2 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={onThisService}
-                                        onChange={() => void linkService(sv.id, onThisService)}
+                                        disabled={linkingService}
+                                        onChange={() => void linkService(sv.id, !onThisService)}
                                         className="w-4 h-4 accent-brand-blue mt-0.5"
                                     />
                                     <span className="min-w-0">
@@ -1012,13 +1032,22 @@ export default function RouteEditor() {
                                                 على خريطة خاصة: {otherServiceName ?? '—'}
                                             </span>
                                         )}
-                                        {!onThisService && sv.familyRouteId && sv.familyRouteId !== routeId && (
+                                        {!isReviewedRoute && !onThisService && sv.familyRouteId && sv.familyRouteId !== routeId && (
                                             <span className="block text-[10px] text-sky-700">
                                                 خريطة عائلتها: {familyRouteName ?? '—'}
                                             </span>
                                         )}
                                     </span>
-                                </label>
+                                    </label>
+                                    {supportsTryIn && onThisService && (
+                                        <label className="mt-2 flex items-center gap-2 text-xs text-slate-700">
+                                            <input type="checkbox" checked={sv.catalogTryInRouteId === routeId}
+                                                disabled={linkingService}
+                                                onChange={event => void linkService(sv.id, event.target.checked, true)} />
+                                            <span>إتاحة البروفة لـ {sv.name}</span>
+                                        </label>
+                                    )}
+                                </div>
                             );
                         })}
                     </div>

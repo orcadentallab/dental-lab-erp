@@ -187,7 +187,8 @@ describe('order workflow legacy status retirement', () => {
 
         expect(readyStart).toBeGreaterThanOrEqual(0);
         expect(readyEnd).toBeGreaterThan(readyStart);
-        expect(readySource).toContain(".in('production_status', ['final_ready', 'try_in_ready'])");
+        expect(shippingSource).toContain("const READY_TO_PACK_STATUSES = ['final_ready', 'try_in_ready']");
+        expect(readySource).toContain(".in('production_status', READY_TO_PACK_STATUSES)");
         expect(readySource).not.toContain('status.eq.Ready');
     });
 

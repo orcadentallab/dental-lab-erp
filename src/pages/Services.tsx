@@ -3,13 +3,15 @@ import { db, type Service, type ServiceFamily } from '../services/db';
 import type { FamilyPriceAdjustment } from '../services/supabase/serviceFamilyService';
 import {
     FileSpreadsheet, Printer, Trash2, Edit2, Layers, GripVertical,
-    Plus, Sparkles, SlidersHorizontal, Star, Check, AlertCircle, X
+    Plus, Sparkles, SlidersHorizontal, Star, Check, AlertCircle, X, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { exportToExcel } from '../lib/exportUtils';
 import { generateGenericTablePDF } from '../services/pdfService';
 import { DEFAULT_LAB_INFO } from '../utils/finance';
 import { useToast } from '../context/ToastContext';
 import clsx from 'clsx';
+
+const INTERNAL_PRINT_ROUTE_ID = 'ba500000-0000-4000-8000-000000000001';
 
 const COLOR_OPTIONS = [
     { id: 'emerald', label: 'أخضر زمردي', bg: 'bg-emerald-500', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
@@ -23,6 +25,9 @@ const COLOR_OPTIONS = [
 
 export default function ServicesPage() {
     const [services, setServices] = useState<Service[]>([]);
+    const [showInactive, setShowInactive] = useState(false);
+    const [orderFamilyFilter, setOrderFamilyFilter] = useState('');
+    const [familySortOrder, setFamilySortOrder] = useState('');
     const [families, setFamilies] = useState<ServiceFamily[]>([]);
     const { success: toastSuccess, error: toastError } = useToast();
     const [editingService, setEditingService] = useState<Service | null>(null);
@@ -62,8 +67,9 @@ export default function ServicesPage() {
     // Drag state
     const servicesRef = useRef<Service[]>([]);
     useEffect(() => { servicesRef.current = services; }, [services]);
-    const dragIndex = useRef<number | null>(null);
-    const dragOverIndex = useRef<number | null>(null);
+    const draggedServiceId = useRef<string | null>(null);
+    const activeCount = services.filter(service => service.isActive !== false).length;
+    const visibleServices = services.filter(service => (service.isActive === false) === showInactive && (!orderFamilyFilter || service.familyId === orderFamilyFilter));
 
     const refreshData = async () => {
         setLoadState('loading');
@@ -90,6 +96,7 @@ export default function ServicesPage() {
     }, []);
 
     const handleOpenFamilyModal = (family?: ServiceFamily) => {
+        setFamilySortOrder(family?.sortOrder ? String(family.sortOrder) : '');
         if (family) {
             setEditingFamily(family);
             setFamilyForm({
@@ -120,6 +127,7 @@ export default function ServicesPage() {
                     description: familyForm.description || null,
                     color: familyForm.color,
                     defaultServiceId: familyForm.defaultServiceId || null,
+                    sortOrder: Number(familySortOrder),
                 });
                 toastSuccess('تم تحديث العائلة بنجاح');
             } else {
@@ -199,17 +207,18 @@ export default function ServicesPage() {
         }
     };
 
-    const handleDragStart = (index: number) => { dragIndex.current = index; };
-    const handleDragOver = (e: React.DragEvent, index: number) => { e.preventDefault(); dragOverIndex.current = index; };
-    const handleDrop = async (e: React.DragEvent) => {
+    const handleDrop = async (e: React.DragEvent, targetId: string) => {
         e.preventDefault();
-        const from = dragIndex.current;
-        const to = dragOverIndex.current;
-        dragIndex.current = null;
-        dragOverIndex.current = null;
-        if (from === null || to === null || from === to) return;
+        const sourceId = draggedServiceId.current;
+        draggedServiceId.current = null;
+        if (sourceId) await moveService(sourceId, targetId);
+    };
 
+    const moveService = async (sourceId: string, targetId: string) => {
         const current = [...servicesRef.current];
+        const from = current.findIndex(service => service.id === sourceId);
+        const to = current.findIndex(service => service.id === targetId);
+        if (isSaving || from < 0 || to < 0 || from === to) return;
         const [moved] = current.splice(from, 1);
         current.splice(to, 0, moved);
         setServices(current);
@@ -219,8 +228,24 @@ export default function ServicesPage() {
             await db.reorderServices(current.map(s => s.id));
         } catch (err) {
             console.error('[Services] Failed to save order:', err);
+            toastError('تعذر حفظ ترتيب الأصناف');
             const fresh = await db.getServices();
             setServices(fresh);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const toggleServiceActivity = async (service: Service) => {
+        const isActive = service.isActive === false;
+        setIsSaving(true);
+        try {
+            const updated = await db.updateService(service.id, { isActive });
+            if (!updated) throw new Error('تعذر تحديث حالة الخدمة');
+            setServices(current => current.map(row => row.id === updated.id ? updated : row));
+            toastSuccess(isActive ? 'تم تفعيل الخدمة' : 'تم نقل الخدمة إلى غير الفعالة');
+        } catch (error) {
+            toastError(error instanceof Error ? error.message : 'تعذر تحديث حالة الخدمة');
         } finally {
             setIsSaving(false);
         }
@@ -514,6 +539,19 @@ export default function ServicesPage() {
                             </div>
                         </div>
 
+                        <div className="flex flex-wrap gap-2 border-b border-slate-200 px-4 py-3" aria-label="حالة الخدمات">
+                            <select aria-label="فلتر عائلة الأصناف" value={orderFamilyFilter} onChange={event => setOrderFamilyFilter(event.target.value)} className="rounded-lg border border-slate-200 px-2 text-sm">
+                                <option value="">كل العائلات</option>
+                                {families.map(family => <option key={family.id} value={family.id}>{family.nameEn || family.nameAr}</option>)}
+                            </select>
+                            {[false, true].map(inactive => (
+                                <button key={String(inactive)} type="button" aria-pressed={showInactive === inactive}
+                                    onClick={() => setShowInactive(inactive)}
+                                    className={clsx('rounded-lg border px-3 py-2 text-sm font-semibold', showInactive === inactive ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-slate-200 text-slate-600')}>
+                                    {inactive ? 'غير فعالة' : 'فعالة'} ({inactive ? services.length - activeCount : activeCount})
+                                </button>
+                            ))}
+                        </div>
                         <table className="w-full text-xs text-right">
                             <thead className="text-slate-500 bg-slate-50/80 border-b border-slate-200">
                                 <tr>
@@ -528,24 +566,32 @@ export default function ServicesPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {services.map((s, index) => {
+                                {visibleServices.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-slate-500">{showInactive ? 'مفيش خدمات غير فعالة' : 'مفيش خدمات فعالة'}</td></tr>}
+                                {visibleServices.map((s, index) => {
                                     const family = families.find(f => f.id === s.familyId);
                                     const isDefault = family?.defaultServiceId === s.id;
                                     return (
                                         <tr
                                             key={s.id}
-                                            draggable
-                                            onDragStart={() => handleDragStart(index)}
-                                            onDragOver={(e) => handleDragOver(e, index)}
-                                            onDrop={handleDrop}
+                                            draggable={!isSaving}
+                                            onDragStart={() => { draggedServiceId.current = s.id; }}
+                                            onDragOver={e => e.preventDefault()}
+                                            onDragEnd={() => { draggedServiceId.current = null; }}
+                                            onDrop={e => void handleDrop(e, s.id)}
                                             className="hover:bg-slate-50/80 transition-colors group cursor-grab active:cursor-grabbing active:bg-emerald-50/30"
                                         >
                                             <td className="p-3 w-8 text-slate-300 group-hover:text-slate-400 transition-colors">
-                                                <GripVertical size={16} className="mx-auto" />
+                                                {orderFamilyFilter ? <div className="flex flex-col items-center">
+                                                    <button type="button" aria-label={`حرّك ${s.name} لأعلى`} disabled={isSaving || index === 0} onClick={() => void moveService(s.id, visibleServices[index - 1].id)} className="rounded p-1 text-slate-700 hover:bg-slate-100 disabled:opacity-30"><ChevronUp size={14} /></button>
+                                                    <button type="button" aria-label={`حرّك ${s.name} لأسفل`} disabled={isSaving || index === visibleServices.length - 1} onClick={() => void moveService(s.id, visibleServices[index + 1].id)} className="rounded p-1 text-slate-700 hover:bg-slate-100 disabled:opacity-30"><ChevronDown size={14} /></button>
+                                                </div> : <GripVertical size={16} className="mx-auto" />}
                                             </td>
                                             <td className="p-3 font-bold text-slate-800">
                                                 <div className="flex items-center gap-1.5">
                                                     <span>{s.name}</span>
+                                                    {s.catalogRouteKind && <span className="whitespace-nowrap rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600" title="خريطة الكتالوج المراجعة">
+                                                        {s.catalogRouteKind === 'add_on' ? 'A · تابع' : s.catalogRouteKind === 'logistics' ? 'L · زيارات' : s.catalogRouteId === INTERNAL_PRINT_ROUTE_ID ? 'P · طباعة' : s.catalogTryInRouteId ? 'E / T' : 'E · خارجي'}
+                                                    </span>}
                                                     {isDefault && (
                                                         <span className="inline-flex items-center gap-0.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-bold" title="البلوكة الافتراضية للعائلة">
                                                             <Star size={10} className="fill-amber-400 text-amber-500" />
@@ -582,7 +628,8 @@ export default function ServicesPage() {
                                             </td>
                                             <td className="p-3 text-slate-500 font-mono">{s.millingPrice || '-'}</td>
                                             <td className="p-3 text-center">
-                                                <div className="flex justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <button type="button" disabled={isSaving} onClick={() => void toggleServiceActivity(s)} className="whitespace-nowrap rounded-lg border border-slate-200 px-2 py-1.5 font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50">{showInactive ? 'تفعيل' : 'تعطيل'}</button>
                                                     <button onClick={() => setEditingService(s)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded-lg transition-colors cursor-pointer" title="تعديل"><Edit2 size={15} /></button>
                                                     <button onClick={() => { if (confirm('حذف الخدمة؟')) db.deleteService(s.id).then(refreshData); }} className="text-rose-500 hover:bg-rose-50 p-1.5 rounded-lg transition-colors cursor-pointer" title="حذف"><Trash2 size={15} /></button>
                                                 </div>
@@ -610,6 +657,11 @@ export default function ServicesPage() {
                         </div>
 
                         <form onSubmit={handleSaveFamily} className="space-y-4">
+                            {editingFamily && <label className="block text-xs font-bold text-slate-700">ترتيب العائلة في قائمة الأصناف
+                                <input type="number" min="0" max="10000" step="1" value={familySortOrder} onChange={event => setFamilySortOrder(event.target.value)}
+                                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5" placeholder="الترتيب الافتراضي" />
+                                <span className="mt-1 block font-normal text-slate-600">الرقم الأصغر يظهر الأول. سيبه فاضي للترتيب الافتراضي.</span>
+                            </label>}
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 mb-1">اسم العائلة (بالعربية)</label>
                                 <input

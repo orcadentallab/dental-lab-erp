@@ -46,13 +46,14 @@ export interface SidebarEntry extends Destination {
      * Work; the admin gets it as a tab, so the duplicate is suppressed.
      */
     fallbackFor?: string;
+    fallbackCapability?: Capability;
 }
 
 export interface WorkspaceTab extends Destination {
     badge?: BadgeKey;
 }
 
-export type BadgeKey = 'unregisteredCases' | 'myOpenTasks' | 'pendingDesignQc';
+export type BadgeKey = 'unregisteredCases' | 'myOpenTasks' | 'pendingDesignQc' | 'productionCases' | 'externalCases' | 'shippingCases';
 
 /* ------------------------------------------------------------------ *
  * Workspaces -- layer 2
@@ -63,31 +64,36 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
         {
             id: 'production.board', labelAr: 'لوحة الإنتاج', labelEn: 'Production Board',
             path: '/production/board', capability: 'view_production',
-            aliases: ['المراحل', 'الورشة', 'floor', 'stages', 'board'],
+            badge: 'productionCases', aliases: ['المراحل', 'الورشة', 'floor', 'stages', 'board'],
         },
         {
             id: 'production.myTasks', labelAr: 'مهامي', labelEn: 'My Tasks',
             path: '/production/my-tasks', capability: 'view_my_tasks',
             badge: 'myOpenTasks', aliases: ['شغلي', 'الطابور', 'queue', 'tasks'],
         },
-        {id:'production.designQc',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',badge:'pendingDesignQc',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
+        {id:'production.designQc',labelAr:'التصميم',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',badge:'pendingDesignQc',aliases:['ملفات التصميم وQC','مراجعة التصميم','design qc','نسخ التصميم']},
         {
-            id: 'production.inventory', labelAr: 'المخزن والخامات', labelEn: 'Inventory & Materials',
-            path: '/inventory', capability: 'view_inventory',
-            aliases: ['الخامات', 'المخزن', 'الديسكات', 'inventory', 'materials', 'stock'],
+            id: 'production.external', labelAr: 'الشغل الخارجي', labelEn: 'External Work',
+            path: '/production/external', capability: 'view_external_work',
+            badge: 'externalCases', aliases: ['معمل خارجي', 'outsourced', 'external lab'],
         },
         {
             id: 'production.shipments', labelAr: 'الشحن والتسليم', labelEn: 'Shipments',
             path: '/production/shipments', capability: 'view_shipments',
-            aliases: ['الشحن', 'التسليم', 'الطرود', 'shipments', 'delivery', 'couriers'],
+            badge: 'shippingCases', aliases: ['الشحن', 'التسليم', 'الطرود', 'shipments', 'delivery', 'couriers'],
         },
         {
-            id: 'production.external', labelAr: 'الشغل الخارجي', labelEn: 'External Work',
-            path: '/production/external', capability: 'view_external_work',
-            aliases: ['معمل خارجي', 'outsourced', 'external lab'],
+            id: 'production.scanVisits', labelAr: 'زيارات السكان', labelEn: 'Scan Visits',
+            path: '/production/scan-visits', capability: 'view_scan_visits',
+            aliases: ['السكان', 'السكانر', 'scan', 'scanner'],
         },
         {
-            id: 'production.machines', labelAr: 'الأجهزة والأعطال', labelEn: 'Machines & Downtime',
+            id: 'production.inventory', labelAr: 'المخزن', labelEn: 'Inventory & Materials',
+            path: '/inventory', capability: 'view_inventory',
+            aliases: ['المخزن والخامات', 'الخامات', 'الديسكات', 'inventory', 'materials', 'stock'],
+        },
+        {
+            id: 'production.machines', labelAr: 'الأجهزة', labelEn: 'Machines & Downtime',
             path: '/production/machines', capability: 'view_production',
             aliases: ['الأجهزة', 'الماكينات', 'الأعطال', 'الصيانة', 'machines', 'downtime'],
         },
@@ -306,6 +312,7 @@ export const REPORT_CATEGORIES: ReportCategory[] = [
 
 export const SIDEBAR: SidebarEntry[] = [
     {id:'designQc.standalone',labelAr:'ملفات التصميم وQC',labelEn:'Design Files & QC',path:'/design-qc',capability:'view_design_qc',badge:'pendingDesignQc',section:'operations',fallbackFor:'production',aliases:['مراجعة التصميم','design qc','نسخ التصميم']},
+    {id:'scanVisits.standalone',labelAr:'زيارات السكان',labelEn:'Scan Visits',path:'/production/scan-visits',capability:'view_scan_visits',section:'operations',fallbackFor:'production',fallbackCapability:'record_own_scan_visit',aliases:['السكانر','scan visits']},
     {
         id: 'dashboard', labelAr: 'لوحة التحكم', labelEn: 'Dashboard',
         path: '/dashboard', capability: 'view_dashboard', section: 'top',
@@ -319,7 +326,7 @@ export const SIDEBAR: SidebarEntry[] = [
     {
         id: 'production', labelAr: 'الإنتاج', labelEn: 'Production',
         path: '/production/board', capability: 'view_production_workspace', section: 'operations',
-        workspace: 'production', badge: 'myOpenTasks',
+        workspace: 'production', badge: 'productionCases',
         aliases: ['المعمل', 'الورشة', 'المراحل', 'production', 'floor'],
     },
     {
@@ -349,13 +356,13 @@ export const SIDEBAR: SidebarEntry[] = [
     {
         id: 'shipments', labelAr: 'الشحن والتسليم', labelEn: 'Shipments',
         path: '/production/shipments', capability: 'view_shipments', section: 'operations',
-        fallbackFor: 'production',
+        fallbackFor: 'production', badge: 'shippingCases',
         aliases: ['الشحن', 'التسليم', 'الطرود', 'shipments'],
     },
     {
         id: 'externalWork', labelAr: 'الشغل الخارجي', labelEn: 'External Work',
         path: '/production/external', capability: 'view_external_work', section: 'operations',
-        fallbackFor: 'production',
+        fallbackFor: 'production', badge: 'externalCases',
         aliases: ['معمل خارجي', 'outsourced'],
     },
     {
@@ -527,7 +534,7 @@ export function visibleSidebarEntries(caps: Set<Capability>): SidebarEntry[] {
     return SIDEBAR.flatMap<SidebarEntry>(entry => {
         if (entry.fallbackFor) {
             if (openWorkspaces.has(entry.fallbackFor)) return [];
-            return caps.has(entry.capability) ? [entry] : [];
+            return caps.has(entry.capability) && (!entry.fallbackCapability || caps.has(entry.fallbackCapability)) ? [entry] : [];
         }
 
         if (entry.workspace) {
@@ -604,15 +611,13 @@ export function getLandingRoute(user: User | null | undefined): string {
         // the production manager reads the state of it.
         case 'technician':
         case 'production_manager':
+        case 'coordinator':
             return '/production/board';
         // 'lab' is an external supplier. It has no floor to land on, and its
         // orders view is the only screen scoped to it.
         case 'lab':
             return '/orders';
-        // The coordinator's day starts on the money, like the accountant's:
-        // collection is the half of the job with deadlines attached.
         case 'accountant':
-        case 'coordinator':
             return '/finance/transactions';
         case 'designer':
             return '/dashboard';
@@ -661,7 +666,7 @@ export const QUICK_ACTIONS: QuickAction[] = [
     } satisfies QuickAction] : []),
     {
         id: 'action.startTask', labelAr: 'ابدأ مهمة', labelEn: 'Start a Task',
-        path: '/production/my-tasks', capability: 'view_my_tasks', groupAr: 'الإنتاج',
+        path: '/production/my-tasks', capability: 'work_production_tasks', groupAr: 'الإنتاج',
     },
 ];
 

@@ -11,16 +11,14 @@ export function isDesignerDashboardOrderVisible(order: Order): boolean {
 }
 
 
-/** Match the design-submission RPC's V2 state guard; never advance an order implicitly. */
-export function getDesignSubmissionError(order: Pick<Order, 'productionStatus' | 'issueState' | 'isDeleted'>): string | null {
+/** Match the design-submission RPC's intake and hold checks. */
+export function getDesignSubmissionError(order: Pick<Order, 'productionStatus' | 'issueState' | 'isDeleted' | 'doctorWaitReason'>): string | null {
     if (order.isDeleted) return 'لا يمكن رفع تصميم لحالة محذوفة.';
+    if (order.doctorWaitReason) return 'الحالة On Hold لحد ما التفاصيل توصل.';
     if ((order.issueState || 'none') !== 'none') {
         return 'لا يمكن رفع التصميم قبل مراجعة وحل مشكلة الحالة مع المسؤول.';
     }
-    if (order.productionStatus === 'not_started') {
-        return 'يرجى قبول الحالة ونقلها إلى قيد التصميم قبل رفع التصميم.';
-    }
-    if (order.productionStatus !== 'designing') {
+    if (order.productionStatus !== 'designing' && order.productionStatus !== 'not_started') {
         return 'الحالة ليست قيد التصميم. اطلب تعديل التصميم وأعد الحالة إلى قيد التصميم قبل رفع رابط جديد.';
     }
     return null;

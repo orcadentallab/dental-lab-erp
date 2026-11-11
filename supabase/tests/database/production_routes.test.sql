@@ -17,7 +17,7 @@ BEGIN;
 
 SET search_path TO public, extensions;
 
-SELECT plan(14);
+SELECT plan(18);
 
 INSERT INTO public.production_routes (id, name_ar, is_fallback, ignores_global_stages)
 VALUES ('d1000000-0000-0000-0000-000000000001', 'Route test — steps', FALSE, FALSE),
@@ -148,11 +148,11 @@ VALUES ('d2000000-0000-0000-0000-000000000001', 'Route test doctor',
 
 INSERT INTO public.orders (
     id, case_id, doctor_id, patient_name, items, total_price, shade, status,
-    delivery_date, cost, production_status, issue_state
+    delivery_date, cost, production_status, issue_state, created_at
 ) VALUES (
     'd3000000-0000-0000-0000-000000000001', 'ROUTE-LEGACY-1',
     'd2000000-0000-0000-0000-000000000001', 'Legacy patient', '[]',
-    500, 'A1', 'New Case', CURRENT_DATE, 200, 'not_started', 'none');
+    500, 'A1', 'New Case', CURRENT_DATE, 200, 'not_started', 'none', '2020-01-01');
 
 SELECT is(
     (SELECT is_fallback FROM public.production_routes
@@ -168,6 +168,46 @@ SELECT is(
     public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001'),
     'd1000000-0000-0000-0000-000000000001'::uuid,
     'an explicit override on the order wins over everything else');
+
+INSERT INTO public.service_families (id, name_ar, default_route_id)
+VALUES ('d4000000-0000-0000-0000-000000000001', 'Route test family',
+        'd1000000-0000-0000-0000-000000000001');
+
+INSERT INTO public.services (name, selling_price, cost_price, family_id, route_id)
+VALUES ('Route test family service', 500, 200, 'd4000000-0000-0000-0000-000000000001', NULL),
+       ('Route test direct service', 500, 200, NULL, 'd1000000-0000-0000-0000-000000000002');
+
+UPDATE public.orders
+   SET route_override_id = NULL, workflow_type = 'split'
+ WHERE id = 'd3000000-0000-0000-0000-000000000001';
+
+INSERT INTO public.order_items (order_id, product_type, teeth_numbers, shade, price, count)
+VALUES ('d3000000-0000-0000-0000-000000000001', 'Route test family service', '11', 'A1', 500, 1);
+
+SELECT is(public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001'),
+          'd1000000-0000-0000-0000-000000000001'::uuid,
+          'internal production inherits the family route');
+
+INSERT INTO public.order_items (order_id, product_type, teeth_numbers, shade, price, count)
+VALUES ('d3000000-0000-0000-0000-000000000001', 'Route test direct service', '12', 'A1', 500, 1);
+
+SELECT throws_ok($test$SELECT public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001')$test$,
+                 '23514', 'الخدمات لها خرائط إنتاج مختلفة. حدّد خريطة الأوردر أولًا',
+                 'different service routes require an explicit choice');
+
+UPDATE public.services SET route_id = 'd1000000-0000-0000-0000-000000000001'
+ WHERE name = 'Route test direct service';
+
+SELECT is(public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001'),
+          'd1000000-0000-0000-0000-000000000001'::uuid,
+          'multiple services on the same route resolve to a single route');
+
+UPDATE public.orders SET route_override_id = 'd1000000-0000-0000-0000-000000000002'
+ WHERE id = 'd3000000-0000-0000-0000-000000000001';
+
+SELECT is(public.resolve_route_for_order('d3000000-0000-0000-0000-000000000001'),
+          'd1000000-0000-0000-0000-000000000002'::uuid,
+          'internal production honors the explicit order route');
 
 SELECT * FROM finish();
 ROLLBACK;
