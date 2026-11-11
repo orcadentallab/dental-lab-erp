@@ -1,7 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { db, type Transaction, type Doctor } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
-import type { Adjustment } from '../../services/financeService';
 import { Card } from '../../components/ui/Card';
 import { Wallet, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
@@ -13,7 +13,7 @@ export default function DoctorFinance() {
 
     const [totalOrderCost, setTotalOrderCost] = useState(0);
 
-    const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
+    const [adjustments, setAdjustments] = useState<any[]>([]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -70,8 +70,7 @@ export default function DoctorFinance() {
 
     // Derived values for UI
     const manualExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const serviceCharges = adjustments.filter(adjustment => adjustment.type === 'charge' && adjustment.service_charge_kind);
-    const totalExpenses = totalOrderCost + manualExpenses + serviceCharges.reduce((sum, adjustment) => sum + adjustment.amount, 0);
+    const totalExpenses = totalOrderCost + manualExpenses;
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto p-4">
@@ -83,13 +82,6 @@ export default function DoctorFinance() {
                     </div>
                 )}
             </div>
-
-            {serviceCharges.length > 0 && <Card className="space-y-2 p-4">
-                <h2 className="font-bold text-slate-800">رسوم الشحن وزيارات السكان</h2>
-                {serviceCharges.map(charge => <div key={charge.id} className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-sm">
-                    <span>{charge.reason} · {charge.date}</span><strong>{charge.amount.toLocaleString()} ج.م</strong>
-                </div>)}
-            </Card>}
 
             {/* Balance Card */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
