@@ -22,6 +22,7 @@ import {
 interface Props {
     order: Order;
     isOpen: boolean;
+    acceptLabRejected?: boolean;
     onClose: () => void;
     /** Called after a successful correction so the caller can refresh. */
     onCorrected: () => void;
@@ -59,7 +60,7 @@ function isDoctorDecisionOption(value: string): value is DoctorDecisionOption {
  * every obligation from the corrected order row; see
  * supabase/migrations/20260825000000_admin_correct_order_issue_state.sql.
  */
-export default function IssueStateCorrectionModal({ order, isOpen, onClose, onCorrected }: Props) {
+export default function IssueStateCorrectionModal({ order, isOpen, acceptLabRejected, onClose, onCorrected }: Props) {
     const currentIssueState = getEffectiveIssueState(order);
 
     const targets = useMemo(() => getIssueCorrectionTargets({
@@ -78,7 +79,7 @@ export default function IssueStateCorrectionModal({ order, isOpen, onClose, onCo
         order.designSubmittedAt,
     ]);
 
-    const [target, setTarget] = useState<CorrectableTargetState | ''>('');
+    const [target, setTarget] = useState<CorrectableTargetState | ''>(acceptLabRejected ? 'none' : '');
     const [reason, setReason] = useState('');
     const [causeCategory, setCauseCategory] = useState('');
     const [responsibleStage, setResponsibleStage] = useState('');
@@ -115,7 +116,8 @@ export default function IssueStateCorrectionModal({ order, isOpen, onClose, onCo
         && (customDoctorAmount === '' || customDoctorAmount < 0 || customDoctorAmount > orderTotal);
 
     const confirmDisabled = submitting
-        || !target
+        || !selected
+        || (acceptLabRejected && currentIssueState !== 'lab_rejected')
         || !reason.trim()
         || (!!causeContext && !causeCategory)
         || invalidCustomAmount;
@@ -164,10 +166,12 @@ export default function IssueStateCorrectionModal({ order, isOpen, onClose, onCo
     return (
         <ConfirmDialog
             isOpen={isOpen}
-            title="تصحيح حالة المشكلة"
-            message={`الحالة مسجّلة حالياً كـ «${ISSUE_STATE_LABELS_AR[currentIssueState]}». اختر ما كان يجب تسجيله.`}
+            title={acceptLabRejected ? 'قبول الحالة' : 'تصحيح حالة المشكلة'}
+            message={acceptLabRejected
+                ? 'هيتم إلغاء رفض المعمل وترجع الحالة لمسارها. اكتب سبب قبول الحالة.'
+                : `الحالة مسجّلة حالياً كـ «${ISSUE_STATE_LABELS_AR[currentIssueState]}». اختر ما كان يجب تسجيله.`}
             variant="warning"
-            confirmLabel={submitting ? 'جارٍ التصحيح…' : 'تأكيد التصحيح'}
+            confirmLabel={submitting ? 'جارٍ التصحيح…' : acceptLabRejected ? 'تأكيد القبول' : 'تأكيد التصحيح'}
             cancelLabel="تراجع"
             isLoading={submitting}
             confirmDisabled={confirmDisabled}
@@ -190,7 +194,7 @@ export default function IssueStateCorrectionModal({ order, isOpen, onClose, onCo
                     <p className="rounded-lg border border-surface-200 bg-surface-50 p-2 text-xs text-surface-600">
                         لا توجد حالة بديلة مسموح بها لهذا الأوردر.
                     </p>
-                ) : (
+                ) : !acceptLabRejected && (
                     <div>
                         <label className="mb-1 block text-sm font-medium text-surface-700">
                             الحالة الصحيحة <span className="text-red-500">*</span>

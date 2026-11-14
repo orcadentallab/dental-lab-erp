@@ -1,7 +1,7 @@
 BEGIN;
 
 SET search_path TO public, extensions;
-SELECT plan(49);
+SELECT plan(56);
 
 SELECT has_column('public', 'orders', 'design_submitted_at', 'design submission has a dedicated timestamp');
 SELECT has_column('public', 'orders', 'first_delivered_at', 'first final delivery has a dedicated timestamp');
@@ -250,6 +250,59 @@ SELECT is(
        AND metadata->>'source' = 'admin_tech_status'),
     1,
     'idempotent retry creates one direct technician rejection event'
+);
+
+SET LOCAL ROLE authenticated;
+SELECT throws_ok(
+    $$SELECT public.review_designer_rejection_v2(
+        '48000000-0000-0000-0000-000000000001', 'reject', 'Accept case',
+        '88000000-0000-0000-0000-000000000050'
+    )$$,
+    '22023', 'An approved lab rejection requires admin issue correction',
+    'a final lab rejection cannot be accepted through designer review'
+);
+SELECT lives_ok(
+    $$SELECT public.admin_correct_order_issue_state_v2(
+        '48000000-0000-0000-0000-000000000001', 'none', 'Lab rejection recorded in error',
+        '88000000-0000-0000-0000-000000000051'
+    )$$,
+    'admin can clear an approved lab rejection'
+);
+RESET ROLE;
+SELECT is(
+    (SELECT concat_ws(':', issue_state, production_status, intake_state, technician_status, design_status)
+     FROM public.orders WHERE id = '48000000-0000-0000-0000-000000000001'),
+    'none:designing:accepted:Approved:in_progress',
+    'the corrected order is accepted and returns to design'
+);
+SELECT ok(
+    (SELECT rejection_doctor_decision IS NULL AND rejected_doctor_amount IS NULL
+         AND rejected_lab_cost IS NULL AND rejected_designer_cost IS NULL
+     FROM public.orders WHERE id = '48000000-0000-0000-0000-000000000001'),
+    'accepting an order clears its rejection settlement fields'
+);
+SELECT is(
+    (SELECT count(*)::integer FROM public.order_issues
+     WHERE order_id = '48000000-0000-0000-0000-000000000001'
+       AND issue_type = 'lab_rejected' AND NOT COALESCE(is_voided, false)),
+    0, 'acceptance voids the lab rejection for reporting'
+);
+
+-- Simulate a pending technician rejection recorded before request events existed.
+UPDATE public.orders SET technician_status = 'Rejected'
+WHERE id = '48000000-0000-0000-0000-000000000001';
+SET LOCAL ROLE authenticated;
+SELECT lives_ok(
+    $$SELECT public.review_designer_rejection_v2(
+        '48000000-0000-0000-0000-000000000001', 'reject', 'Accept pending case',
+        '88000000-0000-0000-0000-000000000052'
+    )$$,
+    'overruling a pending designer rejection passes the legacy status guard'
+);
+RESET ROLE;
+SELECT is(
+    (SELECT technician_status FROM public.orders WHERE id = '48000000-0000-0000-0000-000000000001'),
+    'Approved', 'overruling a pending designer rejection accepts the case'
 );
 
 SELECT set_config('request.jwt.claim.sub', '98000000-0000-0000-0000-000000000002', TRUE);

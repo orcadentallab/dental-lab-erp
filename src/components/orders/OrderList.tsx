@@ -221,6 +221,7 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
     const handleTechAction = useCallback(async (orderId: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => {
         try {
             const order = orders.find(o => o.id === orderId);
+            if (order && getEffectiveIssueState(order) === 'lab_rejected') return;
             const isReviewer = userRole === 'admin' || hasRepresentativeScope(userRole);
             if (order?.technicianStatus === 'Rejected' && isReviewer && action !== 'PMMA_First') {
                 if (action === 'Approved') {
