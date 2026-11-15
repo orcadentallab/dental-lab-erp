@@ -97,7 +97,7 @@ interface Props {
 export default function WorkflowActionBar({ order, userRole, onStatusChange, onRedo, showLegacyFallback, disabled, managedByProduction }: Props) {
     const [confirmAction, setConfirmAction] = useState<WorkflowAction | null>(null);
     const [showIssueMenu, setShowIssueMenu] = useState(false);
-    const [showIssueCorrection, setShowIssueCorrection] = useState(false);
+    const [issueCorrection, setIssueCorrection] = useState<'choose' | 'accept' | null>(null);
     const [doctorDecision, setDoctorDecision] = useState<RejectionDoctorDecision | 'half'>(
         REJECTION_DOCTOR_DECISIONS.fullPrice
     );
@@ -314,6 +314,17 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                 {/* Forward Actions */}
                 {forwardActions.map(renderActionButton)}
 
+                {canCorrectIssue && issueState === 'lab_rejected' && !order.isDeleted && (
+                    <button
+                        onClick={() => setIssueCorrection('accept')}
+                        disabled={disabled}
+                        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-bold text-green-700 hover:bg-green-100 disabled:opacity-50 sm:min-h-0"
+                    >
+                        <CheckCircle size={13} />
+                        <span>قبول الحالة</span>
+                    </button>
+                )}
+
                 {blockedOnDesignUpload && (
                     <span
                         className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-surface-200 bg-surface-50 text-surface-400 select-none sm:min-h-0"
@@ -393,7 +404,7 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
                                             <div className="my-1 border-t border-surface-100" />
                                         )}
                                         <button
-                                            onClick={() => { setShowIssueMenu(false); setShowIssueCorrection(true); }}
+                                            onClick={() => { setShowIssueMenu(false); setIssueCorrection('choose'); }}
                                             disabled={disabled}
                                             title="لو المشكلة اتسجّلت بالغلط — تصحيح نوعها أو إلغائها تماماً"
                                             className="flex min-h-11 w-full items-center gap-2 px-3 py-2 text-xs font-bold rounded-lg text-slate-600 hover:bg-slate-100 transition-colors sm:min-h-0"
@@ -439,12 +450,13 @@ export default function WorkflowActionBar({ order, userRole, onStatusChange, onR
             </div>
 
             {overrideError && <p role="alert" className="text-xs text-red-600">{overrideError}</p>}
-            <IssueStateCorrectionModal
+            {issueCorrection && <IssueStateCorrectionModal
                 order={order}
-                isOpen={showIssueCorrection}
-                onClose={() => setShowIssueCorrection(false)}
+                isOpen
+                acceptLabRejected={issueCorrection === 'accept'}
+                onClose={() => setIssueCorrection(null)}
                 onCorrected={() => onStatusChange(order.id, 'same')}
-            />
+            />}
 
             <ConfirmDialog
                 isOpen={!!confirmAction}
