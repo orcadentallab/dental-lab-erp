@@ -193,7 +193,7 @@ export default function AgingReport() {
 
                 // Fetch billing settings for all entities to calculate due dates in FIFO
                 const settingsPromises: Promise<{ key: string; s: EntityBillingSettings | null }>[] = [];
-                const docIds = (doc || []).filter((d) => !d.parentId).map((d) => d.id);
+                const docIds = (doc || []).filter((d) => !d.parentId && !d.mergedInto).map((d) => d.id);
                 const supIds = (sup || []).map((s) => s.id);
                 const desIds = designersList.map((d) => d.id);
 
@@ -277,7 +277,7 @@ export default function AgingReport() {
         let targetEntities: (Doctor | Supplier | User)[] = [];
         let entityType: 'doctor' | 'external_lab' | 'designer' = 'doctor';
         if (activeTab === 'doctors') {
-            targetEntities = doctors.filter((d) => !d.parentId);
+            targetEntities = doctors.filter((d) => !d.parentId && !d.mergedInto);
             entityType = 'doctor';
         } else if (activeTab === 'suppliers') {
             targetEntities = suppliers;
@@ -316,7 +316,8 @@ export default function AgingReport() {
             if (entityType === 'doctor') {
                 const entityIds = new Set([
                     entity.id,
-                    ...doctors.filter((d) => d.parentId === entity.id).map((d) => d.id)
+                    ...doctors.filter((d) => d.parentId === entity.id).map((d) => d.id),
+                    ...doctors.filter((d) => d.mergedInto === entity.id).map((d) => d.id)
                 ]);
 
                 // Orders

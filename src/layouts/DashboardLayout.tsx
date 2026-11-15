@@ -2,6 +2,7 @@ import { Outlet, useLocation, Link } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import GlobalSearch from '../components/GlobalSearch';
 import QuickActions from '../components/QuickActions';
+import NotificationCenter from '../components/NotificationCenter';
 import WorkspaceTabs from '../components/WorkspaceTabs';
 import { useAuth } from '../context/AuthContext';
 import { getCapabilities } from '../lib/userRoles';
@@ -67,6 +68,7 @@ export default function DashboardLayout() {
                                     <div className="ms-11 min-w-0 flex-1 lg:ms-0 lg:max-w-md">
                                         <GlobalSearch />
                                     </div>
+                                    <NotificationCenter />
                                     <QuickActions />
                                 </div>
                             </>
