@@ -19,12 +19,11 @@ export type WorkflowRole = typeof WORKFLOW_ROLES[number];
 
 // ─── Representative audit-gated allow-list (WF-1) ────────────────
 export const REP_AUDITED_ALLOW_LIST = [
+    'delivery_type',
     'patient_name',
     'stl_url',
     'images_url',
     'delivery_date',
-    'is_urgent',
-    'priority',
     'supplier_id',
     'designer_id',
     'instructions',
@@ -43,12 +42,11 @@ export function isRepAuditedField(field: string): field is RepAuditedField {
 
 // camelCase mirror used by the TS-side wrapper (`Order` interface keys).
 export const REP_AUDITED_ALLOW_LIST_CAMEL = [
+    'deliveryType',
     'patientName',
     'stlUrl',
     'imagesUrl',
     'deliveryDate',
-    'isUrgent',
-    'priority',
     'supplierId',
     'designerId',
     'instructions',
@@ -62,12 +60,11 @@ export type RepAuditedFieldCamel = typeof REP_AUDITED_ALLOW_LIST_CAMEL[number];
 
 // snake_case ↔ camelCase mapping for the RPC payload conversion.
 export const REP_FIELD_TO_DB: Record<RepAuditedFieldCamel, RepAuditedField> = {
+    deliveryType: 'delivery_type',
     patientName: 'patient_name',
     stlUrl: 'stl_url',
     imagesUrl: 'images_url',
     deliveryDate: 'delivery_date',
-    isUrgent: 'is_urgent',
-    priority: 'priority',
     supplierId: 'supplier_id',
     designerId: 'designer_id',
     instructions: 'instructions',
@@ -81,12 +78,13 @@ export const REP_FIELD_TO_DB: Record<RepAuditedFieldCamel, RepAuditedField> = {
 // The DB trigger enforces this list for representatives even when the audit flag
 // is set. Mirrored here for UI / future predicate helpers.
 export const REP_HARD_DENY_LIST = [
+    'is_urgent', 'priority',
     'id', 'case_id', 'created_at', 'updated_at',
     'is_redo', 'original_order_id', 'status_history',
     'is_archived', 'feedback',
     'status', 'production_status', 'issue_state', 'actual_delivery_date',
     'design_status', 'technician_status', 'external_lab_status', 'external_lab_notes',
-    'workflow_type', 'delivery_type', 'needs_design_review',
+    'workflow_type', 'needs_design_review',
     'manual_cost', 'discount', 'rejected_lab_cost',
     'is_registered',
     'doctor_id', 'representative_id',
@@ -108,12 +106,11 @@ export interface RepStateGuardContext {
 }
 
 export const REP_FIELD_STATE_GUARDS: Record<RepAuditedField, (ctx: RepStateGuardContext) => boolean> = {
+    delivery_type: ctx => ctx.issueState === 'none',
     patient_name: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
     stl_url: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
     images_url: () => true,
     delivery_date: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
-    priority: ctx => ctx.issueState === 'none' || ctx.productionStatus === 'final_delivered',
-    is_urgent: () => true,
     supplier_id: ctx =>
         ctx.productionStatus === 'final_delivered' ||
         (ctx.productionStatus !== 'final_ready' && ctx.issueState === 'none'),

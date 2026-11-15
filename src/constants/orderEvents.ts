@@ -9,6 +9,7 @@ export const ORDER_EVENT_TYPES = {
     deliveryReverted: 'delivery_reverted',
     deliveryRouteChanged: 'delivery_route_changed',
     deliveryDateChanged: 'delivery_date_changed',
+    deliveryTypeChanged: 'delivery_type_changed',
     waitingOnDoctorStarted: 'waiting_on_doctor_started',
     waitingOnDoctorEnded: 'waiting_on_doctor_ended',
     newScanRequested: 'new_scan_requested',

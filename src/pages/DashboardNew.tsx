@@ -494,6 +494,8 @@ export default function DashboardNew() {
         images_url: 'رابط الصور',
         deliveryDate: 'تاريخ التسليم',
         delivery_date: 'تاريخ التسليم',
+        delivery_type: 'نوع التسليم',
+        deliveryType: 'نوع التسليم',
         isUrgent: 'طارئ',
         is_urgent: 'طارئ',
         priority: 'الأولوية',
