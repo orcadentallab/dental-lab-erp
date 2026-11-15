@@ -56,15 +56,18 @@ export const statementService = {
         startDate: string,
         endDate: string,
         allAdjustments?: Adjustment[],
-        showAllOrders?: boolean
+        showAllOrders?: boolean,
+        relatedDoctorIds: readonly string[] = []
     ): StatementResult => {
+        const doctorIds = new Set([doctorId, ...relatedDoctorIds]);
+        const belongsToDoctor = (id?: string | null) => !!id && doctorIds.has(id);
         // 1. Calculate Opening Balance (Everything BEFORE startDate)
         let openingDebit = 0;
         let openingCredit = 0;
 
         // Filter Orders for Opening Balance
         const pastOrders = allOrders.filter(o => {
-            if (o.doctorId !== doctorId) return false;
+            if (!belongsToDoctor(o.doctorId)) return false;
             if (o.isDeleted) return false;
             const sortDate = getOfficialStatementDate(o);
 
@@ -82,7 +85,7 @@ export const statementService = {
         // Filter Transactions for Opening Balance
         const pastTransactions = allTransactions.filter(t =>
             (t.entityType === 'doctor' || !t.entityType) &&
-            t.entityId === doctorId &&
+            belongsToDoctor(t.entityId) &&
             t.type === 'income' &&
             (!startDate || t.date.split('T')[0] < startDate)
         );
@@ -92,7 +95,7 @@ export const statementService = {
         if (allAdjustments) {
             const pastAdjs = allAdjustments.filter(a =>
                 a.entity_type === 'doctor' &&
-                a.entity_id === doctorId &&
+                belongsToDoctor(a.entity_id) &&
                 startDate && a.date < startDate
             );
             for (const adj of pastAdjs) {
@@ -108,7 +111,7 @@ export const statementService = {
 
         // Current Period Orders
         const periodOrders = allOrders.filter(o => {
-            if (o.doctorId !== doctorId) return false;
+            if (!belongsToDoctor(o.doctorId)) return false;
             if (o.isDeleted) return false;
             const sortDate = getOfficialStatementDate(o);
 
@@ -144,7 +147,7 @@ export const statementService = {
         // Current Period Transactions
         const periodTransactions = allTransactions.filter(t =>
             (t.entityType === 'doctor' || !t.entityType) &&
-            t.entityId === doctorId &&
+            belongsToDoctor(t.entityId) &&
             t.type === 'income' &&
             isDateInOpenRange(t.date, { start: startDate, end: endDate })
         );
@@ -161,7 +164,7 @@ export const statementService = {
         if (allAdjustments) {
             const periodAdjs = allAdjustments.filter(a =>
                 a.entity_type === 'doctor' &&
-                a.entity_id === doctorId &&
+                belongsToDoctor(a.entity_id) &&
                 isDateInOpenRange(a.date, { start: startDate, end: endDate })
             );
             items = items.concat(periodAdjs.map(a => ({

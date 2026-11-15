@@ -20,12 +20,23 @@ export interface ShipmentOrder {
 }
 
 export interface Shipment {
+  retry_of?: string | null;
+  attempt_outcome_reason?: string | null;
+  hub_leg?: boolean;
+  cash_carrier?: 'middle_east' | 'scooter' | null;
+  previous_shipping_leg?: string | null;
+  intake_patient_name?: string | null;
+  direction?: 'to_doctor' | 'to_lab';
+  shipping_area?: string | null;
+  scooter_payment_pending?: boolean;
+  immediate_expense_id?: string | null;
+  base_shipping_cost?: number | null;
   id: string;
   shipment_code: string;
   courier_id: string | null;
   doctor_id: string | null;
   tracking_ref: string | null;
-  status: 'packing' | 'ready_for_pickup' | 'dispatched' | 'delivered' | 'returned' | 'cancelled';
+  status: 'packing' | 'ready_for_pickup' | 'dispatched' | 'delivered' | 'failed' | 'returned' | 'cancelled';
   packed_by: string | null;
   packed_at: string | null;
   packing_proof_urls: string[];
@@ -59,7 +70,8 @@ interface ShippingClinic {
   name: string;
   phone: string | null;
   address: string | null;
-  branches?: Array<{ name: string; phone?: string; address?: string }> | null;
+  shipping_area?: string | null;
+  branches?: Array<{ name: string; phone?: string; address?: string; shippingArea?: string }> | null;
 }
 
 export interface ReadyToPackOrder {
@@ -86,8 +98,9 @@ const READY_TO_PACK_STATUSES = ['final_ready', 'try_in_ready'];
 async function getActiveShipmentOrderIds(): Promise<string[]> {
   const { data, error } = await supabase
     .from('shipment_orders')
-    .select('order_id, shipments!inner(status)')
-    .in('shipments.status', ACTIVE_SHIPMENT_STATUSES);
+    .select('order_id, shipments!inner(status,direction,hub_leg)')
+    .in('shipments.status', ACTIVE_SHIPMENT_STATUSES)
+    .or('direction.eq.to_doctor,hub_leg.eq.true', { referencedTable: 'shipments' });
   if (error) throw error;
   return [...new Set((data ?? []).map(link => link.order_id))];
 }
@@ -126,7 +139,7 @@ export const shippingService = {
         shade,
         delivery_date,
         branch_name,
-        doctor:doctors(id, name, phone, address, branches, parent:doctors!parent_id(name, phone, address, branches))
+        doctor:doctors(id, name, phone, address, shipping_area, branches, parent:doctors!parent_id(name, phone, address, shipping_area, branches))
       `)
       .in('production_status', READY_TO_PACK_STATUSES)
       .eq('is_deleted', false)
@@ -201,6 +214,15 @@ export const shippingService = {
    * Create a new shipment (aggregating 1 or more orders)
    */
   async createShipment(payload: {
+    requestId: string;
+    carrier?: 'middle_east' | 'scooter';
+    hub?: boolean;
+    area?: string;
+    direction?: 'to_lab' | 'to_doctor';
+    expenseId?: string;
+    pendingExpense?: boolean;
+    patient?: string;
+    branch?: string;
     courierId?: string | null;
     doctorId?: string | null;
     trackingRef?: string;
@@ -211,16 +233,15 @@ export const shippingService = {
     deliveryAddress?: string;
     notes?: string;
   }): Promise<{ success: boolean; shipment_id: string; shipment_code: string; order_count: number }> {
-    const { data, error } = await supabase.rpc('create_shipment', {
-      p_courier_id: payload.courierId || null,
-      p_doctor_id: payload.doctorId || null,
-      p_tracking_ref: payload.trackingRef || null,
-      p_order_ids: payload.orderIds,
-      p_packing_proof_urls: payload.packingProofUrls || [],
-      p_recipient_name: payload.recipientName || null,
-      p_recipient_phone: payload.recipientPhone || null,
-      p_delivery_address: payload.deliveryAddress || null,
-      p_notes: payload.notes || null,
+    const { data, error } = await supabase.rpc('create_routed_shipping_request', {
+      p_carrier: payload.carrier || null, p_hub: payload.hub ?? false,
+      p_id: payload.requestId, p_area: payload.area || null, p_direction: payload.direction ?? 'to_doctor',
+      p_expense: payload.expenseId || null, p_scooter_pending: payload.pendingExpense ?? false,
+      p_patient: payload.patient || null, p_branch: payload.branch || null,
+      p_courier: payload.courierId || null, p_doctor: payload.doctorId || null,
+      p_tracking: payload.trackingRef || null, p_orders: payload.orderIds, p_photos: payload.packingProofUrls || [],
+      p_recipient: payload.recipientName || null, p_phone: payload.recipientPhone || null,
+      p_address: payload.deliveryAddress || null, p_notes: payload.notes || null,
     });
 
     if (error) throw error;
@@ -260,7 +281,9 @@ export const shippingService = {
     shipmentId: string,
     deliveryProofUrl?: string,
     deliveredAt?: string,
-    notes?: string
+    notes?: string,
+    amount?: number,
+    cashbox?: string
   ): Promise<{
     success: boolean;
     shipment_id: string;
@@ -271,10 +294,11 @@ export const shippingService = {
     orders_skipped: Array<{ order_id: string; case_id: string; reason: 'already_delivered' | 'open_issue' }>;
     delivered_at: string;
   }> {
-    const { data, error } = await supabase.rpc('confirm_shipment_delivery', {
-      p_shipment_id: shipmentId,
-      p_delivery_proof_url: deliveryProofUrl || null,
-      p_delivered_at: deliveredAt || null,
+    const { data, error } = await supabase.rpc('confirm_shipping_request', {
+      p_id: shipmentId,
+      p_photo: deliveryProofUrl || null,
+      p_at: deliveredAt || null,
+      p_amount: amount ?? null, p_cashbox: cashbox ?? null,
       p_notes: notes || null,
     });
 
@@ -285,6 +309,18 @@ export const shippingService = {
   /**
    * Cancel shipment
    */
+  async closeAttempt(id: string, outcome: 'failed' | 'returned' | 'cancelled', reason: string, amount?: number, cashbox?: string) {
+    const { error } = await supabase.rpc('close_shipping_attempt', {
+      p_id: id, p_outcome: outcome, p_reason: reason, p_amount: amount ?? null, p_cashbox: cashbox ?? null,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  async retryAttempt(id: string) {
+    const { error } = await supabase.rpc('retry_shipping_attempt', { p_id: id });
+    if (error) throw new Error(error.message);
+  },
+
   async cancelShipment(shipmentId: string, notes?: string): Promise<{ success: boolean }> {
     const { data, error } = await supabase.rpc('cancel_shipment', {
       p_shipment_id: shipmentId,

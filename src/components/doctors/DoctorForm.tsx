@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { db } from '../../services/db';
+import { useAuth } from '../../context/AuthContext';
+import ShippingAreaSelect from '../finance/ShippingAreaSelect';
 
 interface DoctorFormProps {
     onSuccess?: () => void;
 }
 
 export default function DoctorForm({ onSuccess }: DoctorFormProps) {
+    const { user } = useAuth();
     // Load initial state from localStorage if available
     const [name, setName] = useState(() => localStorage.getItem('doctorForm_name') || '');
     const [phone, setPhone] = useState(() => localStorage.getItem('doctorForm_phone') || '');
     const [phone2, setPhone2] = useState(() => localStorage.getItem('doctorForm_phone2') || '');
     const [address, setAddress] = useState(() => localStorage.getItem('doctorForm_address') || '');
-    const [doctorCode, setDoctorCode] = useState(() => localStorage.getItem('doctorForm_doctorCode') || '');
+    const [shippingArea, setShippingArea] = useState(() => localStorage.getItem('doctorForm_shippingArea') || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Persist changes
@@ -25,13 +28,13 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
         setPhone('');
         setPhone2('');
         setAddress('');
-        setDoctorCode('');
+        setShippingArea('');
 
         localStorage.removeItem('doctorForm_name');
         localStorage.removeItem('doctorForm_phone');
         localStorage.removeItem('doctorForm_phone2');
         localStorage.removeItem('doctorForm_address');
-        localStorage.removeItem('doctorForm_doctorCode');
+        localStorage.removeItem('doctorForm_shippingArea');
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -44,7 +47,8 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
                 phone,
                 phone2: phone2 || undefined,
                 address,
-                doctorCode: doctorCode.trim().toUpperCase(),
+                doctorCode: '',
+                shippingArea,
                 representativeName: '' // Optional field
             });
 
@@ -53,7 +57,7 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
             if (onSuccess) onSuccess();
         } catch (error) {
             console.error('Error adding doctor:', error);
-            alert('حدث خطأ أثناء إضافة الطبيب');
+            alert(error instanceof Error ? error.message : 'حدث خطأ أثناء إضافة الطبيب');
         } finally {
             setIsSubmitting(false);
         }
@@ -104,16 +108,10 @@ export default function DoctorForm({ onSuccess }: DoctorFormProps) {
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    كود الطبيب *
+                    منطقة العيادة *
                 </label>
-                <input
-                    type="text"
-                    required
-                    value={doctorCode}
-                    onChange={(e) => handleChange('doctorCode', e.target.value, setDoctorCode)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white uppercase"
-                    placeholder="AHM"
-                />
+                <ShippingAreaSelect canAdd={['admin','representative','coordinator'].includes(user?.role ?? '')}
+                    value={shippingArea} onChange={area => handleChange('shippingArea', area, setShippingArea)} />
             </div>
 
             <div>

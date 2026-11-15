@@ -1,3 +1,4 @@
+import CourierStatements from '../components/finance/CourierStatements';
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, Link, Navigate } from 'react-router-dom';
@@ -9,6 +10,7 @@ import { db, type Doctor, type Supplier, type Order, type Transaction, type User
 import { financeService, type Adjustment } from '../services/financeService';
 import { addDoctorShippingCharge } from '../services/supabase/scanVisits';
 import { useToast } from '../context/ToastContext';
+import { getDoctorInvoiceIdentity } from '../services/supabase/doctorInvoiceIdentity';
 import DateRangeField from '../components/ui/DateRangeField';
 import { canViewSupplierAndDesignerStatements, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { getDoctorOrderDisplayAmount, getDoctorReceivableAmount, getOfficialStatementDate, isDoctorStatementIncluded } from '../constants/orderLifecycle';
@@ -144,6 +146,8 @@ const nextMonth = (monthStr: string) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+const canViewCourierStatements = (role?: string) => ['admin', 'accountant', 'coordinator'].includes(role ?? '');
+
 const monthLabel = (monthStr: string) => {
     const [y, m] = monthStr.split('-').map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
@@ -156,6 +160,10 @@ export default function StatementsPage() {
     const [searchParams] = useSearchParams();
     const showPayableStatements = canViewSupplierAndDesignerStatements(user?.role);
     const tab = searchParams.get('tab');
+    if (tab === 'couriers') {
+        return canViewCourierStatements(user?.role) ? <CourierStatements showPayableStatements={showPayableStatements} />
+            : <Navigate to="/statements?tab=doctors" replace />;
+    }
     if (!showPayableStatements && tab && tab !== 'doctors') {
         return <Navigate to="/statements?tab=doctors" replace />;
     }
@@ -247,7 +255,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
                     : statementOrders);
                 setTransactions(Array.isArray(t) ? t as Transaction[] : []);
                 setAllDoctors(Array.isArray(doc) ? doc : []);
-                setSuppliers(Array.isArray(sup) ? sup : []);
+                setSuppliers(Array.isArray(sup) ? sup.filter(supplier => supplier.supplierType !== 'courier') : []);
                 setDesigners((Array.isArray(usr) ? usr : []).filter(isDesignerUser));
                 setAdjustments(Array.isArray(adj) ? adj : []);
 
@@ -312,10 +320,14 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
     const doctorParentById = useMemo(() => {
         const map = new Map<string, string>();
         for (const d of allDoctors) {
-            map.set(d.id, d.parentId || d.id);
+            map.set(d.id, d.mergedInto || d.parentId || d.id);
         }
         return map;
     }, [allDoctors]);
+    const doctorInvoiceOwnerById = useMemo(
+        () => new Map(allDoctors.map(doctor => [doctor.id, doctor.parentId || doctor.id])),
+        [allDoctors]
+    );
 
     // Quick lookup: id → Doctor
     const doctorById = useMemo(() => new Map(allDoctors.map(d => [d.id, d])), [allDoctors]);
@@ -661,7 +673,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         if (activeTab === 'doctors') {
             for (const o of orders) {
                 if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
-                const pid = doctorParentById.get(o.doctorId) || o.doctorId;
+                const pid = doctorInvoiceOwnerById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (statDate >= monthStart) continue;
@@ -670,7 +682,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
             }
             for (const t of transactions) {
                 if ((t.entityType !== 'doctor' && t.entityType) || t.type !== 'income') continue;
-                const pid = doctorParentById.get(t.entityId || '') || t.entityId;
+                const pid = doctorInvoiceOwnerById.get(t.entityId || '') || t.entityId;
                 if (pid !== selectedId) continue;
                 const tDate = t.date.split('T')[0];
                 if (tDate > paymentCutoff) continue;
@@ -678,7 +690,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
             }
             for (const adj of adjustments) {
                 if (adj.entity_type !== 'doctor') continue;
-                const pid = doctorParentById.get(adj.entity_id) || adj.entity_id;
+                const pid = doctorInvoiceOwnerById.get(adj.entity_id) || adj.entity_id;
                 if (pid !== selectedId) continue;
                 if (adj.date >= monthStart) {
                     if (adj.date <= monthEnd && adj.type === 'charge' && adj.service_charge_kind) {
@@ -692,7 +704,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
 
             for (const o of orders) {
                 if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
-                const pid = doctorParentById.get(o.doctorId) || o.doctorId;
+                const pid = doctorInvoiceOwnerById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (statDate < monthStart || statDate > monthEnd) continue;
@@ -820,7 +832,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         const totalDue = openingBalance + monthTotal;
 
         return { openingBalance, monthOrders, monthTotal, totalDue, monthStart, monthEnd };
-    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, externalSteps, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
+    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, externalSteps, transactions, adjustments, doctorInvoiceOwnerById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Selected entity info ───────────────────────────────────────────────────
 
@@ -839,21 +851,23 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         if (!selectedId || activeTab !== 'doctors') return;
         const doctor = primaryDoctors.find(d => d.id === selectedId);
         const result = statementService.calculateDoctorStatement(
-            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[], showAllOrders
+            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[], showAllOrders,
+            allDoctors.filter(item => item.mergedInto === selectedId).map(item => item.id)
         );
         result.doctorName = doctor?.name;
         await generateDoctorStatementPDF(result, dateRange, DEFAULT_LAB_INFO);
-    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange, showAllOrders]);
+    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange, showAllOrders, allDoctors]);
 
     const handlePrint = useCallback(async () => {
         if (!selectedId || activeTab !== 'doctors') return;
         const doctor = primaryDoctors.find(d => d.id === selectedId);
         const result = statementService.calculateDoctorStatement(
-            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[], showAllOrders
+            selectedId, orders as any[], transactions as any[], dateRange.start, dateRange.end, adjustments as any[], showAllOrders,
+            allDoctors.filter(item => item.mergedInto === selectedId).map(item => item.id)
         );
         result.doctorName = doctor?.name;
         await generateDoctorStatementPDF(result, dateRange, DEFAULT_LAB_INFO, { print: true });
-    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange, showAllOrders]);
+    }, [selectedId, activeTab, primaryDoctors, orders, transactions, adjustments, dateRange, showAllOrders, allDoctors]);
 
     const handleInvoicePDF = useCallback(async (print = false) => {
         if (!selectedId || !selectedEntity || !invoiceData) return;
@@ -863,15 +877,22 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         else if (activeTab === 'suppliers') type = 'supplier';
         else type = 'designer';
 
-        await generateMonthlyInvoicePDF(
-            selectedEntity.name,
-            type,
-            invoiceMonth,
-            invoiceData,
-            DEFAULT_LAB_INFO,
-            { print }
-        );
-    }, [selectedId, selectedEntity, activeTab, invoiceMonth, invoiceData]);
+        try {
+            const identity = type === 'doctor' ? await getDoctorInvoiceIdentity({
+                doctorId: selectedId, start: invoiceData.monthStart, end: invoiceData.monthEnd, monthly: true,
+            }) : undefined;
+            await generateMonthlyInvoicePDF(
+                selectedEntity.name,
+                type,
+                invoiceMonth,
+                invoiceData,
+                DEFAULT_LAB_INFO,
+                { print, identity }
+            );
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'تعذر تصدير الفاتورة');
+        }
+    }, [selectedId, selectedEntity, activeTab, invoiceMonth, invoiceData, toast]);
 
     // ─ Tab config ─────────────────────────────────────────────────────────────
 
@@ -900,7 +921,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-5 bg-white border border-slate-200 p-1 rounded-2xl shadow-sm w-fit">
+            <div className="flex flex-wrap gap-2 mb-5 bg-white border border-slate-200 p-1 rounded-2xl shadow-sm w-fit">
                 {tabs.map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeTab === tab.id;
@@ -922,6 +943,8 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
                         </button>
                     );
                 })}
+                {canViewCourierStatements(user?.role) && <Link to="/statements?tab=couriers"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">شركات الشحن</Link>}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">

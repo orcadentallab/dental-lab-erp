@@ -1936,10 +1936,11 @@ export async function fetchFullEntityStatement(
     let entityIdsToFetch = [entityId];
 
     if (entityType === 'doctor') {
-        const { data: childDoctors } = await supabase
+        const { data: childDoctors, error } = await supabase
             .from('doctors')
             .select('id')
-            .eq('parent_id', entityId);
+            .or(`parent_id.eq.${entityId},merged_into.eq.${entityId}`);
+        if (error) throw ErrorHandler.handle(error, 'fetchFullEntityStatement_Doctors');
         
         if (childDoctors && childDoctors.length > 0) {
             entityIdsToFetch = [entityId, ...childDoctors.map(d => d.id)];

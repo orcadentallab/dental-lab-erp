@@ -55,7 +55,9 @@ export const DoctorSchema = z.object({
     labInstructions: z.string().max(2000).optional().nullable().or(z.literal(''))
 });
 
-export const DoctorCreateSchema = DoctorSchema;
+export const DoctorCreateSchema = DoctorSchema.extend({
+    doctorCode: z.string().max(20),
+});
 export const DoctorUpdateSchema = DoctorSchema.partial().extend({
     id: z.string().uuid()
 });

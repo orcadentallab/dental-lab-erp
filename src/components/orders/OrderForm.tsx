@@ -35,6 +35,7 @@ interface FormOrderItem extends Omit<OrderItem, 'teethNumbers'> {
 }
 
 import { DoctorSelect } from './DoctorSelect';
+import ShippingAreaSelect from '../finance/ShippingAreaSelect';
 import CaseAttachments from './CaseAttachments';
 import CaseSlipPrint from './CaseSlipPrint';
 import { uploadCaseFilesBatch } from '../../lib/storage';
@@ -180,7 +181,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
 
     // Full Add Doctor State
     const [showDoctorModal, setShowDoctorModal] = useState(false);
-    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined as string | undefined, labInstructions: '' });
+    const [newDoctor, setNewDoctor] = useState({ name: '', phone: '', phone2: '', address: '', shippingArea: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined as string | undefined, labInstructions: '' });
     const [doctorError, setDoctorError] = useState<string | null>(null);
 
     // Quick Add Branch State
@@ -203,22 +204,16 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                     finalNewDoctor.representativeId = parent.representativeId || '';
                     finalNewDoctor.representativeName = parent.representativeName;
                     
-                    // Match the generation logic in Doctors.tsx: ParentCode-Rand3
-                    const randomSuffix = Math.floor(100 + Math.random() * 899); // 3 digits
-                    const parentCodeClean = parent.doctorCode.replace(/[^a-zA-Z0-9]/g, '').slice(0, 15);
-                    finalNewDoctor.doctorCode = `${parentCodeClean}-${randomSuffix}`;
                 }
             }
 
             const normalizedName = normalizeText(finalNewDoctor.name);
-            const normalizedCode = finalNewDoctor.doctorCode.trim().toUpperCase();
-
-            if (!normalizedName || !normalizedCode) {
+            if (!normalizedName || (!finalNewDoctor.parentId && !finalNewDoctor.shippingArea)) {
                 setDoctorError('يرجى ملء جميع الحقول المطلوبة');
                 return;
             }
 
-            const doc = await db.addDoctor({ ...finalNewDoctor, name: finalNewDoctor.name.trim(), doctorCode: normalizedCode });
+            const doc = await db.addDoctor({ ...finalNewDoctor, name: finalNewDoctor.name.trim(), doctorCode: '' });
             const updatedDoctors = await db.getDoctors();
             setDoctors(updatedDoctors);
             
@@ -230,10 +225,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                 setSelectedChildDoctorId('');
             }
             setShowDoctorModal(false);
-            setNewDoctor({ name: '', phone: '', phone2: '', address: '', doctorCode: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined, labInstructions: '' });
+            setNewDoctor({ name: '', phone: '', phone2: '', address: '', shippingArea: '', representativeName: '', representativeId: '', isCenter: false, parentId: undefined, labInstructions: '' });
         } catch (err) {
             console.error('Add Doctor Error:', err);
-            setDoctorError('حدث خطأ غير متوقع أثناء الحفظ.');
+            setDoctorError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع أثناء الحفظ.');
         }
     };
 
@@ -1665,7 +1660,10 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             <div className={newDoctor.parentId ? "w-full" : "grid grid-cols-2 gap-4"}>
                                 <Input label="رقم الهاتف" required type="tel" value={newDoctor.phone} onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })} />
                                 {!newDoctor.parentId && (
-                                    <Input label="الكود" required placeholder="AHM" value={newDoctor.doctorCode} onChange={e => setNewDoctor({ ...newDoctor, doctorCode: e.target.value })} />
+                                    <label className="text-sm">منطقة العيادة
+                                        <ShippingAreaSelect canAdd={['admin','representative','coordinator'].includes(user?.role ?? '')}
+                                            value={newDoctor.shippingArea} onChange={shippingArea => setNewDoctor({ ...newDoctor, shippingArea })} />
+                                    </label>
                                 )}
                             </div>
 

@@ -696,7 +696,11 @@ function OrdersPage() {
             console.warn('Could not calculate previous balance for invoice');
         }
 
-        await generateDoctorInvoicePDF(order, doctor, DEFAULT_LAB_INFO, previousBalance);
+        try {
+            await generateDoctorInvoicePDF(order, doctor, DEFAULT_LAB_INFO, previousBalance);
+        } catch (error) {
+            toastError(error instanceof Error ? error.message : 'تعذر تصدير الفاتورة');
+        }
     };
 
     if (isLoading) {

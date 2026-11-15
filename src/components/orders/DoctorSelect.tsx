@@ -29,7 +29,7 @@ export function DoctorSelect({ value, onChange, error, onlyPrimary = false }: Do
     const fetchDoctors = useCallback(async (search: string) => {
         setLoading(true);
         try {
-            let data = await db.getDoctors(search);
+            let data = (await db.getDoctors(search)).filter(doctor => !doctor.mergedInto);
             if (onlyPrimary) {
                 data = data.filter(d => !d.parentId);
             }

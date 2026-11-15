@@ -153,7 +153,11 @@ INSERT INTO rpc_expectations (sig, kind, in_chain) VALUES
     ('public.add_working_minutes(timestamp with time zone,numeric,uuid)',       'wrapper',    true),
     -- added while fixing the phase 3-6 review findings
     ('public.cancel_material_purchase(uuid,text)',                              'wrapper',    true),
-    ('public.reconcile_courier_invoice(uuid,date,numeric,text)',                'wrapper',    true),
+    ('public.reconcile_courier_invoice(uuid,date,numeric,text)',                'privileged', true),
+    ('public.get_courier_statement(uuid,date)',                                 'wrapper',    true),
+    ('public.save_courier_monthly_invoice(uuid,date,text,numeric,numeric,jsonb,boolean,integer,text)', 'wrapper', true),
+    ('public.link_courier_invoice_payment(uuid,uuid,numeric)',                   'wrapper',    true),
+    ('public.unlink_courier_invoice_payment(uuid,uuid,text)',                    'wrapper',    true),
     -- added by 20260827005000 (cutover baseline -- plan 5.2)
     ('public.get_cutover_boundary()',                                           'wrapper',    true),
     ('public.capture_cutover_baseline(date,date,text)',                         'wrapper',    true),

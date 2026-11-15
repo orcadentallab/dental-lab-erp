@@ -1,3 +1,7 @@
+import ShippingAreaSelect from '../../components/finance/ShippingAreaSelect';
+import { financeService } from '../../services/financeService';
+import { db, type Doctor, type Order } from '../../services/db';
+import { supabase } from '../../lib/supabase';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Package,
@@ -22,8 +26,7 @@ import {
 import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { refreshNavBadges } from '../../hooks/useNavBadges';
-import { getOpenStageRuns, MIXED_TRY_IN_ROUTE_ID } from '../../services/supabase/production';
-import { Link } from 'react-router-dom';
+import { MIXED_TRY_IN_ROUTE_ID } from '../../services/supabase/production';
 
 function clinicRecipient(order: ReadyToPackOrder) {
   const doctor = order.doctor;
@@ -35,12 +38,15 @@ function clinicRecipient(order: ReadyToPackOrder) {
   return {
     name: [clinic?.name, order.branch_name].filter(Boolean).join(' · '),
     phone: branch?.phone || clinic?.phone || parent?.phone || '',
+    area: branch?.shippingArea || clinic?.shipping_area || parent?.shipping_area || '',
     address: branch?.address || clinic?.address || parent?.address || '',
   };
 }
 
 function shipmentCaseCount(shipments: Shipment[]) {
-  return new Set(shipments.flatMap(shipment => shipment.orders?.map(order => order.order_id) ?? [])).size;
+  return new Set(shipments.flatMap(shipment =>
+    shipment.orders?.length ? shipment.orders.map(order => order.order_id) : shipment.intake_patient_name ? [shipment.id] : []
+  )).size;
 }
 
 export const Shipments: React.FC = () => {
@@ -52,16 +58,15 @@ export const Shipments: React.FC = () => {
   // manager under the wrong name, and an external supplier never dispatched
   // our shipments.
   const isAuthorized = ['admin', 'production_manager', 'coordinator', 'accountant'].includes(role || '');
+  const canUseCashDelivery = ['admin', 'accountant', 'coordinator'].includes(role ?? '');
 
   // State
-  const [activeTab, setActiveTab] = useState<'ready' | 'active' | 'delivered'>('ready');
+  const [activeTab, setActiveTab] = useState<'ready' | 'active' | 'delivered' | 'attempts'>('ready');
   const [loading, setLoading] = useState(true);
   const [readyOrders, setReadyOrders] = useState<ReadyToPackOrder[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [couriers, setCouriers] = useState<Array<{ id: string; name: string; phone?: string }>>([]);
   const [searchQuery, setSearchQuery] = useState(() => new URLSearchParams(window.location.search).get('case') ?? '');
-  const [trialWithDoctorCount, setTrialWithDoctorCount] = useState(0);
-  const canOpenProduction = ['admin', 'coordinator', 'production_manager', 'technician'].includes(role ?? '');
 
   // Multi-selection for packing
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -78,6 +83,27 @@ export const Shipments: React.FC = () => {
 
   // Form State: Create Shipment
   const [formCourierId, setFormCourierId] = useState('');
+  const [requestId, setRequestId] = useState('');
+  const [direction, setDirection] = useState<'to_doctor' | 'to_lab'>('to_doctor');
+  const [formArea, setFormArea] = useState('');
+  const [scooter, setScooter] = useState(false);
+  const [cashCarrier, setCashCarrier] = useState<'scooter' | 'middle_east'>('scooter');
+  const [hubLeg, setHubLeg] = useState(false);
+  const [lastMile, setLastMile] = useState(false);
+  const [createExpense, setCreateExpense] = useState(true);
+  const [newPatient, setNewPatient] = useState('');
+  const [newCase, setNewCase] = useState(false);
+  const [scooterAmount, setScooterAmount] = useState('');
+  const [cashbox, setCashbox] = useState('');
+  const [cashboxes, setCashboxes] = useState<{ id: string; name: string }[]>([]);
+
+  const [expenseId, setExpenseId] = useState('');
+  const [expenses, setExpenses] = useState<{ id: string; amount: number; description: string }[]>([]);
+  const [clinics, setClinics] = useState<Doctor[]>([]);
+  const [pickupDoctor, setPickupDoctor] = useState('');
+  const [pickupOrders, setPickupOrders] = useState<Order[]>([]);
+  const [pickupBranch, setPickupBranch] = useState('');
+
   const [formTrackingRef, setFormTrackingRef] = useState('');
   const [formRecipientName, setFormRecipientName] = useState('');
   const [formRecipientPhone, setFormRecipientPhone] = useState('');
@@ -89,6 +115,11 @@ export const Shipments: React.FC = () => {
   // Form State: Confirm Delivery
   const [deliveryProofFile, setDeliveryProofFile] = useState<File | null>(null);
   const [deliveryNotes, setDeliveryNotes] = useState('');
+  const [closingAttempt, setClosingAttempt] = useState<Shipment | null>(null);
+  const [attemptOutcome, setAttemptOutcome] = useState<'failed' | 'returned' | 'cancelled'>('failed');
+  const [attemptReason, setAttemptReason] = useState('');
+  const [recordAttemptExpense, setRecordAttemptExpense] = useState(false);
+
 
   // Load Data
   const loadData = useCallback(async () => {
@@ -102,37 +133,61 @@ export const Shipments: React.FC = () => {
       setReadyOrders(readyRes);
       setShipments(shipRes);
       setCouriers(courierRes);
-      if (canOpenProduction) {
-        void getOpenStageRuns().then(runs => setTrialWithDoctorCount(runs.filter(run => run.routeId === MIXED_TRY_IN_ROUTE_ID && run.stageCode === 'doctor_review' && !run.doctorWait).length)).catch(console.error);
-      }
     } catch (err: unknown) {
       console.error('Failed to load shipping data:', err);
       toastError('فشل تحميل بيانات الشحن');
     } finally {
       setLoading(false);
     }
-  }, [toastError, canOpenProduction]);
+  }, [toastError]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Filtered Ready Orders
-  const filteredReadyOrders = useMemo(() => {
-    return readyOrders.filter(ord => {
-      const matchSearch =
-        !searchQuery ||
-        ord.case_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ord.patient_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (ord.doctor?.name && ord.doctor.name.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchSearch;
-    });
-  }, [readyOrders, searchQuery]);
+  const completedHubIds = useMemo(() => {
+    const deliveredOrdersByHub = new Map<string, Set<string>>();
+    for (const shipment of shipments) {
+      if (!shipment.previous_shipping_leg || shipment.status !== 'delivered') continue;
+      const deliveredOrders = deliveredOrdersByHub.get(shipment.previous_shipping_leg) ?? new Set<string>();
+      for (const order of shipment.orders ?? []) deliveredOrders.add(order.order_id);
+      deliveredOrdersByHub.set(shipment.previous_shipping_leg, deliveredOrders);
+    }
+    return new Set(shipments.filter(shipment => {
+      const deliveredOrders = deliveredOrdersByHub.get(shipment.id);
+      return shipment.hub_leg && shipment.status === 'delivered' && !!shipment.orders?.length
+        && shipment.orders.every(order => deliveredOrders?.has(order.order_id));
+    }).map(shipment => shipment.id));
+  }, [shipments]);
+
+  const activeShipments = useMemo(() => shipments.filter(shipment =>
+    ACTIVE_SHIPMENT_STATUSES.includes(shipment.status) ||
+    (shipment.hub_leg && shipment.status === 'delivered' && !completedHubIds.has(shipment.id))
+  ), [shipments, completedHubIds]);
+
+  const deliveredShipments = useMemo(() => shipments.filter(shipment =>
+    shipment.status === 'delivered' && (!shipment.hub_leg || completedHubIds.has(shipment.id))
+  ), [shipments, completedHubIds]);
+
+  const closedAttempts = shipments.filter(item => ['failed','returned','cancelled'].includes(item.status));
+
+  const readyForPacking = useMemo(() => {
+    const hubOrderIds = new Set(activeShipments.filter(shipment => shipment.hub_leg && shipment.status === 'delivered')
+      .flatMap(shipment => shipment.orders?.map(order => order.order_id) ?? []));
+    return readyOrders.filter(order => !hubOrderIds.has(order.id));
+  }, [readyOrders, activeShipments]);
+
+  const visibleReadyOrders = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return readyForPacking.filter(order =>
+      !query || [order.case_id, order.patient_name, order.doctor?.name].some(value => value?.toLowerCase().includes(query))
+    );
+  }, [readyForPacking, searchQuery]);
 
   // Group ready orders by doctor
   const readyOrdersByDoctor = useMemo(() => {
     const map = new Map<string, { doctorName: string; doctorId: string; address?: string; phone?: string; orders: ReadyToPackOrder[] }>();
-    filteredReadyOrders.forEach(ord => {
+    visibleReadyOrders.forEach(ord => {
       const docId = ord.doctor_id || 'unassigned';
       const groupKey = JSON.stringify([docId, ord.branch_name]);
       const clinic = clinicRecipient(ord);
@@ -148,20 +203,72 @@ export const Shipments: React.FC = () => {
       map.get(groupKey)?.orders.push(ord);
     });
     return Array.from(map.values());
-  }, [filteredReadyOrders]);
+  }, [visibleReadyOrders]);
 
-  // Filtered Active Shipments
-  const activeShipments = useMemo(() => {
-    return shipments.filter(s => ACTIVE_SHIPMENT_STATUSES.includes(s.status));
-  }, [shipments]);
+  const openPickup = async () => {
+    try {
+      setClinics((await db.getDoctors()).filter(doctor => !doctor.mergedInto));
+      setDirection('to_lab');
+      setRequestId(crypto.randomUUID());
+      setNewCase(false);
+      setNewPatient('');
+      setCreateExpense(true);
+      setPickupDoctor('');
+      setPickupBranch('');
+      setPickupOrders([]);
+      setSelectedOrderIds([]);
+      setFormArea('');
+      setFormRecipientName('');
+      setFormRecipientPhone('');
+      setFormDeliveryAddress('');
+      setFormTrackingRef('');
+      setFormNotes('');
+      setFormProofFiles([]);
+      setScooter(false);
+    setHubLeg(false);
+    setLastMile(false);
+    setCashCarrier('scooter');
+      setExpenseId('');
+      setFormCourierId(couriers[0]?.id || '');
+      setIsCreateModalOpen(true);
+    } catch { toastError('تعذر تحميل العيادات'); }
+  };
 
-  // Filtered Delivered Shipments
-  const deliveredShipments = useMemo(() => {
-    return shipments.filter(s => s.status === 'delivered');
-  }, [shipments]);
+  useEffect(() => {
+    if (!pickupDoctor || direction !== 'to_lab') return;
+    let current = true;
+    db.getOrders(1, 50, { doctorId: pickupDoctor }).then(result => {
+      if (current) setPickupOrders(result.data);
+    }).catch(() => { if (current) toastError('تعذر تحميل أوردرات العيادة'); });
+    return () => { current = false; };
+  }, [pickupDoctor, direction, toastError]);
+
+  const choosePickupClinic = (doctorId: string, branchName: string) => {
+    if (doctorId !== pickupDoctor) setPickupOrders([]);
+    setPickupDoctor(doctorId);
+    setPickupBranch(branchName);
+    setSelectedOrderIds([]);
+    const doctor = clinics.find(item => item.id === doctorId);
+    const branch = doctor?.branches?.find(item => item.name === branchName);
+    setFormRecipientName([doctor?.name, branchName].filter(Boolean).join(' · '));
+    setFormRecipientPhone(branch?.phone || doctor?.phone || '');
+    setFormDeliveryAddress(branch?.address || doctor?.address || '');
+    setFormArea(branch?.shippingArea || doctor?.shippingArea || '');
+  };
+
+  const selectScooter = async (enabled: boolean) => {
+    setScooter(enabled);
+    setExpenseId('');
+    if (!enabled) return;
+    const { data, error } = await supabase.from('transactions').select('id,amount,description')
+      .eq('type', 'expense').in('category', ['shipping', 'شحن وتوصيل']).eq('status', 'approved')
+      .or('entity_type.is.null,entity_type.eq.general').order('date', { ascending: false }).limit(100);
+    if (error) toastError('تعذر تحميل مصروفات الشحن');
+    else setExpenses(data ?? []);
+  };
 
   // Handle open create modal from selected orders
-  const handleOpenPackSelected = (orderIdsToPack: string[]) => {
+  const handleOpenPackSelected = (orderIdsToPack: string[], fromHub = false) => {
     const orders = readyOrders.filter(order => orderIdsToPack.includes(order.id));
     const firstOrder = orders[0];
     if (!firstOrder) return;
@@ -170,11 +277,21 @@ export const Shipments: React.FC = () => {
       return;
     }
     const docInfo = clinicRecipient(firstOrder);
+    setDirection('to_doctor');
+    setRequestId(crypto.randomUUID());
+    setScooter(fromHub && canUseCashDelivery);
+    setLastMile(fromHub);
+    setHubLeg(false);
+    setCashCarrier('scooter');
+    setNewCase(false);
+    setCreateExpense(true);
+    setExpenseId('');
+    setFormArea(fromHub ? 'العاشر من رمضان' : docInfo.area);
     setSelectedOrderIds(orderIdsToPack);
     setFormRecipientName(docInfo.name);
     setFormRecipientPhone(docInfo.phone);
     setFormDeliveryAddress(docInfo.address);
-    setFormCourierId(couriers[0]?.id || '');
+    setFormCourierId(fromHub ? '' : couriers[0]?.id || '');
     setFormTrackingRef('');
     setFormNotes('');
     setFormProofFiles([]);
@@ -184,7 +301,11 @@ export const Shipments: React.FC = () => {
   // Submit Create Shipment
   const handleCreateShipment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedOrderIds.length === 0) {
+    if ((direction === 'to_lab' || scooter) && !formArea) {
+      toastError('اختار منطقة الشحن من القائمة قبل الحفظ');
+      return;
+    }
+    if (selectedOrderIds.length === 0 && !(direction === 'to_lab' && newCase && newPatient.trim())) {
       toastError('يجب تحديد أوردر واحد على الأقل');
       return;
     }
@@ -205,8 +326,13 @@ export const Shipments: React.FC = () => {
       const commonDoctorId = firstOrder?.doctor_id || null;
 
       await shippingService.createShipment({
-        courierId: formCourierId || null,
-        doctorId: commonDoctorId,
+        requestId, direction, area: formArea, carrier: scooter ? cashCarrier : undefined,
+        hub: !lastMile && !scooter && direction === 'to_doctor' && formArea === 'العاشر من رمضان' && hubLeg, expenseId: scooter && !createExpense ? expenseId : undefined,
+        pendingExpense: scooter && createExpense,
+        patient: direction === 'to_lab' && newCase ? newPatient : undefined,
+        branch: direction === 'to_lab' ? pickupBranch : undefined,
+        courierId: scooter || lastMile ? null : formCourierId || null,
+        doctorId: direction === 'to_lab' ? pickupDoctor : commonDoctorId,
         trackingRef: formTrackingRef,
         orderIds: selectedOrderIds,
         packingProofUrls: proofUrls,
@@ -216,7 +342,7 @@ export const Shipments: React.FC = () => {
         notes: formNotes
       });
 
-      toastSuccess('تم تجهيز الشحنة وإضافتها لطابور الاستلام بنجاح');
+      toastSuccess(direction === 'to_lab' ? 'تم تسجيل طلب الاستلام من العيادة' : 'تم تجهيز الشحنة وإضافتها لطابور الاستلام');
       setIsCreateModalOpen(false);
       setSelectedOrderIds([]);
       setActiveTab('active');
@@ -224,7 +350,8 @@ export const Shipments: React.FC = () => {
       loadData();
     } catch (err: unknown) {
       console.error('Failed to create shipment:', err);
-      const msg = err instanceof Error ? err.message : 'حدث خطأ أثناء إنشاء الشحنة';
+      const msg = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+        ? err.message : 'حدث خطأ أثناء إنشاء الشحنة';
       toastError(msg);
     } finally {
       setIsSubmitting(false);
@@ -268,13 +395,20 @@ export const Shipments: React.FC = () => {
         selectedShipmentForDelivery.id,
         proofUrl,
         new Date().toISOString(),
-        deliveryNotes
+        deliveryNotes,
+        selectedShipmentForDelivery.scooter_payment_pending ? Number(scooterAmount) : undefined,
+        cashbox || undefined
       );
 
       // Confirming delivery is what bills the doctor. Any case the delivery RPC
       // refused (open issue, already delivered) was NOT billed, so a flat
       // "تم بنجاح" would hide a case nobody charged for.
-      if ((result.orders_skipped ?? []).length > 0) {
+      if (selectedShipmentForDelivery.hub_leg) {
+        toastSuccess('تم تأكيد وصول الطرد للعاشر. جهّز المرحلة الأخيرة من نفس الشحنة.');
+        setActiveTab('active');
+      } else if (selectedShipmentForDelivery.direction === 'to_lab') {
+        toastSuccess('تم تأكيد وصول الشحنة للمعمل');
+      } else if ((result.orders_skipped ?? []).length > 0) {
         const cases = result.orders_skipped
           .map(o => `${o.case_id} (${o.reason === 'open_issue' ? 'عليها مشكلة مفتوحة' : 'مسلّمة قبل كده'})`)
           .join('، ');
@@ -297,29 +431,39 @@ export const Shipments: React.FC = () => {
       loadData();
     } catch (err: unknown) {
       console.error('Failed to confirm delivery:', err);
-      const msg = err instanceof Error ? err.message : 'فشل تأكيد التسليم';
+      const msg = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+        ? err.message : 'فشل تأكيد التسليم';
       toastError(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Cancel Shipment
-  const handleCancelShipment = async (shipment: Shipment) => {
-    if (!window.confirm(`هل أنت متأكد من إلغاء الشحنة ${shipment.shipment_code} وإعادة الأوردرات لطابور التغليف؟`)) {
-      return;
-    }
-
+  const closeAttempt = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!closingAttempt || !attemptReason.trim() || isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      await shippingService.cancelShipment(shipment.id, 'تم الإلغاء من قبل المستخدم');
-      toastSuccess('تم إلغاء الشحنة وإعادة الأوردرات');
+      await shippingService.closeAttempt(closingAttempt.id, attemptOutcome, attemptReason,
+        recordAttemptExpense ? Number(scooterAmount) : undefined, recordAttemptExpense ? cashbox : undefined);
+      setClosingAttempt(null);
+      setActiveTab('attempts');
       refreshNavBadges();
-      loadData();
-    } catch (err: unknown) {
-      console.error('Failed to cancel shipment:', err);
-      const msg = err instanceof Error ? err.message : 'فشل إلغاء الشحنة';
-      toastError(msg);
-    }
+      await loadData();
+    } catch (error) { toastError(error instanceof Error ? error.message : 'تعذر تسجيل المحاولة'); }
+    finally { setIsSubmitting(false); }
+  };
+
+  const retryAttempt = async (shipment: Shipment) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await shippingService.retryAttempt(shipment.id);
+      setActiveTab('active');
+      refreshNavBadges();
+      await loadData();
+    } catch (error) { toastError(error instanceof Error ? error.message : 'تعذر إعادة المحاولة'); }
+    finally { setIsSubmitting(false); }
   };
 
   return (
@@ -333,6 +477,8 @@ export const Shipments: React.FC = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 dark:text-white">إدارة التغليف والشحن والتسليم</h1>
+
+
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 تجميع الطرود، إثبات جودة التغليف بالصور، تتبع شركات الشحن، وتأكيد التسليم للطبيب
               </p>
@@ -340,7 +486,7 @@ export const Shipments: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={loadData}
             disabled={loading}
@@ -350,14 +496,24 @@ export const Shipments: React.FC = () => {
             <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
           {isAuthorized && (
-            <button
-              onClick={() => handleOpenPackSelected(selectedOrderIds)}
-              disabled={selectedOrderIds.length === 0}
-              className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium transition shadow-sm"
-            >
-              <Package className="w-5 h-5" />
-              <span>تجهيز طرد ({selectedOrderIds.length})</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => handleOpenPackSelected(selectedOrderIds)}
+                disabled={selectedOrderIds.length === 0}
+                className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-medium transition shadow-sm"
+              >
+                <Package className="w-5 h-5" />
+                <span>تجهيز طرد ({selectedOrderIds.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void openPickup()}
+                className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2.5 font-medium text-teal-900 transition hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-200 dark:hover:bg-teal-900"
+              >
+                طلب استلام من الطبيب
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -369,7 +525,7 @@ export const Shipments: React.FC = () => {
             <Package className="w-6 h-6" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-slate-900 dark:text-white">{readyOrders.length}</div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white">{readyForPacking.length}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400">حالات جاهزة للتغليف والشحن</div>
           </div>
         </div>
@@ -406,7 +562,7 @@ export const Shipments: React.FC = () => {
                 : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
-            جاهز لتجهيز الشحن ({readyOrders.length} حالة)
+            جاهز لتجهيز الشحن ({readyForPacking.length} حالة)
           </button>
           <button
             onClick={() => setActiveTab('active')}
@@ -428,9 +584,10 @@ export const Shipments: React.FC = () => {
           >
             سجل التسليمات ({shipmentCaseCount(deliveredShipments)} حالة)
           </button>
-          {canOpenProduction && <Link to="/production/board?tab=doctor" className="rounded-xl px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-50">
-            عند الأطباء ({trialWithDoctorCount} حالة)
-          </Link>}
+          <button type="button" onClick={() => setActiveTab('attempts')}
+            className={`rounded-xl px-4 py-2 text-sm font-medium ${activeTab === 'attempts' ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+            المحاولات المقفولة ({closedAttempts.length})
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
@@ -592,6 +749,55 @@ export const Shipments: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'attempts' && (
+        <section className="grid gap-3 md:grid-cols-2" aria-label="المحاولات المقفولة">
+          {!closedAttempts.length && <p>مفيش محاولات مقفولة.</p>}
+          {closedAttempts.map(shipment => {
+            const next = shipments.find(item => item.retry_of === shipment.id);
+            return <article key={shipment.id} className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+              <h2 className="font-bold">{shipment.shipment_code} · {shipment.status === 'failed' ? 'تعذّر التوصيل' : shipment.status === 'returned' ? 'مرتجع' : 'ملغاة'}</h2>
+              <p className="text-sm">{shipment.doctor?.name} · {shipment.attempt_outcome_reason || shipment.notes || 'السبب غير مسجل'}</p>
+              {shipment.orders?.map(link => <p key={link.id} className="text-xs">{link.order?.case_id}</p>)}
+              {next ? <p className="text-sm">المحاولة التالية · {next.shipment_code}</p> : isAuthorized &&
+                <button type="button" disabled={isSubmitting} onClick={() => void retryAttempt(shipment)}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50">إعادة المحاولة</button>}
+            </article>;
+          })}
+        </section>
+      )}
+
+      {closingAttempt && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-3">
+        <form role="dialog" aria-modal="true" aria-labelledby="attempt-title" onSubmit={closeAttempt}
+          className="w-full max-w-md space-y-4 rounded-2xl bg-white p-5 shadow-xl dark:bg-slate-900">
+          <h2 id="attempt-title" className="font-bold">نتيجة محاولة الشحن · {closingAttempt.shipment_code}</h2>
+          <label className="block text-sm">النتيجة
+            <select value={attemptOutcome} onChange={event => {
+              const outcome = event.target.value;
+              if (outcome === 'failed' || outcome === 'returned' || outcome === 'cancelled') setAttemptOutcome(outcome);
+            }} className="mt-1 block w-full rounded-lg border p-2 dark:bg-slate-800">
+              <option value="failed">تعذّر التوصيل</option><option value="returned">مرتجع</option><option value="cancelled">إلغاء</option>
+            </select>
+          </label>
+          <label className="block text-sm">السبب<textarea required maxLength={1000} value={attemptReason}
+            onChange={event => setAttemptReason(event.target.value)} className="mt-1 block w-full rounded-lg border p-2 dark:bg-slate-800" /></label>
+          {closingAttempt.scooter_payment_pending && canUseCashDelivery && <label className="flex gap-2 text-sm">
+            <input type="checkbox" checked={recordAttemptExpense} onChange={event => setRecordAttemptExpense(event.target.checked)} />
+            دفعت تكلفة المحاولة
+          </label>}
+          {recordAttemptExpense && <div className="grid grid-cols-2 gap-2 text-sm">
+            <label>المبلغ<input required type="number" min="0.01" step="0.01" value={scooterAmount}
+              onChange={event => setScooterAmount(event.target.value)} className="block w-full rounded-lg border p-2" /></label>
+            <label>المحفظة<select required value={cashbox} onChange={event => setCashbox(event.target.value)} className="block w-full rounded-lg border p-2">
+              <option value="">اختار المحفظة</option>{cashboxes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select></label>
+          </div>}
+          <div className="flex justify-end gap-2">
+            <button type="button" disabled={isSubmitting} onClick={() => setClosingAttempt(null)} className="rounded-lg border px-3 py-2">رجوع</button>
+            <button disabled={isSubmitting || !attemptReason.trim()} className="rounded-lg bg-blue-600 px-3 py-2 text-white disabled:opacity-50">حفظ النتيجة</button>
+          </div>
+        </form>
+      </div>}
+
       {/* Tab Content 2 & 3: Active & Delivered Shipments */}
       {(activeTab === 'active' || activeTab === 'delivered') && (
         <div className="space-y-4">
@@ -607,6 +813,15 @@ export const Shipments: React.FC = () => {
               {(activeTab === 'active' ? activeShipments : deliveredShipments).map(shipment => {
                 const isDelivered = shipment.status === 'delivered';
                 const isDispatched = shipment.status === 'dispatched';
+                const awaitingLastMile = shipment.hub_leg && isDelivered && !completedHubIds.has(shipment.id);
+                const previousLeg = shipment.previous_shipping_leg
+                  ? shipments.find(item => item.id === shipment.previous_shipping_leg)
+                  : undefined;
+
+                const lastMileOrders = awaitingLastMile
+                  ? (shipment.orders ?? []).filter(order => readyOrders.some(ready => ready.id === order.order_id)).map(order => order.order_id)
+                  : [];
+
 
                 return (
                   <div
@@ -620,20 +835,25 @@ export const Shipments: React.FC = () => {
                           <span className="font-bold text-slate-900 dark:text-white">{shipment.shipment_code}</span>
                           <span
                             className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
-                              isDelivered
+                              awaitingLastMile
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                : isDelivered
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                                 : isDispatched
                                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
                                 : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
                             }`}
                           >
-                            {isDelivered
-                              ? 'تم التسليم'
+                            {awaitingLastMile
+                              ? (lastMileOrders.length ? 'وصل العاشر · جاهز للمرحلة الأخيرة' : 'وصل العاشر · في انتظار التسليم للطبيب')
+                              : isDelivered
+                              ? (shipment.hub_leg ? 'تمت المرحلة الأولى' : 'تم التسليم')
                               : isDispatched
                               ? 'مع شركة الشحن'
                               : 'جاهز للاستلام'}
                           </span>
                         </div>
+                        {shipment.retry_of && <p className="mt-1 text-xs">إعادة محاولة · {shipments.find(item => item.id === shipment.retry_of)?.shipment_code ?? 'محاولة سابقة'}</p>}
                         <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                           تاريخ التجهيز: {new Date(shipment.created_at).toLocaleDateString('ar-EG')}
                         </div>
@@ -660,6 +880,20 @@ export const Shipments: React.FC = () => {
                           <User className="w-3.5 h-3.5 text-slate-400" />
                           {shipment.recipient_name || shipment.doctor?.name || 'غير محدد'}
                         </span>
+                        {shipment.hub_leg ? <span className="text-xs font-semibold">العاشر من رمضان · عبر ألف مسكن</span> : shipment.direction === 'to_lab' && <span className="text-xs font-semibold">استلام من الطبيب</span>}
+                        {shipment.previous_shipping_leg && <span className="text-xs font-semibold">
+                          المرحلة الأخيرة {previousLeg ? `· ${previousLeg.shipment_code}` : ''}
+                        </span>}
+                        {shipment.cash_carrier === 'middle_east' && <span className="text-xs font-semibold">ميدل إيست · كاش</span>}
+                        {shipment.shipping_area && <span className="text-xs">{shipment.shipping_area}</span>}
+                        {['admin', 'accountant', 'coordinator'].includes(role ?? '') && shipment.immediate_expense_id && (
+                          <span className="text-xs font-semibold">
+                            {shipment.cash_carrier === 'middle_east' ? 'ميدل إيست' : 'سكوتر'} · {shipment.cost_amount?.toLocaleString()} ج.م
+                            {shipment.orders && shipment.orders.length > 1 && shipment.cost_amount != null &&
+                              ` · متوسط ${(shipment.cost_amount / shipment.orders.length).toLocaleString(undefined, { maximumFractionDigits: 2 })} ج.م للأوردر`}
+                          </span>
+                        )}
+
                         {shipment.courier && (
                           <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
                             <Truck className="w-3.5 h-3.5" />
@@ -723,33 +957,61 @@ export const Shipments: React.FC = () => {
                       </div>
                     )}
 
+                    {previousLeg && canUseCashDelivery && (
+                      <dl className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 text-xs dark:border-slate-800">
+                        <div><dt className="text-slate-500 dark:text-slate-400">شركة الشحن · ألف مسكن</dt>
+                          <dd className="mt-1 font-semibold">{previousLeg.base_shipping_cost == null ? 'السعر غير محدد' : `${previousLeg.base_shipping_cost.toLocaleString()} ج.م · أساسي`}</dd></div>
+                        <div><dt className="text-slate-500 dark:text-slate-400">{shipment.cash_carrier ? 'السكوتر' : 'التوصيل الشخصي'}</dt>
+                          <dd className="mt-1 font-semibold">{shipment.cash_carrier
+                            ? (shipment.cost_amount == null ? 'في انتظار تسجيل المصروف' : `${shipment.cost_amount.toLocaleString()} ج.م`)
+                            : 'بدون مصروف إضافي'}</dd></div>
+                      </dl>
+                    )}
+
+                    {isAuthorized && lastMileOrders.length > 0 && (
+                      <div className="flex justify-end border-t border-slate-100 pt-3 dark:border-slate-800">
+                        <button type="button" onClick={() => handleOpenPackSelected(lastMileOrders, true)}
+                          className="rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700">
+                          تجهيز المرحلة الأخيرة
+                        </button>
+                      </div>
+                    )}
+
                     {/* Actions for Active Shipments */}
                     {!isDelivered && isAuthorized && (
                       <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleCancelShipment(shipment)}
+                          onClick={() => {
+                            setClosingAttempt(shipment); setAttemptOutcome('failed'); setAttemptReason('');
+                            setRecordAttemptExpense(false); setScooterAmount(''); setCashbox('');
+                            if (shipment.scooter_payment_pending && canUseCashDelivery) {
+                              void financeService.getCashboxes(true).then(setCashboxes).catch(() => toastError('تعذر تحميل المحافظ'));
+                            }
+                          }}
                           className="px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition font-medium"
                         >
-                          إلغاء
+                          فشل / مرتجع / إلغاء
                         </button>
-                        {!isDispatched && (
+                        {!isDispatched && (shipment.direction !== 'to_lab' || shipment.hub_leg) && (
                           <button
                             onClick={() => handleDispatch(shipment)}
                             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium shadow-sm"
                           >
                             <Send className="w-3.5 h-3.5" />
-                            <span>تسليم للمندوب</span>
+                            <span>{shipment.previous_shipping_leg && !shipment.cash_carrier ? 'بدء التوصيل الشخصي' : 'تسليم للمندوب'}</span>
                           </button>
                         )}
                         <button
                           onClick={() => {
                             setSelectedShipmentForDelivery(shipment);
+                            setScooterAmount(''); setCashbox('');
+                            if (shipment.scooter_payment_pending) void financeService.getCashboxes(true).then(setCashboxes).catch(() => toastError('تعذر تحميل المحافظ'));
                             setIsDeliveryModalOpen(true);
                           }}
                           className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition font-medium shadow-sm"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>تأكيد التسليم</span>
+                          <span>{shipment.hub_leg ? 'تأكيد الوصول للعاشر' : shipment.direction === 'to_lab' ? 'تأكيد الوصول للمعمل' : 'تأكيد التسليم'}</span>
                         </button>
                       </div>
                     )}
@@ -763,14 +1025,15 @@ export const Shipments: React.FC = () => {
 
       {/* Modal: Create & Pack Shipment */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-5 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-3 sm:p-5">
+          <div role="dialog" aria-modal="true" aria-labelledby="shipment-create-title" className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-lg">
                 <Package className="w-5 h-5 text-blue-600" />
-                <span>تجهيز وإغلاق طرد شحن</span>
+                <h2 id="shipment-create-title">{lastMile ? 'تجهيز المرحلة الأخيرة' : direction === 'to_lab' ? 'طلب استلام من الطبيب' : 'تجهيز وإغلاق طرد شحن'}</h2>
               </div>
               <button
+                aria-label="إغلاق"
                 onClick={() => setIsCreateModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
               >
@@ -778,11 +1041,13 @@ export const Shipments: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreateShipment} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            <form onSubmit={handleCreateShipment} className="flex min-h-0 flex-col">
+              <div className="min-h-0 space-y-4 overflow-y-auto px-5 py-4">
+              {direction === 'to_doctor' && <div>
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
                   الأوردرات المختارة ({selectedOrderIds.length})
-                </label>
+                  {lastMile && <span className="text-blue-700 dark:text-blue-300">{formArea}</span>}
+                </div>
                 <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-600 dark:text-slate-400 max-h-24 overflow-y-auto">
                   {selectedOrderIds.map(id => {
                     const ord = readyOrders.find(o => o.id === id);
@@ -794,15 +1059,79 @@ export const Shipments: React.FC = () => {
                     ) : null;
                   })}
                 </div>
-              </div>
+              </div>}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {direction === 'to_lab' && <div className="space-y-2 rounded-xl border p-3">
+                <label className="block">العيادة<select className="block w-full rounded border p-2" required value={pickupDoctor}
+                  onChange={event => choosePickupClinic(event.target.value, '')}>
+                  <option value="">اختار الطبيب</option>
+                  {clinics.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select></label>
+                {!!clinics.find(item => item.id === pickupDoctor)?.branches?.length && <label className="block">الفرع
+                  <select className="block w-full rounded border p-2" value={pickupBranch} onChange={event => choosePickupClinic(pickupDoctor, event.target.value)}>
+                    <option value="">العنوان الرئيسي</option>
+                    {clinics.find(item => item.id === pickupDoctor)?.branches?.map(item => <option key={item.id}>{item.name}</option>)}
+                  </select>
+                </label>}
+                <label className="flex gap-2"><input type="checkbox" checked={newCase} onChange={event => { setNewCase(event.target.checked); setSelectedOrderIds([]); }} /> مقاس لحالة جديدة</label>
+                {newCase ? <label className="block">اسم المريض<input required className="block w-full rounded border p-2" value={newPatient}
+                  onChange={event => setNewPatient(event.target.value)} /></label> : <label className="block">الأوردرات المرتبطة<select multiple className="block w-full rounded border p-2" value={selectedOrderIds}
+                  onChange={event => setSelectedOrderIds(Array.from(event.target.selectedOptions, item => item.value))}>
+                  {pickupOrders.filter(item => (item.branchName || '') === pickupBranch).map(item =>
+                    <option key={item.id} value={item.id}>{item.caseId} · {item.patientName}</option>)}
+                </select></label>}
+              </div>}
+              {!lastMile && <label className="block text-sm font-medium">منطقة الشحن
+                <ShippingAreaSelect value={formArea} onChange={setFormArea} />
+              </label>}
+              {lastMile && <fieldset>
+                <legend className="mb-2 text-sm font-semibold">طريقة التوصيل</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(canUseCashDelivery ? ['scooter', 'self'] : ['self']).map(method => {
+                    const checked = scooter === (method === 'scooter');
+                    return <label key={method} className={`flex min-h-12 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${checked
+                      ? 'border-blue-300 bg-blue-50 dark:border-blue-600 dark:bg-blue-950' : 'border-slate-200 dark:border-slate-700'}`}>
+                      <input type="radio" name="last-mile-method" checked={checked} onChange={() => {
+                        setScooter(method === 'scooter'); setExpenseId(''); setCreateExpense(true);
+                      }} />
+                      <span>{method === 'scooter' ? 'سكوتر' : 'هوصلها بنفسي · بدون مصروف'}</span>
+                    </label>;
+                  })}
+                </div>
+              </fieldset>}
+              {!lastMile && canUseCashDelivery && <label className="flex gap-2 text-sm">
+                <input type="checkbox" checked={scooter} onChange={event => void selectScooter(event.target.checked)} /> توصيل بسداد فوري
+              </label>}
+              {!lastMile && !scooter && direction === 'to_doctor' && formArea === 'العاشر من رمضان' && <label className="flex gap-2 text-sm">
+                <input type="checkbox" checked={hubLeg} onChange={event => setHubLeg(event.target.checked)} /> المرحلة الأولى للعاشر عبر ألف مسكن
+              </label>}
+              {scooter && !lastMile && <label className="block text-sm">وسيلة الشحن الكاش
+                <select className="block w-full rounded-xl border p-2" value={cashCarrier}
+                  onChange={event => setCashCarrier(event.target.value === 'middle_east' ? 'middle_east' : 'scooter')}>
+                  <option value="scooter">سكوتر</option><option value="middle_east">ميدل إيست</option>
+                </select>
+              </label>}
+              {scooter && <label className="block text-sm">طريقة السداد الفوري
+                <select className="block w-full rounded-xl border p-2" value={createExpense ? 'new' : 'existing'}
+                  onChange={event => { const create = event.target.value === 'new'; setCreateExpense(create); if (!create) void selectScooter(true); }}>
+                  <option value="new">إنشاء مصروف عند الوصول</option><option value="existing">ربط بمصروف موجود</option>
+                </select>
+              </label>}
+              {scooter && !createExpense && <label className="block text-sm">مصروف الشحن المسجل في المالية
+                <select className="block w-full rounded-xl border p-2" required value={expenseId} onChange={event => setExpenseId(event.target.value)}>
+                  <option value="">اختار المصروف</option>
+                  {expenses.map(item => <option key={item.id} value={item.id}>{item.description} · {item.amount} ج.م</option>)}
+                </select>
+              </label>}
+              {!lastMile && !scooter && <div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     شركة الشحن / المندوب
                   </label>
                   <select
-                    value={formCourierId}
+                    value={scooter ? '' : formCourierId}
+                    disabled={scooter || lastMile}
+                    required={!scooter && (direction === 'to_lab' || (formArea === 'العاشر من رمضان' && hubLeg))}
                     onChange={e => setFormCourierId(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500"
                   >
@@ -814,7 +1143,11 @@ export const Shipments: React.FC = () => {
                     ))}
                   </select>
                 </div>
+              </div>}
 
+              <details className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60">
+                <summary className="cursor-pointer text-sm font-semibold">تفاصيل اختيارية</summary>
+                <div className="mt-3 space-y-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     رقم بوليصة الشحن (اختياري)
@@ -827,8 +1160,8 @@ export const Shipments: React.FC = () => {
                     className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 font-mono"
                   />
                 </div>
-              </div>
 
+              {direction === 'to_doctor' && <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="shipment-recipient" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -893,6 +1226,7 @@ export const Shipments: React.FC = () => {
                 </div>
               </div>
 
+              </>}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   ملاحظات
@@ -906,7 +1240,10 @@ export const Shipments: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                </div>
+              </details>
+              </div>
+              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
@@ -925,7 +1262,7 @@ export const Shipments: React.FC = () => {
                       <span>جاري الحفظ والرفع...</span>
                     </>
                   ) : (
-                    <span>تأكيد التغليف</span>
+                    <span>{lastMile ? 'حفظ المرحلة الأخيرة' : direction === 'to_lab' ? 'حفظ طلب الاستلام' : 'تأكيد التغليف'}</span>
                   )}
                 </button>
               </div>
@@ -936,14 +1273,17 @@ export const Shipments: React.FC = () => {
 
       {/* Modal: Confirm Delivery */}
       {isDeliveryModalOpen && selectedShipmentForDelivery && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-3 sm:p-5">
+          <div role="dialog" aria-modal="true" aria-labelledby="shipment-delivery-title" className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
               <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-lg">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <span>{isTrialOnlyShipment ? 'تأكيد وصول البروفة للطبيب' : 'تأكيد تسليم الشحنة'}</span>
+                <h2 id="shipment-delivery-title">{selectedShipmentForDelivery.hub_leg ? 'تأكيد الوصول للعاشر'
+                  : selectedShipmentForDelivery.direction === 'to_lab' ? 'تأكيد الوصول للمعمل'
+                  : isTrialOnlyShipment ? 'تأكيد وصول البروفة للطبيب' : 'تأكيد التسليم للطبيب'}</h2>
               </div>
               <button
+                aria-label="إغلاق"
                 onClick={() => setIsDeliveryModalOpen(false)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
               >
@@ -951,13 +1291,23 @@ export const Shipments: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleConfirmDelivery} className="space-y-4">
+            <form onSubmit={handleConfirmDelivery} className="flex min-h-0 flex-col">
+              <div className="min-h-0 space-y-4 overflow-y-auto px-5 py-4">
               <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
                 <div className="font-semibold">الشحنة: {selectedShipmentForDelivery.shipment_code}</div>
                 <div>المستلم: {selectedShipmentForDelivery.recipient_name || selectedShipmentForDelivery.doctor?.name}</div>
                 <div>عدد الحالات المشمولة: {selectedShipmentForDelivery.orders?.length || 0}</div>
               </div>
 
+              {selectedShipmentForDelivery.scooter_payment_pending && <div className="grid gap-3 sm:grid-cols-2">
+                <label>مبلغ السكوتر<input required type="number" min="0.01" step="0.01" className="block w-full rounded border p-2" value={scooterAmount} onChange={e => setScooterAmount(e.target.value)} /></label>
+                <label>محفظة السداد<select required className="block w-full rounded border p-2" value={cashbox} onChange={e => setCashbox(e.target.value)}>
+                  <option value="">اختار المحفظة</option>{cashboxes.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select></label>
+              </div>}
+              <details className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/60">
+                <summary className="cursor-pointer text-sm font-semibold">ملاحظات وإثبات الاستلام</summary>
+                <div className="mt-3 space-y-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   صورة إثبات التسليم / التوقيع (اختياري)
@@ -987,7 +1337,10 @@ export const Shipments: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                </div>
+              </details>
+              </div>
+              <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsDeliveryModalOpen(false)}
@@ -1000,7 +1353,9 @@ export const Shipments: React.FC = () => {
                   disabled={isSubmitting}
                   className="px-5 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-medium transition shadow-sm flex items-center gap-2"
                 >
-                  {isSubmitting ? 'جاري التأكيد...' : 'تأكيد الاستلام'}
+                  {isSubmitting ? 'جاري التأكيد...' : selectedShipmentForDelivery.hub_leg
+                    ? 'تأكيد الوصول للعاشر' : selectedShipmentForDelivery.direction === 'to_lab'
+                    ? 'تأكيد الوصول للمعمل' : 'تأكيد التسليم'}
                 </button>
               </div>
             </form>

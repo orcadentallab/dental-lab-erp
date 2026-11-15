@@ -4,6 +4,22 @@ import type { Doctor } from '../db';
 import { DoctorCreateSchema, DoctorUpdateSchema, formatValidationError } from '../../lib/validation';
 import { ErrorHandler, ValidationError } from '../../lib/errorHandler';
 
+const doctorNameKey = (name: string) => name.normalize('NFKC').replace(/[ً-ٟـ]/g, '')
+    .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase()
+    .replace(/^(?:(?:د|دكتور|دكتوره|الدكتور|الدكتوره|مركز)\s+)+/, '');
+
+function similarDoctorName(first: string, second: string) {
+    if (!first || !second) return false;
+    if (first === second) return true;
+    const left = first.split(' ');
+    const right = second.split(' ');
+    const shared = left.filter(word => right.includes(word));
+    return new Set(shared).size >= 2 ||
+        (first.length >= 5 && second.length >= 5 &&
+            (` ${first} `.includes(` ${second} `) || ` ${second} `.includes(` ${first} `)));
+}
+
 // Transform database record to application format (snake_case -> camelCase)
 function dbToDoctor(dbDoctor: DbDoctor): Doctor {
     return {
@@ -12,7 +28,9 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
         phone: dbDoctor.phone,
         phone2: dbDoctor.phone2 || undefined,
         address: dbDoctor.address,
+        shippingArea: dbDoctor.shipping_area ?? undefined,
         doctorCode: dbDoctor.doctor_code,
+        mergedInto: dbDoctor.merged_into ?? undefined,
         representativeName: dbDoctor.representative_name,
         representativeId: dbDoctor.representative_id || undefined,
         customPrices: dbDoctor.custom_prices || undefined,
@@ -31,6 +49,7 @@ function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
         phone: doctor.phone,
         phone2: doctor.phone2 || null,
         address: doctor.address,
+        shipping_area: doctor.shippingArea?.trim() || null,
         doctor_code: doctor.doctorCode,
         representative_name: doctor.representativeName,
         representative_id: doctor.representativeId || null,
@@ -98,6 +117,14 @@ export async function addDoctor(doctor: Omit<Doctor, 'id'>): Promise<Doctor> {
     } catch (error: unknown) {
         throw new ValidationError(formatValidationError(error));
     }
+
+    const nameKey = doctorNameKey(doctor.name);
+    const existing = (await getDoctors()).filter(item => similarDoctorName(nameKey, doctorNameKey(item.name)));
+    if (existing.length && !window.confirm([
+        'في حسابات بأسماء مشابهة. اتأكد إنها تخص أشخاصًا مختلفين أو حسابات منفصلة مقصودة قبل المتابعة.',
+        ...existing.slice(0, 8).map(item => `${item.name} (${item.doctorCode})${item.mergedInto ? ' · حساب مدموج' : ''}`),
+        'هل تريد إنشاء الحساب؟',
+    ].join('\n'))) throw new ValidationError('تم إلغاء إضافة الطبيب');
 
     const dbDoctor = doctorToDb(doctor);
 
@@ -178,6 +205,7 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
     if (updates.phone2 !== undefined) dbUpdates.phone2 = updates.phone2 || null;
+    if (updates.shippingArea !== undefined) dbUpdates.shipping_area = updates.shippingArea.trim() || null;
     if (updates.address !== undefined) dbUpdates.address = updates.address;
     if (updates.doctorCode !== undefined) dbUpdates.doctor_code = updates.doctorCode;
     if (updates.representativeName !== undefined) dbUpdates.representative_name = updates.representativeName;

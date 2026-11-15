@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import ShippingAreaSelect from '../components/finance/ShippingAreaSelect';
+import { useState, useEffect, useId } from 'react';
 import { db, type Doctor } from '../services/db';
-import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, AlertTriangle, Edit, FileSpreadsheet, Printer, Users, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { exportToExcel } from '../lib/exportUtils';
 import { generateGenericTablePDF } from '../services/pdfService';
@@ -14,6 +15,7 @@ interface DoctorForm {
     phone: string;
     phone2: string;
     address: string;
+    shippingArea?: string;
     doctorCode: string;
     representativeName: string;
     representativeId: string;
@@ -28,6 +30,8 @@ interface DoctorForm {
 
 export default function Doctors() {
     const { user } = useAuth();
+    const doctorDialogTitle = useId();
+    const canAddShippingArea = ['admin', 'representative', 'coordinator'].includes(user?.role ?? '');
     const { t } = useTranslation();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<import('../services/db').Service[]>([]);
@@ -101,6 +105,7 @@ export default function Doctors() {
             phone: doc.phone,
             phone2: doc.phone2 || '',
             address: doc.address,
+            shippingArea: doc.shippingArea,
             doctorCode: doc.doctorCode,
             representativeName: doc.representativeName,
             representativeId: doc.representativeId || '',
@@ -134,7 +139,7 @@ export default function Doctors() {
         try {
             // Validation: Duplicate Check (Case Insensitive)
             const normalizedName = normalizeText(newDoctor.name);
-            const normalizedCode = newDoctor.doctorCode.trim().toUpperCase();
+            const normalizedCode = editingId ? newDoctor.doctorCode.trim().toUpperCase() : '';
 
             // Check duplicates (excluding current doctor if editing)
             const nameExists = doctors.find(doc =>
@@ -148,7 +153,7 @@ export default function Doctors() {
                 doc.doctorCode.trim().toUpperCase() === normalizedCode
             );
 
-            if (nameExists) {
+            if (editingId && nameExists) {
                 setError(`⚠️ هذا الاسم موجود بالفعل: ${nameExists.name} `);
                 return;
             }
@@ -202,13 +207,12 @@ export default function Doctors() {
                         }
                     } else {
                         // Add new child
-                        const randomSuffix = Math.floor(100 + Math.random() * 900);
                         await db.addDoctor({
                             name: child.name.trim(),
                             phone: child.phone,
                             phone2: '',
                             address: newDoctor.address,
-                            doctorCode: `${normalizedCode}-${randomSuffix}`,
+                            doctorCode: '',
                             representativeName: newDoctor.representativeName,
                             representativeId: newDoctor.representativeId,
                             isCenter: false,
@@ -235,7 +239,7 @@ export default function Doctors() {
     };
 
 
-    const [sortBy, setSortBy] = useState<'name' | 'code' | 'rep'>('name');
+    const [sortBy, setSortBy] = useState<'name' | 'code'>('code');
 
     // ...
 
@@ -253,19 +257,22 @@ export default function Doctors() {
         })
         .sort((a, b) => {
             if (sortBy === 'name') return a.name.localeCompare(b.name);
-            if (sortBy === 'code') return (a.doctorCode || '').localeCompare(b.doctorCode || '');
-            // if (sortBy === 'rep') return (a.representativeName || '').localeCompare(b.representativeName || '');
-            return 0;
+            if (!a.doctorCode || !b.doctorCode) return Number(!a.doctorCode) - Number(!b.doctorCode);
+            return a.doctorCode.localeCompare(b.doctorCode, undefined, { numeric: true });
         });
 
     // Access Control for Export/Print
     const canExport = ['admin', 'accountant', 'lab'].includes(user?.role || '');
 
     return (
-        <div>
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">{t.doctors.title}</h1>
-                <div className="flex gap-2">
+        <div dir="rtl" className="mx-auto max-w-7xl space-y-5">
+            <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-5 sm:px-6">
+                <div className="flex items-center gap-3">
+                    <span className="rounded-xl bg-teal-50 p-3 text-teal-700 dark:bg-teal-950 dark:text-teal-300"><Users size={22} /></span>
+                    <h1 className="text-xl font-bold text-slate-900 sm:text-2xl dark:text-slate-100">{t.doctors.title}</h1>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                     {canExport && (
                         <>
                             <button
@@ -283,7 +290,7 @@ export default function Doctors() {
                                         'الأطباء'
                                     );
                                 }}
-                                className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors"
+                                className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                 title="تصدير Excel"
                             >
                                 <FileSpreadsheet size={18} />
@@ -308,7 +315,7 @@ export default function Doctors() {
                                         DEFAULT_LAB_INFO
                                     );
                                 }}
-                                className="flex items-center gap-2 bg-gray-600 text-white px-3 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+                                className="flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
                                 title="طباعة"
                             >
                                 <Printer size={18} />
@@ -318,7 +325,7 @@ export default function Doctors() {
                     )}
                     <button
                         onClick={openAddModal}
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 dark:shadow-none"
+                        className="flex min-h-10 items-center gap-2 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800"
                     >
                         <Plus size={20} />
                         <span>{t.doctors.newDoctor}</span>
@@ -327,7 +334,7 @@ export default function Doctors() {
             </div>
 
             {/* Search and Sort Toolbar */}
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm mb-6 flex flex-col md:flex-row gap-4 border border-transparent dark:border-gray-700">
+            <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:px-6 dark:border-slate-700 dark:bg-slate-800/50">
                 <div className="relative flex-1">
                     <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={20} />
                     <input
@@ -339,49 +346,49 @@ export default function Doctors() {
                         className="w-full pr-10 pl-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                     />
                 </div>
-                <div className="flex items-center gap-2 min-w-[200px]">
-                    <span className="text-gray-600 dark:text-gray-400 text-sm whitespace-nowrap">ترتيب حسب:</span>
+                <div className="flex items-center gap-2 sm:min-w-48">
+                    <span className="whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">ترتيب حسب</span>
                     <select
                         className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none dark:bg-gray-700 dark:text-white cursor-pointer"
                         value={sortBy}
                         aria-label="ترتيب حسب"
                         onChange={(e) => {
                             const val = e.target.value;
-                            if (val === 'name' || val === 'code' || val === 'rep') {
+                            if (val === 'name' || val === 'code') {
                                 setSortBy(val);
                             }
                         }}
                     >
-                        <option value="name">الاسم</option>
                         <option value="code">كود الطبيب</option>
-                        {/* <option value="rep">المندوب</option> */}
+                        <option value="name">الاسم</option>
                     </select>
                 </div>
             </div>
+            </header>
 
             {/* Doctors Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {filteredDoctors.map((doc) => (
-                    <div key={doc.id} className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-shadow relative group">
+                    <article key={doc.id} className="relative rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-teal-300 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-teal-700">
 
                         {/* Edit Button (Admin or Assigned Rep) - Now anyone can edit? "everyone can see" */}
                         {/* Assuming Reps can edit doctors they work with, or just generic edit because they are 'Owners' of the relationship in their mind?? */}
                         {/* With no ownership link, maybe allow edit for all logged in users as per policy? */}
                         <button
                             onClick={() => openEditModal(doc)}
-                            className="absolute top-4 left-4 p-2 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                            className="absolute end-3 top-3 rounded-lg p-2 text-slate-500 hover:bg-teal-50 hover:text-teal-700 focus-visible:ring-2 focus-visible:ring-teal-600 dark:text-slate-300 dark:hover:bg-teal-950"
                             title="تعديل بيانات الطبيب"
                         >
                             <Edit size={18} />
                         </button>
 
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-start justify-between pe-10">
                             <div className="flex items-center gap-3">
                                 <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg border ${doc.isCenter ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'}`}>
                                     {doc.name.charAt(0)}
                                 </div>
                                 <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <h3 className="font-bold text-gray-900 dark:text-gray-100">{doc.name}</h3>
                                         {doc.isCenter && <span className="text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full border border-purple-200 dark:border-purple-700">مركز طبي</span>}
                                         {doc.hasBranches && (
@@ -390,8 +397,8 @@ export default function Doctors() {
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="text-xs bg-gray-100 dark:bg-gray-700/50 text-gray-600 dark:text-gray-400 px-2 py-1 rounded inline-block border border-gray-200 dark:border-gray-600">
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                        <span dir="ltr" className="rounded bg-slate-100 px-2 py-1 font-mono text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                                             {doc.doctorCode}
                                         </span>
                                         {doc.parentId && (
@@ -441,23 +448,23 @@ export default function Doctors() {
                                 </div>
                             </div>
                         )}
-                    </div>
+                    </article>
                 ))}
             </div>
 
             {/* Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col max-h-[90vh]">
-                        <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 shrink-0">
-                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-2 backdrop-blur-sm sm:p-4">
+                    <div role="dialog" aria-modal="true" aria-labelledby={doctorDialogTitle} className="flex max-h-[94dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-6 dark:border-slate-700">
+                            <h2 id={doctorDialogTitle} className="text-lg font-bold text-slate-900 dark:text-slate-100">
                                 {editingId ? 'تعديل بيانات الطبيب' : 'إضافة طبيب جديد'}
                             </h2>
-                            <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors" aria-label="إغلاق">✕</button>
+                            <button type="button" onClick={() => setShowModal(false)} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" aria-label="إغلاق"><X size={20} /></button>
                         </div>
 
                         <form onSubmit={handleSaveDoctor} className="flex flex-col min-h-0">
-                            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                            <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
                                 {error && (
                                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg text-sm font-bold flex items-center gap-2">
                                     <AlertTriangle size={18} />
@@ -465,11 +472,14 @@ export default function Doctors() {
                                 </div>
                             )}
 
+                            <section className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">بيانات الطبيب والتواصل</h3>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الطبيب</label>
                                 <input
                                     required
                                     type="text"
+                                    autoFocus
                                     aria-label="اسم الطبيب"
                                     className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                     value={newDoctor.name}
@@ -480,7 +490,7 @@ export default function Doctors() {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الهاتف</label>
                                     <input
@@ -491,32 +501,24 @@ export default function Doctors() {
                                         value={newDoctor.phone}
                                         onChange={e => setNewDoctor({ ...newDoctor, phone: e.target.value })}
                                     />
+                                </div>
+                                <div>
+                                    <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">هاتف إضافي <span className="text-xs font-normal text-slate-500">اختياري</span></label>
                                     <input
                                         type="tel"
                                         placeholder="رقم هاتف 2 (اختياري)"
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 mt-2 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                                         value={newDoctor.phone2 || ''}
                                         aria-label="رقم هاتف إضافي"
                                         onChange={e => setNewDoctor({ ...newDoctor, phone2: e.target.value })}
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كود الطبيب</label>
-                                    <input
-                                        required
-                                        placeholder="مثال: AHM"
-                                        type="text"
-                                        aria-label="كود الطبيب"
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
-                                        value={newDoctor.doctorCode}
-                                        onChange={e => {
-                                            setNewDoctor({ ...newDoctor, doctorCode: e.target.value.toUpperCase() });
-                                            setError(null);
-                                        }}
-                                    />
-                                </div>
                             </div>
+                            </section>
 
+                            <section className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                            <h3 className="mb-3 text-sm font-bold text-slate-900 dark:text-slate-100">العنوان والشحن</h3>
+                            <div className="grid gap-3 sm:grid-cols-2">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">العنوان</label>
                                 <input
@@ -529,7 +531,18 @@ export default function Doctors() {
                                 />
                             </div>
 
-                            <div>
+                            <label className="block text-sm">منطقة الشحن
+                                <ShippingAreaSelect canAdd={canAddShippingArea} value={newDoctor.shippingArea ?? ''}
+                                    onChange={shippingArea => setNewDoctor({ ...newDoctor, shippingArea })} />
+                            </label>
+                            </div>
+                            </section>
+
+                            <details className="group rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                                    تعليمات دائمة للمعمل <ChevronDown size={16} className="group-open:rotate-180" />
+                                </summary>
+                            <div className="mt-3">
                                 <label className="block text-sm font-medium text-indigo-700 dark:text-indigo-300 mb-1">
                                     تعليمات دائمة للمعمل (تظهر للفنيين في كل حالات هذا الطبيب)
                                 </label>
@@ -542,6 +555,7 @@ export default function Doctors() {
                                     onChange={e => setNewDoctor({ ...newDoctor, labInstructions: e.target.value })}
                                 />
                             </div>
+                            </details>
 
                             <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                                 <label className="flex items-center gap-2 cursor-pointer">
@@ -679,6 +693,8 @@ export default function Doctors() {
                                                                         setBranches(arr);
                                                                     }}
                                                                 />
+                                                                <ShippingAreaSelect canAdd={canAddShippingArea} value={branch.shippingArea ?? ''} onChange={shippingArea => setBranches(previous => previous.map((item, position) =>
+                                                                        position === index ? { ...item, shippingArea } : item))} />
                                                                 <input
                                                                     type="text"
                                                                     placeholder="الهاتف (اختياري)"
@@ -706,26 +722,11 @@ export default function Doctors() {
                                     )}
                                 </div>
 
-                                {!newDoctor.isCenter && (
-                                    <div className="mt-3">
-                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">يتبع لمركز طبي (اختياري)</label>
-                                        <select
-                                            className="w-full p-2 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
-                                            value={newDoctor.parentId || ''}
-                                            onChange={e => setNewDoctor({ ...newDoctor, parentId: e.target.value || undefined })}
-                                        >
-                                            <option value="">-- طبيب مستقل --</option>
-                                            {doctors.filter(d => d.isCenter && d.id !== editingId).map(center => (
-                                                <option key={center.id} value={center.id}>{center.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
                             </div>
 
                             {(!newDoctor.parentId) && (
-                                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-                                    <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2">أسعار بيع خاصة للطبيب / المركز</h3>
+                                <details className="group rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                                    <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-slate-800 dark:text-slate-200">أسعار البيع الخاصة <ChevronDown size={16} className="group-open:rotate-180" /></summary>
                                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">اترك الحقل فارغاً لاستخدام السعر الأساسي الافتراضي من القائمة.</p>
                                     
                                     <div className="max-h-60 overflow-y-auto space-y-2 pr-2">
@@ -756,7 +757,7 @@ export default function Doctors() {
                                             </div>
                                         ))}
                                     </div>
-                                </div>
+                                </details>
                             )}
                             {editingId && (
                                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
@@ -770,7 +771,9 @@ export default function Doctors() {
                             )}
                             </div>
 
-                            <div className="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex gap-3 mt-auto shrink-0">
+                            <div className="mt-auto flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:px-6 dark:border-slate-700 dark:bg-slate-800">
+                                <span className="text-sm text-slate-600 dark:text-slate-300">كود الطبيب {editingId ? <bdi className="font-mono font-semibold">{newDoctor.doctorCode}</bdi> : 'يتولّد عند الحفظ'}</span>
+                                <div className="flex gap-2">
                                 <button
                                     type="button"
                                     onClick={() => setShowModal(false)}
@@ -780,10 +783,11 @@ export default function Doctors() {
                                 </button>
                                 <button
                                     type="submit"
-                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors dark:bg-blue-600 dark:hover:bg-blue-700"
+                                    className="rounded-lg bg-teal-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-800"
                                 >
                                     {editingId ? 'حفظ التغييرات' : 'حفظ الطبيب'}
                                 </button>
+                                </div>
                             </div>
                         </form>
                     </div>

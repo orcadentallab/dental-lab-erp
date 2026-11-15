@@ -1,3 +1,4 @@
+import CourierAreaRates from '../components/finance/CourierAreaRates';
 /* eslint-disable @typescript-eslint/consistent-type-assertions, @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useMemo } from 'react';
 import { db, type Supplier, type Service } from '../services/db';
@@ -9,7 +10,7 @@ import { useToast } from '../context/ToastContext';
 
 const SUPPLIER_TYPE_LABELS: Record<'external_lab' | 'material_vendor' | 'courier', { label: string; icon: typeof Building2; color: string }> = {
     external_lab: { label: 'معمل خارجي', icon: Building2, color: 'bg-blue-50 text-blue-700 border-blue-200' },
-    material_vendor: { label: 'مورد خامات ومستلزمات', icon: Package, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+    material_vendor: { label: 'شركة توريد', icon: Package, color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
     courier: { label: 'شركة شحن', icon: Truck, color: 'bg-amber-50 text-amber-700 border-amber-200' },
 };
 
@@ -157,7 +158,7 @@ export default function Suppliers() {
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800">إدارة الموردين والمعامل</h1>
                     <p className="text-sm text-gray-500">
-                        حسابات المعامل الخارجية وموردي الخامات والمستلزمات وشركات الشحن
+                        حسابات المعامل الخارجية وشركات التوريد وشركات الشحن
                     </p>
                     {isLoading && <span className="text-sm text-blue-600 animate-pulse">جاري التحميل...</span>}
                 </div>
@@ -208,7 +209,7 @@ export default function Suppliers() {
                     }`}
                 >
                     <Package className="w-3.5 h-3.5" />
-                    موردي خامات ({suppliers.filter(s => s.supplierType === 'material_vendor').length})
+                    شركات توريد ({suppliers.filter(s => s.supplierType === 'material_vendor').length})
                 </button>
                 <button
                     onClick={() => setTypeFilter('courier')}
@@ -353,7 +354,7 @@ export default function Suppliers() {
                                         className="w-full p-2.5 border border-gray-200 bg-gray-50 rounded-xl text-sm"
                                     >
                                         <option value="external_lab">معمل خارجي (تنفيذ حالات وأوامر شغل)</option>
-                                        <option value="material_vendor">مورد خامات ومستلزمات مخزن</option>
+                                        <option value="material_vendor">شركة توريد أجهزة وأدوات وخامات</option>
                                         <option value="courier">شركة شحن وتوصيل</option>
                                     </select>
                                 </div>
@@ -454,6 +455,8 @@ export default function Suppliers() {
                                 </div>
                             )}
 
+                            {editingSupplier && user?.role === 'admin' && formData.supplierType === 'courier' &&
+                                editingSupplier.supplierType === 'courier' && <CourierAreaRates courierId={editingSupplier.id} />}
                             {editingSupplier && user?.role === 'admin' && formData.supplierType === 'external_lab' && <SupplierDesignInstructions key={editingSupplier.id} supplierId={editingSupplier.id} />}
                             {editingSupplier && formData.supplierType === 'external_lab' && (
                                 <div className="border-t border-gray-100 pt-6">

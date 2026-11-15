@@ -7,14 +7,16 @@ export interface DbDoctor {
     phone: string;
     phone2?: string | null;
     address: string;
+    shipping_area?: string | null;
     doctor_code: string;
+    merged_into?: string | null;
     representative_name: string;
     representative_id?: string | null;
     custom_prices?: Record<string, number> | null; // JSONB
     is_center?: boolean;
     parent_id?: string | null;
     has_branches?: boolean;
-    branches?: { id: string; name: string; address: string; phone: string }[] | null;
+    branches?: { id: string; name: string; address: string; phone: string; shippingArea?: string }[] | null;
     lab_instructions?: string | null;
     created_at: string;
     updated_at: string;

@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import type { Order, Doctor } from './db';
 import type { StatementResult } from './statementService';
 import { formatCurrency, type LabInfo } from '../utils/finance';
+import { getDoctorInvoiceIdentity, type DoctorInvoiceIdentity } from './supabase/doctorInvoiceIdentity';
 
 // ===================== HTML → PDF CORE =====================
 
@@ -454,7 +455,8 @@ export async function generateDoctorInvoicePDF(
     labInfo: LabInfo,
     previousBalance?: number
 ): Promise<void> {
-    const html = buildInvoiceHTML(order, doctor, labInfo, previousBalance);
+    const identity = await getDoctorInvoiceIdentity({ orderId: order.id });
+    const html = buildInvoiceHTML(order, doctor, labInfo, identity, previousBalance);
     const doc = createPdf();
     await htmlToPdfPage(doc, html);
     const doctorName = doctor?.name || 'doctor';
@@ -465,6 +467,7 @@ function buildInvoiceHTML(
     order: Order,
     doctor: Doctor | undefined,
     _labInfo: LabInfo,
+    identity: DoctorInvoiceIdentity,
     previousBalance?: number
 ): string {
     const items = (order.items || []).map((item: { serviceType?: string; teethNumbers?: string[]; price?: number; sellingPrice?: number; unitPrice?: number }) => {
@@ -532,9 +535,11 @@ function buildInvoiceHTML(
                 </div>
                 <div class="meta-group" style="text-align:left">
                     <div class="meta-label">رقم الفاتورة</div>
-                    <div class="ref-tag">INV-${order.caseId}</div>
+                    <div class="ref-tag">${identity.invoiceNumber}</div>
+                    <div class="meta-label">كود الطبيب</div>
+                    <div class="meta-value code">${identity.doctorCode}</div>
                     <div class="meta-label" style="margin-top:10px">التاريخ</div>
-                    <div class="meta-value code">${new Date().toLocaleDateString('en-GB')}</div>
+                    <div class="meta-value code">${identity.issuedOn.split('-').reverse().join('/')}</div>
                 </div>
             </div>
 
@@ -922,7 +927,7 @@ export interface CasesInvoiceItem {
 
 export async function generateCasesInvoicePDF(
     items: CasesInvoiceItem[],
-    doctorInfo: { name: string; code?: string },
+    doctorInfo: { name: string; code?: string; invoiceNumber?: string },
     dateRange: { start: string; end: string },
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _labInfo?: LabInfo
@@ -937,7 +942,7 @@ export async function generateCasesInvoicePDF(
 
 function buildCasesInvoiceHTML(
     items: CasesInvoiceItem[],
-    doctorInfo: { name: string; code?: string },
+    doctorInfo: { name: string; code?: string; invoiceNumber?: string },
     dateRange: { start: string; end: string }
 ): string {
     const startLabel = dateRange.start || '-';
@@ -1029,6 +1034,7 @@ function buildCasesInvoiceHTML(
                     <div class="meta-label">فاتورة إلى</div>
                     <div class="meta-value large">${doctorInfo.name || '-'}</div>
                     ${doctorInfo.code ? `<span class="ref-tag">${doctorInfo.code}</span>` : ''}
+                    ${doctorInfo.invoiceNumber ? `<div class="meta-value code">${doctorInfo.invoiceNumber}</div>` : ''}
                 </div>
                 <div class="meta-group" style="text-align:left">
                     <div class="meta-label">الفترة</div>
@@ -1095,7 +1101,7 @@ import * as XLSX from 'xlsx';
 
 export function generateCasesInvoiceExcel(
     items: CasesInvoiceItem[],
-    doctorInfo: { name: string; code?: string },
+    doctorInfo: { name: string; code?: string; invoiceNumber?: string },
     dateRange: { start: string; end: string }
 ): void {
     if (items.length === 0) {
@@ -1132,6 +1138,12 @@ export function generateCasesInvoiceExcel(
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, 'فاتورة مطالبة');
+    if (doctorInfo.invoiceNumber) {
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+            ['رقم الفاتورة', doctorInfo.invoiceNumber],
+            ['كود الطبيب', doctorInfo.code ?? ''],
+        ]), 'بيانات الفاتورة');
+    }
 
     const safeName = (doctorInfo.name || 'doctor').replace(/[/\\?%*:|"<>]/g, '_');
     const dateLabel = dateRange.start || new Date().toISOString().split('T')[0];
@@ -1153,9 +1165,9 @@ export async function generateMonthlyInvoicePDF(
         monthEnd: string;
     },
     _labInfo: LabInfo,
-    options: { print?: boolean } = {}
+    options: { print?: boolean; identity?: DoctorInvoiceIdentity } = {}
 ): Promise<void> {
-    const html = buildMonthlyInvoiceHTML(entityName, entityType, invoiceMonth, invoiceData);
+    const html = buildMonthlyInvoiceHTML(entityName, entityType, invoiceMonth, invoiceData, options.identity);
     const doc = createPdf();
     await htmlToPdfPage(doc, html);
 
@@ -1191,7 +1203,8 @@ function buildMonthlyInvoiceHTML(
         totalDue: number;
         monthStart: string;
         monthEnd: string;
-    }
+    },
+    identity?: DoctorInvoiceIdentity
 ): string {
     const monthLabelStr = getMonthLabel(invoiceMonth);
     const entityTypeLabel = {
@@ -1244,6 +1257,7 @@ function buildMonthlyInvoiceHTML(
                 <div class="meta-group">
                     <div class="meta-label">${entityTypeLabel}</div>
                     <div class="meta-value large">${entityName}</div>
+                    ${identity ? `<div class="ref-tag">${identity.invoiceNumber}</div><div class="meta-value code">كود الطبيب ${identity.doctorCode}</div>` : ''}
                 </div>
                 <div class="meta-group">
                     <div class="meta-label">شهر المطالبة</div>

@@ -3,6 +3,7 @@ export interface DoctorBranch {
     name: string;
     address: string;
     phone: string;
+    shippingArea?: string;
 }
 
 export interface Doctor {
@@ -11,7 +12,9 @@ export interface Doctor {
     phone: string;
     phone2?: string;
     address: string;
+    shippingArea?: string;
     doctorCode: string; // e.g., 'DR01'
+    mergedInto?: string;
     representativeName: string;
     representativeId?: string; // Link to User.id
     customPrices?: Record<string, number>; // serviceName -> special sellingPrice
