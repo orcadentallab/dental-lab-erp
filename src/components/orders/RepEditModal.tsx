@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
-import { X, AlertTriangle, Save, Plus, Trash2 } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { useState, useEffect, useId, useMemo } from 'react';
+import { X, AlertTriangle, Save, Plus, Trash2, ClipboardPenLine, Check, FlaskConical, LockKeyhole, Info } from 'lucide-react';
 import { Input } from '../ui/Input';
 import DateField from '../ui/DateField';
-import { Card } from '../ui/Card';
+import { useDialogBehavior } from '../../hooks/useDialogBehavior';
 import { db } from '../../services/db';
 import type { Order, Supplier, User, Service, ServiceFamily, Doctor } from '../../services/db';
 import { repUpdateOrderWithAudit } from '../../services/supabase/orderWorkflow';
@@ -25,6 +24,17 @@ import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib
 import { productionStatusAfterDeliveryTypeChange } from '../../constants/deliveryTypeChange';
 import { PRODUCTION_STATUS_LABELS_AR } from '../../constants/workflow';
 import { CATALOG_EXTERNAL_ROUTE_ID, CATALOG_PRINT_ROUTE_ID, MIXED_TRY_IN_ROUTE_ID } from '../../services/supabase/production';
+
+const labelClass = 'mb-1.5 block text-sm font-semibold text-surface-800 dark:text-slate-200';
+const fieldClass = 'min-h-11 w-full rounded-xl border border-surface-200 bg-white px-3 py-2 text-base text-surface-900 placeholder:text-surface-500 transition-colors motion-reduce:transition-none focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:cursor-not-allowed disabled:bg-surface-100 disabled:text-surface-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-300';
+const actionClass = 'inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-4 text-sm font-bold transition-colors motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 disabled:cursor-not-allowed';
+const secondaryActionClass = actionClass + ' border border-surface-200 text-surface-700 hover:bg-surface-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700';
+const primaryActionClass = actionClass + ' bg-primary-700 text-white hover:bg-primary-800 disabled:bg-surface-100 disabled:text-surface-600 dark:bg-primary-600 dark:hover:bg-primary-700 dark:disabled:bg-slate-700 dark:disabled:text-slate-300';
+
+const deliveryOptions = [
+    { value: 'Final', label: 'نهائي', english: 'Final', Icon: Check },
+    { value: 'TryIn', label: 'بروفة', english: 'Try-In', Icon: FlaskConical },
+] as const;
 
 interface Props {
     order: Order;
@@ -177,6 +187,10 @@ function parsePendingProposal(raw: unknown): PendingProposalInfo | null {
 export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppliers, designers }: Props) {
     const { success, error: toastError } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const formId = useId();
+    const dialogRef = useDialogBehavior(isOpen, () => {
+        if (!isSubmitting) onClose();
+    });
     const [reasonCode, setReasonCode] = useState<OrderEditReasonCode | ''>('');
     const [reasonNote, setReasonNote] = useState('');
 
@@ -549,269 +563,214 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     if (!isOpen) return null;
 
     const hasChanges = Object.keys(getChanges()).length > 0;
+    const deliveryTypeEditable = isFieldEnabled('delivery_type');
+    const deliveryTypeChanged = deliveryTypeEditable && deliveryType !== (order.deliveryType || 'Final');
+    const needsApproval = requiresAdminApprovalForOrderEdit(order);
+    const itemsEditable = isFieldEnabled('items');
+    const deliveryNote = routeLocksDeliveryType
+        ? 'نوع التسليم ثابت في خريطة الإنتاج الخاصة بالأوردر.'
+        : !deliveryTypeEditable ? 'تغيير نوع التسليم غير متاح في حالة الأوردر الحالية.' : '';
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-surface-800 shadow-xl animate-in fade-in duration-200">
-                <div className="flex items-center justify-between p-4 border-b border-surface-200">
-                    <h2 className="text-lg font-bold text-surface-900">تعديل بيانات الأوردر</h2>
-                    <button onClick={onClose} className="p-1 rounded hover:bg-surface-100">
-                        <X size={20} />
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4">
+            <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={formId + '-title'} tabIndex={-1} dir="rtl"
+                className="flex max-h-[96dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-surface-200 bg-white text-surface-900 shadow-2xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 sm:max-h-[92dvh] sm:rounded-3xl">
+                <header className="flex shrink-0 items-center gap-3 border-b border-surface-200 px-4 py-3 dark:border-slate-700 sm:px-6 sm:py-4">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary-50 text-primary-700 dark:bg-primary-900/50 dark:text-primary-200">
+                        <ClipboardPenLine size={21} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <h2 id={formId + '-title'} className="text-lg font-bold sm:text-xl">تعديل بيانات الأوردر</h2>
+                        <p className="truncate text-sm text-surface-600 dark:text-slate-300"><bdi>{order.caseId}</bdi></p>
+                    </div>
+                    <button type="button" onClick={onClose} disabled={isSubmitting} aria-label="إغلاق فورمة التعديل"
+                        className={secondaryActionClass + ' w-11 shrink-0 px-0'}>
+                        <X size={19} aria-hidden="true" />
                     </button>
-                </div>
+                </header>
 
                 {showPendingNotice ? (
-                    <div className="p-6 space-y-6 text-center animate-in fade-in duration-200">
-                        <div className="flex justify-center">
-                            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-full text-amber-600">
-                                <AlertTriangle size={36} />
+                    <div className="space-y-4 overflow-y-auto p-5 sm:p-6">
+                        <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/35 dark:text-amber-100">
+                            <AlertTriangle size={20} aria-hidden="true" className="mt-0.5 shrink-0" />
+                            <div>
+                                <h3 className="font-bold">تعديل معلق بالفعل</h3>
+                                <p className="mt-1 text-sm leading-relaxed">فيه طلب تعديل للأوردر ده بانتظار موافقة الأدمن.</p>
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <h3 className="text-lg font-bold text-surface-900">تعديل معلق بالفعل</h3>
-                            <p className="text-sm text-surface-600 dark:text-surface-400 leading-relaxed">
-                                يرجى العلم بأن هناك تعديلًا معلقًا بالفعل بانتظار موافقة الإدارة على هذا الطلب.
-                            </p>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-3 justify-center pt-4">
-                            <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto">
-                                الرجوع
-                            </Button>
-                            <Button onClick={loadPendingChanges} className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white">
-                                تعديل الطلب المعلق
-                            </Button>
+                        <div className="flex flex-wrap gap-2">
+                            <button type="button" onClick={loadPendingChanges} className={primaryActionClass}>تعديل الطلب المعلق</button>
+                            <button type="button" onClick={onClose} className={secondaryActionClass}>الرجوع</button>
                         </div>
                     </div>
                 ) : isLoadingPending ? (
-                    <div className="p-12 text-center text-surface-500">
-                        جاري التحقق من التعديلات المعلقة...
-                    </div>
+                    <div role="status" className="p-8 text-center text-sm text-surface-600 dark:text-slate-300">جاري التحقق من التعديلات المعلقة...</div>
                 ) : (
                     <>
-                        <div className="p-4 space-y-4">
-                            <div>
-                                <label htmlFor={`rep-delivery-type-${order.id}`} className="block text-sm font-medium text-surface-700 mb-1">نوع التسليم</label>
-                                <select id={`rep-delivery-type-${order.id}`} value={deliveryType}
-                                    onChange={event => {
-                                        if (event.target.value === 'Final' || event.target.value === 'TryIn') setDeliveryType(event.target.value);
-                                    }}
-                                    disabled={isSubmitting || !isFieldEnabled('delivery_type')}
-                                    className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50">
-                                    <option value="Final">Final — نهائي</option>
-                                    <option value="TryIn">Try In — بروفة</option>
-                                </select>
-                                {routeLocksDeliveryType && <p className="mt-2 text-xs text-surface-500">نوع التسليم ثابت في خريطة الإنتاج الخاصة بالأوردر.</p>}
-                                {isFieldEnabled('delivery_type') && deliveryType !== (order.deliveryType || 'Final') && <p className="mt-2 text-xs text-amber-700">
-                                    المرحلة بعد التعديل: {PRODUCTION_STATUS_LABELS_AR[productionStatusAfterDeliveryTypeChange(productionStatus, order.deliveryType, deliveryType)]}.
-                                    {requiresAdminApprovalForOrderEdit(order) ? ' يُطبّق بعد موافقة الأدمن.' : ' يتم تحديث مسار الإنتاج والالتزامات المالية عند الحفظ.'}
-                                </p>}
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-surface-700 mb-1">اسم المريض</label>
-                                <Input
-                                    value={patientName}
-                                    onChange={(e) => setPatientName(e.target.value)}
-                                    disabled={!isFieldEnabled('patient_name')}
-                                    placeholder="اسم المريض"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-surface-700 mb-1">رابط STL</label>
-                                <Input
-                                    value={stlUrl}
-                                    onChange={(e) => setStlUrl(e.target.value)}
-                                    disabled={!isFieldEnabled('stl_url')}
-                                    placeholder="https://..."
-                                    dir="ltr"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-surface-700 mb-1">رابط الصور</label>
-                                <Input
-                                    value={imagesUrl}
-                                    onChange={(e) => setImagesUrl(e.target.value)}
-                                    disabled={!isFieldEnabled('images_url')}
-                                    placeholder="https://..."
-                                    dir="ltr"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-surface-700 mb-1">تاريخ التسليم</label>
-                                <DateField
-                                    value={deliveryDate}
-                                    onChange={setDeliveryDate}
-                                    ariaLabel="تاريخ التسليم"
-                                    disabled={!isFieldEnabled('delivery_date')}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-surface-700 mb-1">المعمل</label>
-                                <select
-                                    value={supplierId}
-                                    onChange={(e) => setSupplierId(e.target.value)}
-                                    disabled={!isFieldEnabled('supplier_id')}
-                                    className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50"
-                                >
-                                    <option value="">— بدون —</option>
-                                    {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
-                            </div>
-
-                            {order.workflowType === 'split' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-surface-700 mb-1">المصمم</label>
-                                    <select
-                                        value={designerId}
-                                        onChange={(e) => setDesignerId(e.target.value)}
-                                        disabled={!isFieldEnabled('designer_id')}
-                                        className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50"
-                                    >
-                                        <option value="">— بدون —</option>
-                                        {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                    </select>
-                                </div>
-                            )}
-
-                            <div>
-                                <label className="block text-sm font-medium text-surface-700 mb-1">تعليمات / ملاحظات</label>
-                                <textarea
-                                    value={instructions}
-                                    onChange={(e) => setInstructions(e.target.value)}
-                                    disabled={!isFieldEnabled('instructions')}
-                                    placeholder="تعليمات أو ملاحظات الحالة..."
-                                    className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50 resize-y min-h-[80px]"
-                                    rows={3}
-                                />
-                            </div>
-
-                            <div className="border-t border-surface-200 pt-4 mt-4">
-                                <div className="flex justify-between items-center mb-3">
-                                    <label className="block text-sm font-bold text-surface-800">الأصناف المطلوبة</label>
-                                    {isFieldEnabled('items') && (
-                                        <Button size="sm" variant="secondary" onClick={handleAddItem} className="h-8 text-xs gap-1">
-                                            <Plus size={14} /> إضافة صنف
-                                        </Button>
-                                    )}
-                                </div>
-
-                                <div className="space-y-3">
-                                    {items.map((item, index) => (
-                                        <div key={index} className="flex gap-2 items-center bg-surface-50 p-2 rounded-lg border border-surface-200">
-                                            <div className="w-6 h-6 rounded bg-white flex items-center justify-center font-bold text-surface-400 text-xs border border-surface-150 shrink-0">
-                                                {index + 1}
-                                            </div>
-                                            <div className="w-1/3">
-                                                <select
-                                                    value={item.serviceType}
-                                                    onChange={(e) => updateItem(index, 'serviceType', e.target.value)}
-                                                    disabled={!isFieldEnabled('items')}
-                                                    className="w-full bg-transparent font-bold text-xs outline-none text-surface-800 cursor-pointer border border-surface-200 rounded px-2 py-1 bg-white disabled:opacity-50"
-                                                >
-                                                    <option value="" disabled>{activeServices.length ? 'اختر الخدمة' : 'مفيش خدمات فعالة'}</option>
-                                                    {item.serviceType && !activeServices.some(s => s.name === item.serviceType) && (
-                                                        <option value={item.serviceType} disabled>{item.serviceType}{services.some(s => s.name === item.serviceType && s.isActive === false) ? ' (غير فعالة)' : ''}</option>
-                                                    )}
-                                                    {families.map(family => {
-                                                        const familyServices = activeServices.filter(s => s.familyId === family.id);
-                                                        if (familyServices.length === 0) return null;
-                                                        return (
-                                                            <optgroup key={family.id} label={`🔷 ${family.nameAr}`}>
-                                                                {familyServices.map(s => {
-                                                                    const isDefault = family.defaultServiceId === s.id;
-                                                                    return (
-                                                                        <option key={s.id} value={s.name}>
-                                                                            {s.name} {isDefault ? '⭐ (افتراضي)' : ''}
-                                                                        </option>
-                                                                    );
-                                                                })}
-                                                            </optgroup>
-                                                        );
-                                                    })}
-                                                    {activeServices.some(s => !s.familyId) && (
-                                                        <optgroup label="🔹 خدمات فردية">
-                                                            {activeServices.filter(s => !s.familyId).map(s => (
-                                                                <option key={s.id} value={s.name}>{s.name}</option>
-                                                            ))}
-                                                        </optgroup>
-                                                    )}
-                                                </select>
-                                            </div>
-                                            <div className="flex-1">
-                                                <TeethTagsInput
-                                                    value={item.teethNumbers}
-                                                    onChange={(teeth) => updateItem(index, 'teethNumbers', teeth)}
-                                                    disabled={!isFieldEnabled('items')}
-                                                    placeholder="أدخل رقم السن..."
-                                                />
-                                            </div>
-                                            {items.length > 1 && isFieldEnabled('items') && (
-                                                <button
-                                                    onClick={() => handleRemoveItem(index)}
-                                                    className="p-1.5 text-surface-400 hover:text-red-500 transition-colors"
-                                                    title="حذف"
-                                                    type="button"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            )}
-                                        </div>
+                        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+                            <fieldset className="min-w-0" aria-describedby={deliveryNote || deliveryTypeChanged ? formId + '-delivery-note' : undefined}>
+                                <legend className="mb-2 text-base font-bold">نوع التسليم</legend>
+                                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                                    {deliveryOptions.map(({ value, label, english, Icon }) => (
+                                        <label key={value} className={deliveryTypeEditable && !isSubmitting ? 'min-w-0 cursor-pointer' : 'min-w-0 cursor-not-allowed'}>
+                                            <input type="radio" name={formId + '-delivery-type'} value={value} checked={deliveryType === value}
+                                                onChange={() => setDeliveryType(value)} disabled={isSubmitting || !deliveryTypeEditable}
+                                                className="peer sr-only" />
+                                            <span className="flex min-h-[4.25rem] items-center gap-2 rounded-xl border border-surface-200 bg-white p-2.5 text-surface-800 transition-colors motion-reduce:transition-none peer-enabled:hover:border-primary-400 peer-checked:border-primary-600 peer-checked:bg-primary-50 peer-checked:text-primary-900 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary-500 peer-disabled:bg-surface-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:peer-checked:border-primary-400 dark:peer-checked:bg-primary-900/60 dark:peer-checked:text-primary-100 dark:peer-disabled:bg-slate-800 sm:gap-3 sm:px-3.5">
+                                                <Icon size={18} aria-hidden="true" className="shrink-0" />
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="block text-sm font-bold">{label}</span>
+                                                    <span className="block text-right text-xs font-medium text-surface-600 dark:text-slate-300" dir="ltr">{english}</span>
+                                                </span>
+                                                <span aria-hidden="true" className={deliveryType === value
+                                                    ? 'h-4 w-4 shrink-0 rounded-full border-[5px] border-primary-600 bg-white dark:border-primary-300 dark:bg-slate-900'
+                                                    : 'h-4 w-4 shrink-0 rounded-full border border-surface-300 dark:border-slate-500'} />
+                                            </span>
+                                        </label>
                                     ))}
                                 </div>
-                            </div>
+                                {(deliveryNote || deliveryTypeChanged) && (
+                                    <div id={formId + '-delivery-note'} role="status"
+                                        className="mt-2.5 flex items-start gap-2 rounded-xl border border-primary-100 bg-primary-50 px-3 py-2.5 text-sm leading-relaxed text-primary-900 dark:border-primary-800 dark:bg-primary-950 dark:text-primary-100">
+                                        {deliveryNote ? <LockKeyhole size={16} aria-hidden="true" className="mt-0.5 shrink-0" /> : <Info size={16} aria-hidden="true" className="mt-0.5 shrink-0" />}
+                                        <span>{deliveryNote || <>
+                                            المرحلة بعد التعديل <strong>{PRODUCTION_STATUS_LABELS_AR[productionStatusAfterDeliveryTypeChange(productionStatus, order.deliveryType, deliveryType)]}</strong>.
+                                            {needsApproval ? ' يُطبّق بعد موافقة الأدمن.' : ' يتم تحديث مسار الإنتاج والالتزامات المالية عند الحفظ.'}
+                                        </>}</span>
+                                    </div>
+                                )}
+                            </fieldset>
 
-                            <div className="border-t border-surface-200 pt-4 mt-4">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <AlertTriangle size={16} className="text-amber-500" />
-                                    <span className="text-sm font-bold text-surface-800">سبب التعديل (مطلوب)</span>
+                            <section aria-labelledby={formId + '-details'} className="border-t border-surface-200 pt-4 dark:border-slate-700">
+                                <h3 id={formId + '-details'} className="mb-3 text-base font-bold">بيانات الحالة</h3>
+                                <div className="grid gap-x-4 gap-y-3.5 sm:grid-cols-2">
+                                    <div>
+                                        <label htmlFor={formId + '-patient'} className={labelClass}>اسم المريض</label>
+                                        <Input id={formId + '-patient'} value={patientName} onChange={e => setPatientName(e.target.value)}
+                                            disabled={!isFieldEnabled('patient_name')} className={fieldClass} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor={formId + '-date'} className={labelClass}>تاريخ التسليم</label>
+                                        <DateField id={formId + '-date'} value={deliveryDate} onChange={setDeliveryDate}
+                                            disabled={!isFieldEnabled('delivery_date')} className="dark:[&>div:first-child]:border-slate-600 dark:[&>div:first-child]:bg-slate-900 dark:[&_input]:text-slate-100 dark:[&_button]:text-slate-300" />
+                                    </div>
+                                    <div>
+                                        <label htmlFor={formId + '-stl'} className={labelClass}>رابط STL</label>
+                                        <Input id={formId + '-stl'} value={stlUrl} onChange={e => setStlUrl(e.target.value)}
+                                            disabled={!isFieldEnabled('stl_url')} placeholder="https://..." dir="ltr" className={fieldClass} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor={formId + '-images'} className={labelClass}>رابط الصور</label>
+                                        <Input id={formId + '-images'} value={imagesUrl} onChange={e => setImagesUrl(e.target.value)}
+                                            disabled={!isFieldEnabled('images_url')} placeholder="https://..." dir="ltr" className={fieldClass} />
+                                    </div>
+                                    <div className={order.workflowType === 'split' ? undefined : 'sm:col-span-2'}>
+                                        <label htmlFor={formId + '-lab'} className={labelClass}>المعمل</label>
+                                        <select id={formId + '-lab'} value={supplierId} onChange={e => setSupplierId(e.target.value)}
+                                            disabled={!isFieldEnabled('supplier_id')} className={fieldClass + ' enabled:cursor-pointer'}>
+                                            <option value="">بدون معمل</option>
+                                            {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                    </div>
+                                    {order.workflowType === 'split' && (
+                                        <div>
+                                            <label htmlFor={formId + '-designer'} className={labelClass}>المصمم</label>
+                                            <select id={formId + '-designer'} value={designerId} onChange={e => setDesignerId(e.target.value)}
+                                                disabled={!isFieldEnabled('designer_id')} className={fieldClass + ' enabled:cursor-pointer'}>
+                                                <option value="">بدون مصمم</option>
+                                                {designers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                    <div className="sm:col-span-2">
+                                        <label htmlFor={formId + '-notes'} className={labelClass}>التعليمات والملاحظات</label>
+                                        <textarea id={formId + '-notes'} value={instructions} onChange={e => setInstructions(e.target.value)}
+                                            disabled={!isFieldEnabled('instructions')} className={fieldClass + ' resize-y'} rows={2} />
+                                    </div>
                                 </div>
-                                <select
-                                    value={reasonCode}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        const found = ORDER_EDIT_REASON_CODES.find(code => code === val);
-                                        setReasonCode(found || '');
-                                    }}
-                                    className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm mb-2"
-                                >
-                                    <option value="">— اختر السبب —</option>
-                                    {ORDER_EDIT_REASON_CODES
-                                        .filter(c => c !== 'items_corrected' && c !== 'teeth_corrected')
-                                        .map(code => (
-                                            <option key={code} value={code}>{ORDER_EDIT_REASON_LABELS_AR[code]}</option>
-                                        ))
-                                    }
-                                </select>
+                            </section>
 
+                            <section aria-labelledby={formId + '-items'} className="space-y-3 border-t border-surface-200 pt-4 dark:border-slate-700">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <h3 id={formId + '-items'} className="text-base font-bold">الأصناف المطلوبة</h3>
+                                    {itemsEditable && (
+                                        <button type="button" onClick={handleAddItem} className={secondaryActionClass}>
+                                            <Plus size={16} aria-hidden="true" /> إضافة صنف
+                                        </button>
+                                    )}
+                                </div>
+                                {items.map((item, index) => (
+                                    <div key={index} className="flex items-start gap-2 rounded-xl border border-surface-200 bg-surface-50 p-3 dark:border-slate-700 dark:bg-slate-800/60">
+                                        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                                            <select aria-label={`الخدمة للصنف ${index + 1}`} value={item.serviceType}
+                                                onChange={e => updateItem(index, 'serviceType', e.target.value)} disabled={!itemsEditable}
+                                                className={fieldClass + ' min-w-0 enabled:cursor-pointer'}>
+                                                <option value="" disabled>{activeServices.length ? 'اختر الخدمة' : 'مفيش خدمات فعالة'}</option>
+                                                {item.serviceType && !activeServices.some(s => s.name === item.serviceType) && (
+                                                    <option value={item.serviceType} disabled>{item.serviceType}{services.some(s => s.name === item.serviceType && s.isActive === false) ? ' (غير فعالة)' : ''}</option>
+                                                )}
+                                                {families.map(family => {
+                                                    const familyServices = activeServices.filter(s => s.familyId === family.id);
+                                                    if (familyServices.length === 0) return null;
+                                                    return (
+                                                        <optgroup key={family.id} label={family.nameAr}>
+                                                            {familyServices.map(s => (
+                                                                <option key={s.id} value={s.name}>{s.name}{family.defaultServiceId === s.id ? ' (افتراضي)' : ''}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                    );
+                                                })}
+                                                {activeServices.some(s => !s.familyId) && (
+                                                    <optgroup label="خدمات فردية">
+                                                        {activeServices.filter(s => !s.familyId).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                                    </optgroup>
+                                                )}
+                                            </select>
+                                            <TeethTagsInput value={item.teethNumbers} onChange={teeth => updateItem(index, 'teethNumbers', teeth)}
+                                                disabled={!itemsEditable} placeholder="رقم السن" className="min-h-11 min-w-0 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:[&_input]:placeholder:text-slate-400" />
+                                        </div>
+                                        {items.length > 1 && itemsEditable && (
+                                            <button type="button" onClick={() => handleRemoveItem(index)} aria-label={`حذف الصنف ${index + 1}`}
+                                                className={secondaryActionClass + ' w-11 shrink-0 px-0 hover:border-red-200 hover:text-red-700 dark:hover:text-red-300'}>
+                                                <Trash2 size={16} aria-hidden="true" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </section>
+
+                        </div>
+                        <footer className="flex shrink-0 flex-col gap-3 border-t border-surface-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:flex-row sm:items-end sm:px-6">
+                            <div className="min-w-0 flex-1">
+                                <label htmlFor={formId + '-reason'} className={labelClass}>سبب التعديل <span className="text-surface-600 dark:text-slate-300">(مطلوب)</span></label>
+                                <select id={formId + '-reason'} required value={reasonCode}
+                                    onChange={e => setReasonCode(ORDER_EDIT_REASON_CODES.find(code => code === e.target.value) || '')}
+                                    className={fieldClass + ' cursor-pointer'}>
+                                    <option value="">اختر السبب</option>
+                                    {ORDER_EDIT_REASON_CODES.filter(code => code !== 'items_corrected' && code !== 'teeth_corrected').map(code => (
+                                        <option key={code} value={code}>{ORDER_EDIT_REASON_LABELS_AR[code]}</option>
+                                    ))}
+                                </select>
                                 {reasonCode !== '' && reasonRequiresNote(reasonCode) && (
-                                    <textarea
-                                        value={reasonNote}
-                                        onChange={(e) => setReasonNote(e.target.value)}
-                                        placeholder="اكتب ملاحظة توضيحية..."
-                                        className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm resize-none"
-                                        rows={2}
-                                    />
+                                    <div className="mt-3">
+                                        <label htmlFor={formId + '-reason-note'} className={labelClass}>ملاحظة توضيحية</label>
+                                        <textarea id={formId + '-reason-note'} required value={reasonNote} onChange={e => setReasonNote(e.target.value)}
+                                            className={fieldClass + ' resize-y'} rows={2} />
+                                    </div>
                                 )}
                             </div>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 p-4 border-t border-surface-200">
-                            <Button variant="ghost" onClick={onClose} disabled={isSubmitting}>إلغاء</Button>
-                            <Button
-                                onClick={handleSubmit}
-                                disabled={isSubmitting || !hasChanges || !reasonCode}
-                                className="bg-primary-600 hover:bg-primary-700 text-white"
-                            >
-                                <Save size={14} />
-                                <span className="mr-1">{isSubmitting ? 'جاري الحفظ...' : 'حفظ التعديلات'}</span>
-                            </Button>
-                        </div>
+                            <div className="flex shrink-0 items-center gap-2">
+                                <button type="button" onClick={handleSubmit} disabled={isSubmitting || !hasChanges || !reasonCode}
+                                    className={primaryActionClass + ' flex-1 sm:flex-none'}>
+                                    <Save size={16} aria-hidden="true" />
+                                    {isSubmitting ? 'جاري الحفظ...' : needsApproval ? 'إرسال للمراجعة' : 'حفظ التعديلات'}
+                                </button>
+                                <button type="button" onClick={onClose} disabled={isSubmitting} className={secondaryActionClass}>إلغاء</button>
+                            </div>
+                        </footer>
                     </>
                 )}
-            </Card>
+            </div>
         </div>
     );
 }
