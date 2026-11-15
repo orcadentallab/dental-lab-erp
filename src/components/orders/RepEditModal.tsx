@@ -22,6 +22,9 @@ import { useToast } from '../../context/ToastContext';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
 import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
+import { productionStatusAfterDeliveryTypeChange } from '../../constants/deliveryTypeChange';
+import { PRODUCTION_STATUS_LABELS_AR } from '../../constants/workflow';
+import { CATALOG_EXTERNAL_ROUTE_ID, CATALOG_PRINT_ROUTE_ID, MIXED_TRY_IN_ROUTE_ID } from '../../services/supabase/production';
 
 interface Props {
     order: Order;
@@ -98,12 +101,11 @@ const calculateAutomaticDesignPrice = (
 };
 
 interface FormChanges {
+    delivery_type?: 'Final' | 'TryIn';
     patient_name?: string;
     stl_url?: string;
     images_url?: string;
     delivery_date?: string;
-    is_urgent?: boolean | string;
-    priority?: string;
     supplier_id?: string;
     designer_id?: string;
     instructions?: string;
@@ -137,15 +139,12 @@ function parsePendingProposal(raw: unknown): PendingProposalInfo | null {
     if (!isRecord(changes)) return null;
 
     const parsedChanges: FormChanges = {};
+    if (changes.delivery_type === 'Final' || changes.delivery_type === 'TryIn') parsedChanges.delivery_type = changes.delivery_type;
 
     if (typeof changes.patient_name === 'string') parsedChanges.patient_name = changes.patient_name;
     if (typeof changes.stl_url === 'string') parsedChanges.stl_url = changes.stl_url;
     if (typeof changes.images_url === 'string') parsedChanges.images_url = changes.images_url;
     if (typeof changes.delivery_date === 'string') parsedChanges.delivery_date = changes.delivery_date;
-    if (typeof changes.is_urgent === 'boolean' || typeof changes.is_urgent === 'string') {
-        parsedChanges.is_urgent = changes.is_urgent;
-    }
-    if (typeof changes.priority === 'string') parsedChanges.priority = changes.priority;
     if (typeof changes.supplier_id === 'string') parsedChanges.supplier_id = changes.supplier_id;
     if (typeof changes.designer_id === 'string') parsedChanges.designer_id = changes.designer_id;
     if (typeof changes.instructions === 'string') parsedChanges.instructions = changes.instructions;
@@ -182,11 +181,10 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     const [reasonNote, setReasonNote] = useState('');
 
     const [patientName, setPatientName] = useState(order.patientName || '');
+    const [deliveryType, setDeliveryType] = useState<'Final' | 'TryIn'>(order.deliveryType || 'Final');
     const [stlUrl, setStlUrl] = useState(order.stlUrl || '');
     const [imagesUrl, setImagesUrl] = useState(order.imagesUrl || '');
     const [deliveryDate, setDeliveryDate] = useState(order.deliveryDate || '');
-    const [isUrgent, setIsUrgent] = useState(order.isUrgent || false);
-    const [priority, setPriority] = useState<'Normal' | 'Urgent'>(order.priority || 'Normal');
     const [supplierId, setSupplierId] = useState(order.supplierId || '');
     const [designerId, setDesignerId] = useState(order.designerId || '');
     const [instructions, setInstructions] = useState(order.instructions || '');
@@ -258,16 +256,10 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
 
         if (isOpen) {
             setPatientName(order.patientName || '');
+            setDeliveryType(order.deliveryType || 'Final');
             setStlUrl(order.stlUrl || '');
             setImagesUrl(order.imagesUrl || '');
             setDeliveryDate(order.deliveryDate || '');
-            setIsUrgent(order.isUrgent || false);
-            const initialPriority = order.priority;
-            if (initialPriority === 'Normal' || initialPriority === 'Urgent') {
-                setPriority(initialPriority);
-            } else {
-                setPriority('Normal');
-            }
             setSupplierId(order.supplierId || '');
             setDesignerId(order.designerId || '');
             setInstructions(order.instructions || '');
@@ -302,18 +294,10 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
         const changes = pendingProposal.changes;
 
         if (changes.patient_name !== undefined) setPatientName(changes.patient_name);
+        if (changes.delivery_type !== undefined) setDeliveryType(changes.delivery_type);
         if (changes.stl_url !== undefined) setStlUrl(changes.stl_url);
         if (changes.images_url !== undefined) setImagesUrl(changes.images_url);
         if (changes.delivery_date !== undefined) setDeliveryDate(changes.delivery_date);
-        if (changes.is_urgent !== undefined) {
-            setIsUrgent(changes.is_urgent === true || changes.is_urgent === 'true');
-        }
-        if (changes.priority !== undefined) {
-            const prio = changes.priority;
-            if (prio === 'Normal' || prio === 'Urgent') {
-                setPriority(prio);
-            }
-        }
         if (changes.supplier_id !== undefined) setSupplierId(changes.supplier_id);
         if (changes.designer_id !== undefined) setDesignerId(changes.designer_id);
         if (changes.instructions !== undefined) setInstructions(changes.instructions);
@@ -349,7 +333,11 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     const productionStatus = getEffectiveProductionStatus(order);
     const issueState = getEffectiveIssueState(order);
 
+    const routeLocksDeliveryType = [MIXED_TRY_IN_ROUTE_ID, CATALOG_PRINT_ROUTE_ID, CATALOG_EXTERNAL_ROUTE_ID]
+        .some(routeId => routeId === order.routeOverrideId);
+
     const isFieldEnabled = (dbField: RepAuditedField): boolean => {
+        if (dbField === 'delivery_type' && (routeLocksDeliveryType || order.isDeleted)) return false;
         const guard = REP_FIELD_STATE_GUARDS[dbField];
         if (!guard) return false;
         return guard({ productionStatus, issueState, workflowType: order.workflowType });
@@ -399,11 +387,10 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
     const getChanges = (): Partial<Order> => {
         const changes: Partial<Order> = {};
         if (patientName !== (order.patientName || '') && isFieldEnabled('patient_name'))    changes.patientName = patientName;
+        if (deliveryType !== (order.deliveryType || 'Final') && isFieldEnabled('delivery_type')) changes.deliveryType = deliveryType;
         if (stlUrl !== (order.stlUrl || '') && isFieldEnabled('stl_url'))                  changes.stlUrl = stlUrl;
         if (imagesUrl !== (order.imagesUrl || '') && isFieldEnabled('images_url'))          changes.imagesUrl = imagesUrl;
         if (deliveryDate !== (order.deliveryDate || '') && isFieldEnabled('delivery_date')) changes.deliveryDate = deliveryDate;
-        if (isUrgent !== (order.isUrgent || false) && isFieldEnabled('is_urgent'))          changes.isUrgent = isUrgent;
-        if (priority !== (order.priority || 'Normal') && isFieldEnabled('priority'))        changes.priority = priority;
         if (supplierId !== (order.supplierId || '') && isFieldEnabled('supplier_id'))       changes.supplierId = supplierId || undefined;
         if (designerId !== (order.designerId || '') && isFieldEnabled('designer_id'))       changes.designerId = designerId || undefined;
         if (instructions !== (order.instructions || '') && isFieldEnabled('instructions')) changes.instructions = instructions;
@@ -603,6 +590,23 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                     <>
                         <div className="p-4 space-y-4">
                             <div>
+                                <label htmlFor={`rep-delivery-type-${order.id}`} className="block text-sm font-medium text-surface-700 mb-1">نوع التسليم</label>
+                                <select id={`rep-delivery-type-${order.id}`} value={deliveryType}
+                                    onChange={event => {
+                                        if (event.target.value === 'Final' || event.target.value === 'TryIn') setDeliveryType(event.target.value);
+                                    }}
+                                    disabled={isSubmitting || !isFieldEnabled('delivery_type')}
+                                    className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50">
+                                    <option value="Final">Final — نهائي</option>
+                                    <option value="TryIn">Try In — بروفة</option>
+                                </select>
+                                {routeLocksDeliveryType && <p className="mt-2 text-xs text-surface-500">نوع التسليم ثابت في خريطة الإنتاج الخاصة بالأوردر.</p>}
+                                {isFieldEnabled('delivery_type') && deliveryType !== (order.deliveryType || 'Final') && <p className="mt-2 text-xs text-amber-700">
+                                    المرحلة بعد التعديل: {PRODUCTION_STATUS_LABELS_AR[productionStatusAfterDeliveryTypeChange(productionStatus, order.deliveryType, deliveryType)]}.
+                                    {requiresAdminApprovalForOrderEdit(order) ? ' يُطبّق بعد موافقة الأدمن.' : ' يتم تحديث مسار الإنتاج والالتزامات المالية عند الحفظ.'}
+                                </p>}
+                            </div>
+                            <div>
                                 <label className="block text-sm font-medium text-surface-700 mb-1">اسم المريض</label>
                                 <Input
                                     value={patientName}
@@ -642,38 +646,6 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                                     ariaLabel="تاريخ التسليم"
                                     disabled={!isFieldEnabled('delivery_date')}
                                 />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="block text-sm font-medium text-surface-700 mb-1">الأولوية</label>
-                                    <select
-                                        value={priority}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            if (val === 'Normal' || val === 'Urgent') {
-                                                setPriority(val);
-                                            }
-                                        }}
-                                        disabled={!isFieldEnabled('priority')}
-                                        className="w-full px-3 py-2 border border-surface-200 rounded-lg text-sm disabled:opacity-50"
-                                    >
-                                        <option value="Normal">عادي</option>
-                                        <option value="Urgent">عاجل</option>
-                                    </select>
-                                </div>
-                                <div className="flex items-end pb-2">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={isUrgent}
-                                            onChange={(e) => setIsUrgent(e.target.checked)}
-                                            disabled={!isFieldEnabled('is_urgent')}
-                                            className="w-4 h-4 rounded border-surface-300"
-                                        />
-                                        <span className="text-sm font-medium text-surface-700">طارئ</span>
-                                    </label>
-                                </div>
                             </div>
 
                             <div>
