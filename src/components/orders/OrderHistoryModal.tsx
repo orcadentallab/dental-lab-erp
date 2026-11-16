@@ -27,6 +27,7 @@ const EVENT_LABELS: Record<string, string> = {
     order_ready: 'الأوردر جاهز',
     order_delivered: 'تم تسليم الأوردر',
     delivery_route_changed: 'تم تغيير مسار التسليم',
+    converted_to_external_lab: 'تم التحويل إلى معمل خارجي',
     issue_reported: 'تم تسجيل مشكلة',
     remake_requested: 'تم طلب إعادة',
     rejection_requested: 'تم تسجيل رفض',

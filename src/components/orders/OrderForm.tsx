@@ -20,6 +20,7 @@ import { MIXED_TRY_IN_ROUTE_ID, isExplicitProductionRoute, getRoutes, getEffecti
 
 interface OrderFormProps {
     onCancel: () => void;
+    onExternalLabConversion?: () => void;
     onSubmit: (order: Omit<Order, 'id'>) => any;
     initialData?: Order;
     readOnly?: boolean;
@@ -130,7 +131,7 @@ const normalizeArabic = (text: string): string => {
         .toLowerCase();
 };
 
-export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }: OrderFormProps) {
+export default function OrderForm({ onCancel, onSubmit, initialData, readOnly, onExternalLabConversion }: OrderFormProps) {
     const [quotedShippingFee, setQuotedShippingFee] = useState('');
     const { user } = useAuth();
     const hideInternalLabOption = isRepresentativeUser(user);
@@ -1254,6 +1255,12 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                             تنفيذ العمل
                         </h3>
 
+                        {onExternalLabConversion && (
+                            <Button type="button" variant="secondary" size="sm" className="mb-3 w-full"
+                                disabled={isSubmitting} onClick={onExternalLabConversion}>
+                                تحويل إلى معمل خارجي وإخراج من الإنتاج
+                            </Button>
+                        )}
                         {/* Execution Mode: Internal Lab vs External Lab */}
                         <div className="mb-3">
                             <label className="text-[10px] font-bold text-surface-500 block mb-1">جهة التنفيذ</label>
@@ -1277,7 +1284,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                 <button
                                     type="button"
                                     onClick={() => setExecutionMode('external')}
-                                    disabled={isFieldDisabled('supplier_id')}
+                                    disabled={isFieldDisabled('supplier_id') || !!onExternalLabConversion}
                                     className={clsx(
                                         segmentButtonClass,
                                         executionMode === 'external'
