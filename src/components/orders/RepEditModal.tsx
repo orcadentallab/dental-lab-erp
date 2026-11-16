@@ -18,9 +18,10 @@ import {
 } from '../../lib/workflowPermissions';
 import { getEffectiveProductionStatus, getEffectiveIssueState, requiresAdminApprovalForOrderEdit } from '../../constants/orderLifecycle';
 import { useToast } from '../../context/ToastContext';
+import { useAuth } from '../../context/AuthContext';
 import { TeethTagsInput } from '../ui/TeethTagsInput';
 import { getDoctorServicePrice, reconcileLegacyItemPrices } from '../../lib/pricingUtils';
-import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION } from '../../lib/userRoles';
+import { hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isRepresentativeUser } from '../../lib/userRoles';
 import { productionStatusAfterDeliveryTypeChange } from '../../constants/deliveryTypeChange';
 import { PRODUCTION_STATUS_LABELS_AR } from '../../constants/workflow';
 import { CATALOG_EXTERNAL_ROUTE_ID, CATALOG_PRINT_ROUTE_ID, MIXED_TRY_IN_ROUTE_ID } from '../../services/supabase/production';
@@ -185,6 +186,8 @@ function parsePendingProposal(raw: unknown): PendingProposalInfo | null {
 }
 
 export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppliers, designers }: Props) {
+    const { user } = useAuth();
+    const canLeaveSupplierEmpty = !order.supplierId || !isRepresentativeUser(user);
     const { success, error: toastError } = useToast();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const formId = useId();
@@ -312,7 +315,9 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
         if (changes.stl_url !== undefined) setStlUrl(changes.stl_url);
         if (changes.images_url !== undefined) setImagesUrl(changes.images_url);
         if (changes.delivery_date !== undefined) setDeliveryDate(changes.delivery_date);
-        if (changes.supplier_id !== undefined) setSupplierId(changes.supplier_id);
+        if (changes.supplier_id !== undefined && (changes.supplier_id || canLeaveSupplierEmpty)) {
+            setSupplierId(changes.supplier_id);
+        }
         if (changes.designer_id !== undefined) setDesignerId(changes.designer_id);
         if (changes.instructions !== undefined) setInstructions(changes.instructions);
         if (changes.items !== undefined) {
@@ -668,7 +673,7 @@ export default function RepEditModal({ order, isOpen, onClose, onSuccess, suppli
                                         <label htmlFor={formId + '-lab'} className={labelClass}>المعمل</label>
                                         <select id={formId + '-lab'} value={supplierId} onChange={e => setSupplierId(e.target.value)}
                                             disabled={!isFieldEnabled('supplier_id')} className={fieldClass + ' enabled:cursor-pointer'}>
-                                            <option value="">بدون معمل</option>
+                                            {canLeaveSupplierEmpty && <option value="">بدون معمل</option>}
                                             {visibleSuppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>

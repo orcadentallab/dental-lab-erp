@@ -133,6 +133,7 @@ const normalizeArabic = (text: string): string => {
 export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }: OrderFormProps) {
     const [quotedShippingFee, setQuotedShippingFee] = useState('');
     const { user } = useAuth();
+    const hideInternalLabOption = isRepresentativeUser(user);
     const { error: toastError } = useToast();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [services, setServices] = useState<Service[]>([]);
@@ -299,7 +300,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
     const [isLoadingRouteStages, setIsLoadingRouteStages] = useState(false);
 
     const [workflowType, setWorkflowType] = useState<'full' | 'split'>(
-        initialData?.workflowType || (initialData?.supplierId ? 'full' : 'split')
+        initialData?.workflowType || (initialData?.supplierId || (!initialData && hideInternalLabOption) ? 'full' : 'split')
     );
     const [designerId, setDesignerId] = useState(initialData?.designerId || '');
 
@@ -1257,7 +1258,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                         <div className="mb-3">
                             <label className="text-[10px] font-bold text-surface-500 block mb-1">جهة التنفيذ</label>
                             <div className={segmentWrapClass}>
-                                <button
+                                {!hideInternalLabOption && <button
                                     type="button"
                                     onClick={() => {
                                         setExecutionMode('internal');
@@ -1272,7 +1273,7 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly }:
                                     )}
                                 >
                                     معمل داخلي
-                                </button>
+                                </button>}
                                 <button
                                     type="button"
                                     onClick={() => setExecutionMode('external')}
