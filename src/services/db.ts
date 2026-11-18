@@ -1295,9 +1295,9 @@ class MockDB {
         return submitDesignForApproval(orderId, designUrl, userId, userName);
     }
 
-    async deleteOrder(id: string): Promise<void> {
+    async deleteOrder(id: string, reason?: string): Promise<void> {
         const { deleteOrder } = await import('./supabase/orders');
-        return deleteOrder(id);
+        return deleteOrder(id, reason);
     }
 
     async bulkUpsertOrders(newOrders: Order[]): Promise<number> {

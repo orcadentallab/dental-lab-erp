@@ -2918,16 +2918,16 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     return updatedOrder;
 }
 
-export async function deleteOrder(id: string): Promise<void> {
+export async function deleteOrder(id: string, reason?: string): Promise<void> {
     // Validate UUID
     if (!id || typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
         throw new ValidationError('معرف الطلب غير صحيح');
     }
 
     try {
-        const { error } = await supabase.rpc('soft_delete_order_atomic', {
-            p_order_id: id,
-        });
+        const { error } = reason === undefined
+            ? await supabase.rpc('soft_delete_order_atomic', { p_order_id: id })
+            : await supabase.rpc('void_mistaken_delivered_order', { p_order_id: id, p_reason: reason });
 
         if (error) {
             throw error;

@@ -422,14 +422,9 @@ function OrdersPage() {
         }
     };
 
-    const handleDeleteOrder = async (order: Order) => {
-        try {
-            await db.deleteOrder(order.id);
-            refreshNavBadges();
-            await refreshOrders();
-        } catch {
-            alert('Failed to delete order');
-        }
+    const handleDeleteOrder = async (order: Order, reason?: string) => {
+        await db.deleteOrder(order.id, reason);
+        await refreshOrders();
     };
 
     const openNewOrder = () => {

@@ -19,6 +19,7 @@ interface OrderHistoryModalProps {
 }
 
 const EVENT_LABELS: Record<string, string> = {
+    mistaken_order_voided: 'تم إبطال أوردر أُنشئ بالغلط',
     order_created: 'تم إنشاء الأوردر',
     production_status_changed: 'تم تغيير حالة الأوردر',
     try_in_started: 'بدأت مرحلة Try-In',
