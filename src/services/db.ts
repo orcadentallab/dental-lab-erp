@@ -262,7 +262,7 @@ export interface OrderItem {
 }
 
 export interface Order {
-    quotedShippingFee?: number;
+    quotedShippingFee?: number | null;
     id: string; // Internal ID
     caseId: string; // Generated ID
     doctorId: string;

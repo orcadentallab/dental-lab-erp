@@ -33,6 +33,13 @@ export type Adjustment = {
     created_at: string;
 };
 
+export async function getPostedOrderShippingFee(orderId: string): Promise<number | null> {
+    const { data, error } = await supabase.from('adjustments')
+        .select('amount').eq('shipping_order_id', orderId).eq('service_charge_kind', 'shipping').maybeSingle();
+    if (error) throw error;
+    return data?.amount == null ? null : Number(data.amount);
+}
+
 export type CashboxType = 'cash' | 'bank' | 'wallet' | 'other';
 
 export interface Cashbox {

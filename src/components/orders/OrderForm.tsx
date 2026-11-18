@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { db, type Doctor, type Order, type Service, type ServiceFamily, type OrderItem, type User, type Supplier } from '../../services/db';
 import { generateNextCaseIdForDoctor } from '../../services/caseIdService';
+import { getPostedOrderShippingFee } from '../../services/financeService';
 import { Plus, Trash2, AlertTriangle, Truck, Settings, Link as LinkIcon, Box, DollarSign, X, CheckCircle, Image, Lock, Printer } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -132,8 +133,26 @@ const normalizeArabic = (text: string): string => {
 };
 
 export default function OrderForm({ onCancel, onSubmit, initialData, readOnly, onExternalLabConversion }: OrderFormProps) {
-    const [quotedShippingFee, setQuotedShippingFee] = useState('');
     const { user } = useAuth();
+    const canEditShippingFee = !readOnly && (!initialData || user?.role === 'admin');
+    const shippingOrderId = canEditShippingFee ? initialData?.id : undefined;
+    const initialShippingQuote = initialData?.quotedShippingFee ?? null;
+    const [quotedShippingFee, setQuotedShippingFee] = useState('');
+    const [savedShippingFee, setSavedShippingFee] = useState<{ orderId: string; amount: number | null } | null>(null);
+    const [shippingFeeLoadFailed, setShippingFeeLoadFailed] = useState(false);
+    const shippingFeeReady = !shippingOrderId || savedShippingFee?.orderId === shippingOrderId;
+    useEffect(() => {
+        if (!shippingOrderId) return;
+        let active = true;
+        setShippingFeeLoadFailed(false);
+        void getPostedOrderShippingFee(shippingOrderId).then(posted => {
+            if (!active) return;
+            const amount = posted ?? initialShippingQuote;
+            setSavedShippingFee({ orderId: shippingOrderId, amount });
+            setQuotedShippingFee(amount == null ? '' : String(amount));
+        }).catch(() => { if (active) setShippingFeeLoadFailed(true); });
+        return () => { active = false; };
+    }, [shippingOrderId, initialShippingQuote]);
     const hideInternalLabOption = isRepresentativeUser(user);
     const { error: toastError } = useToast();
     const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -790,7 +809,8 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly, o
                 deliveryDate,
                 createdAt: new Date(receivedDate).toISOString(),
                 totalPrice: total,
-                ...(!initialData && Number(quotedShippingFee) > 0 ? { quotedShippingFee: Number(quotedShippingFee) } : {}),
+                ...(canEditShippingFee && shippingFeeReady && ((Number(quotedShippingFee) || null) !== (savedShippingFee?.amount ?? null))
+                    ? { quotedShippingFee: Number(quotedShippingFee) || null } : {}),
                 // The form knows both components directly, so it records them
                 // and lets the database add them up. cost is sent too and must
                 // agree; it is the same sum by construction.
@@ -1500,14 +1520,20 @@ export default function OrderForm({ onCancel, onSubmit, initialData, readOnly, o
                             </div>
                         </div>
 
-                        {!initialData && !readOnly && <div className="mt-3 border-t border-white/15 pt-3">
+                        {canEditShippingFee && <div className="mt-3 border-t border-white/15 pt-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <label htmlFor="quoted-shipping-fee" className="text-sm font-semibold text-slate-100">رسوم الشحن <span className="text-xs font-normal text-slate-300">اختياري</span></label>
-                                <input id="quoted-shipping-fee" type="number" min="0" max="9999999999.99" step="0.01" value={quotedShippingFee}
+                                <input id="quoted-shipping-fee" type="number" min="0" max="9999999999.99" step="0.01" value={quotedShippingFee} disabled={!shippingFeeReady}
                                     onChange={event => setQuotedShippingFee(event.target.value)} aria-describedby="shipping-fee-note"
                                     className="min-h-11 w-28 rounded-lg border border-white/20 bg-white/10 px-2 text-right text-base text-white placeholder:text-slate-300 focus-visible:ring-2 focus-visible:ring-cyan-300" placeholder="0.00" />
                             </div>
-                            <p id="shipping-fee-note" className="mt-1 text-xs text-slate-300">تُضاف للفاتورة عند التسليم النهائي.</p>
+                            <p id="shipping-fee-note" className="mt-1 text-xs text-slate-300">
+                                {shippingFeeLoadFailed ? 'تعذّر تحميل الرسوم. أعد فتح الأوردر للمحاولة.'
+                                    : !shippingFeeReady ? 'جاري تحميل رسوم الشحن…'
+                                        : initialData?.firstDeliveredAt || initialData?.productionStatus === 'final_delivered'
+                                            ? 'الحفظ يحدّث حساب الطبيب. امسح المبلغ لإلغاء الرسوم.'
+                                            : 'تُسجّل في حساب الطبيب عند التسليم النهائي.'}
+                            </p>
                             {Number(quotedShippingFee) > 0 && <div className="mt-3 flex justify-between gap-2 border-t border-white/15 pt-2 text-sm font-bold">
                                 <span>المتوقع على الطبيب</span><span>{(total + Number(quotedShippingFee)).toLocaleString()} ج.م</span>
                             </div>}

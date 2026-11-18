@@ -350,7 +350,7 @@ function OrdersPage() {
     const handleUpdateOrder = async (orderData: Partial<Order>) => {
         if (auditedOrderEdit || !fullEditingOrder) return;
         try {
-            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments'];
+            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments', 'quotedShippingFee'];
             const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
             const changedFields = (Object.keys(orderData) as (keyof Order)[]).filter(field => {
                 const nextValue = orderData[field];

@@ -2311,8 +2311,8 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
         throw new ValidationError('لا يمكن كتابة حالة الطلب القديمة مباشرة؛ استخدم محوري دورة العمل V2.');
     }
 
-    const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments'];
-    const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost'];
+    const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments', 'quotedShippingFee'];
+    const moneyFields: (keyof Order)[] = ['totalPrice', 'cost', 'manualCost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'quotedShippingFee'];
     const workflowFields: (keyof Order)[] = ['productionStatus', 'issueState', 'intakeState', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
     const updateFields = Object.keys(updates) as (keyof Order)[];
     const businessUpdateFields = updateFields.filter(field => !workflowFields.includes(field));
@@ -2578,9 +2578,7 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
     try {
         const designerOnly=await isPrimaryDesigner();
         const commentPayload=updates.comments ? updates.comments.map(c=>({text:c.text,userId:c.userId==='system'?null:c.userId,userName:c.userName,createdAt:c.createdAt})):null;
-        const { error } = designerOnly ? await supabase.rpc('update_designer_workspace',{
-            p_order_id:id,p_updates:cleanUpdates,p_comments:commentPayload,
-        }) : await supabase.rpc('update_order_atomic', {
+        const orderUpdate = {
             p_order_id: id,
             p_updates: cleanUpdates,
             p_items: updates.items ? updates.items.map(i => ({
@@ -2590,13 +2588,15 @@ export async function updateOrder(id: string, updates: Partial<Order>, context: 
                 shade: i.shade,
                 count: i.teethNumbers.length || 1
             })) : null,
-            p_comments: updates.comments ? updates.comments.map(c => ({
-                text: c.text,
-                userId: c.userId === 'system' ? null : c.userId,
-                userName: c.userName,
-                createdAt: c.createdAt
-            })) : null
-        });
+            p_comments: commentPayload,
+        };
+        const { error } = updates.quotedShippingFee !== undefined
+            ? await supabase.rpc('update_order_with_doctor_shipping_fee', {
+                ...orderUpdate, p_shipping_fee: updates.quotedShippingFee,
+            })
+            : designerOnly ? await supabase.rpc('update_designer_workspace', {
+                p_order_id: id, p_updates: cleanUpdates, p_comments: commentPayload,
+            }) : await supabase.rpc('update_order_atomic', orderUpdate);
 
         if (error) {
             console.error('update_order_atomic RPC failed:', error);
