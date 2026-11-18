@@ -6,6 +6,7 @@ import type { Order, Doctor } from './db';
 import type { StatementResult } from './statementService';
 import { formatCurrency, type LabInfo } from '../utils/finance';
 import { getDoctorInvoiceIdentity, type DoctorInvoiceIdentity } from './supabase/doctorInvoiceIdentity';
+import { getPostedOrderShippingFee } from './financeService';
 
 // ===================== HTML → PDF CORE =====================
 
@@ -455,8 +456,11 @@ export async function generateDoctorInvoicePDF(
     labInfo: LabInfo,
     previousBalance?: number
 ): Promise<void> {
-    const identity = await getDoctorInvoiceIdentity({ orderId: order.id });
-    const html = buildInvoiceHTML(order, doctor, labInfo, identity, previousBalance);
+    const [identity, postedShippingFee] = await Promise.all([
+        getDoctorInvoiceIdentity({ orderId: order.id }),
+        getPostedOrderShippingFee(order.id),
+    ]);
+    const html = buildInvoiceHTML(order, doctor, labInfo, identity, postedShippingFee, previousBalance);
     const doc = createPdf();
     await htmlToPdfPage(doc, html);
     const doctorName = doctor?.name || 'doctor';
@@ -468,6 +472,7 @@ function buildInvoiceHTML(
     doctor: Doctor | undefined,
     _labInfo: LabInfo,
     identity: DoctorInvoiceIdentity,
+    postedShippingFee: number | null,
     previousBalance?: number
 ): string {
     const items = (order.items || []).map((item: { serviceType?: string; teethNumbers?: string[]; price?: number; sellingPrice?: number; unitPrice?: number }) => {
@@ -497,7 +502,14 @@ function buildInvoiceHTML(
     const discount = order.discount || 0;
     const grandTotal = order.totalPrice || 0;           // Net price already stored after discount
     const subtotal = grandTotal + discount;             // Gross before discount (for display)
-    const totalWithBalance = grandTotal + (previousBalance || 0);
+    const delivered = !!order.firstDeliveredAt || order.productionStatus === 'final_delivered';
+    const shippingFee = postedShippingFee ?? (delivered ? 0 : order.quotedShippingFee ?? 0);
+    const totalWithBalance = grandTotal + shippingFee + (previousBalance || 0);
+    const shippingRow = shippingFee > 0 ? `
+        <div class="total-row">
+            <span class="t-label">${postedShippingFee !== null ? 'رسوم الشحن' : 'رسوم الشحن المتوقعة'}</span>
+            <span class="t-value">${formatCurrency(shippingFee)}</span>
+        </div>` : '';
 
     const discountRow = discount > 0 ? `
         <div class="total-row danger">
@@ -576,6 +588,7 @@ function buildInvoiceHTML(
                         <span class="t-value">${formatCurrency(subtotal)}</span>
                     </div>
                     ${discountRow}
+                    ${shippingRow}
                     ${prevBalanceRow}
                     <div class="total-row grand">
                         <span class="t-label">الإجمالي المستحق</span>

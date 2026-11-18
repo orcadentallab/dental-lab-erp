@@ -34,7 +34,7 @@ interface OrderListProps {
     onEdit?: (order: Order) => void; // Full Edit (Admin)
     onAddNote?: (order: Order) => void; // Add Note (Everyone)
     onUpdateDesignUrl?: (order: Order) => void; // Update Design URL (Designer/Admin)
-    onDelete?: (order: Order) => void;
+    onDelete?: (order: Order, reason?: string) => Promise<void>;
     onExportInvoice?: (order: Order) => void;
     highlightedOrderId?: string | null; // Order ID to highlight and scroll to
     onAccept?: (order: Order) => void;

@@ -26,12 +26,13 @@ import { isDesignerUser, canBeOrderRepresentative, hasRepresentativeScope } from
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
-import { getStages, getActiveStagesForOrders, type ProductionStage, type ActiveOrderStage } from '../services/supabase/production';
+import { getStages, getActiveStagesForOrders, isExplicitProductionRoute, type ProductionStage, type ActiveOrderStage } from '../services/supabase/production';
 import { getEffectiveIssueState, getEffectiveOrderDisplayStatus, getEffectiveProductionStatus } from '../constants/orderLifecycle';
 
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import RepEditModal from '../components/orders/RepEditModal';
 import RedoOrderModal from '../components/orders/RedoOrderModal';
+import ExternalLabConversionForm from '../components/orders/ExternalLabConversionForm';
 
 export default function Orders() {
     const { state } = useLocation();
@@ -110,6 +111,7 @@ function OrdersPage() {
 
     // Modal state
     const [fullEditingOrder, setFullEditingOrder] = useState<Order | null>(null);
+    const [convertingToExternalLab, setConvertingToExternalLab] = useState(false);
     const [noteEditingOrder, setNoteEditingOrder] = useState<Order | null>(null);
     const [newComment, setNewComment] = useState('');
     const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
@@ -351,7 +353,7 @@ function OrdersPage() {
     const handleUpdateOrder = async (orderData: Partial<Order>) => {
         if (auditedOrderEdit || !fullEditingOrder) return;
         try {
-            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments'];
+            const financialAdminFields: (keyof Order)[] = ['totalPrice', 'cost', 'designPrice', 'discount', 'rejectedLabCost', 'rejectedDesignerCost', 'comments', 'quotedShippingFee'];
             const workflowFields: (keyof Order)[] = ['status', 'designStatus', 'needsDesignReview', 'designerId', 'workflowType', 'technicianStatus'];
             const changedFields = (Object.keys(orderData) as (keyof Order)[]).filter(field => {
                 const nextValue = orderData[field];
@@ -423,14 +425,9 @@ function OrdersPage() {
         }
     };
 
-    const handleDeleteOrder = async (order: Order) => {
-        try {
-            await db.deleteOrder(order.id);
-            refreshNavBadges();
-            await refreshOrders();
-        } catch {
-            alert('Failed to delete order');
-        }
+    const handleDeleteOrder = async (order: Order, reason?: string) => {
+        await db.deleteOrder(order.id, reason);
+        await refreshOrders();
     };
 
     const openNewOrder = () => {
@@ -450,6 +447,7 @@ function OrdersPage() {
     };
 
     const closeFullEdit = () => {
+        setConvertingToExternalLab(false);
         setFullEditingOrder(null);
         clearOpenOrderParams();
     };
@@ -1315,7 +1313,20 @@ function OrdersPage() {
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
                         <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="h-[100dvh] w-full max-w-4xl overflow-y-auto bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-3xl">
                             <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
-                                <OrderForm onSubmit={handleUpdateOrder} onCancel={closeFullEdit} initialData={fullEditingOrder} />
+                                {convertingToExternalLab ? (
+                                    <ExternalLabConversionForm order={fullEditingOrder} suppliers={suppliers}
+                                        onCancel={() => setConvertingToExternalLab(false)}
+                                        onSuccess={() => {
+                                            closeFullEdit();
+                                            void refreshOrders();
+                                        }} />
+                                ) : (
+                                    <OrderForm onSubmit={handleUpdateOrder} onCancel={closeFullEdit} initialData={fullEditingOrder}
+                                        onExternalLabConversion={user?.role === 'admin' && !fullEditingOrder.supplierId
+                                            && isExplicitProductionRoute(fullEditingOrder.routeOverrideId)
+                                            ? () => setConvertingToExternalLab(true)
+                                            : undefined} />
+                                )}
                             </div>
                         </motion.div>
                     </motion.div>

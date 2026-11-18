@@ -51,7 +51,7 @@ interface OrderCardProps {
     onRedo?: (order: Order) => void;
     onFeedback?: (order: Order) => void;
     hideSensitiveInfo?: boolean;
-    onDelete?: (order: Order) => void;
+    onDelete?: (order: Order, reason?: string) => Promise<void>;
     isHighlighted?: boolean;
     onAccept?: (order: Order) => void;
     onExportInvoice?: (order: Order) => void;
@@ -277,7 +277,29 @@ function OrderCard({
     const isRedStatus = ['doctor_rejected', 'lab_rejected', 'redo', 'cancelled'].includes(issueState) || order.technicianStatus === 'Rejected';
     const isDelivered = productionStatus === 'final_delivered' && issueState === 'none';
     const canArchiveOrders = userRole === 'admin';
-    const deleteConfirmMessage = 'حذف الطلب؟ سيتم حذف الطلب وتصفير المعاملات المالية المرتبطة به.';
+    const [confirmDelete, setConfirmDelete] = useState(false);
+    const [deleteReason, setDeleteReason] = useState('');
+    const [deleteError, setDeleteError] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const deletePending = useRef(false);
+    const voidDeliveredOrder = productionStatus === 'final_delivered';
+
+    const submitDelete = async () => {
+        const reason = deleteReason.trim();
+        if (!onDelete || deletePending.current || (voidDeliveredOrder && !reason)) return;
+        deletePending.current = true;
+        setDeleting(true);
+        setDeleteError('');
+        try {
+            await onDelete(order, voidDeliveredOrder ? reason : undefined);
+            setConfirmDelete(false);
+        } catch (error) {
+            setDeleteError(error instanceof Error ? error.message : 'تعذّر حذف الأوردر');
+        } finally {
+            deletePending.current = false;
+            setDeleting(false);
+        }
+    };
     const deleteTitle = 'حذف';
 
     const resolvedDoctor = fullDoctors?.find((d: any) => d.id === order.doctorId);
@@ -919,7 +941,7 @@ function OrderCard({
                                 </Button>
                             )}
                             {userRole === 'admin' && onDelete && (
-                                <Button size="sm" variant="ghost" aria-label="حذف الأوردر" className="min-h-10 h-10 w-10 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => { if (confirm(deleteConfirmMessage)) onDelete(order); }} title={deleteTitle}>
+                                <Button size="sm" variant="ghost" aria-label="حذف الأوردر" className="min-h-10 h-10 w-10 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 sm:min-h-0 sm:h-7 sm:w-7" onClick={() => { setDeleteReason(''); setDeleteError(''); setConfirmDelete(true); }} title={deleteTitle}>
                                     <Trash2 size={14} />
                                 </Button>
                             )}
@@ -954,6 +976,26 @@ function OrderCard({
 
 
             {/* Edit Rejection Cost Dialog */}
+            <ConfirmDialog
+                isOpen={confirmDelete}
+                title={voidDeliveredOrder ? 'إبطال أوردر أُنشئ بالغلط' : 'حذف الأوردر'}
+                message={voidDeliveredOrder
+                    ? 'سيختفي الأوردر من قوائم التشغيل، وتُعكس استحقاقاته، ويُحفظ السبب في سجل المراجعة.'
+                    : 'سيختفي الأوردر من قوائم التشغيل.'}
+                confirmLabel={voidDeliveredOrder ? 'تأكيد الإبطال' : 'تأكيد الحذف'}
+                isLoading={deleting}
+                confirmDisabled={voidDeliveredOrder && !deleteReason.trim()}
+                onConfirm={submitDelete}
+                onCancel={() => { if (!deletePending.current) setConfirmDelete(false); }}
+            >
+                {voidDeliveredOrder && (
+                    <label className="block text-sm">
+                        سبب الإبطال
+                        <Input value={deleteReason} disabled={deleting} onChange={event => setDeleteReason(event.target.value)} />
+                    </label>
+                )}
+                {deleteError && <p role="alert" className="mt-2 text-sm text-red-600">{deleteError}</p>}
+            </ConfirmDialog>
             <ConfirmDialog
                 isOpen={isEditingCost}
                 title="المراجعة المالية للأوردر المرفوض"
