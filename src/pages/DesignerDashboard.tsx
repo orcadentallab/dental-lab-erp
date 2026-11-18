@@ -1,6 +1,7 @@
 import {getDesignQcQueue,type DesignQueueItem} from '../services/supabase/designQc';
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/consistent-type-assertions */
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { db, type Order } from '../services/db';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -47,6 +48,8 @@ interface DesignerDashboardCache {
 
 export default function DesignerDashboard({ embedded = false }: DesignerDashboardProps) {
     const { user } = useAuth();
+    const [params, setParams] = useSearchParams();
+    const focusedOrderId = embedded ? null : params.get('order');
     const { success, error: toastError } = useToast();
 
     const handleOpenExternalUrl = (rawUrl: string | undefined | null, errorMsg: string) => {
@@ -333,6 +336,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const filteredOrders = useMemo(() => {
         return orders.filter(order => {
             if (!isDesignerDashboardOrderVisible(order)) return false;
+            if (focusedOrderId) return order.id === focusedOrderId;
 
             const s = (order.designStatus || 'pending');
             const matchesStatus = statusFilter === 'all' || s === statusFilter;
@@ -345,7 +349,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
 
             return matchesStatus && matchesDesigner && matchesSearch && matchesDate;
         });
-    }, [orders, statusFilter, designerFilter, searchQuery, dateRange]);
+    }, [orders, statusFilter, designerFilter, searchQuery, dateRange, focusedOrderId]);
 
     const stats = useMemo(() => ({
         total: orders.length,
@@ -364,7 +368,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
         [filteredOrders, returnedDesigns]
     );
 
-    const visibleOrders = designQueueView === 'submitted' ? submittedOrders : pendingOrders;
+    const visibleOrders = focusedOrderId ? filteredOrders : designQueueView === 'submitted' ? submittedOrders : pendingOrders;
 
     const showDoctorName = Boolean(user && user.role !== 'designer');
 
@@ -503,6 +507,8 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                         <p className="text-xs text-gray-400">افصل بين الحالات قبل رفع التصميم وبعد الرفع لتقليل اللخبطة</p>
                     </div>
                     <div className="flex gap-2">
+                        {focusedOrderId ? <button type="button" onClick={() => setParams({})}
+                            className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700">عرض كل حالات التصميم</button> : <>
                         <button
                             type="button"
                             onClick={() => setDesignQueueView('pending')}
@@ -517,6 +523,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                         >
                             بعد رفع التصميم ({submittedOrders.length})
                         </button>
+                        </>}
                     </div>
                 </div>
                 {isLoading ? (
@@ -524,7 +531,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                 ) : visibleOrders.length === 0 ? (
                     <div className="p-12 text-center text-gray-400 flex flex-col items-center gap-4">
                         <FolderKanban size={48} className="opacity-20" />
-                        <p>{designQueueView === 'pending' ? 'لا توجد حالات تصميم قبل الرفع' : 'لا توجد حالات تم رفع تصميمها'}</p>
+                        <p>{focusedOrderId ? 'الحالة غير متاحة في قائمة التصميم الحالية' : designQueueView === 'pending' ? 'لا توجد حالات تصميم قبل الرفع' : 'لا توجد حالات تم رفع تصميمها'}</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">

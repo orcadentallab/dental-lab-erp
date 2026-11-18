@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import ShippingCostReport from './ShippingCostReport';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Truck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -41,8 +41,11 @@ const field = 'block w-full rounded-lg border border-slate-300 bg-white px-3 py-
 export default function CourierStatements({ showPayableStatements, fromAccounts = false }: { showPayableStatements: boolean; fromAccounts?: boolean }) {
     const { user } = useAuth();
     const toast = useToast();
-    const [courier, setCourier] = useState('');
-    const [month, setMonth] = useState(() => new Intl.DateTimeFormat('sv-SE', {
+    const [params] = useSearchParams();
+    const linkedCourier = params.get('courier');
+    const linkedMonth = params.get('month');
+    const [courier, setCourier] = useState(linkedCourier ?? '');
+    const [month, setMonth] = useState(() => linkedMonth || new Intl.DateTimeFormat('sv-SE', {
         timeZone: 'Africa/Cairo', year: 'numeric', month: '2-digit',
     }).format(new Date()));
     const [data, setData] = useState<CourierStatement | null>(null);
@@ -60,6 +63,12 @@ export default function CourierStatements({ showPayableStatements, fromAccounts 
     const [paymentAmount, setPaymentAmount] = useState('');
     const [pricing, setPricing] = useState<AreaPricing>({ rates: [], assignments: {} });
 
+    useEffect(() => {
+        if (linkedCourier && linkedMonth) {
+            setCourier(linkedCourier);
+            setMonth(linkedMonth);
+        }
+    }, [linkedCourier, linkedMonth]);
 
     useEffect(() => {
         let current = true;

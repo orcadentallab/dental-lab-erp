@@ -18,7 +18,7 @@ import {
 } from '../../services/supabase/production';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import {openDesignExecution} from '../../services/supabase/designQc';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { hasCapability } from '../../lib/userRoles';
 import {
     RefreshCw, AlertTriangle, Building2,
@@ -77,6 +77,8 @@ type FilterChip = 'all' | 'urgent' | 'stale' | 'external' | 'blocked' | 'rework'
 
 export default function ProductionBoard() {
     const { user } = useAuth();
+    const [params, setParams] = useSearchParams();
+    const focusedOrderId = params.get('order');
     const [doctorActionDraft, setDoctorActionDraft] = useState<{ runId: string; action: MixedTryInDoctorAction } | null>(null);
     const [doctorActionNotes, setDoctorActionNotes] = useState('');
     const [doctorActionBusy, setDoctorActionBusy] = useState(false);
@@ -107,6 +109,19 @@ export default function ProductionBoard() {
 
     // 4. Selected Card for Drawer Details
     const [selectedRun, setSelectedRun] = useState<StageRunCard | null>(null);
+    useEffect(() => {
+        if (!focusedOrderId) return;
+        const run = runs.find(item => item.orderId === focusedOrderId && item.stageCode === 'qc')
+            ?? runs.find(item => item.orderId === focusedOrderId);
+        if (run) {
+            setSelectedRun(run);
+            setParams(current => {
+                const next = new URLSearchParams(current);
+                next.delete('order');
+                return next;
+            }, { replace: true });
+        }
+    }, [focusedOrderId, runs, setParams]);
     const [doctorWaits, setDoctorWaits] = useState<Awaited<ReturnType<typeof getOpenDoctorWaits>>>([]);
     const [selectedWait, setSelectedWait] = useState<typeof doctorWaits[number] | null>(null);
     const [resumingWait, setResumingWait] = useState(false);

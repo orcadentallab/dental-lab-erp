@@ -14,6 +14,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { refreshNavBadges } from '../../hooks/useNavBadges';
 import { useToast } from '../../context/ToastContext';
@@ -83,8 +84,10 @@ export default function MyTasks() {
     const [showMaterialsPanel, setShowMaterialsPanel] = useState(false);
     const [machines, setMachines] = useState<Machine[]>([]);
     const [pickMachineFor, setPickMachineFor] = useState<{ task: StageRunCard; availableMachines: Machine[] } | null>(null);
-    const caseFilter = new URLSearchParams(window.location.search).get('case');
-    const visibleTasks = caseFilter ? tasks.filter(task => task.caseId === caseFilter) : tasks;
+    const [params, setParams] = useSearchParams();
+    const caseFilter = params.get('case');
+    const runFilter = params.get('run');
+    const visibleTasks = tasks.filter(task => (!caseFilter || task.caseId === caseFilter) && (!runFilter || task.id === runFilter));
     const taskGroups = new Map<string, { label: string; tasks: StageRunCard[] }>();
     for (const task of visibleTasks) {
         const key = task.failedPhysicalQc ? 'failed_qc' : task.stageCode || task.stageNameAr;
@@ -201,6 +204,8 @@ export default function MyTasks() {
                     <p className="text-sm text-slate-500">
                         {tasks.length} حالة في الطابور
                     </p>
+                    {runFilter && <button type="button" onClick={() => setParams({})}
+                        className="text-sm font-semibold text-cyan-700">عرض كل المهام</button>}
                 </div>
                 <div className="flex items-center gap-2">
                     {(openBatches.length > 0 || sealedBatches.length > 0) && (

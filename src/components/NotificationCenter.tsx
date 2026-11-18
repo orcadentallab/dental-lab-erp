@@ -23,6 +23,7 @@ export default function NotificationCenter() {
         notifications,
         unreadCount,
         loading,
+        refresh,
         markAsRead,
         markAllAsRead
     } = useInAppNotifications();
@@ -62,10 +63,13 @@ export default function NotificationCenter() {
     };
 
     return (
-        <div ref={containerRef} className="relative print:hidden" dir="rtl">
+        <div ref={containerRef} className="sm:relative print:hidden" dir="rtl">
             <button
                 type="button"
-                onClick={() => setIsOpen(open => !open)}
+                onClick={() => {
+                    if (!isOpen) void refresh();
+                    setIsOpen(!isOpen);
+                }}
                 aria-haspopup="dialog"
                 aria-expanded={isOpen}
                 aria-label={`الإشعارات ${unreadCount > 0 ? `(${unreadCount} غير مقروء)` : ''}`}
@@ -83,7 +87,7 @@ export default function NotificationCenter() {
                 <div
                     role="dialog"
                     aria-label="قائمة الإشعارات"
-                    className="absolute start-0 top-full z-50 mt-2 w-80 sm:w-96 rounded-2xl border border-teal-100 bg-white p-3 shadow-xl backdrop-blur-xl animate-in fade-in-0 zoom-in-95"
+                    className="absolute inset-x-4 top-full z-50 mt-2 rounded-2xl border border-teal-100 bg-white p-3 shadow-xl backdrop-blur-xl animate-in fade-in-0 zoom-in-95 sm:inset-x-auto sm:end-0 sm:w-96"
                 >
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-teal-50 pb-2.5">

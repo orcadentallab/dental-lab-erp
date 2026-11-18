@@ -3,6 +3,7 @@ import { financeService } from '../../services/financeService';
 import { db, type Doctor, type Order } from '../../services/db';
 import { supabase } from '../../lib/supabase';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Package,
   Truck,
@@ -59,9 +60,15 @@ export const Shipments: React.FC = () => {
   // our shipments.
   const isAuthorized = ['admin', 'production_manager', 'coordinator', 'accountant'].includes(role || '');
   const canUseCashDelivery = ['admin', 'accountant', 'coordinator'].includes(role ?? '');
+  const [params, setParams] = useSearchParams();
+  const focusedOrderId = params.get('order');
+  const focusedAttemptId = params.get('attempt');
 
   // State
-  const [activeTab, setActiveTab] = useState<'ready' | 'active' | 'delivered' | 'attempts'>('ready');
+  const [activeTab, setActiveTab] = useState<'ready' | 'active' | 'delivered' | 'attempts'>(() => focusedAttemptId ? 'attempts' : 'ready');
+  useEffect(() => {
+    if (focusedAttemptId || focusedOrderId) setActiveTab(focusedAttemptId ? 'attempts' : 'ready');
+  }, [focusedAttemptId, focusedOrderId]);
   const [loading, setLoading] = useState(true);
   const [readyOrders, setReadyOrders] = useState<ReadyToPackOrder[]>([]);
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -170,6 +177,7 @@ export const Shipments: React.FC = () => {
   ), [shipments, completedHubIds]);
 
   const closedAttempts = shipments.filter(item => ['failed','returned','cancelled'].includes(item.status));
+  const visibleAttempts = focusedAttemptId ? closedAttempts.filter(item => item.id === focusedAttemptId) : closedAttempts;
 
   const readyForPacking = useMemo(() => {
     const hubOrderIds = new Set(activeShipments.filter(shipment => shipment.hub_leg && shipment.status === 'delivered')
@@ -180,9 +188,9 @@ export const Shipments: React.FC = () => {
   const visibleReadyOrders = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return readyForPacking.filter(order =>
-      !query || [order.case_id, order.patient_name, order.doctor?.name].some(value => value?.toLowerCase().includes(query))
+      focusedOrderId ? order.id === focusedOrderId : !query || [order.case_id, order.patient_name, order.doctor?.name].some(value => value?.toLowerCase().includes(query))
     );
-  }, [readyForPacking, searchQuery]);
+  }, [readyForPacking, searchQuery, focusedOrderId]);
 
   // Group ready orders by doctor
   const readyOrdersByDoctor = useMemo(() => {
@@ -552,6 +560,8 @@ export const Shipments: React.FC = () => {
       </div>
 
       {/* Tabs & Filters */}
+      {(focusedOrderId || focusedAttemptId) && <button type="button" onClick={() => setParams({})}
+        className="text-sm font-semibold text-cyan-700">عرض كل الشحنات والحالات</button>}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-3">
         <div className="flex items-center gap-2">
           <button
@@ -751,8 +761,8 @@ export const Shipments: React.FC = () => {
 
       {activeTab === 'attempts' && (
         <section className="grid gap-3 md:grid-cols-2" aria-label="المحاولات المقفولة">
-          {!closedAttempts.length && <p>مفيش محاولات مقفولة.</p>}
-          {closedAttempts.map(shipment => {
+          {!visibleAttempts.length && <p>مفيش محاولات مقفولة.</p>}
+          {visibleAttempts.map(shipment => {
             const next = shipments.find(item => item.retry_of === shipment.id);
             return <article key={shipment.id} className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
               <h2 className="font-bold">{shipment.shipment_code} · {shipment.status === 'failed' ? 'تعذّر التوصيل' : shipment.status === 'returned' ? 'مرتجع' : 'ملغاة'}</h2>

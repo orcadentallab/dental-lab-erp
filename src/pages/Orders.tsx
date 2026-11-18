@@ -47,6 +47,7 @@ function OrdersPage() {
     const auditedOrderEdit = hasRepresentativeScope(user?.role);
     const { error: toastError } = useToast();
     const [searchParams, setSearchParams] = useSearchParams();
+    const notificationOrder = searchParams.get('notificationOrder');
     const initialModalRef = useRef({
         modal: searchParams.get('modal'),
         orderId: searchParams.get('order')
@@ -133,7 +134,7 @@ function OrdersPage() {
     };
 
     const clearOpenOrderParams = () => {
-        setOrderPageParams({ modal: null, order: null });
+        setOrderPageParams({ modal: null, order: null, notificationOrder: null });
     };
 
     // Build filters object for server-side query
@@ -252,7 +253,9 @@ function OrdersPage() {
     }, [searchQuery, statusFilter, productionStatusFilter, productionStageFilter, issueStateFilter, doctorFilter, supplierFilter, designerFilter, representativeFilter, startDate, endDate, currentPage, viewMode, hideDelivered, showArchived, searchParams, setSearchParams, navigationState]);
 
     useEffect(() => {
-        const { modal, orderId } = initialModalRef.current;
+        const { modal, orderId } = notificationOrder
+            ? { modal: 'notes', orderId: notificationOrder }
+            : initialModalRef.current;
         if (modal === 'new') {
             setIsFormOpen(true);
             return;
@@ -289,7 +292,7 @@ function OrdersPage() {
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [auditedOrderEdit]);
+    }, [auditedOrderEdit, notificationOrder]);
 
     // CONSOLIDATED: Single debounced effect for all filter and search changes
     useEffect(() => {
