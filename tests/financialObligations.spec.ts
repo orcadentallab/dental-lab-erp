@@ -1292,7 +1292,8 @@ test.describe('manualCost clearing contract', () => {
         // the manual override (manualCost state === null), `cost` falls back to the
         // calculated automatic cost — satisfying the backend contract.
         expect(orderFormSource).toContain('cost: finalCost,');
-        expect(orderFormSource).toContain('manualCost: (isAdmin && manualCost !== null) ? manualCost : null,');
+        expect(orderFormSource).toContain('const finalCost = finalLabCost + (isSalaried ? 0 : totalDesignPrice);');
+        expect(orderFormSource).toContain('manualCost: hasCatalogRoute ? initialData?.manualCost ?? null : (isAdmin && manualCost !== null) ? manualCost : null,');
     });
 
     test('split workflow preserves explicit lab and designer overrides across edits', () => {

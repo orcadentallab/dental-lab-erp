@@ -42,6 +42,10 @@ VALUES ('49420000-0000-0000-0000-000000000002','REP-ROUTE-LOCK-TEST','19420000-0
 
 SELECT set_config('request.jwt.claim.sub','99420000-0000-0000-0000-000000000002',true);
 SET LOCAL ROLE authenticated;
+SELECT throws_ok($$UPDATE public.orders SET delivery_type='TryIn'
+    WHERE id='49420000-0000-0000-0000-000000000001'$$,
+    '42501','Delivery type changes require the audited representative RPC',
+    'representative cannot write the type directly on their own order');
 SELECT throws_ok($$SELECT public.rep_update_order_fields_with_audit('49420000-0000-0000-0000-000000000002',
     '{"delivery_type":"Final"}','doctor_requested','final requested')$$,
     'P0001','نوع التسليم ثابت في خريطة الإنتاج الخاصة بالأوردر','a fixed production route keeps its delivery type');

@@ -26,6 +26,7 @@ import {
     isRepAuditedField,
     LAB_BLOCKED_ISSUE_STATES,
     REP_FIELD_STATE_GUARDS,
+    REP_HARD_DENY_LIST,
 } from '../src/lib/workflowPermissions';
 import { ORDER_EVENT_TYPES } from '../src/constants/orderEvents';
 
@@ -105,10 +106,10 @@ test.describe('WF-1: order edit reason codes', () => {
 });
 
 test.describe('WF-1: representative permission constants', () => {
-    test('REP_AUDITED_ALLOW_LIST has the 13 approved fields and excludes status/manual_cost', () => {
+    test('REP_AUDITED_ALLOW_LIST includes delivery type and excludes admin-only fields', () => {
         expect([...REP_AUDITED_ALLOW_LIST].sort()).toEqual([
-            'cost', 'delivery_date', 'design_price', 'designer_id', 'images_url',
-            'instructions', 'is_urgent', 'items', 'patient_name', 'priority',
+            'cost', 'delivery_date', 'delivery_type', 'design_price', 'designer_id',
+            'images_url', 'instructions', 'items', 'patient_name',
             'stl_url', 'supplier_id', 'total_price',
         ]);
         expect(REP_AUDITED_ALLOW_LIST as readonly string[]).not.toContain('status');
@@ -145,9 +146,13 @@ test.describe('WF-1: representative permission constants', () => {
         expect(REP_FIELD_STATE_GUARDS.designer_id({ productionStatus: 'finalization', issueState: 'none', workflowType: 'split' })).toBe(false);
     });
 
-    test('state guard: is_urgent always allowed (escalate or de-escalate via RPC with reason)', () => {
-        expect(REP_FIELD_STATE_GUARDS.is_urgent({ productionStatus: 'final_delivered', issueState: 'none' })).toBe(true);
-        expect(REP_FIELD_STATE_GUARDS.is_urgent({ productionStatus: 'in_production', issueState: 'returned' })).toBe(true);
+    test('representative cannot audit-edit urgency or priority, and delivery type requires a clear issue state', () => {
+        for (const field of ['is_urgent', 'priority']) {
+            expect(REP_HARD_DENY_LIST).toContain(field);
+            expect(isRepAuditedField(field)).toBe(false);
+        }
+        expect(REP_FIELD_STATE_GUARDS.delivery_type({ productionStatus: 'in_production', issueState: 'none' })).toBe(true);
+        expect(REP_FIELD_STATE_GUARDS.delivery_type({ productionStatus: 'in_production', issueState: 'returned' })).toBe(false);
     });
 
     test('state guard: patient_name allowed after final delivery (via proposal) or while issueState is none', () => {
