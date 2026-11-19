@@ -95,6 +95,14 @@ SELECT throws_ok($$SELECT public.complete_stage_run((SELECT id FROM runs WHERE c
 SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000002',true);
 SELECT lives_ok($$SELECT public.start_stage_run((SELECT id FROM runs WHERE code='printing'))$$,
     'Coordinator can start a printing step assigned to their role');
+INSERT INTO public.materials(id,code,name_ar,category,unit,tracking_mode,expected_units_per_batch)
+VALUES ('ba200000-0000-4000-8000-000000000081','PILOT-REPRINT-RESIN','Pilot resin','resin','ml','quantity',10);
+INSERT INTO public.material_batches(id,material_id,warehouse_id,batch_code,qty_received,qty_remaining,unit_cost,status)
+SELECT 'ba200000-0000-4000-8000-000000000082','ba200000-0000-4000-8000-000000000081',id,
+    'PILOT-REPRINT-BATCH',100,100,100,'open'
+FROM public.warehouses ORDER BY is_default DESC,id LIMIT 1;
+INSERT INTO public.stage_material_bindings(stage_id,material_id,consumption_mode,qty_per_unit,is_required)
+SELECT id,'ba200000-0000-4000-8000-000000000081','per_unit_qty',1,true FROM public.production_stages WHERE code='printing';
 SELECT public.complete_stage_run((SELECT id FROM runs WHERE code='printing'),1,1,'crack');
 SELECT ok((SELECT 'coordinator'=ANY(allowed_roles) FROM runs WHERE code='printing' AND status='ready'),
     'A reprint retains the route role assignment');
@@ -107,6 +115,17 @@ SELECT is((SELECT units_in FROM runs WHERE code='printing' AND status='ready'),1
 SELECT is((SELECT j.status FROM public.production_jobs j JOIN pilot_order o ON o.id=j.order_id),'active','A whole-run print failure does not strand the case');
 SELECT is((SELECT name_override FROM runs WHERE code='printing' AND status='ready'),'إعادة الطباعة','The new attempt is visibly labelled as a reprint');
 SELECT public.complete_stage_run((SELECT id FROM runs WHERE code='printing' AND status='ready'));
+SELECT is(
+    (SELECT array_agg(units_attributed ORDER BY units_attributed) FROM public.material_batch_usage
+     WHERE batch_id='ba200000-0000-4000-8000-000000000082'),
+    ARRAY[1,1,2]::numeric[], 'Each print attempt records its consumed units, including failed units, exactly once');
+SELECT is(
+    (SELECT count(*) FROM public.material_movements WHERE batch_id='ba200000-0000-4000-8000-000000000082' AND movement_type='consume'),
+    3::bigint, 'Retrying a completion does not consume the resin a second time');
+SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000001',true);
+SELECT is((public.get_order_cost_breakdown((SELECT id FROM pilot_order))->>'materials_cost')::numeric,40::numeric,
+    'Production cost includes two units on the first attempt and one unit per reprint');
+SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000002',true);
 SELECT is((SELECT status FROM runs WHERE seq=30),'ready','Printing opens trial physical QC');
 SELECT throws_ok($$SELECT public.start_stage_run((SELECT id FROM runs WHERE seq=30))$$,
     '42501','دورك غير مسموح له بتنفيذ هذه المرحلة','Coordinator cannot start an unassigned QC step');

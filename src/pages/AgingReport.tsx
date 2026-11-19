@@ -12,6 +12,8 @@ import {
     isStatementVisibleOrder,
 } from '../constants/orderStatementFinancials';
 import { financeService, type Adjustment } from '../services/financeService';
+import { getQcCompensations } from '../services/supabase/designQc';
+import { designQcCompensationRows } from '../lib/designQcCompensations';
 import { canViewSupplierAndDesignerStatements, hasCustomPermission, FIXED_SALARY_DESIGNER_PERMISSION, isDesignerUser } from '../lib/userRoles';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -175,15 +177,16 @@ export default function AgingReport() {
         const load = async () => {
             setLoading(true);
             try {
-                const [o, t, adj, doc, sup, usr] = await Promise.all([
+                const [o, t, adj, doc, sup, usr, qc] = await Promise.all([
                     db.getOrdersForFinanceSummary(),
                     db.getTransactionsForFinanceSummary(),
                     financeService.getAdjustments(),
                     db.getDoctors(),
                     showPayableStatements ? db.getSuppliers() : [],
-                    showPayableStatements ? db.getUsers() : []
+                    showPayableStatements ? db.getUsers() : [],
+                    showPayableStatements ? getQcCompensations() : []
                 ]);
-                setOrders(o || []);
+                setOrders([...(o || []), ...designQcCompensationRows(qc)]);
                 setTransactions(t || []);
                 setAdjustments(adj || []);
                 setDoctors(doc || []);
@@ -379,7 +382,7 @@ export default function AgingReport() {
                                 id: o.id,
                                 caseId: o.caseId,
                                 patientName: o.patientName,
-                                triggerDate: (o.deliveryDate || o.createdAt || '').split('T')[0],
+                                triggerDate: getOfficialStatementDate(o),
                                 amount: cost,
                                 order: o
                             });
@@ -445,7 +448,7 @@ export default function AgingReport() {
 
                 adjustments.forEach(adj => {
                     if (adj.entity_type === 'designer' && adj.entity_id === entity.id) {
-                        if (adj.type === 'charge') {
+                        if (adj.type === 'credit') {
                             debits.push({
                                 type: 'adjustment',
                                 id: adj.id,
@@ -461,7 +464,8 @@ export default function AgingReport() {
             }
 
             // 2. Perform FIFO matching
-            let totalCredits = credits.reduce((sum, c) => sum + c.amount, 0);
+            let totalCredits = credits.reduce((sum, credit) =>
+                credit.date && credit.date.slice(0, 10) <= asOfDate ? sum + credit.amount : sum, 0);
 
             // Sort debits chronologically (oldest first)
             debits.sort((a, b) => a.triggerDate.localeCompare(b.triggerDate));
@@ -470,6 +474,7 @@ export default function AgingReport() {
             const obligations: FIFOObligation[] = [];
 
             for (const deb of debits) {
+                if (!deb.triggerDate || deb.triggerDate.slice(0, 10) > asOfDate) continue;
                 const amount = deb.amount;
                 let remainingUnpaid = 0;
 

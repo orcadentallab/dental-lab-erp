@@ -41,6 +41,7 @@ export interface OrderCostBreakdown {
   overhead_status: 'allocated' | 'not_allocated' | 'not_applicable';
   /** true while any contributing disc is still open -- the material cost is an estimate. */
   materials_are_estimated: boolean;
+  print_materials_missing?: boolean;
   total_units: number;
   total_price: number;
   materials_cost: number;
@@ -58,7 +59,8 @@ export interface OrderCostBreakdown {
       batch_code: string;
       units_attributed: number;
       is_estimated: boolean;
-      cost: number;
+      is_uncosted?: boolean;
+      cost: number | null;
     }>;
     labor: Array<{
       stage_name: string;

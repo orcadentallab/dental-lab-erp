@@ -324,10 +324,6 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         }
         return map;
     }, [allDoctors]);
-    const doctorInvoiceOwnerById = useMemo(
-        () => new Map(allDoctors.map(doctor => [doctor.id, doctor.parentId || doctor.id])),
-        [allDoctors]
-    );
 
     // Quick lookup: id → Doctor
     const doctorById = useMemo(() => new Map(allDoctors.map(d => [d.id, d])), [allDoctors]);
@@ -673,7 +669,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         if (activeTab === 'doctors') {
             for (const o of orders) {
                 if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
-                const pid = doctorInvoiceOwnerById.get(o.doctorId) || o.doctorId;
+                const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (statDate >= monthStart) continue;
@@ -682,7 +678,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
             }
             for (const t of transactions) {
                 if ((t.entityType !== 'doctor' && t.entityType) || t.type !== 'income') continue;
-                const pid = doctorInvoiceOwnerById.get(t.entityId || '') || t.entityId;
+                const pid = doctorParentById.get(t.entityId || '') || t.entityId;
                 if (pid !== selectedId) continue;
                 const tDate = t.date.split('T')[0];
                 if (tDate > paymentCutoff) continue;
@@ -690,11 +686,14 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
             }
             for (const adj of adjustments) {
                 if (adj.entity_type !== 'doctor') continue;
-                const pid = doctorInvoiceOwnerById.get(adj.entity_id) || adj.entity_id;
+                const pid = doctorParentById.get(adj.entity_id) || adj.entity_id;
                 if (pid !== selectedId) continue;
                 if (adj.date >= monthStart) {
-                    if (adj.date <= monthEnd && adj.type === 'charge' && adj.service_charge_kind) {
-                        monthOrders.push({ id: adj.id, date: adj.date, description: adj.reason || 'رسوم خدمة', type: 'debit', amount: adj.amount });
+                    if (adj.date <= monthEnd) {
+                        const isCharge = adj.type === 'charge';
+                        monthOrders.push({ id: adj.id, date: adj.date,
+                            description: adj.reason || (isCharge ? 'تسوية مدين' : 'تسوية دائن'),
+                            type: isCharge ? 'debit' : 'credit', amount: isCharge ? adj.amount : -adj.amount });
                     }
                     continue;
                 }
@@ -704,7 +703,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
 
             for (const o of orders) {
                 if (!isVisible(o, showAllOrders) || !o.doctorId) continue;
-                const pid = doctorInvoiceOwnerById.get(o.doctorId) || o.doctorId;
+                const pid = doctorParentById.get(o.doctorId) || o.doctorId;
                 if (pid !== selectedId) continue;
                 const statDate = getOfficialStatementDate(o);
                 if (statDate < monthStart || statDate > monthEnd) continue;
@@ -832,7 +831,7 @@ function Statements({ showPayableStatements }: { showPayableStatements: boolean 
         const totalDue = openingBalance + monthTotal;
 
         return { openingBalance, monthOrders, monthTotal, totalDue, monthStart, monthEnd };
-    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, externalSteps, transactions, adjustments, doctorInvoiceOwnerById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
+    }, [selectedId, viewMode, activeTab, invoiceMonth, orders, externalSteps, transactions, adjustments, doctorParentById, doctorById, designers, showAllOrders, getDoctorStatementRedoDisplay]);
 
     // ─ Selected entity info ───────────────────────────────────────────────────
 

@@ -44,6 +44,9 @@ export const ProductionCostingReport: React.FC = () => {
   const [searchCaseId, setSearchCaseId] = useState('');
   const [searchedOrders, setSearchedOrders] = useState<Array<{ id: string; case_id: string; patient_name: string; total_price: number }>>([]);
   const [selectedOrderCost, setSelectedOrderCost] = useState<OrderCostBreakdown | null>(null);
+  const hasUnpricedMaterials = selectedOrderCost?.print_materials_missing
+    || selectedOrderCost?.details.materials.some(material => material.is_uncosted || material.cost == null);
+  const hasPricedMaterials = selectedOrderCost?.details.materials.some(material => material.cost != null && !material.is_uncosted);
 
   // Tab 2: Cost of Quality
   const [qualityReport, setQualityReport] = useState<CostOfQualityReport | null>(null);
@@ -360,12 +363,12 @@ export const ProductionCostingReport: React.FC = () => {
               {/* Cost Summary Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <div className="text-xs text-slate-500 mb-1">إجمالي تكلفة الكيس</div>
+                  <div className="text-xs text-slate-500 mb-1">{hasUnpricedMaterials ? 'التكاليف المعروفة فقط' : 'إجمالي تكلفة الكيس'}</div>
                   <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                    {selectedOrderCost.total_cost.toLocaleString()} <span className="text-sm font-normal">ج.م</span>
+                    {hasUnpricedMaterials && selectedOrderCost.total_cost === 0 ? 'غير معروفة' : `${selectedOrderCost.total_cost.toLocaleString()} ج.م`}
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
-                    تكلفة الوحدة: {selectedOrderCost.cost_per_unit.toLocaleString()} ج.م
+                    {hasUnpricedMaterials ? 'تكلفة الوحدة غير مكتملة' : `تكلفة الوحدة: ${selectedOrderCost.cost_per_unit.toLocaleString()} ج.م`}
                   </div>
                 </div>
 
@@ -382,10 +385,10 @@ export const ProductionCostingReport: React.FC = () => {
                 <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                   <div className="text-xs text-slate-500 mb-1">مجمل الربح</div>
                   <div className="text-2xl font-bold text-emerald-600">
-                    {selectedOrderCost.gross_profit.toLocaleString()} <span className="text-sm font-normal">ج.م</span>
+                    {hasUnpricedMaterials ? 'غير محسوب' : `${selectedOrderCost.gross_profit.toLocaleString()} ج.م`}
                   </div>
                   <div className="text-xs text-emerald-600/80 mt-1">
-                    هامش الربح: {selectedOrderCost.margin_percent}%
+                    {hasUnpricedMaterials ? 'تكلفة الخامات غير مكتملة' : `هامش الربح: ${selectedOrderCost.margin_percent}%`}
                   </div>
                 </div>
 
@@ -417,8 +420,15 @@ export const ProductionCostingReport: React.FC = () => {
                   <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-3">
                     <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
                       <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">1. خامات مباشرة (مقاس/مقدّر)</span>
-                      <span className="font-bold text-sm text-slate-900 dark:text-white">{selectedOrderCost.materials_cost} ج.م</span>
+                      <span className="font-bold text-sm text-slate-900 dark:text-white">
+                        {hasUnpricedMaterials
+                          ? hasPricedMaterials ? `${selectedOrderCost.materials_cost} ج.م (جزئي)` : 'غير معروفة'
+                          : `${selectedOrderCost.materials_cost} ج.م`}
+                      </span>
                     </div>
+                    {selectedOrderCost.print_materials_missing && (
+                      <div className="text-xs text-amber-700">فيه محاولة طباعة من غير تسجيل كامل للخامات</div>
+                    )}
                     {selectedOrderCost.details.materials.length === 0 ? (
                       <div className="text-xs text-slate-400">لا توجد خامات منسوبة</div>
                     ) : (
@@ -426,9 +436,9 @@ export const ProductionCostingReport: React.FC = () => {
                         <div key={i} className="text-xs flex items-center justify-between">
                           <div>
                             <div className="font-medium text-slate-700 dark:text-slate-300">{m.material_name}</div>
-                            <div className="text-[11px] text-slate-400 font-mono">لوط: {m.batch_code} ({m.is_estimated ? 'مقدّر' : 'فعلي'})</div>
+                            <div className="text-[11px] text-slate-400 font-mono">لوط: {m.batch_code} ({m.is_uncosted || m.cost == null ? 'غير معروف' : m.is_estimated ? 'مقدّر' : 'فعلي'})</div>
                           </div>
-                          <span className="font-semibold">{m.cost} ج.م</span>
+                          <span className="font-semibold">{m.is_uncosted || m.cost == null ? '—' : `${m.cost} ج.م`}</span>
                         </div>
                       ))
                     )}

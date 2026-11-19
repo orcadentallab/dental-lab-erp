@@ -1826,6 +1826,8 @@ interface FinanceSummaryDbRow {
     designer_id: string | null;
     total_price: number | null;
     cost: number | null;
+    lab_cost: number | null;
+    designer_cost: number | null;
     design_price: number | null;
     manual_cost: number | null;
     manual_design_price: number | null;
@@ -1834,6 +1836,8 @@ interface FinanceSummaryDbRow {
     created_at: string | null;
     delivery_date: string | null;
     actual_delivery_date: string | null;
+    first_delivered_at: string | null;
+    first_delivered_source: Order['firstDeliveredSource'];
     is_archived: boolean | null;
     is_deleted: boolean | null;
     rejected_lab_cost: number | null;
@@ -1858,7 +1862,7 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
     while (hasMore) {
         const { data, error } = await supabase
             .from('orders')
-            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, total_price, cost, lab_cost, designer_cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, is_redo, original_order_id, production_status, issue_state, intake_state, order_items(product_type, teeth_numbers)')
+            .select('id, case_id, patient_name, doctor_id, supplier_id, designer_id, total_price, cost, lab_cost, designer_cost, design_price, manual_cost, manual_design_price, workflow_type, design_status, created_at, delivery_date, actual_delivery_date, first_delivered_at, first_delivered_source, is_archived, is_deleted, rejected_lab_cost, rejected_designer_cost, rejection_doctor_decision, rejected_doctor_amount, is_redo, original_order_id, production_status, issue_state, intake_state, order_items(product_type, teeth_numbers)')
             .order('created_at', { ascending: false })
             .order('id')
             .range(from, from + limit - 1);
@@ -1883,6 +1887,8 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         designerId: d.designer_id || undefined,
         totalPrice: d.total_price || undefined,
         cost: d.cost || undefined,
+        labCost: d.lab_cost ?? undefined,
+        designerCost: d.designer_cost ?? undefined,
         designPrice: d.design_price || undefined,
         manualCost: d.manual_cost ?? null,
         manualDesignPrice: d.manual_design_price ?? null,
@@ -1891,6 +1897,8 @@ export async function getOrdersForFinanceSummary(): Promise<Partial<Order>[]> {
         createdAt: d.created_at || undefined,
         deliveryDate: d.delivery_date || undefined,
         actualDeliveryDate: d.actual_delivery_date || undefined,
+        firstDeliveredAt: d.first_delivered_at,
+        firstDeliveredSource: d.first_delivered_source,
         isArchived: d.is_archived || undefined,
         isDeleted: d.is_deleted || undefined,
         rejectedLabCost: d.rejected_lab_cost ?? undefined,
