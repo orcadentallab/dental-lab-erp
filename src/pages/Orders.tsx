@@ -32,6 +32,7 @@ import { getEffectiveIssueState, getEffectiveOrderDisplayStatus, getEffectivePro
 import AcceptOrderModal from '../components/orders/AcceptOrderModal';
 import RepEditModal from '../components/orders/RepEditModal';
 import RedoOrderModal from '../components/orders/RedoOrderModal';
+import ScannerRentDialog from '../components/orders/ScannerRentDialog';
 import ExternalLabConversionForm from '../components/orders/ExternalLabConversionForm';
 
 export default function Orders() {
@@ -55,6 +56,7 @@ function OrdersPage() {
     });
     const didRunInitialFilterLoad = useRef(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isScannerRentOpen, setIsScannerRentOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'list' | 'board'>(() => searchParams.get('view') === 'board' ? 'board' : 'list');
     const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
@@ -63,6 +65,8 @@ function OrdersPage() {
 
     // Note: isDesigner check removed - RLS handles role-based filtering at DB level
     const isAccountant = user?.role === 'accountant';
+    const canRecordScannerRent = ['admin', 'accountant', 'representative', 'coordinator'].includes(user?.role || '');
+    const canExportOrders = ['admin', 'accountant', 'lab'].includes(user?.role || '');
     const { t } = useTranslation();
 
     // Data state
@@ -729,68 +733,77 @@ function OrdersPage() {
                     <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary-700 to-primary-500">{t.orders.title}</h1>
                     <p className="text-xs sm:text-sm text-surface-500 mt-1">إدارة ومتابعة جميع الطلبات والحالات</p>
                 </div>
-                {['admin', 'accountant', 'lab'].includes(user?.role || '') && (
-                    <div className="flex gap-2">
-                        <Button
-                            variant="outline"
-                            aria-label="تصدير الأوردرات إلى Excel"
-                            onClick={() => {
-                                const exportData = orders.map((order: Order) => {
-                                    const doctor = doctors.find(d => d.id === order.doctorId);
-                                    const supplier = suppliers.find(s => s.id === order.supplierId);
-                                    const servicesText = (order.items || []).map(i => `${i.serviceType} (${i.teethNumbers?.length || 0})`).join(' | ');
-                                    const servicesPrices = (order.items || []).map(i => `${i.price || 0}`).join(' | ');
-                                    const issueState = getEffectiveIssueState(order);
-                                    const displayStatus = getEffectiveOrderDisplayStatus(order) || 'New Case';
-                                    const isReturned = ['returned', 'doctor_rejected', 'lab_rejected', 'cancelled'].includes(issueState);
-                                    return {
-                                        'رقم الحالة': order.caseId,
-                                        'الطبيب': doctor?.name || '-',
-                                        'المريض': order.patientName,
-                                        'الخدمات (عدد)': servicesText,
-                                        'أسعار الخدمات': servicesPrices,
-                                        'إجمالي الفاتورة': order.totalPrice,
-                                        'الخصم': order.discount || 0,
-                                        'الحالة': displayStatus,
-                                        'مرتجع': isReturned ? 'نعم' : 'لا',
-                                        'المعمل': supplier?.name || 'داخلي',
-                                        'تاريخ الاستلام': order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : '-',
-                                        'تاريخ التسليم': order.deliveryDate || '-',
-                                    };
-                                });
-                                const headers = {
-                                    'رقم الحالة': 'رقم الحالة', 'الطبيب': 'الطبيب', 'المريض': 'المريض',
-                                    'الخدمات (عدد)': 'الخدمات (عدد)', 'أسعار الخدمات': 'أسعار الخدمات',
-                                    'إجمالي الفاتورة': 'إجمالي الفاتورة', 'الخصم': 'الخصم',
-                                    'الحالة': 'الحالة', 'مرتجع': 'مرتجع', 'المعمل': 'المعمل',
-                                    'تاريخ الاستلام': 'تاريخ الاستلام', 'تاريخ التسليم': 'تاريخ التسليم'
-                                };
-                                exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
-                            }}
-                            className="text-green-600 border-green-200 hover:bg-green-50"
-                        >
-                            <FileSpreadsheet size={18} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            aria-label="طباعة قائمة الأوردرات"
-                            onClick={() => {
-                                generateOrdersListPDF(
-                                    orders.map((order: Order) => ({
-                                        caseId: order.caseId,
-                                        doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
-                                        patient: order.patientName,
-                                        status: getEffectiveOrderDisplayStatus(order) || 'New Case',
-                                        price: order.totalPrice,
-                                        date: order.deliveryDate
-                                    })),
-                                    DEFAULT_LAB_INFO
-                                );
-                            }}
-                            className="text-surface-600 border-surface-200 hover:bg-surface-50"
-                        >
-                            <Printer size={18} />
-                        </Button>
+                {(canRecordScannerRent || canExportOrders) && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        {canRecordScannerRent && (
+                            <Button variant="outline" onClick={() => setIsScannerRentOpen(true)}>
+                                إيجار السكانر
+                            </Button>
+                        )}
+                        {canExportOrders && (
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    aria-label="تصدير الأوردرات إلى Excel"
+                                    onClick={() => {
+                                        const exportData = orders.map((order: Order) => {
+                                            const doctor = doctors.find(d => d.id === order.doctorId);
+                                            const supplier = suppliers.find(s => s.id === order.supplierId);
+                                            const servicesText = (order.items || []).map(i => `${i.serviceType} (${i.teethNumbers?.length || 0})`).join(' | ');
+                                            const servicesPrices = (order.items || []).map(i => `${i.price || 0}`).join(' | ');
+                                            const issueState = getEffectiveIssueState(order);
+                                            const displayStatus = getEffectiveOrderDisplayStatus(order) || 'New Case';
+                                            const isReturned = ['returned', 'doctor_rejected', 'lab_rejected', 'cancelled'].includes(issueState);
+                                            return {
+                                                'رقم الحالة': order.caseId,
+                                                'الطبيب': doctor?.name || '-',
+                                                'المريض': order.patientName,
+                                                'الخدمات (عدد)': servicesText,
+                                                'أسعار الخدمات': servicesPrices,
+                                                'إجمالي الفاتورة': order.totalPrice,
+                                                'الخصم': order.discount || 0,
+                                                'الحالة': displayStatus,
+                                                'مرتجع': isReturned ? 'نعم' : 'لا',
+                                                'المعمل': supplier?.name || 'داخلي',
+                                                'تاريخ الاستلام': order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-GB') : '-',
+                                                'تاريخ التسليم': order.deliveryDate || '-',
+                                            };
+                                        });
+                                        const headers = {
+                                            'رقم الحالة': 'رقم الحالة', 'الطبيب': 'الطبيب', 'المريض': 'المريض',
+                                            'الخدمات (عدد)': 'الخدمات (عدد)', 'أسعار الخدمات': 'أسعار الخدمات',
+                                            'إجمالي الفاتورة': 'إجمالي الفاتورة', 'الخصم': 'الخصم',
+                                            'الحالة': 'الحالة', 'مرتجع': 'مرتجع', 'المعمل': 'المعمل',
+                                            'تاريخ الاستلام': 'تاريخ الاستلام', 'تاريخ التسليم': 'تاريخ التسليم'
+                                        };
+                                        exportToExcelWithHeaders(exportData, headers, `orders_${new Date().toISOString().split('T')[0]}`);
+                                    }}
+                                    className="text-green-600 border-green-200 hover:bg-green-50"
+                                >
+                                    <FileSpreadsheet size={18} />
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    aria-label="طباعة قائمة الأوردرات"
+                                    onClick={() => {
+                                        generateOrdersListPDF(
+                                            orders.map((order: Order) => ({
+                                                caseId: order.caseId,
+                                                doctor: doctors.find(d => d.id === order.doctorId)?.name || '-',
+                                                patient: order.patientName,
+                                                status: getEffectiveOrderDisplayStatus(order) || 'New Case',
+                                                price: order.totalPrice,
+                                                date: order.deliveryDate
+                                            })),
+                                            DEFAULT_LAB_INFO
+                                        );
+                                    }}
+                                    className="text-surface-600 border-surface-200 hover:bg-surface-50"
+                                >
+                                    <Printer size={18} />
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -1296,6 +1309,8 @@ function OrdersPage() {
                     </span>
                 </div>
             )}
+
+            {isScannerRentOpen && <ScannerRentDialog onClose={() => setIsScannerRentOpen(false)} />}
 
             {/* Modals - Wrapped with AnimatePresence for transitions */}
             <AnimatePresence>
