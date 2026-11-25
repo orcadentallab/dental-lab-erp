@@ -3,7 +3,11 @@ import { getMarketingClickEvents } from '../../src/marketing/marketingClickTrack
 
 function clickTarget(selectors: string[]) {
     return {
-        closest: (selector: string) => selectors.includes(selector) ? {} : null,
+        closest: (selector: string) =>
+            selectors.includes(selector) ||
+            selector.split(',').some((part) => selectors.includes(part.trim()))
+                ? {}
+                : null,
     } as Pick<HTMLElement, 'closest'>;
 }
 
@@ -21,6 +25,18 @@ describe('marketing pricing CTA tracking', () => {
         const target = clickTarget(['#pricing', 'a, button']);
 
         expect(getMarketingClickEvents(target)).toEqual(['pricing_cta_click']);
+    });
+
+    it('tracks portal registration CTAs', () => {
+        const target = clickTarget(['a[href*="/login?intent=new"]']);
+
+        expect(getMarketingClickEvents(target)).toEqual(['portal_register_click']);
+    });
+
+    it('tracks portal login CTAs', () => {
+        const target = clickTarget(['a[href="/login"]']);
+
+        expect(getMarketingClickEvents(target)).toEqual(['portal_login_click']);
     });
 
     it('does not track a non-interactive click inside the pricing section', () => {

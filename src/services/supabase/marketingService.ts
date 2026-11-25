@@ -12,7 +12,12 @@ import { supabase } from '../../lib/supabase';
 // ─── TYPES ────────────────────────────────────────────────────────
 
 export interface MarketingEvent {
-    event_name: 'whatsapp_click' | 'pricing_cta_click' | 'engaged_session';
+    event_name:
+        | 'whatsapp_click'
+        | 'pricing_cta_click'
+        | 'engaged_session'
+        | 'portal_register_click'
+        | 'portal_login_click';
     source?: string;
     page_type?: string;
     device_type?: 'mobile' | 'desktop';
