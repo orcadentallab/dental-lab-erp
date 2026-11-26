@@ -8,13 +8,15 @@ interface ProtectedRouteProps {
     allowedRoles?: string[];
     requiredCapability?: Capability;
     capabilityFallback?: string;
+    loadingLabel?: string;
+    deniedLabel?: string;
 }
 
-export default function ProtectedRoute({ allowedRoles, requiredCapability, capabilityFallback }: ProtectedRouteProps) {
+export default function ProtectedRoute({ allowedRoles, requiredCapability, capabilityFallback, loadingLabel, deniedLabel }: ProtectedRouteProps) {
     const { user, isAuthenticated, isLoading } = useAuth();
 
     if (isLoading) {
-        return <div className="flex items-center justify-center h-screen">Loading...</div>;
+        return <div className="flex items-center justify-center h-screen">{loadingLabel ?? 'Loading...'}</div>;
     }
 
     if (!isAuthenticated) {
@@ -28,7 +30,7 @@ export default function ProtectedRoute({ allowedRoles, requiredCapability, capab
     const matchesAllowedRole = !allowedRoles || !user || allowedRoles.includes(user.role) || (allowedRoles.includes('designer') && isDesignerUser(user));
 
     if (!matchesAllowedRole) {
-        return <div className="p-8 text-center text-red-600">غير مصرح لك بدخول هذه الصفحة</div>;
+        return <div className="p-8 text-center text-red-600">{deniedLabel ?? 'غير مصرح لك بدخول هذه الصفحة'}</div>;
     }
 
     // Restrict employee-only ('other') users to their own profile page and

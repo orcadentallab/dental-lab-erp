@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.gemini-chat]
 verify_jwt = false
+
+[functions.send-push]
+verify_jwt = false

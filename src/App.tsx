@@ -8,10 +8,13 @@ import Orders from './pages/Orders';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
+import { DoctorLanguageProvider, useDoctorLanguage } from './context/DoctorLanguageContext';
+import DoctorPortalLayout from './layouts/DoctorPortalLayout';
 import { lazy, Suspense } from 'react';
 
 const MarketingPage = lazy(() => import('./marketing/MarketingPage'));
 const MarketingAnalytics = lazy(() => import('./pages/MarketingAnalytics'));
+const Announcements = lazy(() => import('./pages/Announcements'));
 const Doctors = lazy(() => import('./pages/Doctors'));
 const Finance = lazy(() => import('./pages/Finance'));
 const Analytics = lazy(() => import('./pages/Analytics'));
@@ -31,6 +34,9 @@ const IssuesReport = lazy(() => import('./pages/IssuesReport'));
 const NewOrderRequest = lazy(() => import('./pages/doctor/NewOrderRequest'));
 const DoctorOrders = lazy(() => import('./pages/doctor/DoctorOrders'));
 const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
+const DoctorSupport = lazy(() => import('./pages/doctor/DoctorSupport'));
+const DoctorCenterTeam = lazy(() => import('./pages/doctor/DoctorCenterTeam'));
+const DoctorPortalInbox = lazy(() => import('./pages/DoctorPortalInbox'));
 const BalanceSnapshot = lazy(() => import('./pages/BalanceSnapshot'));
 const FinancialReview = lazy(() => import('./pages/FinancialReview'));
 const Statements = lazy(() => import('./pages/Statements'));
@@ -63,6 +69,11 @@ function DashboardEntry() {
   const {user}=useAuth();
   if (user?.role === 'designer') return <DesignerDashboard />;
   return <>{user?.role === 'coordinator' && <CoordinatorDesignQc />}<Dashboard /></>;
+}
+
+function DoctorPortalGuard() {
+  const { t } = useDoctorLanguage();
+  return <ProtectedRoute allowedRoles={['doctor']} loadingLabel={t.checkingSession} deniedLabel={t.accessDenied} />;
 }
 
 function App() {
@@ -207,6 +218,7 @@ function App() {
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
                       <Route path="/financial-review" element={<FinancialReview />} />
                       <Route path="/statements" element={<Statements />} />
+                      <Route element={<ProtectedRoute allowedRoles={['admin', 'coordinator']} />}><Route path="/doctor-inbox" element={<DoctorPortalInbox />} /></Route>
                       <Route path="/aging-report" element={<AgingReport />} />
                     </Route>
                   </Route>
@@ -234,6 +246,7 @@ function App() {
                       <Route path="/services" element={<ServicesPage />} />
                       <Route path="/issues-report" element={<IssuesReport />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
+                      <Route path="/announcements" element={<Announcements />} />
                       <Route path="/reports/profitability" element={<DoctorServiceProfitability />} />
                       <Route path="/reports/production-costing" element={<ProductionCostingReport />} />
                       <Route path="/reports/cashflow" element={<CashFlow />} />
@@ -243,11 +256,14 @@ function App() {
                   </Route>
 
                   {/* Doctor Portal Routes */}
-                  <Route element={<ProtectedRoute allowedRoles={['doctor']} />}>
-                    <Route element={<DashboardLayout />}>
+                  <Route element={<DoctorLanguageProvider><DoctorPortalGuard /></DoctorLanguageProvider>}>
+                    <Route element={<DoctorPortalLayout />}>
+                      <Route path="/doctor" element={<Navigate to="/doctor/my-orders" replace />} />
                       <Route path="/doctor/new-request" element={<NewOrderRequest />} />
                       <Route path="/doctor/my-orders" element={<DoctorOrders />} />
                       <Route path="/doctor/account" element={<DoctorFinance />} />
+                      <Route path="/doctor/support" element={<DoctorSupport />} />
+                      <Route path="/doctor/team" element={<DoctorCenterTeam />} />
                     </Route>
                   </Route>
 

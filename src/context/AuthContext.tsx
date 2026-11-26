@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { User } from '../services/db';
 import { isDesignerUser } from '../lib/userRoles';
 import { observeAuthSession } from '../lib/authSessionObserver';
+import { refreshPushSubscription, unsubscribeFromPush } from '../lib/pushNotifications';
 
 
 
@@ -73,6 +74,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
                 customPermissions: profile.custom_permissions || undefined
             };
             setUser(newUser);
+            if (profile.role === 'doctor') {
+                void refreshPushSubscription(session.user.id);
+            }
         } catch (e) {
             console.error("Error fetching profile", e);
             // SECURITY: Block access on error instead of fallback
@@ -159,6 +163,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     const logout = useCallback(async () => {
         setIsLoading(true);
+        await unsubscribeFromPush();
         await supabase.auth.signOut();
         setUser(null);
         setIsLoading(false);

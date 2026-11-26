@@ -368,6 +368,13 @@ export interface Order {
 }
 
 export interface DoctorOrderSummary {
+    stlUrl?: string;
+    imagesUrl?: string;
+    doctorId?: string;
+    doctorName?: string;
+    stageLabel?: string;
+    pickupStatus?: string;
+    shipmentStatus?: string;
     id: string;
     caseId: string;
     patientName: string;

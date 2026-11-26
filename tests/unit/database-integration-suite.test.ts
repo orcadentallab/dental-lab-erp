@@ -33,11 +33,16 @@ const redoModal = readFileSync(resolve('src/components/orders/RedoOrderModal.tsx
 
 describe('local database integration suite safety', () => {
     test('the npm command is pinned to the local Supabase database', () => {
-        expect(packageJson.scripts['test:db']).toContain('--local');
+        const runner = readFileSync(resolve('scripts/design-qc-local-e2e.ps1'), 'utf8');
+        expect(packageJson.scripts['test:db']).toContain('scripts/design-qc-local-e2e.ps1 -DatabaseOnly');
+        expect(runner).toContain('test db supabase/tests/database --local --workdir $qcWorkspace');
+        expect(runner).toContain('db reset --local --workdir $qcWorkspace');
+        expect(runner).toContain('Refusing to reuse an unowned QA workspace');
         expect(packageJson.scripts['test:db']).not.toContain('--linked');
         expect(packageJson.scripts['test:db']).not.toContain('--db-url');
-        expect(packageJson.scripts['test:db']).toContain('atomic_redo_order.test.sql');
-        expect(packageJson.scripts['test:db']).toContain('on_hold_retirement.test.sql');
+        expect(runner).not.toContain('--linked');
+        expect(runner).not.toContain('--db-url');
+        expect(packageJson.scripts['test:db:fresh']).toBe('npm run test:db');
     });
 
     test('fixtures are always wrapped in a rollback transaction', () => {

@@ -6,6 +6,7 @@ export interface DbDoctor {
     name: string;
     phone: string;
     phone2?: string | null;
+    contact_phones?: import('../../lib/doctorContacts').DoctorContactPhone[];
     address: string;
     shipping_area?: string | null;
     doctor_code: string;
@@ -51,6 +52,7 @@ export interface DbOrder {
     case_id: string;
     doctor_id: string;
     branch_name?: string | null;
+    delivery_address?: string | null;
     patient_name: string;
     items: DbOrderItem[];
     discount: number;

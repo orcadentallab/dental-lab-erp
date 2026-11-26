@@ -1,7 +1,9 @@
 # `orders.status` retirement — phase 0/1 inventory
 
-Baseline date: 2026-08-12  
-Branch: `codex/order-status-retirement-phase-0-1`
+Original baseline date: 2026-08-12
+Latest verification: 2026-10-19
+Verified checkout: `master` at `70d9107`, with unrelated Doctor Portal work in
+the working tree
 
 This inventory is intentionally read-only. It does not disable
 `workflow_status_legacy_mirror`, alter runtime behavior, or modify production.
@@ -10,16 +12,26 @@ This inventory is intentionally read-only. It does not disable
 
 | Check | Result | Evidence / disposition |
 |---|---:|---|
+| Clean local database reset | PASS | Every migration through `20261018001000` applied from scratch |
 | Targeted V2 + RLS DB tests | PASS | 2 files, 73 tests |
+| Full DB suite after clean reset | PASS | 40 files, 741 tests |
 | TypeScript typecheck | PASS | `tsc --noEmit` |
 | Production build | PASS | `tsc -b && vite build` |
-| Unit suite | BASELINE FAIL | 123 pass, 6 fail; failures are stale migration-text assertions in accounting re-registration, doctor FIFO, DB repair guards, and payable allocation tests |
-| Full DB suite | BASELINE FAIL | V2/RLS and finance transaction atomicity pass; old fixtures hit the enforced Issue V2 RPC guard, and allocation tests inherit contaminated/reset state |
+| Unit suite | PASS | 41 files, 351 tests |
 
-The focused gate is reproducible. The full-suite failures predate this inventory;
-none were edited to make the baseline green.
+The October baseline is reproducible and supersedes the stale August failure
+list. No test assertion was weakened to obtain these results.
+
+The reset emitted existing `SET LOCAL can only be used in transaction blocks`
+warnings in three September migrations. They did not fail the reset, but should
+be repaired separately; they are not part of `orders.status` retirement.
 
 ## Runtime code inventory
+
+The 2026-10-19 scan found 42 runtime files with an exact legacy order-status
+candidate, 85 migration files containing historical/current candidates, and 8
+test or fixture files. Historical migration occurrences are evidence, not all
+active dependencies; the live catalog is authoritative for active objects.
 
 ### Direct writes and filters (highest priority)
 
@@ -109,12 +121,21 @@ Confirmed local blockers:
 | Object | Kind | Dependency | Required replacement |
 |---|---|---|---|
 | `public.workflow_v2_backfill_dry_run` | view | direct `pg_depend` dependency on `orders.status` | Rebuild from the V2 axes and approved legacy evidence |
-| `public.orders_select` | RLS policy | representative predicate uses `status <> 'Delivered'` | Express access using V2 production/lifecycle semantics |
 | `public.orders_update` | RLS policy | representative `USING` and `WITH CHECK` use `status <> 'Delivered'` | Express access using V2 production/lifecycle semantics |
 | `public.sync_workflow_states_fn` | trigger function | legacy/V2 bidirectional synchronization and mirror ownership | Reduce to one-way V2-to-legacy mirror while the flag is on, then retire separately |
 | `public.build_order_accounting_snapshot` | financial function | reads order legacy status | Replace classifications with V2 axes without bulk execution |
 | zero-financial guards/normalizers | financial triggers | legacy cancellation/lab-rejection checks remain present | Move checks to `issue_state`; preserve zero-obligation invariants |
 | reporting/analytics functions | reports | several definitions contain order-status predicates | Inspect aliases individually and replace only true `orders.status` reads |
+
+Latest clean-schema catalog counts:
+
+- 1 direct dependency: `public.workflow_v2_backfill_dry_run`.
+- 41 function candidates requiring definition-level classification.
+- 18 active `orders` trigger candidates whose function definitions mention
+  `status`.
+- 1 active RLS dependency: `orders_update`. The earlier `orders_select`
+  dependency has been removed; its remaining `production_jobs.status`
+  reference is unrelated to `orders.status`.
 
 The broad textual function scan returns false positives because many unrelated
 tables also have a `status` column. Each function must therefore be confirmed
@@ -122,15 +143,108 @@ against its full definition before implementation. The audit deliberately
 reports candidates rather than silently discarding them.
 
 The local `orders` table is empty, so it cannot establish a production value
-crosswalk. Phase 2 must not infer the mapping from this result. Run the same
-read-only audit against the linked production database only after review; the
-script does not write data and does not call the bulk accounting snapshot.
+crosswalk. Phase 2 must not infer the mapping from this result.
+
+The linked Production project was reached successfully with the Supabase CLI on
+2026-10-19; `public.orders` had an estimated 1,294 rows. The aggregate crosswalk
+was then executed manually in the Supabase SQL Editor inside the audit's
+read-only transaction. The 20 groups total exactly 1,294 orders and the legacy
+mirror flag was confirmed `on`. No Production write occurred.
+
+### Production value crosswalk (2026-10-19)
+
+| `production_status` | `issue_state` | observed legacy `status` | count |
+|---|---|---|---:|
+| `designing` | `cancelled` | `Cancelled` | 5 |
+| `designing` | `doctor_rejected` | `Doctor Rejected` | 1 |
+| `designing` | `lab_rejected` | `Lab Rejected` | 1 |
+| `designing` | `none` | `Under Design` | 1 |
+| `final_delivered` | `doctor_rejected` | `Doctor Rejected` | 33 |
+| `final_delivered` | `none` | `Delivered` | 1,138 |
+| `final_delivered` | `redo` | `Doctor Rejected` | 2 |
+| `final_ready` | `doctor_rejected` | `Doctor Rejected` | 16 |
+| `in_production` | `cancelled` | `Cancelled` | 15 |
+| `in_production` | `doctor_rejected` | `Doctor Rejected` | 5 |
+| `in_production` | `none` | `Under Production` | 11 |
+| `in_production` | `returned` | `Returned for Adjustments` | 1 |
+| `not_started` | `cancelled` | `Cancelled` | 27 |
+| `not_started` | `doctor_rejected` | `Doctor Rejected` | 12 |
+| `not_started` | `lab_rejected` | `Lab Rejected` | 6 |
+| `not_started` | `none` | `New Case` | 6 |
+| `not_started` | `redo` | `Doctor Rejected` | 7 |
+| `try_in_ready` | `cancelled` | `Cancelled` | 3 |
+| `try_in_ready` | `doctor_rejected` | `Doctor Rejected` | 1 |
+| `try_in_ready` | `none` | `Try In` | 3 |
+
+Issue totals are: `none=1,159`, `doctor_rejected=68`, `cancelled=50`,
+`redo=9`, `lab_rejected=7`, and `returned=1`.
+
+Observed parity is internally consistent: every observed `cancelled`,
+`doctor_rejected`, `lab_rejected`, `redo`, and `returned` row has the expected
+legacy mirror value. In particular, all nine `redo` rows currently mirror to
+`Doctor Rejected`; the future display helper must deliberately render them as
+"redo" / «إعادة إنتاج» instead of copying that legacy label.
+
+This crosswalk is observational evidence, not yet the approved derivation
+mapping. Combinations such as post-delivery issue states paired with
+`not_started`, `designing`, `in_production`, or `final_ready` require lifecycle
+evidence review before classification; no timestamp or correction is inferred
+from the aggregate counts.
+
+The remaining Production catalog result sets were captured separately from the
+SQL Editor. Production currently has:
+
+- 1 direct view dependency: `public.workflow_v2_backfill_dry_run`.
+- 39 function candidates whose definitions reference an order-like `status`.
+- 16 active `orders` trigger candidates.
+- 1 confirmed legacy-status RLS dependency: `public.orders_update`.
+
+The `orders_update` dependency is specifically the representative/coordinator
+`USING` predicate `status <> 'Delivered'`; its `WITH CHECK` no longer contains
+that restriction. It must be replaced with the reviewed V2 lifecycle rule, not
+removed mechanically.
+
+### Production/local catalog drift
+
+Production and the freshly reset local schema are not identical:
+
+- Local-only function candidates: `check_lab_column_updates` and
+  `get_doctor_portal_cases`.
+- Local-only active triggers: `enforce_lab_column_updates` and
+  `trigger_check_order_update`.
+- Seven shared function definitions have different hashes:
+  `apply_workflow_v2_backfill`, `capture_stage_completion_cost`,
+  `get_doctor_receivables_breakdown_privileged_20260812`,
+  `get_top_doctors_privileged_20260801`,
+  `guard_allocated_payable_payment_mutation`,
+  `sync_preserved_external_lab_price_change`, and
+  `sync_production_from_order`.
+- The trigger function behind
+  `trigger_sync_preserved_external_lab_price_change` consequently has a
+  different hash as well.
+
+This drift is a deployment fact, not permission to repair Production during
+status retirement. Phase 2/3 migrations must be based on captured Production
+definitions for the drifted objects, or the unrelated deployment chain must be
+reconciled first in a separately reviewed release.
+
+The linked migration list also showed unrelated unpublished Doctor Portal
+migrations dated 2026-10-04 through 2026-10-11. That deployment-history drift is
+outside this retirement phase and must not be repaired as part of this work.
 
 ## Phase 1 exit status
 
 - Code ownership and replacement categories: documented.
 - Repeatable catalog audit: added.
 - Local direct dependency/RLS blockers: confirmed.
-- Production catalog/value crosswalk: pending reviewed read-only execution.
+- Production connectivity, mirror flag, exact order count, and value crosswalk:
+  verified read-only.
+- Production direct/function/trigger/policy catalog results: captured.
+- View coverage: the direct dependency scan confirms
+  `workflow_v2_backfill_dry_run`; the clean local textual view scan finds the
+  same single view.
+- Phase 1 evidence collection is complete. All catalog candidates remain open
+  implementation items; completing the inventory does not authorize mirror-off
+  or column deletion.
 - Mirror-off/drop-column work: not started and not authorized.
 

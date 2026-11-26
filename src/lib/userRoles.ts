@@ -84,6 +84,7 @@ export function getUserRoleDisplay(user: User | null | undefined): string {
 
 export type Capability =
     | 'view_design_qc'
+    | 'manage_announcements'
     | 'view_production_workspace'
     | 'view_dashboard'
     | 'view_orders'
@@ -164,6 +165,7 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     const isCoordinator = role === 'coordinator';
     if(isAdmin || isFloor || isCoordinator || (isDesigner && role!=='designer')) caps.add('view_production_workspace');
     if(isAdmin) caps.add('view_design_qc');
+    if(isAdmin) caps.add('manage_announcements');
     const hasAccountantScope = role === 'accountant' || isCoordinator;
     const hasRepScope = hasRepresentativeScope(role);
 

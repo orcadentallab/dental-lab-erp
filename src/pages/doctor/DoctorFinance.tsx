@@ -1,178 +1,115 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from 'react';
-import { db, type Transaction, type Doctor } from '../../services/db';
-import { useAuth } from '../../context/AuthContext';
+import { useDoctorLanguage } from '../../context/DoctorLanguageContext';
+import { formatDoctorText } from '../../translations/doctorPortal';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Wallet, ArrowDownLeft, ArrowUpRight, Scale } from 'lucide-react';
+import { PortalError, PortalSkeleton } from '../../components/doctors/PortalStates';
 import { Card } from '../../components/ui/Card';
-import { Wallet, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { doctorPortalService, type PortalMonth } from '../../services/doctorPortalService';
 
 export default function DoctorFinance() {
-    const { user } = useAuth();
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [doctor, setDoctor] = useState<Doctor | null>(null);
-
-    const [totalOrderCost, setTotalOrderCost] = useState(0);
-
-    const [adjustments, setAdjustments] = useState<any[]>([]);
+    const { t, locale } = useDoctorLanguage();
+    const [previous, setPrevious] = useState(false);
+    const [loadVersion, setLoadVersion] = useState(0);
+    const [month, setMonth] = useState<PortalMonth | null>(null);
+    const [error, setError] = useState<'loadFinanceError' | ''>('');
 
     useEffect(() => {
-        const loadData = async () => {
-            if (!user?.entityId) return;
-            setLoading(true);
-            try {
-                const [txs, doc, cost, adjs] = await Promise.all([
-                    db.getTransactions(),
-                    db.getDoctor(user.entityId),
-                    db.getDoctorTotalCost(user.entityId),
-                    import('../../services/financeService').then(m => m.financeService.getAdjustments('doctor', user.entityId!))
-                ]);
+        let active = true;
+        doctorPortalService.month(previous)
+            .then(data => { if (active) setMonth(data); })
+            .catch(() => { if (active) setError('loadFinanceError'); });
+        return () => { active = false; };
+    }, [previous, loadVersion]);
 
-                // Filter for this doctor (Income Only from Transactions)
-                const myTxs = txs.filter(t => t.entityId === user.entityId && t.entityType === 'doctor');
-                // Sort by date desc
-                myTxs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-                setTransactions(myTxs);
-                setDoctor(doc);
-                setTotalOrderCost(cost);
-                setAdjustments(adjs);
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadData();
-    }, [user?.entityId]);
-
-    const calculateBalance = () => {
-        const totalIncome = transactions
-            .filter(t => t.type === 'income')
-            .reduce((acc, curr) => acc + curr.amount, 0);
-
-        const manualExpenses = transactions
-            .filter(t => t.type === 'expense') // Should represent "Other Charges" if any exist in transactions? Usually transactions for doctor are income (payments). If there are expense transactions linked to doctor, they reduce his balance (charge).
-            .reduce((acc, curr) => acc + curr.amount, 0);
-
-        const totalCredits = adjustments
-            .filter(a => a.type === 'credit')
-            .reduce((acc, current) => acc + current.amount, 0);
-
-        const totalCharges = adjustments
-            .filter(a => a.type === 'charge')
-            .reduce((acc, current) => acc + current.amount, 0);
-
-        // Balance = (Income + Credits) - (Order Cost + Manual Expenses + Charges)
-        return (totalIncome + totalCredits) - (totalOrderCost + manualExpenses + totalCharges);
-    };
-
-    const balance = calculateBalance();
-
-    // Derived values for UI
-    const manualExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-    const totalExpenses = totalOrderCost + manualExpenses;
+    const money = (value: number) => formatDoctorText(t.money, Number(value).toLocaleString(locale));
+    const summary = month ? [
+        { label: t.recordedCases, value: month.charges, icon: Wallet, tone: 'text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800' },
+        { label: t.recordedPayments, value: month.payments, icon: ArrowDownLeft, tone: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40' },
+        { label: t.adjustments, value: month.adjustments, icon: ArrowUpRight, tone: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40' },
+        { label: t.monthlyDifference, value: month.difference, icon: Scale, tone: 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40' },
+    ] : [];
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto p-4">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold text-gray-800">حسابي المالي</h1>
-                {doctor && (
-                    <div className="text-sm text-gray-500 font-bold bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
-                        {doctor.name} ({doctor.doctorCode})
-                    </div>
-                )}
+        <div className="portal-page max-w-4xl">
+            <div>
+                <h1 className="portal-title">{t.monthlyAccount}</h1>
+                <p className="portal-muted">
+                    {t.monthlyIntro}
+                </p>
             </div>
 
-            {/* Balance Card */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 shadow-xl shadow-blue-500/20 border-none relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10"></div>
-                    <div className="relative z-10">
-                        <div className="flex items-center gap-2 mb-2 text-blue-100">
-                            <Wallet size={20} />
-                            <span className="font-bold">الرصيد الحالي</span>
-                        </div>
-                        <div className="text-4xl font-black tracking-tight mb-2 dir-ltr">
-                            {Math.abs(balance).toLocaleString()} <span className="text-lg">EGP</span>
-                        </div>
-                        <div className={`text-sm font-bold px-2 py-1 rounded-lg inline-block ${balance >= 0 ? 'bg-green-500/20 text-green-100' : 'bg-red-500/20 text-red-100'}`}>
-                            {balance >= 0 ? 'رصيد دائن (مدفوع مقدم)' : 'رصيد مدين (عليك)'}
-                        </div>
+            <div className="inline-flex rounded-2xl bg-slate-100 dark:bg-slate-800 p-1" role="group" aria-label={t.chooseMonth}>
+                {[false, true].map(value => (
+                    <button
+                        type="button"
+                        key={String(value)}
+                        aria-pressed={previous === value}
+                        onClick={() => { if (previous !== value) { setMonth(null); setError(''); setPrevious(value); } }}
+                        className={`min-h-[44px] px-5 rounded-xl text-sm font-bold transition-all ${previous === value ? 'bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-sm' : 'text-slate-700 dark:text-slate-300'}`}
+                    >
+                        {value ? t.previousMonth : t.currentMonth}
+                    </button>
+                ))}
+            </div>
+
+            {error && <PortalError message={t[error]} retry={() => { setError(''); setLoadVersion(value => value + 1); }} />}
+            {!month && !error && <PortalSkeleton label={t.loadingAccount} />}
+
+            {month && (
+                <>
+                    <h2 className="font-bold text-slate-800 dark:text-slate-100">
+                        {new Date(`${month.month}T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' })}
+                    </h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {summary.map(({ label, value, icon: Icon, tone }) => (
+                            <Card initial={false} key={label} className="portal-card">
+                                <span className={`inline-flex p-2 rounded-xl ${tone}`}><Icon className="rtl:-scale-x-100" size={16} /></span>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">{label}</p>
+                                <p className="text-lg font-black mt-1 text-slate-900 dark:text-white">{money(Number(value))}</p>
+                            </Card>
+                        ))}
                     </div>
-                </Card>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {t.monthlyScope}
+                    </p>
 
-                {/* Quick Stats */}
-                <Card className="p-6 flex flex-col justify-center">
-                    <span className="text-gray-500 text-sm font-bold flex items-center gap-2">
-                        <ArrowUpRight size={16} className="text-green-500" /> إجمالي المدفوعات
-                    </span>
-                    <span className="text-2xl font-bold text-gray-800 mt-2">
-                        {transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0).toLocaleString()} <span className="text-xs text-gray-400">EGP</span>
-                    </span>
-                </Card>
-
-                <Card className="p-6 flex flex-col justify-center">
-                    <span className="text-gray-500 text-sm font-bold flex items-center gap-2">
-                        <ArrowDownLeft size={16} className="text-red-500" /> إجمالي التكلفة
-                    </span>
-                    <span className="text-2xl font-bold text-gray-800 mt-2">
-                        {totalExpenses.toLocaleString()} <span className="text-xs text-gray-400">EGP</span>
-                    </span>
-                    {totalOrderCost > 0 && (
-                        <div className="text-xs text-gray-400 mt-1 flex flex-col">
-                            <span>أوردرات: {totalOrderCost.toLocaleString()}</span>
-                            {manualExpenses > 0 && <span>أخرى: {manualExpenses.toLocaleString()}</span>}
-                        </div>
+                    {month.is_center && (
+                        <Card initial={false} className="portal-card space-y-2">
+                            <h3 className="font-bold text-slate-800 dark:text-slate-100">{t.chargesByDentist}</h3>
+                            {month.by_doctor.map(row => (
+                                <p key={row.id} className="flex flex-wrap justify-between gap-2 text-sm border-t border-slate-100 dark:border-slate-800 pt-2">
+                                    <span className="font-bold">{row.name}</span>
+                                    <span className="text-slate-600 dark:text-slate-300">{t.caseCharges} {money(row.amount)} {t.casePayments} {money(row.paid)}</span>
+                                </p>
+                            ))}
+                        </Card>
                     )}
-                </Card>
-            </div>
 
-            {/* Transactions List */}
-            <Card className="overflow-hidden border border-gray-100 shadow-sm">
-                <div className="p-4 border-b border-gray-100 bg-gray-50">
-                    <h3 className="font-bold text-gray-700">سجل المعاملات</h3>
-                </div>
-                <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-                    <table className="w-full text-right">
-                        <thead className="bg-white text-gray-500 text-xs uppercase font-bold sticky top-0 shadow-sm z-10">
-                            <tr>
-                                <th className="p-4 bg-gray-50">التاريخ</th>
-                                <th className="p-4 bg-gray-50">النوع</th>
-                                <th className="p-4 bg-gray-50">البيان</th>
-                                <th className="p-4 bg-gray-50">القيمة</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {loading ? (
-                                <tr><td colSpan={4} className="p-8 text-center text-gray-400">جاري التحميل...</td></tr>
-                            ) : transactions.length === 0 ? (
-                                <tr><td colSpan={4} className="p-8 text-center text-gray-400">لا توجد معاملات</td></tr>
-                            ) : (
-                                transactions.map(tx => (
-                                    <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
-                                        <td className="p-4 text-sm text-gray-600 font-mono">{tx.date}</td>
-                                        <td className="p-4">
-                                            {tx.type === 'income' ? (
-                                                <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">دفعة مالية</span>
-                                            ) : (
-                                                <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">تكلفة أوردر</span>
-                                            )}
-                                        </td>
-                                        <td className="p-4 text-sm text-gray-800 font-medium">
-                                            {tx.description}
-                                        </td>
-                                        <td className={`p-4 font-bold ${tx.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                            {tx.type === 'income' ? '+' : '-'}{tx.amount.toLocaleString()}
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </Card>
+                    <section className="space-y-3">
+                        <h3 className="font-bold text-slate-800 dark:text-slate-100">{t.monthlyCases}</h3>
+                        {month.cases.length ? month.cases.map((item, i) => (
+                            <Card initial={false} key={`${item.case_id}-${i}`} className="portal-card flex flex-wrap gap-3 justify-between items-center">
+                                <div>
+                                    <p className="font-bold text-slate-900 dark:text-white">{item.patient_name}</p>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                        <bdi dir="ltr">{item.case_id}</bdi>{month.is_center && ` — ${item.doctor_name}`}
+                                    </p>
+                                </div>
+                                <p className="font-black text-slate-900 dark:text-white">{money(item.amount)}</p>
+                            </Card>
+                        )) : (
+                            <Card initial={false} className="portal-card space-y-2 text-center">
+                                <p className="font-semibold">{t.noMonthlyCases}</p>
+                                <p className="portal-muted">{t.monthEmptyHelp}</p>
+                                <Link to="/doctor/support" className="portal-primary">{t.accountInquiry}</Link>
+                            </Card>
+                        )}
+                    </section>
+                </>
+            )}
+
+            {!!month?.cases.length && <Link to="/doctor/support" className="portal-primary">{t.accountInquiry}</Link>}
         </div>
     );
 }
-
-// placeholder aria-label

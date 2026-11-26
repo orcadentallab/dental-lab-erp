@@ -1,0 +1,1631 @@
+{
+  "baseline": "ea159d17118c5ebae270575d1875e141a26a9a1f",
+  "head": "377104e1cc759e2473217c6048a185ace7ffb606",
+  "normalization": "CRLF/LF-only differences excluded; untracked files overlay tracked content; nested worktrees excluded",
+  "files": [
+    {
+      "path": "docs/testing/designer-submission-availability.tdd.md",
+      "group": "designer_overlap",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/designer-submission-production-hotfix.md",
+      "group": "designer_overlap",
+      "change": "deleted",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/designer-workspace-access.tdd.md",
+      "group": "designer_overlap",
+      "change": "deleted",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "scratch/designer-workspace-review.md",
+      "group": "designer_overlap",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "src/pages/DesignerStats.tsx",
+      "group": "designer_overlap",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/designer-legacy-write.test.ts",
+      "group": "designer_overlap",
+      "change": "deleted",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/archive/DOCTOR_PORTAL_MASTER_PLAN_2026-10-07_HISTORY_AR.md",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/DOCTOR_CODE_POLICY_AND_MERGE_REVIEW_AR.md",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/DOCTOR_PORTAL_MASTER_PLAN_AR.md",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/DOCTOR_PORTAL_RELEASE_AR.md",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/DOCTOR_PORTAL_REVIEW_2026-10-07_AR.md",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "playwright.doctor-portal.config.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "scripts/doctor-portal-qa.ps1",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "scripts/doctor-portal-release-check.ps1",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "scripts/seed-doctor-portal-demo.mjs",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/DoctorForm.tsx",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/DoctorLinkRequestsModal.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/DoctorManualAccess.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/DoctorPasswordAccess.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/DoctorPasswordField.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/DoctorPhoneFields.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/doctors/NewDoctorRegistration.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/layouts/DoctorPortalLayout.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/doctorContacts.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/doctorIdentity.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/doctor/DoctorCenterTeam.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/doctor/DoctorFinance.tsx",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/doctor/DoctorOrders.tsx",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/doctor/DoctorSupport.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/doctor/NewOrderRequest.tsx",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/DoctorPortalInbox.tsx",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Doctors.tsx",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Login.tsx",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/auth/doctorAuthService.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/auth/doctorManualAccessService.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/auth/doctorPasswordService.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/auth/MetaCloudOtpSender.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/auth/MockOtpSender.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/auth/types.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/doctorPortalService.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/doctors.ts",
+      "group": "doctor_portal",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/doctor_merge_review_2003_2024_read_only.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/doctor_portal_release_read_only.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261004000000_doctor_portal_phone_auth_and_linking.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261007010000_doctor_onboarding_and_order_destination.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261007020000_doctor_region_codes_and_names.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261007030000_doctor_manual_access.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261007040000_doctor_password_registration_and_invitations.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011000000_doctor_registration_contacts_and_address_review.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011010000_doctor_portal_scope_intake_and_monthly_reads.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011030000_doctor_case_file_limits_and_audit.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011040000_prevent_duplicate_center_child_registration.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011050000_doctor_service_catalog_projection.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011060000_separate_scan_storage_limits.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_manual_access.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_onboarding_and_destination.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_password_registration.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_portal_phone_auth_and_linking.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_portal_scope_and_intake.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_region_codes_and_names.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/doctor_registration_contacts.test.sql",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/doctor-manual-access.qa.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/doctor-password.qa.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/doctor-portal-live.qa.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/doctor-portal.qa.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/doctor-auth-service.test.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/doctor-identity.test.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/doctor-manual-access.test.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/doctor-password.test.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/doctor-portal-files.test.ts",
+      "group": "doctor_portal",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/audits/2026-10-19-legacy-statement-date-incident-ar.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/audits/2026-10-21-order-status-v2-production-review.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/ORDER_STATUS_PHASE_0_1_INVENTORY.md",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/ORDER_WORKFLOW_V2_REMAINING_PLAN.md",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/dashboard-rejected-breakdown.tdd.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/order-status-phase-2.tdd.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/order-status-phase-3-runtime.tdd.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/order-status-phase-4-parity.tdd.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/order-status-phase-5-mirror-off.tdd.md",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/dashboard/AlertCard.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/dashboard/OrderListItem.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/dashboard/orderListLayout.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/dashboard/OrderListModal.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/finance/AccountInfoPanel.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/finance/doctorReceivablesFallback.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/finance/DoctorReceivablesModal.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/finance/OrderAnalysisTab.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/finance/StatementTab.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/GlobalSearch.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/orders/OrderBoard.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/orders/OrderList.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/components/orders/WorkflowActionBar.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/accountingRegistration.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/dashboardOrderGroups.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/financialObligations.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/orderDerivedStatusV2.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/orderLifecycle.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/orderStatementFinancials.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/constants/workflowTransitions.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/excelImporter.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/smartSearch.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/workflowPermissions.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Accounts.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/AgingReport.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/AIAnalytics.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Analytics.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/BalanceSnapshot.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/CaseRegistration.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/CashFlow.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Dashboard.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/DashboardNew.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Orders.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/production/Shipments.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Statements.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/dashboardService.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/statementService.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/financialReconciliationPreview.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/historicalObligationsPreview.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/orders.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/orderWorkflow.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/production.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/utils/orderUtils.tsx",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/audits/order_status_dependency_inventory.sql",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/audits/order_status_parity_phase4.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/audits/order_status_phase4_remote_preflight.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/audits/order_status_phase5_post_pilot.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/audits/order_status_v2_production_review.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/legacy_statement_dates_read_only.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/workflow_v2_mirror_off_rollback.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/workflow_v2_mirror_off_staging_smoke.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/workflow_v2_production_drift_reconcile_20261027.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/manual/workflow_v2_production_portal_drift_20261027.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261019000000_derive_order_display_status_v2.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022000000_retire_runtime_status_financial_guards.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022010000_runtime_status_mirror_and_rpc_writers.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022020000_retire_remaining_transition_status_updates.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022030000_order_intake_state_v2.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022040000_retire_pending_review_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022050000_retire_doctor_portal_delivered_status_fallback.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022060000_retire_accounting_registration_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022070000_retire_dashboard_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022080000_mirror_status_on_v2_inserts.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022090000_doctor_portal_inserts_write_v2_axes.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022100000_retire_analytics_summary_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022110000_retire_top_report_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022120000_retire_doctor_report_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022130000_retire_cost_quality_status_reads.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022140000_orders_update_policy_uses_v2.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022150000_retire_reverse_status_triggers.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022160000_retire_operational_status_metadata.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261022170000_workflow_status_parity_audit.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261027010000_disable_legacy_status_mirror.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/financial_obligations_integration.test.sql",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/order_status_derivation_v2.test.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/order_status_mirror_off_phase5.test.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/order_status_parity_audit_phase4.test.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/order_status_runtime_retirement_phase3.test.sql",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/security_definer_rpc_grants.test.sql",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/financialObligations.spec.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/orderEvents.spec.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/orderLifecycle.spec.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/accounting-registration-candidates.test.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/dashboard-order-groups-v2.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/dashboard-pagination.test.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/doctor-receivables-fallback.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/financial-obligation-lifecycle.test.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/financial-obligations.test.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/order-derived-status-v2.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/order-import-workflow-v2.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/order-statement-financials.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/order-workflow-status-retirement.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/smart-search-v2.test.ts",
+      "group": "erp_v2_finance",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/workflow-helpers.spec.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/workflowTransitions.spec.ts",
+      "group": "erp_v2_finance",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/order-form-loading.tdd.md",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "src/components/AppUpdateNotice.tsx",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "src/components/orders/OrderForm.tsx",
+      "group": "form_deployment_recovery",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/appUpdates.ts",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "src/lib/orderFormLoading.ts",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "src/main.tsx",
+      "group": "form_deployment_recovery",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "tests/unit/app-updates.test.ts",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "tests/unit/deployment-assets.test.ts",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "tests/unit/order-form-loading.test.ts",
+      "group": "form_deployment_recovery",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "vercel.json",
+      "group": "form_deployment_recovery",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "playwright-report/index.html",
+      "group": "generated_artifacts",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "supabase/.temp/cli-latest",
+      "group": "generated_artifacts",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "supabase/migrations/20260914000000_internal_lab_technician_rls.sql",
+      "group": "migration_bom_only",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "public/fonts/IBMPlexSansArabic-Bold.ttf",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "public/fonts/IBMPlexSansArabic-OFL.txt",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "public/fonts/IBMPlexSansArabic-Regular.ttf",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "scripts/check-monthly-report-pdf.py",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "scripts/verify-monthly-report.mjs",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/comprehensiveReportService.ts",
+      "group": "monthly_reports",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/reports/monthlyReportModel.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/reports/monthlyReportPdf.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/monthlyReportData.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/fixtures/monthly-report.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/monthly-report-data.test.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/monthly-report-export.test.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "tests/unit/monthly-report-model.test.ts",
+      "group": "monthly_reports",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": ".gitignore",
+      "group": "preview_backup",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "CLICK_TO_DEPLOY_PREVIEW.bat",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "deploy-preview.ps1",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/PREVIEW_DEPLOYMENT_AR.md",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/TEMPORARY_LAPTOP_TRANSFER.md",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "LOCAL PREVIEW Data.bat",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "LOCAL PREVIEW Data.cmd",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "Local Production Data.bat",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "run-deploy-preview.ps1",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "start-local-preview.ps1",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/seeds/local_preview_admin.sql",
+      "group": "preview_backup",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/testing/rep-edit-own-delivery.tdd.md",
+      "group": "representative_edits",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "src/components/orders/OrderCard.tsx",
+      "group": "representative_edits",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "src/components/orders/RepEditModal.tsx",
+      "group": "representative_edits",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261030000000_rep_edit_uses_own_delivery.sql",
+      "group": "representative_edits",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "supabase/tests/database/rep_edit_own_delivery.test.sql",
+      "group": "representative_edits",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "tests/unit/rep-edit-delivery-approval.test.ts",
+      "group": "representative_edits",
+      "change": "added",
+      "localOnly": true,
+      "inHead": false
+    },
+    {
+      "path": "docs/SECURITY_ADVISOR_2026-10-07.md",
+      "group": "shared",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "docs/security-advisor-2026-10-07-production.jpg",
+      "group": "shared",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "package.json",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "src/App.tsx",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": true,
+      "inHead": true
+    },
+    {
+      "path": "src/components/orders/CaseAttachments.tsx",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/storage.ts",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/lib/validation.ts",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/pages/Users.tsx",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/db.ts",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/shippingService.ts",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/types.ts",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "src/services/supabase/users.ts",
+      "group": "shared",
+      "change": "modified",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/tests/database/audit_and_reporting_view_security.test.sql",
+      "group": "shared",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261007000000_harden_audit_table_and_reporting_views.sql",
+      "group": "shared_database",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    },
+    {
+      "path": "supabase/migrations/20261011020000_fix_production_sync_route_record_alias.sql",
+      "group": "shared_database",
+      "change": "added",
+      "localOnly": false,
+      "inHead": true
+    }
+  ]
+}
