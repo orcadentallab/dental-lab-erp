@@ -223,6 +223,11 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             path: '/settings/work-calendar', capability: 'manage_production_routes',
             aliases: ['التقويم', 'أيام العمل', 'الإجازات', 'calendar', 'shifts'],
         },
+        {
+            id: 'system.announcements', labelAr: 'الإعلانات', labelEn: 'Announcements',
+            path: '/announcements', capability: 'manage_announcements',
+            aliases: ['إعلانات', 'عروض', 'إشعارات', 'announcements', 'promo'],
+        },
     ],
 };
 

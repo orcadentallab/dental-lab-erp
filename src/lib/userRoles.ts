@@ -3,6 +3,14 @@ import type { User } from '../services/db';
 export const DUAL_ROLE_DESIGNER_PERMISSION = 'secondary_designer';
 export const FIXED_SALARY_DESIGNER_PERMISSION = 'designer_fixed_salary';
 
+export function canViewSupplierAndDesignerStatements(role: User['role'] | undefined): boolean {
+    return role !== 'coordinator';
+}
+
+export function usesAuditedOrderEdit(role: string | undefined): boolean {
+    return role === 'representative' || role === 'coordinator';
+}
+
 export function hasCustomPermission(user: User | null | undefined, permission: string): boolean {
     return Boolean(user?.customPermissions?.[permission]);
 }
@@ -76,6 +84,7 @@ export function getUserRoleDisplay(user: User | null | undefined): string {
 
 export type Capability =
     | 'view_design_qc'
+    | 'manage_announcements'
     | 'view_production_workspace'
     | 'view_dashboard'
     | 'view_orders'
@@ -152,7 +161,8 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     // own capability list, so it cannot drift out of step with either.
     const isCoordinator = role === 'coordinator';
     if(isAdmin || isFloor || isCoordinator || (isDesigner && role!=='designer')) caps.add('view_production_workspace');
-    if(isAdmin || isCoordinator || isDesigner) caps.add('view_design_qc');
+    if(isAdmin) caps.add('view_design_qc');
+    if(isAdmin) caps.add('manage_announcements');
     const hasAccountantScope = role === 'accountant' || isCoordinator;
     const hasRepScope = role === 'representative' || isCoordinator;
 

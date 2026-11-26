@@ -1,159 +1,227 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Bell, BellOff, ChevronDown, LogOut, MessageCircle, Moon, Package, Plus, Sun, Users, Wallet, WifiOff } from 'lucide-react';
+import { useDoctorLanguage } from '../context/DoctorLanguageContext';
 import { useAuth } from '../context/AuthContext';
-import { Package, Plus, Wallet, LogOut, MessageCircle, Sun, Moon } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { useEffect, useState } from 'react';
+import DoctorLanguageSwitch from '../components/doctors/DoctorLanguageSwitch';
+import PwaInstallBanner from '../components/doctors/PwaInstallBanner';
+import { hasActivePushSubscription, isPushSupported, getPromotionalPreference, setPromotionalPreference, subscribeToPush, unsubscribeFromPush } from '../lib/pushNotifications';
 import { db, type Doctor } from '../services/db';
+import { readPortalDraft } from '../lib/portalCaseDraft';
+import { doctorPortalService, type PortalMessage } from '../services/doctorPortalService';
+
+export interface DoctorSupportData {
+    messages: PortalMessage[];
+    loading: boolean;
+    failed: boolean;
+    reload: () => Promise<void>;
+}
+
+function lastSeen(key: string) {
+    try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }
+}
 
 export default function DoctorPortalLayout() {
+    const { user } = useAuth();
+    return <DoctorPortalShell key={user?.entityId} />;
+}
+
+function DoctorPortalShell() {
+    const { t, language } = useDoctorLanguage();
     const { user, logout } = useAuth();
-    const navigate = useNavigate();
     const { theme, setTheme } = useTheme();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const entityId = user?.entityId || '';
+    const supportOpen = location.pathname === '/doctor/support';
+    const seenKey = 'orca-doctor-support-seen:' + entityId;
     const [loadedDoctor, setDoctorInfo] = useState<Doctor | null>(null);
-    const doctorInfo = loadedDoctor?.id === user?.entityId ? loadedDoctor : null;
+    const [online, setOnline] = useState(() => navigator.onLine);
+    const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
+    const [messages, setMessages] = useState<PortalMessage[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [failed, setFailed] = useState(false);
+    const [seen, setSeen] = useState(() => lastSeen(seenKey));
+    const [pushEnabled, setPushEnabled] = useState(false);
+    const [promoEnabled, setPromoEnabled] = useState(true);
+    const [promoSaving, setPromoSaving] = useState(false);
+    const pushSupported = isPushSupported() && Boolean(import.meta.env.VITE_VAPID_PUBLIC_KEY);
+    const reloadSequence = useRef(0);
+    const menu = useRef<HTMLDetailsElement>(null);
+    const summary = useRef<HTMLElement>(null);
+    const doctor = loadedDoctor?.id === entityId ? loadedDoctor : null;
+    const latestReply = messages.reduce((latest, message) => message.reply && message.replied_at
+        ? Math.max(latest, Date.parse(message.replied_at) || 0) : latest, 0);
+    const unread = latestReply > seen && !(supportOpen && visible);
+
+    const reload = useCallback(async () => {
+        const sequence = ++reloadSequence.current;
+        try {
+            const result = await doctorPortalService.messages();
+            if (sequence !== reloadSequence.current) return;
+            setMessages(result);
+            setFailed(false);
+        } catch {
+            if (sequence === reloadSequence.current) setFailed(true);
+        } finally {
+            if (sequence === reloadSequence.current) setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
-        if (!user?.entityId) return;
+        if (!entityId) return;
         let current = true;
-        db.getDoctor(user.entityId)
-            .then(doc => { if (current && doc) setDoctorInfo(doc); })
-            .catch(console.error);
+        readPortalDraft(entityId);
+        db.getDoctor(entityId).then(result => { if (current && result) setDoctorInfo(result); }).catch(console.error);
+        void hasActivePushSubscription().then(active => { if (current) setPushEnabled(active); });
+        if (user?.auth_id) {
+            void getPromotionalPreference(user.auth_id).then(enabled => { if (current) setPromoEnabled(enabled); });
+        }
         return () => { current = false; };
-    }, [user?.entityId]);
+    }, [entityId, user?.auth_id]);
 
-    const handleLogout = async () => {
-        await logout();
-        navigate('/login', { replace: true });
-    };
+    useEffect(() => {
+        const connection = () => setOnline(navigator.onLine);
+        const visibility = () => setVisible(document.visibilityState === 'visible');
+        window.addEventListener('online', connection);
+        window.addEventListener('offline', connection);
+        document.addEventListener('visibilitychange', visibility);
+        return () => {
+            window.removeEventListener('online', connection);
+            window.removeEventListener('offline', connection);
+            document.removeEventListener('visibilitychange', visibility);
+        };
+    }, []);
 
-    // Lab WhatsApp Official Support Link
-    const labWhatsAppNumber = import.meta.env.VITE_LAB_WHATSAPP_NUMBER;
-    const whatsappHelpUrl = `https://wa.me/${labWhatsAppNumber}?text=${encodeURIComponent(
-        `مرحباً معمل ORCA، أنا دكتور ${doctorInfo?.name || user?.name || ''} (${doctorInfo?.doctorCode || ''})، أحتاج استفساراً بخصوص الحالات.`
-    )}`;
+    useEffect(() => {
+        if (!entityId || !online || !visible) return;
+        void reload();
+        const timer = window.setInterval(() => void reload(), 60000);
+        return () => window.clearInterval(timer);
+    }, [entityId, online, visible, reload]);
 
-    return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col font-sans selection:bg-blue-500/20" dir="rtl">
-            {/* Top Header */}
-            <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
-                <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
-                    {/* Logo & Brand */}
-                    <div className="flex items-center gap-3">
-                        <img
-                            src="/orca-logo.png"
-                            alt="ORCA Lab"
-                            className="w-10 h-10 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 object-cover"
-                        />
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <span className="font-black text-blue-900 dark:text-blue-400 tracking-tight text-base">ORCA Lab</span>
-                                <span className="text-[10px] bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold px-2 py-0.5 rounded-full border border-blue-200/60 dark:border-blue-800/40">
-                                    بوابة الأطباء
-                                </span>
-                            </div>
-                            {doctorInfo && (
-                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate max-w-[180px] sm:max-w-xs">
-                                    {doctorInfo.name} ({doctorInfo.doctorCode})
-                                </p>
+    useEffect(() => {
+        const closeOutside = (event: PointerEvent) => {
+            if (event.target instanceof Node && !menu.current?.contains(event.target) && menu.current) menu.current.open = false;
+        };
+        document.addEventListener('pointerdown', closeOutside);
+        return () => document.removeEventListener('pointerdown', closeOutside);
+    }, []);
+
+    useEffect(() => { if (menu.current) menu.current.open = false; }, [location.key]);
+
+    useEffect(() => {
+        if (!entityId || !supportOpen || !visible || latestReply <= seen) return;
+        try { localStorage.setItem(seenKey, String(latestReply)); } catch { /* The badge still clears for this session. */ }
+        setSeen(latestReply);
+    }, [entityId, latestReply, seen, seenKey, supportOpen, visible]);
+
+    const supportData: DoctorSupportData = { messages, loading, failed, reload };
+    const nav = [
+        { path: '/doctor/my-orders', label: t.myCases, Icon: Package },
+        { path: '/doctor/new-request', label: t.newCaseNav, Icon: Plus },
+        { path: '/doctor/support', label: t.supportNav, Icon: MessageCircle },
+        { path: '/doctor/account', label: t.accountsNav, Icon: Wallet },
+    ];
+    const unreadDot = unread ? <span aria-label={t.unreadLabReply} role="img" className="absolute -end-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-600 ring-2 ring-white dark:bg-rose-400 dark:ring-slate-900" /> : null;
+
+    return <div className="doctor-portal min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <a href="#doctor-main" className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-50 focus:bg-white focus:p-3 focus:text-blue-700">{t.skipToContent}</a>
+        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="mx-auto flex h-16 max-w-5xl min-w-0 items-center justify-between gap-2 px-3 sm:px-4">
+                <div className="flex min-w-0 items-center gap-2">
+                    <img src="/orca-logo.png" alt="" width="40" height="40" className="h-10 w-10 shrink-0 rounded-xl border border-slate-200 bg-white object-cover" />
+                    <div className="min-w-0"><p className="truncate text-sm font-bold">{t.brand}</p><p className="portal-muted truncate text-xs" dir="auto">{doctor?.name || user?.name}</p></div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                    <DoctorLanguageSwitch />
+                    <details ref={menu} className="relative" onKeyDown={event => {
+                        if (event.key === 'Escape' && menu.current?.open) { menu.current.open = false; summary.current?.focus(); }
+                    }}>
+                        <summary ref={node => { summary.current = node; }} className="portal-action cursor-pointer rounded-xl border border-slate-200 dark:border-slate-700" aria-label={t.accountMenu}>
+                            <span className="relative"><Users size={18} aria-hidden="true" />{unreadDot}</span><ChevronDown size={13} aria-hidden="true" />
+                        </summary>
+                        <div className="portal-card absolute end-0 top-full mt-2 grid w-72 max-w-[calc(100vw-1.5rem)] gap-1">
+                            <NavLink to="/doctor/account" className="portal-menu-link"><Wallet size={16} aria-hidden="true" />{t.accountsNav}</NavLink>
+                            <NavLink to="/doctor/support" className="portal-menu-link"><span className="relative"><MessageCircle size={16} aria-hidden="true" />{unreadDot}</span>{t.supportNav}</NavLink>
+                            {doctor?.isCenter && !doctor.parentId && <NavLink to="/doctor/team" className="portal-menu-link"><Users size={16} aria-hidden="true" />{t.centerTeam}</NavLink>}
+                            {pushSupported && (
+                                <button
+                                    type="button"
+                                    className="portal-menu-link"
+                                    onClick={async () => {
+                                        if (pushEnabled) {
+                                            await unsubscribeFromPush();
+                                            setPushEnabled(false);
+                                        } else if (user?.auth_id) {
+                                            const status = await subscribeToPush(user.auth_id, language);
+                                            setPushEnabled(status === 'subscribed');
+                                        }
+                                    }}
+                                >
+                                    {pushEnabled ? <BellOff size={16} aria-hidden="true" /> : <Bell size={16} aria-hidden="true" />}
+                                    {pushEnabled ? t.pushDisableLabel : t.pushEnableLabel}
+                                </button>
                             )}
+                            {user?.auth_id && (
+                                <div className="my-1 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+                                    <label className="flex cursor-pointer items-center justify-between gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100">
+                                        <span>{t.promoMessagesLabel}</span>
+                                        <input
+                                            type="checkbox"
+                                            role="switch"
+                                            aria-checked={promoEnabled}
+                                            checked={promoEnabled}
+                                            disabled={promoSaving}
+                                            onChange={async (event) => {
+                                                const next = event.target.checked;
+                                                setPromoEnabled(next);
+                                                setPromoSaving(true);
+                                                try {
+                                                    await setPromotionalPreference(user.auth_id!, next);
+                                                } catch {
+                                                    setPromoEnabled(!next);
+                                                } finally {
+                                                    setPromoSaving(false);
+                                                }
+                                            }}
+                                            className="h-4 w-4 accent-blue-700"
+                                        />
+                                    </label>
+                                    <p className="mt-1 text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+                                        {t.promoMessagesHelp}
+                                    </p>
+                                </div>
+                            )}
+                            <button type="button" className="portal-menu-link" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                                {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}{t.toggleTheme}
+                            </button>
+                            <button type="button" className="portal-menu-link" onClick={async () => { await logout(); navigate('/login', { replace: true }); }}>
+                                <LogOut size={16} aria-hidden="true" />{t.signOut}
+                            </button>
                         </div>
-                    </div>
-
-                    {doctorInfo?.isCenter && !doctorInfo.parentId && <NavLink to="/doctor/team" className="text-sm text-blue-600 p-2">أطباء المركز</NavLink>}
-                    {/* Quick Actions (WhatsApp Support, Theme toggle, Logout) */}
-                    <div className="flex items-center gap-2">
-                        <a
-                            href={labWhatsAppNumber ? whatsappHelpUrl : '/doctor/support'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 border border-emerald-200/80 dark:border-emerald-800/60 text-xs font-bold transition-all shadow-sm"
-                            title="تواصل مع خدمة عملاء المعمل عبر الواتساب"
-                        >
-                            <MessageCircle size={15} className="text-emerald-600 dark:text-emerald-400" />
-                            <span className="hidden sm:inline">دعم المعمل</span>
-                        </a>
-
-                        <button
-                            type="button"
-                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                            className="p-2 rounded-xl text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                            aria-label="تبديل الوضع الليلي"
-                        >
-                            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={handleLogout}
-                            className="p-2 rounded-xl text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                            title="تسجيل الخروج"
-                        >
-                            <LogOut size={18} />
-                        </button>
-                    </div>
+                    </details>
                 </div>
-            </header>
+            </div>
+        </header>
 
-            {/* Main Content Area */}
-            <main className="flex-1 max-w-5xl w-full mx-auto p-4 pb-28 md:pb-12">
-                <Outlet key={user?.entityId} />
-            </main>
+        {!online && <div role="status" className="mx-auto flex max-w-5xl items-center gap-2 bg-amber-100 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+            <WifiOff size={18} aria-hidden="true" className="shrink-0" />{t.portalOffline}
+        </div>}
 
-            {/* Bottom Navigation Bar (Optimized for Mobile/Tablet & Touch) */}
-            <nav
-                aria-label="قائمة التنقل السفلية للطبيب"
-                className="fixed bottom-0 inset-x-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg border-t border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-900/5 transition-colors"
-            >
-                <div className="max-w-md mx-auto h-16 px-6 flex items-center justify-between relative">
-                    {/* Destination 1: Orders */}
-                    <NavLink
-                        to="/doctor/my-orders"
-                        className={({ isActive }) =>
-                            `flex flex-col items-center justify-center flex-1 gap-1 py-1 transition-all ${
-                                isActive
-                                    ? 'text-blue-600 dark:text-blue-400 font-bold scale-105'
-                                    : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
-                            }`
-                        }
-                    >
-                        <Package size={22} />
-                        <span className="text-[11px]">حالاتي</span>
-                    </NavLink>
+        <main id="doctor-main" tabIndex={-1} className="mx-auto w-full max-w-5xl px-4 pt-5" style={{ paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom))' }}>
+            <PwaInstallBanner />
+            <Outlet key={entityId} context={supportData} />
+        </main>
 
-                    {/* Destination 2: Prominent Center Button: New Case / Pickup Request */}
-                    <div className="relative -top-5 flex-shrink-0">
-                        <NavLink
-                            to="/doctor/new-request"
-                            className={({ isActive }) =>
-                                `w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform transform active:scale-95 ${
-                                    isActive
-                                        ? 'bg-gradient-to-tr from-blue-700 to-indigo-600 text-white ring-4 ring-blue-100 dark:ring-blue-900/50'
-                                        : 'bg-gradient-to-tr from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white shadow-blue-500/30'
-                                }`
-                            }
-                            aria-label="طلب حالة جديدة أو استلام مقاس"
-                        >
-                            <Plus size={28} strokeWidth={2.5} />
-                        </NavLink>
-                    </div>
-
-                    <NavLink to="/doctor/support" className="flex flex-col items-center justify-center flex-1 text-blue-600 gap-1"><MessageCircle size={22} /><span className="text-[11px]">المعمل</span></NavLink>
-                    {/* Destination 3: Finance & Account Statement */}
-                    <NavLink
-                        to="/doctor/account"
-                        className={({ isActive }) =>
-                            `flex flex-col items-center justify-center flex-1 gap-1 py-1 transition-all ${
-                                isActive
-                                    ? 'text-blue-600 dark:text-blue-400 font-bold scale-105'
-                                    : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
-                            }`
-                        }
-                    >
-                        <Wallet size={22} />
-                        <span className="text-[11px]">الحسابات</span>
-                    </NavLink>
-                </div>
-            </nav>
-        </div>
-    );
+        <nav aria-label={t.portalNavigation} className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+            <div className="mx-auto grid max-w-lg grid-cols-4 gap-1 p-1.5">
+                {nav.map(({ path, label, Icon }) => <NavLink to={path} className="portal-nav-link" key={path}>
+                    <span className="relative"><Icon size={21} aria-hidden="true" />{path === '/doctor/support' && unreadDot}</span>
+                    <span>{label}</span>
+                </NavLink>)}
+            </div>
+        </nav>
+    </div>;
 }

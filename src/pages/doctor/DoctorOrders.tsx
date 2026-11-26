@@ -1,501 +1,265 @@
+import { useDoctorLanguage } from '../../context/DoctorLanguageContext';
+import { doctorPickupLabels, formatDoctorText } from '../../translations/doctorPortal';
 import CaseAttachments from '../../components/orders/CaseAttachments';
 import { ACCEPTED_TYPES, SCAN_ACCEPTED_TYPES } from '../../lib/storage';
 import { Link } from 'react-router-dom';
-import { PICKUP_LABELS } from '../../services/doctorPortalService';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { db, type DoctorOrderSummary } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
-import {
-    Star,
-    Search,
-    Truck,
-    MessageCircle,
-    CheckCircle2,
-    Clock,
-    Sparkles,
-    Smile,
-    ShieldAlert
-} from 'lucide-react';
+import { Star, Search, MessageCircle, Check, Smile, FolderOpen, Copy, X, ChevronDown, Package, Palette, PencilLine, ScanLine, Shapes } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Button } from '../../components/ui/Button';
+import { PortalSkeleton, PortalError } from '../../components/doctors/PortalStates';
+import { useCopyCaseReference } from '../../hooks/useCopyCaseReference';
 
 type FilterTab = 'all' | 'in_progress' | 'in_delivery' | 'delivered' | 'issues';
 
-interface StepperStage {
-    key: string;
-    label: string;
-    description: string;
+function stageIndex(order: DoctorOrderSummary) {
+    switch (order.productionStatus) {
+        case 'final_delivered': return 4;
+        case 'final_ready': return 3;
+        case 'in_production':
+        case 'try_in_ready':
+        case 'finalization': return 2;
+        case 'designing': return 1;
+        default: return 0;
+    }
 }
 
-const ORDER_STAGES: StepperStage[] = [
-    { key: 'received', label: 'استلام الطلب', description: 'مراجعة وتأكيد الحالة' },
-    { key: 'design', label: 'التصميم الرقمي', description: 'CAD Design' },
-    { key: 'production', label: 'التصنيع والمعالجة', description: 'خراطة وسيراميك' },
-    { key: 'delivery', label: 'جاهزة للتسليم', description: 'بانتظار تنسيق التسليم' },
-    { key: 'delivered', label: 'تم التسليم', description: 'وصلت للعيادة' },
-];
+function caseFilter(order: DoctorOrderSummary): Exclude<FilterTab, 'all'> {
+    if (order.issueState !== 'none') return 'issues';
+    if (stageIndex(order) === 4) return 'delivered';
+    if (stageIndex(order) === 3 || order.shipmentStatus === 'dispatched') return 'in_delivery';
+    return 'in_progress';
+}
+
+function relativeTime(timestamp: number, now: number, locale: string, justNow: string) {
+    const minutes = Math.max(0, Math.floor((now - timestamp) / 60000));
+    if (!minutes) return justNow;
+    const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'always', style: 'short' });
+    if (minutes < 60) return formatter.format(-minutes, 'minute');
+    if (minutes < 1440) return formatter.format(-Math.floor(minutes / 60), 'hour');
+    return formatter.format(-Math.floor(minutes / 1440), 'day');
+}
+
+function RatingDialog({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+    const { t } = useDoctorLanguage();
+    const ref = useRef<HTMLDialogElement>(null);
+    useEffect(() => { ref.current?.showModal(); }, []);
+    return <dialog ref={ref} aria-label={t.rateCaseQuality} onCancel={onClose}
+        className="m-auto w-11/12 max-w-md rounded-2xl bg-transparent p-0 text-inherit backdrop:bg-slate-950/70">
+        {children}
+    </dialog>;
+}
 
 export default function DoctorOrders() {
+    const { t, locale } = useDoctorLanguage();
     const { user } = useAuth();
+    const { success, error: toastError } = useToast();
+    const copy = useCopyCaseReference();
     const [orders, setOrders] = useState<DoctorOrderSummary[]>([]);
     const [loading, setLoading] = useState(true);
+    const [failed, setFailed] = useState(false);
+    const [updated, setUpdated] = useState(0);
+    const [now, setNow] = useState(Date.now);
     const [filesOrderId, setFilesOrderId] = useState('');
-    const { success, error: toastError } = useToast();
-
-    // Filters and Search
+    const [expandedId, setExpandedId] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
-
-    // Rating Modal State
     const [ratingOrder, setRatingOrder] = useState<DoctorOrderSummary | null>(null);
     const [rating, setRating] = useState(5);
     const [feedbackNotes, setFeedbackNotes] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
     const [isSubmittingRating, setIsSubmittingRating] = useState(false);
-
-    const QUICK_FEEDBACK_TAGS = [
-        'انطباق ممتاز 👌',
-        'لون وتطابق دقيق 🎨',
-        'تشريح طبيعي جداً 🦷',
-        'تسليم سريع وفي الموعد ⚡',
-        'يحتاج تعديل إطباق خفيف ✏️',
-        'الكونتاكت ضيق قليلاً'
+    const searchRef = useRef<HTMLInputElement>(null);
+    const pending = useRef(false);
+    const fileTriggers = useRef(new Map<string, HTMLButtonElement>());
+    const stageLabels = [t.stageReceived, t.stageDesignShort, t.stageProductionShort, t.stageReady, t.stageDelivered];
+    const quickFeedbackTags = [
+        { tag: t.feedbackFit, Icon: Check }, { tag: t.feedbackShade, Icon: Palette },
+        { tag: t.feedbackAnatomy, Icon: Shapes }, { tag: t.feedbackDelivery, Icon: Package },
+        { tag: t.feedbackOcclusion, Icon: PencilLine }, { tag: t.feedbackContact, Icon: ScanLine },
     ];
 
-    const loadOrders = useCallback(async () => {
-        if (!user?.entityId) return;
-        setLoading(true);
+    const loadOrders = useCallback(async (silent = false) => {
+        if (!user?.entityId || pending.current) return;
+        pending.current = true;
+        if (!silent) setLoading(true);
         try {
             setOrders(await db.getMyDoctorOrders());
-        } catch (error) {
-            console.error(error);
+            const refreshed = Date.now();
+            setNow(refreshed);
+            setUpdated(refreshed);
+            setFailed(false);
+        } catch {
+            setFailed(true);
         } finally {
+            pending.current = false;
             setLoading(false);
         }
     }, [user?.entityId]);
 
     useEffect(() => {
-        loadOrders();
+        void loadOrders();
+        const refresh = () => { if (document.visibilityState === 'visible' && navigator.onLine) void loadOrders(true); };
+        const timer = window.setInterval(refresh, 60000);
+        const clock = window.setInterval(() => setNow(Date.now()), 30000);
+        document.addEventListener('visibilitychange', refresh);
+        window.addEventListener('online', refresh);
+        return () => {
+            window.clearInterval(timer);
+            window.clearInterval(clock);
+            document.removeEventListener('visibilitychange', refresh);
+            window.removeEventListener('online', refresh);
+        };
     }, [loadOrders]);
 
-    // Handle Rating Submit
     const handleRateSubmit = async () => {
-        if (!ratingOrder) return;
+        if (!ratingOrder || isSubmittingRating) return;
         setIsSubmittingRating(true);
         try {
-            const combinedNotes = [
-                selectedTags.length > 0 ? `[الملاحظات: ${selectedTags.join('، ')}]` : null,
-                feedbackNotes.trim() || null
-            ].filter(Boolean).join('\n');
-
-            await db.submitMyOrderFeedback(ratingOrder.id, rating, combinedNotes);
-            success('شكراً لتقييمك! نسعد دائماً بخدمتكم وتطوير عملنا.');
+            const tags = selectedTags.length ? formatDoctorText(t.feedbackSummary, selectedTags.join(locale === 'ar-EG' ? '، ' : ', ')) : '';
+            await db.submitMyOrderFeedback(ratingOrder.id, rating, [tags, feedbackNotes.trim()].filter(Boolean).join('\n'));
+            success(t.feedbackThanks);
             setRatingOrder(null);
-            setFeedbackNotes('');
-            setSelectedTags([]);
-            loadOrders();
-        } catch (e: unknown) {
-            console.error(e);
-            toastError(e instanceof Error ? e.message : 'فشل إرسال التقييم');
+            void loadOrders(true);
+        } catch {
+            toastError(t.feedbackError);
         } finally {
             setIsSubmittingRating(false);
         }
     };
 
-    const toggleFeedbackTag = (tag: string) => {
-        if (selectedTags.includes(tag)) {
-            setSelectedTags(selectedTags.filter(t => t !== tag));
-        } else {
-            setSelectedTags([...selectedTags, tag]);
-        }
-    };
-
-    // Calculate Current Stage Index (0 to 4)
-    const getOrderStageIndex = (order: DoctorOrderSummary): number => {
-        if (order.issueState !== 'none') {
-            return -1; // Special issue state
-        }
-        switch (order.productionStatus) {
-            case 'final_delivered':
-                return 4;
-            case 'final_ready':
-                return 3; // Ready; shipment dispatch must come from logistics data
-            case 'in_production':
-            case 'try_in_ready':
-            case 'finalization':
-                return 2; // Manufacturing
-            case 'designing':
-                return 1; // Design
-            case 'not_started':
-            default:
-                return 0; // Received
-        }
-    };
-
-    // Filtered orders
-    const filteredOrders = useMemo(() => {
-        return orders.filter(order => {
-            // Search match
-            const matchesSearch =
-                (order.patientName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (order.caseId || '').toLowerCase().includes(searchTerm.toLowerCase());
-
-            if (!matchesSearch) return false;
-
-            // Tab filter
-            if (activeFilter === 'all') return true;
-            if (activeFilter === 'issues') return order.issueState !== 'none';
-            if (activeFilter === 'delivered') return order.productionStatus === 'final_delivered';
-            if (activeFilter === 'in_delivery') return (order.shipmentStatus === 'dispatched' || order.productionStatus === 'final_ready');
-            if (activeFilter === 'in_progress') {
-                return order.productionStatus !== 'final_delivered' &&
-                       order.productionStatus !== 'final_ready' &&
-                       order.issueState === 'none';
-            }
-            return true;
-        });
-    }, [orders, searchTerm, activeFilter]);
-
-    // Counts for filter pills
-    const inProgressCount = useMemo(() => orders.filter(o => o.productionStatus !== 'final_delivered' && o.productionStatus !== 'final_ready' && o.issueState === 'none').length, [orders]);
-    const inDeliveryCount = useMemo(() => orders.filter(o => (o.shipmentStatus === 'dispatched' || o.productionStatus === 'final_ready') && o.issueState === 'none').length, [orders]);
-    const deliveredCount = useMemo(() => orders.filter(o => o.productionStatus === 'final_delivered').length, [orders]);
-    const issuesCount = useMemo(() => orders.filter(o => o.issueState !== 'none').length, [orders]);
-
-    const labWhatsAppNumber = import.meta.env.VITE_LAB_WHATSAPP_NUMBER;
+    const toggleFeedbackTag = (tag: string) => setSelectedTags(previous => previous.includes(tag) ? previous.filter(item => item !== tag) : [...previous, tag]);
+    const filters: { id: FilterTab; label: string }[] = [
+        { id: 'all', label: t.allCases }, { id: 'in_progress', label: t.inProgress },
+        { id: 'in_delivery', label: t.filterReady }, { id: 'delivered', label: t.stageDelivered }, { id: 'issues', label: t.needsAttention },
+    ];
+    const counts = { all: orders.length, in_progress: 0, in_delivery: 0, delivered: 0, issues: 0 };
+    orders.forEach(order => { counts[caseFilter(order)] += 1; });
+    const term = searchTerm.trim().toLocaleLowerCase(locale);
+    const filteredOrders = orders.filter(order => (activeFilter === 'all' || caseFilter(order) === activeFilter)
+        && [order.patientName, order.caseId].some(value => value.toLocaleLowerCase(locale).includes(term)));
 
     return (
-        <div className="space-y-6 max-w-4xl mx-auto" dir="rtl">
-            {/* Header & Quick Stats */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                <div>
-                    <h1 className="text-2xl font-black text-slate-900 dark:text-white">حالاتي ومتابعة الإنتاج</h1>
-                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-                        تتبع مراحل تصنيع وشحن الحالات لحظة بلحظة مع تقييم جودة الاستلام.
-                    </p>
-                </div>
+        <div className="portal-page max-w-4xl">
+            <div>
+                <h1 className="portal-title">{t.ordersTitle}</h1>
+                <p className="portal-muted">{t.ordersIntro}</p>
+                <p className="portal-muted mt-2 min-h-5 text-xs">{updated ? formatDoctorText(t.updatedRelative, relativeTime(updated, now, locale, t.justNow)) : ''}</p>
             </div>
 
-            {/* Search and Filters Bar */}
-            <div className="space-y-3">
-                <div className="relative">
-                    <Search className="absolute right-3.5 top-1/2 transform -translate-y-1/2 text-slate-400" size={18} />
-                    <input
-                        type="text"
-                        placeholder="ابحث باسم المريض أو كود الحالة..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pr-11 pl-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:text-white shadow-sm"
-                    />
-                </div>
-
-                {/* Filter Pills */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar text-xs font-bold">
-                    <button
-                        type="button"
-                        onClick={() => setActiveFilter('all')}
-                        className={`px-3.5 py-2 rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                            activeFilter === 'all'
-                                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
-                    >
-                        <span>الكل</span>
-                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeFilter === 'all' ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                            {orders.length}
-                        </span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveFilter('in_progress')}
-                        className={`px-3.5 py-2 rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                            activeFilter === 'in_progress'
-                                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
-                    >
-                        <span>قيد التشغيل</span>
-                        {inProgressCount > 0 && (
-                            <span className="bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-1.5 py-0.2 rounded-full text-[10px]">
-                                {inProgressCount}
-                            </span>
-                        )}
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveFilter('in_delivery')}
-                        className={`px-3.5 py-2 rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                            activeFilter === 'in_delivery'
-                                ? 'bg-amber-600 text-white shadow-md shadow-amber-500/20'
-                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
-                    >
-                        <Truck size={14} />
-                        <span>خرجت للشحن</span>
-                        {inDeliveryCount > 0 && (
-                            <span className="bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded-full text-[10px]">
-                                {inDeliveryCount}
-                            </span>
-                        )}
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveFilter('delivered')}
-                        className={`px-3.5 py-2 rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                            activeFilter === 'delivered'
-                                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20'
-                                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
-                    >
-                        <CheckCircle2 size={14} />
-                        <span>تم التسليم</span>
-                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${activeFilter === 'delivered' ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800'}`}>
-                            {deliveredCount}
-                        </span>
-                    </button>
-
-                    {issuesCount > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => setActiveFilter('issues')}
-                            className={`px-3.5 py-2 rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                                activeFilter === 'issues'
-                                    ? 'bg-red-600 text-white shadow-md shadow-red-500/20'
-                                    : 'bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 hover:bg-red-50'
-                            }`}
-                        >
-                            <ShieldAlert size={14} />
-                            <span>ملاحظات ومرتجعات</span>
-                            <span className="bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 px-1.5 py-0.2 rounded-full text-[10px]">
-                                {issuesCount}
-                            </span>
+            <div className="portal-order-filters space-y-2">
+                <div role="group" aria-label={t.caseFilters} className="flex gap-2 overflow-x-auto p-1">
+                    {filters.map(({ id, label }) => (
+                        <button key={id} type="button" aria-pressed={activeFilter === id} onClick={() => setActiveFilter(id)} className="portal-chip shrink-0 whitespace-nowrap">
+                            {label} <span className="tabular-nums opacity-90">{counts[id].toLocaleString(locale)}</span>
                         </button>
-                    )}
+                    ))}
+                </div>
+                <div className="relative">
+                    <Search aria-hidden="true" size={18} className="pointer-events-none absolute start-3 top-3.5 text-slate-500 dark:text-slate-400" />
+                    <input ref={searchRef} aria-label={t.searchOrders} placeholder={t.searchOrders} value={searchTerm}
+                        onChange={event => setSearchTerm(event.target.value)} className="portal-input portal-search" />
+                    {searchTerm && <button type="button" aria-label={t.clearSearch} onClick={() => { setSearchTerm(''); searchRef.current?.focus(); }} className="portal-action absolute inset-y-0 end-0"><X size={18} /></button>}
                 </div>
             </div>
 
-            {/* Orders List (Cards View) */}
-            <div className="space-y-4">
-                {loading ? (
-                    <div className="py-16 text-center text-slate-400">
-                        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                        <p className="text-xs font-bold">جاري تحميل حالاتك...</p>
-                    </div>
-                ) : filteredOrders.length === 0 ? (
-                    <Card className="py-16 text-center text-slate-400 p-6">
-                        <Truck size={40} className="mx-auto mb-2 text-slate-300 dark:text-slate-600 stroke-[1.2]" />
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300">لا توجد أوردرات مطابقة للبحث</p>
-                        <p className="text-xs text-slate-400 mt-1">يمكنك تقديم طلب حالة جديدة أو تغيير خيارات التصفية أعلاه.</p>
-                    </Card>
-                ) : (
-                    filteredOrders.map(order => {
-                        const stageIndex = getOrderStageIndex(order);
-                        const isDelivered = order.productionStatus === 'final_delivered';
-                        const isReadyForDelivery = (order.shipmentStatus === 'dispatched' || order.productionStatus === 'final_ready');
-                        const hasIssue = order.issueState !== 'none';
+            {loading && <PortalSkeleton label={t.loadingCases} />}
+            {!loading && failed && <PortalError message={t.loadCasesError} retry={() => void loadOrders()} />}
+            {!loading && !failed && filteredOrders.length === 0 && (
+                <Card initial={false} className="portal-card space-y-3 text-center">
+                    <Package size={30} aria-hidden="true" className="mx-auto text-blue-700 dark:text-blue-300" />
+                    <h2 className="font-semibold">{orders.length ? t.noMatchingCases : t.noCases}</h2>
+                    <p className="portal-muted">{orders.length ? t.changeFilters : t.firstCaseHelp}</p>
+                    {orders.length
+                        ? <button type="button" className="portal-primary" onClick={() => { setSearchTerm(''); setActiveFilter('all'); searchRef.current?.focus(); }}>{t.resetCaseFilters}</button>
+                        : <Link className="portal-primary" to="/doctor/new-request">{t.newCase}</Link>}
+                </Card>
+            )}
 
-                        // Lab WhatsApp prefilled link for this specific case
-                        const whatsappInquiryUrl = `https://wa.me/${labWhatsAppNumber}?text=${encodeURIComponent(
-                            `مرحباً معمل ORCA، أستفسر عن شحنة وتوصيل الحالة رقم (${order.caseId}) - المريض: (${order.patientName}).`
-                        )}`;
-
-                        return (
-                            <Card
-                                key={order.id}
-                                className={`p-4 sm:p-5 transition-all border ${
-                                    isReadyForDelivery
-                                        ? 'border-amber-300/80 dark:border-amber-700/80 bg-gradient-to-b from-amber-50/20 via-white to-white dark:from-amber-950/10 dark:via-slate-900 dark:to-slate-900'
-                                        : hasIssue
-                                        ? 'border-red-200 dark:border-red-900/40 bg-red-50/10'
-                                        : 'border-slate-200/80 dark:border-slate-800'
-                                } shadow-sm hover:shadow-md rounded-2xl`}
-                            >
-                                {/* Card Header */}
-                                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-mono font-bold text-xs sm:text-sm bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-lg border border-blue-200/60 dark:border-blue-800/40" dir="ltr">
-                                            {order.caseId}
-                                        </span>
-                                        <h3 className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">
-                                            {order.patientName}
-                                        </h3>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 text-xs font-bold">
-                                        {order.totalPrice > 0 && (
-                                            <span className="text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
-                                                {order.totalPrice.toLocaleString()} ج.م
-                                            </span>
-                                        )}
-                                        {hasIssue && (
-                                            <span className="bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 px-2 py-0.5 rounded-md text-[11px]">
-                                                {order.issueState === 'doctor_rejected' ? 'مرتجع طبيب' : 'ملاحظات المعمل'}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <p className="text-sm mt-3 font-bold">{order.doctorName} — المرحلة الحالية: {order.stageLabel}</p>
-                                {order.pickupStatus && <p className="text-sm mt-2">{PICKUP_LABELS[order.pickupStatus]}</p>}
-                                {order.shipmentStatus === 'dispatched' && <p className="text-emerald-700 mt-2">الحالة خرجت للشحن وفي طريقها للعيادة</p>}
-                                <Link to={`/doctor/support?case=${order.id}`} className="inline-block text-blue-600 py-3">استفسار عن الحالة</Link>
-                                <button type="button" className="text-blue-600 p-3" onClick={() => setFilesOrderId(filesOrderId === order.id ? '' : order.id)}>ملفات الحالة</button>
-                                {filesOrderId === order.id && <div className="space-y-2">
-                                    {order.stlUrl && /^https?:\/\//i.test(order.stlUrl) && <a className="inline-block text-blue-600 p-3" href={order.stlUrl} target="_blank" rel="noopener noreferrer">رابط السكان</a>}
-                                    {order.imagesUrl && /^https?:\/\//i.test(order.imagesUrl) && <a className="inline-block text-blue-600 p-3" href={order.imagesUrl} target="_blank" rel="noopener noreferrer">رابط الصور</a>}
-                                    <CaseAttachments orderId={order.id} kind="instruction" canUpload accept={`${ACCEPTED_TYPES},${SCAN_ACCEPTED_TYPES}`} label="السكان والصور المرفقة" />
-                                </div>}
-                                {/* Stepper Visual Progression */}
-                                {!hasIssue && (
-                                    <div className="py-4">
-                                        <div className="grid grid-cols-5 gap-1 text-center relative">
-                                            {/* Continuous progress track behind dots */}
-                                            <div className="absolute top-3.5 inset-x-4 h-0.5 bg-slate-200 dark:bg-slate-700 -z-0" />
-
-                                            {ORDER_STAGES.map((stage, idx) => {
-                                                const isCompleted = idx < stageIndex;
-                                                const isCurrent = idx === stageIndex;
-
-                                                return (
-                                                    <div key={stage.key} className="flex flex-col items-center relative z-10">
-                                                        <div
-                                                            className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                                                                isCurrent
-                                                                    ? 'bg-blue-600 text-white ring-4 ring-blue-100 dark:ring-blue-900/60 scale-110 shadow-md shadow-blue-500/30'
-                                                                    : isCompleted
-                                                                    ? 'bg-emerald-600 text-white'
-                                                                    : 'bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 text-slate-400'
-                                                            }`}
-                                                        >
-                                                            {isCompleted ? (
-                                                                <CheckCircle2 size={16} />
-                                                            ) : (
-                                                                idx + 1
-                                                            )}
-                                                        </div>
-                                                        <span className={`text-[10px] sm:text-[11px] mt-1.5 font-bold leading-tight ${
-                                                            isCurrent
-                                                                ? 'text-blue-600 dark:text-blue-400'
-                                                                : isCompleted
-                                                                ? 'text-slate-800 dark:text-slate-200'
-                                                                : 'text-slate-400'
-                                                        }`}>
-                                                            {stage.label}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Out for Delivery Special Notice & WhatsApp Button */}
-                                {isReadyForDelivery && (
-                                    <div className="my-2 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
-                                        <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-bold">
-                                            <Truck size={18} className="text-amber-600 shrink-0" />
-                                            <span>{order.shipmentStatus === 'dispatched' ? 'الحالة خرجت للشحن وفي طريقها للعيادة' : 'الحالة جاهزة؛ تواصل مع المعمل لتأكيد ترتيبات التسليم.'}</span>
-                                        </div>
-
-                                        <a
-                                            href={labWhatsAppNumber ? whatsappInquiryUrl : `/doctor/support?case=${order.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition-colors flex items-center gap-1.5 shrink-0 self-end sm:self-auto shadow-sm"
-                                        >
-                                            <MessageCircle size={14} />
-                                            <span>استفسار عن الشحنة</span>
-                                        </a>
-                                    </div>
-                                )}
-
-                                {/* Interactive Case Rating Prompt (CSAT) */}
-                                {isDelivered && order.doctorId === user?.entityId && (
-                                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-                                        {order.feedback ? (
-                                            <div className="flex items-center gap-2 text-xs">
-                                                <span className="text-slate-500 dark:text-slate-400 font-bold">تقييمك للحالة:</span>
-                                                <div className="flex text-amber-400">
-                                                    {[...Array(5)].map((_, i) => (
-                                                        <Star
-                                                            key={i}
-                                                            size={14}
-                                                            fill={i < order.feedback!.rating ? "currentColor" : "none"}
-                                                            className={i < order.feedback!.rating ? "" : "text-slate-200 dark:text-slate-700"}
-                                                        />
-                                                    ))}
-                                                </div>
-                                                {order.feedback.notes && (
-                                                    <span className="text-slate-500 text-[11px] truncate max-w-xs">
-                                                        ({order.feedback.notes})
-                                                    </span>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="w-full flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 p-2.5 rounded-xl border border-amber-200/80 dark:border-amber-800/60">
-                                                <div className="flex items-center gap-1.5 text-xs text-amber-900 dark:text-amber-200 font-bold">
-                                                    <Sparkles size={15} className="text-amber-500" />
-                                                    <span>تم تسليم الحالة. كيف كانت جودة العمل والانطباق؟</span>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setRatingOrder(order);
-                                                        setRating(5);
-                                                        setSelectedTags([]);
-                                                        setFeedbackNotes('');
-                                                    }}
-                                                    className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-lg transition-colors shadow-sm flex items-center gap-1 cursor-pointer"
-                                                >
-                                                    <Star size={13} fill="currentColor" />
-                                                    <span>تقييم الحالة</span>
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Dates & Delivery details footer */}
-                                <div className="mt-3 pt-2 border-t border-slate-50 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-
-                                    <span className="flex items-center gap-1">
-                                        <Clock size={12} />
-                                        <span>تاريخ الإرسال: {order.createdAt ? new Date(order.createdAt).toLocaleDateString('ar-EG') : '-'}</span>
-                                    </span>
-                                </div>
-                            </Card>
-                        );
-                    })
-                )}
+            <div className="space-y-3">
+                {filteredOrders.map(order => {
+                    const state = caseFilter(order);
+                    const index = stageIndex(order);
+                    const stage = state === 'issues' ? t.needsAttention : order.productionStatus === 'try_in_ready' ? t.stageTryIn : state === 'in_delivery' && order.shipmentStatus === 'dispatched' ? t.dispatched : stageLabels[index];
+                    const filesOpen = filesOrderId === order.id;
+                    const expanded = expandedId === order.id;
+                    const submitted = Date.parse(order.createdAt);
+                    return <Card initial={false} key={order.id} className="portal-card space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-x-3">
+                            <h2 className="min-w-0 break-words text-lg font-bold" dir="auto">{order.patientName}</h2>
+                            <button type="button" className="portal-action max-w-full gap-1 text-xs text-blue-700 dark:text-blue-300"
+                                aria-label={t.copyCaseReference + ' ' + order.caseId} onClick={() => void copy(order.caseId)}>
+                                <bdi dir="ltr" className="break-all tabular-nums">{order.caseId}</bdi><Copy aria-hidden="true" size={14} />
+                            </button>
+                        </div>
+                        <div className="portal-muted flex flex-wrap gap-x-3 text-xs">
+                            {order.doctorName && order.doctorName !== user?.name && <span dir="auto">{order.doctorName}</span>}
+                            {Number.isFinite(submitted) && <span>{formatDoctorText(t.submittedRelative, relativeTime(submitted, now, locale, t.justNow))}</span>}
+                        </div>
+                        <span className="portal-status" data-status={state}>{stage}</span>
+                        {order.pickupStatus && <p className="portal-muted">{doctorPickupLabels(t)[order.pickupStatus]}</p>}
+                        {state !== 'issues' && <>
+                            <button type="button" className="portal-action w-full justify-between rounded-xl bg-slate-100 px-3 text-xs font-semibold dark:bg-slate-800 md:hidden"
+                                aria-controls={'stages-' + order.id} aria-expanded={expanded} onClick={() => setExpandedId(expanded ? '' : order.id)}>
+                                <span>{t.caseProgress} <span className="sr-only">{expanded ? t.hideStages : t.showStages}</span></span>
+                                <span aria-hidden="true" className="h-1.5 w-1/3 overflow-hidden rounded-full bg-slate-300 dark:bg-slate-700">
+                                    <span className="block h-full rounded-full bg-blue-700 dark:bg-blue-400" style={{ width: ((index + 1) / stageLabels.length) * 100 + '%' }} />
+                                </span>
+                                <ChevronDown size={16} aria-hidden="true" className={expanded ? 'rotate-180' : ''} />
+                            </button>
+                            <ol id={'stages-' + order.id} aria-label={t.caseProgress} className={`${expanded ? 'grid' : 'hidden'} grid-cols-5 gap-1 text-center md:grid`}>
+                                {stageLabels.map((label, step) => <li key={label} aria-current={index === step ? 'step' : undefined} className="portal-muted text-xs leading-snug">
+                                    <span className={`mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-full font-bold ${step <= index ? 'bg-blue-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{step < index ? <Check size={15} aria-hidden="true" /> : (step + 1).toLocaleString(locale)}</span>
+                                    {label}
+                                </li>)}
+                            </ol>
+                        </>}
+                        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                            <Link className="portal-chip" to={'/doctor/support?case=' + encodeURIComponent(order.id)}><MessageCircle size={16} aria-hidden="true" />{t.messageTheLab}</Link>
+                            <button ref={node => { if (node) fileTriggers.current.set(order.id, node); else fileTriggers.current.delete(order.id); }}
+                                type="button" aria-expanded={filesOpen} aria-controls={'files-' + order.id} className="portal-chip" onClick={() => setFilesOrderId(filesOpen ? '' : order.id)}>
+                                <FolderOpen size={16} aria-hidden="true" />{t.caseFiles}
+                            </button>
+                            {state === 'delivered' && !order.feedback && <button type="button" className="portal-chip" onClick={() => { setRatingOrder(order); setRating(5); setSelectedTags([]); setFeedbackNotes(''); }}><Star size={16} aria-hidden="true" />{t.rateCase}</button>}
+                        </div>
+                        {order.feedback && state === 'delivered' && <p className="portal-muted text-xs">{t.yourRating} <bdi dir="ltr">{order.feedback.rating} / 5</bdi></p>}
+                        {filesOpen && <section id={'files-' + order.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60" aria-label={t.caseFiles}>
+                            <div className="flex items-center justify-between gap-2">
+                                <h3 className="font-bold">{t.caseFiles}</h3>
+                                <button type="button" className="portal-action text-sm font-semibold" onClick={() => { setFilesOrderId(''); fileTriggers.current.get(order.id)?.focus(); }}><X size={16} aria-hidden="true" />{t.hideFiles}</button>
+                            </div>
+                            {order.stlUrl && /^https?:\/\//i.test(order.stlUrl) && <a className="portal-chip" href={order.stlUrl} target="_blank" rel="noopener noreferrer">{t.scanLink}</a>}
+                            {order.imagesUrl && /^https?:\/\//i.test(order.imagesUrl) && <a className="portal-chip" href={order.imagesUrl} target="_blank" rel="noopener noreferrer">{t.photosLink}</a>}
+                            <CaseAttachments portalText={t} orderId={order.id} kind="instruction" canUpload accept={ACCEPTED_TYPES + ',' + SCAN_ACCEPTED_TYPES} label={t.scanAttachments} />
+                        </section>}
+                    </Card>;
+                })}
             </div>
-
-            {/* Interactive Rating / CSAT Modal */}
             {ratingOrder && (
-                <div className="fixed inset-0 bg-slate-950/70 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-                    <Card className="w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 rounded-3xl border border-slate-200 dark:border-slate-800">
+                <RatingDialog onClose={() => setRatingOrder(null)}>
+                    <Card initial={false} className="w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 rounded-3xl border border-slate-200 dark:border-slate-800">
                         <div className="text-center">
                             <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 mx-auto flex items-center justify-center mb-2 font-bold">
                                 <Smile size={26} />
                             </div>
-                            <h3 className="text-lg font-black text-slate-900 dark:text-white">تقييم جودة الحالة</h3>
+                            <h3 className="text-lg font-black text-slate-900 dark:text-white">{t.rateCaseQuality}</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                الحالة: {ratingOrder.caseId} - المريض: {ratingOrder.patientName}
+                                {t.caseLabel} <bdi dir="ltr">{ratingOrder.caseId}</bdi> {t.patientLabel} {ratingOrder.patientName}
                             </p>
                         </div>
 
                         {/* Interactive Stars */}
-                        <div className="flex justify-center gap-2 py-2">
+                        <div className="flex justify-center gap-0 py-2">
                             {[1, 2, 3, 4, 5].map((star) => (
                                 <button
                                     key={star}
                                     type="button"
                                     onClick={() => setRating(star)}
-                                    aria-label={`تقييم ${star} من 5 نجوم`}
-                                    className="transition-transform hover:scale-125 focus:outline-none cursor-pointer"
+                                    aria-label={formatDoctorText(t.starRating, star.toLocaleString(locale))}
+                                    aria-pressed={star === rating} className="portal-action cursor-pointer"
                                 >
                                     <Star
                                         size={36}
@@ -508,23 +272,24 @@ export default function DoctorOrders() {
                         {/* Quick Tags Chips */}
                         <div>
                             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-2">
-                                اختيارات سريعة:
+                                {t.quickFeedback}
                             </label>
                             <div className="flex flex-wrap gap-1.5">
-                                {QUICK_FEEDBACK_TAGS.map((tag) => {
+                                {quickFeedbackTags.map(({ tag, Icon }) => {
                                     const isSelected = selectedTags.includes(tag);
                                     return (
                                         <button
                                             key={tag}
+                                            aria-pressed={isSelected}
                                             type="button"
                                             onClick={() => toggleFeedbackTag(tag)}
-                                            className={`text-[11px] font-bold px-2.5 py-1 rounded-xl transition-all ${
+                                            className={`portal-action text-xs font-bold px-2.5 rounded-xl ${
                                                 isSelected
-                                                    ? 'bg-amber-500 text-white shadow-sm'
+                                                    ? 'bg-blue-700 text-white'
                                                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                                             }`}
                                         >
-                                            {tag}
+                                            <Icon size={15} aria-hidden="true" /> {tag}
                                         </button>
                                     );
                                 })}
@@ -533,12 +298,12 @@ export default function DoctorOrders() {
 
                         {/* Optional Notes */}
                         <div>
-                            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                                ملاحظات أو توجيهات لفريق المعمل (اختياري)
+                            <label htmlFor="case-feedback-notes" className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                                {t.optionalFeedback}
                             </label>
-                            <textarea
+                            <textarea id="case-feedback-notes"
                                 className="w-full p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-xs h-20 resize-none dark:text-white"
-                                placeholder="اكتب أي ملاحظة عن الإطباق، اللون، أو وقت التسليم..."
+                                placeholder={t.feedbackPlaceholder}
                                 value={feedbackNotes}
                                 onChange={e => setFeedbackNotes(e.target.value)}
                             />
@@ -552,19 +317,19 @@ export default function DoctorOrders() {
                                 onClick={() => setRatingOrder(null)}
                                 className="flex-1 rounded-xl text-xs"
                             >
-                                إلغاء
+                                {t.cancel}
                             </Button>
                             <Button
                                 type="button"
                                 disabled={isSubmittingRating}
                                 onClick={handleRateSubmit}
-                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-md shadow-amber-500/20"
+                                className="portal-primary flex-1"
                             >
-                                {isSubmittingRating ? 'جاري الحفظ...' : 'إرسال التقييم'}
+                                {isSubmittingRating ? t.saving : t.sendRating}
                             </Button>
                         </div>
                     </Card>
-                </div>
+                </RatingDialog>
             )}
         </div>
     );

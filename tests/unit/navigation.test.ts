@@ -35,7 +35,7 @@ function makeUser(role: Role, overrides: Partial<User> = {}): User {
  * and not here, the mismatch tests below are the ones that fail.
  */
 const ROUTE_ROLES: Record<string, Role[]> = {
-    '/design-qc': ['admin','coordinator','designer'],
+    '/design-qc': ['admin'],
     '/dashboard': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
     '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant'],
     '/doctors': ['admin', 'representative', 'coordinator'],
@@ -69,6 +69,7 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/services': ['admin'],
     '/issues-report': ['admin'],
     '/marketing-analytics': ['admin'],
+    '/announcements': ['admin'],
     '/reports/profitability': ['admin'],
     '/reports/production-costing': ['admin'],
     '/reports/cashflow': ['admin'],
@@ -364,7 +365,7 @@ describe('the sidebar stays small', () => {
             expect(ids).not.toContain(gone);
         }
         // ...and every one of those pages is still reachable as a tab.
-        expect(WORKSPACES.system.filter(tab => caps.has(tab.capability))).toHaveLength(5);
+        expect(WORKSPACES.system.filter(tab => caps.has(tab.capability))).toHaveLength(6);
     });
 
     it('a role with only Settings gets the area but no tab bar', () => {
