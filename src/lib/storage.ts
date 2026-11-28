@@ -142,9 +142,9 @@ export async function getAttachments(
  * A viewable link, valid for an hour. Deliberately short: a link that lives
  * forever is a public file with extra steps.
  */
-export async function getSignedUrl(storagePath: string, seconds = 3600): Promise<string | null> {
+export async function getSignedUrl(storagePath: string, seconds = 3600, bucket: CaseAttachment['storageBucket'] = BUCKET): Promise<string | null> {
     const { data, error } = await supabase.storage
-        .from(BUCKET)
+        .from(bucket)
         .createSignedUrl(storagePath, seconds);
 
     if (error) {

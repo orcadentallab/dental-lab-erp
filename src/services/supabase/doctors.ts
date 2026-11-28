@@ -24,6 +24,7 @@ function similarDoctorName(first: string, second: string) {
 function dbToDoctor(dbDoctor: DbDoctor): Doctor {
     return {
         id: dbDoctor.id,
+        requiresDesignApproval: dbDoctor.requires_design_approval,
         name: dbDoctor.name,
         phone: dbDoctor.phone,
         phone2: dbDoctor.phone2 || undefined,
@@ -46,6 +47,7 @@ function dbToDoctor(dbDoctor: DbDoctor): Doctor {
 function doctorToDb(doctor: Omit<Doctor, 'id'>): DbDoctorInsert {
     return {
         name: doctor.name,
+        ...(doctor.requiresDesignApproval !== undefined ? { requires_design_approval: doctor.requiresDesignApproval } : {}),
         phone: doctor.phone,
         phone2: doctor.phone2 || null,
         address: doctor.address,
@@ -201,6 +203,7 @@ export async function updateDoctor(id: string, updates: Partial<Doctor>): Promis
     }
 
     const dbUpdates: DbDoctorUpdate = {};
+    if (updates.requiresDesignApproval !== undefined) dbUpdates.requires_design_approval = updates.requiresDesignApproval;
 
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.phone !== undefined) dbUpdates.phone = updates.phone;

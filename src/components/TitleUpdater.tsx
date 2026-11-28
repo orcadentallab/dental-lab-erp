@@ -20,6 +20,7 @@ export default function TitleUpdater() {
     const isArabic = language === 'ar';
 
     useEffect(() => {
+        if (document.documentElement.dataset.doctorLanguage) return;
         document.title = [resolveTitle(pathname, isArabic), 'ORCA Dental Lab']
             .filter(Boolean)
             .join(' | ');

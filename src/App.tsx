@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from './constants/externalRegistration';
+import { DoctorLanguageProvider } from './context/DoctorLanguageContext';
+import DoctorPortalLayout from './layouts/DoctorPortalLayout';
+import { doctorPortalQaEnabled } from './lib/doctorPortalQa';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/DashboardNew';
@@ -8,8 +11,6 @@ import Orders from './pages/Orders';
 
 import ProtectedRoute from './components/ProtectedRoute';
 import DashboardLayout from './layouts/DashboardLayout';
-import { DoctorLanguageProvider, useDoctorLanguage } from './context/DoctorLanguageContext';
-import DoctorPortalLayout from './layouts/DoctorPortalLayout';
 import { lazy, Suspense } from 'react';
 
 const MarketingPage = lazy(() => import('./marketing/MarketingPage'));
@@ -35,8 +36,9 @@ const NewOrderRequest = lazy(() => import('./pages/doctor/NewOrderRequest'));
 const DoctorOrders = lazy(() => import('./pages/doctor/DoctorOrders'));
 const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
 const DoctorSupport = lazy(() => import('./pages/doctor/DoctorSupport'));
+const DoctorSupportInbox = lazy(() => import('./pages/DoctorSupportInbox'));
 const DoctorCenterTeam = lazy(() => import('./pages/doctor/DoctorCenterTeam'));
-const DoctorPortalInbox = lazy(() => import('./pages/DoctorPortalInbox'));
+const DoctorPortalLogin = lazy(() => import('./pages/doctor/DoctorPortalLogin'));
 const BalanceSnapshot = lazy(() => import('./pages/BalanceSnapshot'));
 const FinancialReview = lazy(() => import('./pages/FinancialReview'));
 const Statements = lazy(() => import('./pages/Statements'));
@@ -71,11 +73,6 @@ function DashboardEntry() {
   return <>{user?.role === 'coordinator' && <CoordinatorDesignQc />}<Dashboard /></>;
 }
 
-function DoctorPortalGuard() {
-  const { t } = useDoctorLanguage();
-  return <ProtectedRoute allowedRoles={['doctor']} loadingLabel={t.checkingSession} deniedLabel={t.accessDenied} />;
-}
-
 function App() {
   return (
     <LanguageProvider>
@@ -87,7 +84,7 @@ function App() {
               <ToastProvider>
                 <Suspense fallback={<div className="min-h-screen bg-brand-offwhite" />}>
                 <Routes>
-                  <Route path="/login" element={<Login />} />
+                  <Route path="/login" element={doctorPortalQaEnabled ? <DoctorPortalLogin /> : <Login />} />
 
 
                   {/* The marketing landing page belongs to one specific lab, so
@@ -218,7 +215,6 @@ function App() {
                       <Route path="/balance-snapshot" element={<BalanceSnapshot />} />
                       <Route path="/financial-review" element={<FinancialReview />} />
                       <Route path="/statements" element={<Statements />} />
-                      <Route element={<ProtectedRoute allowedRoles={['admin', 'coordinator']} />}><Route path="/doctor-inbox" element={<DoctorPortalInbox />} /></Route>
                       <Route path="/aging-report" element={<AgingReport />} />
                     </Route>
                   </Route>
@@ -255,8 +251,14 @@ function App() {
                     </Route>
                   </Route>
 
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'coordinator']} />}>
+                    <Route element={<DashboardLayout />}>
+                      <Route path="/doctor-support-inbox" element={<DoctorSupportInbox />} />
+                    </Route>
+                  </Route>
+
                   {/* Doctor Portal Routes */}
-                  <Route element={<DoctorLanguageProvider><DoctorPortalGuard /></DoctorLanguageProvider>}>
+                  <Route element={<DoctorLanguageProvider><ProtectedRoute allowedRoles={['doctor']} /></DoctorLanguageProvider>}>
                     <Route element={<DoctorPortalLayout />}>
                       <Route path="/doctor" element={<Navigate to="/doctor/my-orders" replace />} />
                       <Route path="/doctor/new-request" element={<NewOrderRequest />} />

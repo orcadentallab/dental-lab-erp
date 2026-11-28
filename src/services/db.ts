@@ -7,6 +7,7 @@ export interface DoctorBranch {
 }
 
 export interface Doctor {
+    requiresDesignApproval?: boolean;
     id: string;
     name: string;
     phone: string;
@@ -368,14 +369,15 @@ export interface Order {
 }
 
 export interface DoctorOrderSummary {
-    stlUrl?: string;
-    imagesUrl?: string;
+    id: string;
+    hasTryIn?: boolean;
     doctorId?: string;
     doctorName?: string;
     stageLabel?: string;
+    stlUrl?: string;
+    imagesUrl?: string;
     pickupStatus?: string;
     shipmentStatus?: string;
-    id: string;
     caseId: string;
     patientName: string;
     deliveryDate: string;

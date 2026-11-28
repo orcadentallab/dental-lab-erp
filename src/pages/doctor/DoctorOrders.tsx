@@ -7,11 +7,14 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { db, type DoctorOrderSummary } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/ui/Card';
-import { Star, Search, MessageCircle, Check, Smile, FolderOpen, Copy, X, ChevronDown, Package, Palette, PencilLine, ScanLine, Shapes } from 'lucide-react';
+import { Star, Search, MessageCircle, Check, Smile, FolderOpen, Copy, X, ChevronDown, Package, Palette, PencilLine, ScanLine, Shapes, Clock } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { Button } from '../../components/ui/Button';
 import { PortalSkeleton, PortalError } from '../../components/doctors/PortalStates';
 import { useCopyCaseReference } from '../../hooks/useCopyCaseReference';
+import DoctorDesignReview from '../../components/doctors/DoctorDesignReview';
+import DoctorTryInResponse from '../../components/doctors/DoctorTryInResponse';
+import { doctorPortalService, type PortalDesignReview, type PortalTryInRequest } from '../../services/doctorPortalService';
 
 type FilterTab = 'all' | 'in_progress' | 'in_delivery' | 'delivered' | 'issues';
 
@@ -21,6 +24,7 @@ function stageIndex(order: DoctorOrderSummary) {
         case 'final_ready': return 3;
         case 'in_production':
         case 'try_in_ready':
+        case 'waiting_doctor':
         case 'finalization': return 2;
         case 'designing': return 1;
         default: return 0;
@@ -59,6 +63,8 @@ export default function DoctorOrders() {
     const { success, error: toastError } = useToast();
     const copy = useCopyCaseReference();
     const [orders, setOrders] = useState<DoctorOrderSummary[]>([]);
+    const [reviews, setReviews] = useState<PortalDesignReview[]>([]);
+    const [tryInRequests, setTryInRequests] = useState<PortalTryInRequest[]>([]);
     const [loading, setLoading] = useState(true);
     const [failed, setFailed] = useState(false);
     const [updated, setUpdated] = useState(0);
@@ -75,7 +81,6 @@ export default function DoctorOrders() {
     const searchRef = useRef<HTMLInputElement>(null);
     const pending = useRef(false);
     const fileTriggers = useRef(new Map<string, HTMLButtonElement>());
-    const stageLabels = [t.stageReceived, t.stageDesignShort, t.stageProductionShort, t.stageReady, t.stageDelivered];
     const quickFeedbackTags = [
         { tag: t.feedbackFit, Icon: Check }, { tag: t.feedbackShade, Icon: Palette },
         { tag: t.feedbackAnatomy, Icon: Shapes }, { tag: t.feedbackDelivery, Icon: Package },
@@ -87,7 +92,12 @@ export default function DoctorOrders() {
         pending.current = true;
         if (!silent) setLoading(true);
         try {
-            setOrders(await db.getMyDoctorOrders());
+            const [cases, designReviews, trialReplies] = await Promise.all([
+                db.getMyDoctorOrders(), doctorPortalService.designReviews(), doctorPortalService.tryInRequests(),
+            ]);
+            setOrders(cases);
+            setReviews(designReviews);
+            setTryInRequests(trialReplies);
             const refreshed = Date.now();
             setNow(refreshed);
             setUpdated(refreshed);
@@ -182,9 +192,23 @@ export default function DoctorOrders() {
             <div className="space-y-3">
                 {filteredOrders.map(order => {
                     const state = caseFilter(order);
-                    const index = stageIndex(order);
-                    const stage = state === 'issues' ? t.needsAttention : order.productionStatus === 'try_in_ready' ? t.stageTryIn : state === 'in_delivery' && order.shipmentStatus === 'dispatched' ? t.dispatched : stageLabels[index];
+                    const workflowIndex = stageIndex(order);
+                    const atTryIn = order.productionStatus === 'waiting_doctor' || order.productionStatus === 'try_in_ready';
+                    const preparingTryIn = order.hasTryIn && order.productionStatus === 'in_production';
+                    const stageLabels = [
+                        t.stageReceived, t.stageDesignShort, ...(order.hasTryIn ? [t.trialStep] : []),
+                        t.stageProductionShort, t.stageReady, t.stageDelivered,
+                    ];
+                    const index = workflowIndex + (order.hasTryIn && workflowIndex >= 2 && !atTryIn && !preparingTryIn ? 1 : 0);
+                    const stage = state === 'issues' ? t.needsAttention
+                        : order.productionStatus === 'waiting_doctor' ? t.stageTryIn
+                        : order.productionStatus === 'try_in_ready' ? t.trialReady
+                        : preparingTryIn ? t.preparingTryIn
+                        : state === 'in_delivery' && order.shipmentStatus === 'dispatched' ? t.dispatched
+                        : stageLabels[index];
                     const filesOpen = filesOrderId === order.id;
+                    const review = reviews.find(item => item.order_id === order.id);
+                    const tryInRequest = tryInRequests.find(item => item.order_id === order.id);
                     const expanded = expandedId === order.id;
                     const submitted = Date.parse(order.createdAt);
                     return <Card initial={false} key={order.id} className="portal-card space-y-3">
@@ -200,6 +224,19 @@ export default function DoctorOrders() {
                             {Number.isFinite(submitted) && <span>{formatDoctorText(t.submittedRelative, relativeTime(submitted, now, locale, t.justNow))}</span>}
                         </div>
                         <span className="portal-status" data-status={state}>{stage}</span>
+                        {tryInRequest && <DoctorTryInResponse request={tryInRequest} reload={() => loadOrders(true)} />}
+                        {review?.state === 'pending' && (
+                            <button type="button" aria-expanded={filesOpen} aria-controls={'files-' + order.id}
+                                className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-start text-sm font-bold text-amber-950 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+                                onClick={() => {
+                                    setFilesOrderId(filesOpen ? '' : order.id);
+                                    if (!filesOpen) requestAnimationFrame(() =>
+                                        document.getElementById('files-' + order.id)?.focus());
+                                }}>
+                                <Clock size={16} aria-hidden="true" />
+                                {t.designInputRequired}
+                            </button>
+                        )}
                         {order.pickupStatus && <p className="portal-muted">{doctorPickupLabels(t)[order.pickupStatus]}</p>}
                         {state !== 'issues' && <>
                             <button type="button" className="portal-action w-full justify-between rounded-xl bg-slate-100 px-3 text-xs font-semibold dark:bg-slate-800 md:hidden"
@@ -210,7 +247,7 @@ export default function DoctorOrders() {
                                 </span>
                                 <ChevronDown size={16} aria-hidden="true" className={expanded ? 'rotate-180' : ''} />
                             </button>
-                            <ol id={'stages-' + order.id} aria-label={t.caseProgress} className={`${expanded ? 'grid' : 'hidden'} grid-cols-5 gap-1 text-center md:grid`}>
+                            <ol id={'stages-' + order.id} aria-label={t.caseProgress} className={`${expanded ? 'grid' : 'hidden'} gap-1 text-center md:grid ${order.hasTryIn ? 'grid-cols-6' : 'grid-cols-5'}`}>
                                 {stageLabels.map((label, step) => <li key={label} aria-current={index === step ? 'step' : undefined} className="portal-muted text-xs leading-snug">
                                     <span className={`mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-full font-bold ${step <= index ? 'bg-blue-700 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>{step < index ? <Check size={15} aria-hidden="true" /> : (step + 1).toLocaleString(locale)}</span>
                                     {label}
@@ -226,7 +263,7 @@ export default function DoctorOrders() {
                             {state === 'delivered' && !order.feedback && <button type="button" className="portal-chip" onClick={() => { setRatingOrder(order); setRating(5); setSelectedTags([]); setFeedbackNotes(''); }}><Star size={16} aria-hidden="true" />{t.rateCase}</button>}
                         </div>
                         {order.feedback && state === 'delivered' && <p className="portal-muted text-xs">{t.yourRating} <bdi dir="ltr">{order.feedback.rating} / 5</bdi></p>}
-                        {filesOpen && <section id={'files-' + order.id} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60" aria-label={t.caseFiles}>
+                        {filesOpen && <section id={'files-' + order.id} tabIndex={-1} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60" aria-label={t.caseFiles}>
                             <div className="flex items-center justify-between gap-2">
                                 <h3 className="font-bold">{t.caseFiles}</h3>
                                 <button type="button" className="portal-action text-sm font-semibold" onClick={() => { setFilesOrderId(''); fileTriggers.current.get(order.id)?.focus(); }}><X size={16} aria-hidden="true" />{t.hideFiles}</button>
@@ -234,6 +271,7 @@ export default function DoctorOrders() {
                             {order.stlUrl && /^https?:\/\//i.test(order.stlUrl) && <a className="portal-chip" href={order.stlUrl} target="_blank" rel="noopener noreferrer">{t.scanLink}</a>}
                             {order.imagesUrl && /^https?:\/\//i.test(order.imagesUrl) && <a className="portal-chip" href={order.imagesUrl} target="_blank" rel="noopener noreferrer">{t.photosLink}</a>}
                             <CaseAttachments portalText={t} orderId={order.id} kind="instruction" canUpload accept={ACCEPTED_TYPES + ',' + SCAN_ACCEPTED_TYPES} label={t.scanAttachments} />
+                            {review && <DoctorDesignReview key={review.revision_id} review={review} reload={() => loadOrders(true)} />}
                         </section>}
                     </Card>;
                 })}

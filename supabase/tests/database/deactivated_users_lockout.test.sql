@@ -152,7 +152,10 @@ SET LOCAL ROLE authenticated;
 -- Without this, deactivation is a one-way door: the Users screen could not
 -- list the people it needs to switch back on.
 SELECT is(
-    (SELECT count(*)::integer FROM public.users WHERE is_active = false),
+    (SELECT count(*)::integer FROM public.users
+     WHERE is_active = false AND id IN (
+         'd2000000-0000-0000-0000-000000000003', 'd2000000-0000-0000-0000-000000000004'
+     )),
     2,
     'an active admin still sees deactivated users, so they can be reactivated');
 

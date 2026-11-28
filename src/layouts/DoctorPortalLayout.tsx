@@ -6,13 +6,14 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import DoctorLanguageSwitch from '../components/doctors/DoctorLanguageSwitch';
 import PwaInstallBanner from '../components/doctors/PwaInstallBanner';
-import { hasActivePushSubscription, isPushSupported, getPromotionalPreference, setPromotionalPreference, subscribeToPush, unsubscribeFromPush } from '../lib/pushNotifications';
+import { getPromotionalPreference, hasActivePushSubscription, isPushSupported, setPromotionalPreference, subscribeToPush, unsubscribeFromPush } from '../lib/pushNotifications';
 import { db, type Doctor } from '../services/db';
 import { readPortalDraft } from '../lib/portalCaseDraft';
-import { doctorPortalService, type PortalMessage } from '../services/doctorPortalService';
+import { doctorPortalService, type PortalMessage, type SupportThread } from '../services/doctorPortalService';
 
 export interface DoctorSupportData {
     messages: PortalMessage[];
+    threads: SupportThread[];
     loading: boolean;
     failed: boolean;
     reload: () => Promise<void>;
@@ -40,6 +41,7 @@ function DoctorPortalShell() {
     const [online, setOnline] = useState(() => navigator.onLine);
     const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
     const [messages, setMessages] = useState<PortalMessage[]>([]);
+    const [threads, setThreads] = useState<SupportThread[]>([]);
     const [loading, setLoading] = useState(true);
     const [failed, setFailed] = useState(false);
     const [seen, setSeen] = useState(() => lastSeen(seenKey));
@@ -51,16 +53,19 @@ function DoctorPortalShell() {
     const menu = useRef<HTMLDetailsElement>(null);
     const summary = useRef<HTMLElement>(null);
     const doctor = loadedDoctor?.id === entityId ? loadedDoctor : null;
-    const latestReply = messages.reduce((latest, message) => message.reply && message.replied_at
+    const legacyReply = messages.reduce((latest, message) => message.reply && message.replied_at
         ? Math.max(latest, Date.parse(message.replied_at) || 0) : latest, 0);
+    const latestReply = threads.reduce((latest, thread) => thread.posts.reduce((time, post) =>
+        post.from_lab ? Math.max(time, Date.parse(post.created_at) || 0) : time, latest), legacyReply);
     const unread = latestReply > seen && !(supportOpen && visible);
 
     const reload = useCallback(async () => {
         const sequence = ++reloadSequence.current;
         try {
-            const result = await doctorPortalService.messages();
+            const [result, conversations] = await Promise.all([doctorPortalService.messages(), doctorPortalService.threads()]);
             if (sequence !== reloadSequence.current) return;
             setMessages(result);
+            setThreads(conversations);
             setFailed(false);
         } catch {
             if (sequence === reloadSequence.current) setFailed(true);
@@ -117,7 +122,7 @@ function DoctorPortalShell() {
         setSeen(latestReply);
     }, [entityId, latestReply, seen, seenKey, supportOpen, visible]);
 
-    const supportData: DoctorSupportData = { messages, loading, failed, reload };
+    const supportData: DoctorSupportData = { messages, threads, loading, failed, reload };
     const nav = [
         { path: '/doctor/my-orders', label: t.myCases, Icon: Package },
         { path: '/doctor/new-request', label: t.newCaseNav, Icon: Plus },
@@ -136,6 +141,11 @@ function DoctorPortalShell() {
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                     <DoctorLanguageSwitch />
+                    <button type="button" className="portal-action rounded-xl border border-slate-200 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+                        aria-label={t.toggleTheme} title={t.toggleTheme} aria-pressed={theme === 'dark'}
+                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                        {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+                    </button>
                     <details ref={menu} className="relative" onKeyDown={event => {
                         if (event.key === 'Escape' && menu.current?.open) { menu.current.open = false; summary.current?.focus(); }
                     }}>
@@ -194,9 +204,6 @@ function DoctorPortalShell() {
                                     </p>
                                 </div>
                             )}
-                            <button type="button" className="portal-menu-link" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-                                {theme === 'dark' ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}{t.toggleTheme}
-                            </button>
                             <button type="button" className="portal-menu-link" onClick={async () => { await logout(); navigate('/login', { replace: true }); }}>
                                 <LogOut size={16} aria-hidden="true" />{t.signOut}
                             </button>

@@ -103,17 +103,26 @@ SELECT is(
     1,
     'lab still reads its own supplier row');
 
--- Production carries a role on services_select that the migration chain never
--- had: somebody added 'doctor' there by hand. Regenerating the policy from
--- the chain would have revoked it silently -- a doctor would open the portal
--- and find an empty catalogue, with nothing in the diff to explain why. The
--- rewrite carries it forward, and this holds that line.
-SELECT is(
-    (SELECT count(*)::integer FROM pg_policies
-     WHERE schemaname = 'public' AND policyname = 'services_select'
-       AND qual ~ '''doctor'''),
-    1,
-    'services_select still admits the doctor -- production had it, the chain did not');
+-- The portal lockdown moves the doctor's catalogue to a bounded RPC while
+-- installations without that migration still use the legacy policy.
+WITH catalog_access AS (
+    SELECT to_regprocedure('public.get_my_doctor_service_catalog()') AS catalog_rpc,
+        EXISTS (
+            SELECT 1 FROM pg_policies
+            WHERE schemaname = 'public' AND tablename = 'services'
+              AND policyname = 'services_select' AND qual ~ '''doctor'''
+        ) AS doctor_in_table_policy
+)
+SELECT ok(
+    CASE WHEN catalog_rpc IS NULL THEN doctor_in_table_policy
+         ELSE NOT doctor_in_table_policy
+              AND has_function_privilege('authenticated', catalog_rpc, 'EXECUTE')
+              AND NOT has_function_privilege('anon', catalog_rpc, 'EXECUTE')
+              AND pg_get_function_result(catalog_rpc) =
+                  'TABLE(id uuid, name text, family_id uuid, sort_order integer, price numeric)'
+    END,
+    'The doctor catalogue keeps the legacy grant or uses the authenticated projection without internal costs'
+) FROM catalog_access;
 
 -- ─── 3. The production manager picked the floor up ───────────────────────
 

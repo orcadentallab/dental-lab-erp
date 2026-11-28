@@ -1,11 +1,13 @@
 import { useDoctorLanguage } from '../../context/DoctorLanguageContext';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { MessageCircle, Send, CheckCheck, Clock } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { doctorPortalService } from '../../services/doctorPortalService';
 import type { DoctorSupportData } from '../../layouts/DoctorPortalLayout';
 import { PortalError, PortalSkeleton } from '../../components/doctors/PortalStates';
+import SupportConversation from '../../components/doctors/SupportConversation';
+import { db, type DoctorOrderSummary } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
 import { subscribeToPush } from '../../lib/pushNotifications';
 
@@ -14,13 +16,23 @@ export default function DoctorSupport() {
     const { t, locale, language } = useDoctorLanguage();
     const { user } = useAuth();
     const quickTopics = [t.deliveryTopic, t.adjustmentTopic, t.accountInquiry, t.pickupTopic];
-    const [params] = useSearchParams();
-    const caseId = params.get('case') || undefined;
-    const { messages, loading, failed, reload } = useOutletContext<DoctorSupportData>();
+    const [params, setParams] = useSearchParams();
+    const caseId = params.get('case') || '';
+    const { messages, threads, loading, failed, reload } = useOutletContext<DoctorSupportData>();
+    const selectedThread = threads.find(thread => !thread.closed_at && (thread.order_id ?? '') === caseId);
+    const [cases, setCases] = useState<DoctorOrderSummary[]>([]);
     const [body, setBody] = useState('');
     const [busy, setBusy] = useState(false);
     const [sent, setSent] = useState(false);
     const [error, setError] = useState<'sendMessageError' | ''>('');
+    const [caseLoadFailed, setCaseLoadFailed] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        void db.getMyDoctorOrders().then(result => { if (active) setCases(result); })
+            .catch(() => { if (active) setCaseLoadFailed(true); });
+        return () => { active = false; };
+    }, []);
 
     const submit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -29,7 +41,7 @@ export default function DoctorSupport() {
         setError('');
         setSent(false);
         try {
-            await doctorPortalService.send(body, caseId);
+            await doctorPortalService.writeThread('start', { body, orderId: caseId });
             setBody('');
             setSent(true);
             await reload();
@@ -54,11 +66,16 @@ export default function DoctorSupport() {
 
             <Card initial={false} className="portal-card">
                 <form className="space-y-3" onSubmit={submit}>
-                    {caseId && (
-                        <p className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 rounded-lg px-3 py-2">
-                            {t.linkedMessage}
-                        </p>
-                    )}
+                    <h2 className="font-semibold">{selectedThread ? t.replyToConversation : t.newConversation}</h2>
+                    <label className="portal-field">{t.conversationCase}
+                        <select className="portal-input" value={caseId}
+                            onChange={event => setParams(event.target.value ? { case: event.target.value } : {})}>
+                            <option value="">{t.generalConversation}</option>
+                            {caseId && !cases.some(order => order.id === caseId) && <option value={caseId}>{t.linkedMessage}</option>}
+                            {cases.map(order => <option key={order.id} value={order.id}>{order.caseId} · {order.patientName}</option>)}
+                        </select>
+                    </label>
+                    {caseLoadFailed && <p role="alert" className="portal-muted">{t.loadCasesError}</p>}
                     <div className="flex flex-wrap gap-1.5" aria-label={t.quickTopics}>
                         {quickTopics.map(topic => (
                             <button
@@ -109,7 +126,7 @@ export default function DoctorSupport() {
                 </div>
                 {loading && <PortalSkeleton label={t.loadingMessages} />}
                 {!loading && failed && <PortalError message={t.loadMessagesError} retry={() => void reload()} />}
-                {!loading && !failed && messages.length === 0 && (
+                {!loading && !failed && messages.length === 0 && threads.length === 0 && (
                     <Card initial={false} className="portal-card space-y-2 text-center">
                         <MessageCircle size={30} aria-hidden="true" className="mx-auto text-blue-700 dark:text-blue-300" />
                         <p className="font-semibold">{t.noMessages}</p>
@@ -117,6 +134,7 @@ export default function DoctorSupport() {
                         <button type="button" className="portal-primary" onClick={() => document.getElementById('doctor-support-message')?.focus()}>{t.openComposer}</button>
                     </Card>
                 )}
+                {threads.map(thread => <SupportConversation key={thread.id} thread={thread} text={t} reload={reload} />)}
                 {messages.map(message => (
                     <Card initial={false} key={message.id} className="portal-card space-y-3">
                         <p className="portal-muted text-xs">

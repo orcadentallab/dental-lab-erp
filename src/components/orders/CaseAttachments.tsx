@@ -12,13 +12,20 @@ import { doctorMessage, type DoctorPortalText } from '../../translations/doctorP
  * because `capture` is honoured by mobile browsers; on a desktop it is an
  * ordinary file picker.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import type { ChangeEvent } from 'react';
 import {
     uploadCaseFile, getAttachments, getSignedUrls,
     ACCEPTED_TYPES, validateCaseFile, type AttachmentKind, type CaseAttachment,
 } from '../../lib/storage';
-import { Camera, Loader2, FileText, X } from 'lucide-react';
+import { Camera, Loader2, FileText, X, Box } from 'lucide-react';
+import { doctorPortalQaEnabled } from '../../lib/doctorPortalQa';
+
+const DoctorModelPreview = lazy(() => import('../doctor/DoctorModelPreview'));
+
+function isCaseScan(file: CaseAttachment, orderId: string) {
+    return file.storagePath.startsWith(`${orderId}/instruction/`) && /\.(stl|ply)$/i.test(file.storagePath);
+}
 
 interface Props {
     orderId?: string;
@@ -42,6 +49,7 @@ export default function CaseAttachments({
     stagedFiles = [], onStagedFilesChange, accept = ACCEPTED_TYPES,
 }: Props) {
     const [items, setItems] = useState<CaseAttachment[]>([]);
+    const [preview, setPreview] = useState<CaseAttachment | null>(null);
     const [urls, setUrls] = useState<Record<string, string>>({});
     const [stagedPreviews, setStagedPreviews] = useState<{ file: File; url: string; isPdf: boolean }[]>([]);
     const [loadingFiles, setLoadingFiles] = useState(Boolean(orderId));
@@ -49,6 +57,7 @@ export default function CaseAttachments({
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const previewEnabled = doctorPortalQaEnabled && Boolean(portalText) && kind === 'instruction';
 
     // Sync staged previews
     useEffect(() => {
@@ -73,7 +82,8 @@ export default function CaseAttachments({
         try {
             const rows = await getAttachments(orderId, kind);
             setItems(rows);
-            const signed = await Promise.all([...new Set(rows.map(row => row.storageBucket))].map(bucket => getSignedUrls(rows.filter(row => row.storageBucket === bucket).map(row => row.storagePath), 3600, bucket)));
+            const linkFiles = previewEnabled ? rows.filter(row => !isCaseScan(row, orderId)) : rows;
+            const signed = await Promise.all([...new Set(linkFiles.map(row => row.storageBucket))].map(bucket => getSignedUrls(linkFiles.filter(row => row.storageBucket === bucket).map(row => row.storagePath), 3600, bucket)));
             setUrls(Object.assign({}, ...signed));
         } catch (e) {
             console.error('[CaseAttachments] load failed', e);
@@ -81,7 +91,7 @@ export default function CaseAttachments({
         } finally {
             setLoadingFiles(false);
         }
-    }, [orderId, kind]);
+    }, [orderId, kind, previewEnabled]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -137,6 +147,16 @@ export default function CaseAttachments({
 
             <div className="flex flex-wrap gap-2 items-center">
                 {items.map((a) => {
+                    if (previewEnabled && portalText && orderId && isCaseScan(a, orderId)) {
+                        const name = a.storagePath.split('/').at(-1);
+                        return (
+                            <button key={a.id} type="button" className="portal-chip max-w-full"
+                                    onClick={() => setPreview(a)}>
+                                <Box size={16} aria-hidden="true" />
+                                {portalText.previewScan} <bdi className="break-all" dir="ltr">{name}</bdi>
+                            </button>
+                        );
+                    }
                     const url = urls[a.storagePath];
                     const isPdf = !a.mimeType?.startsWith('image/');
 
@@ -166,6 +186,12 @@ export default function CaseAttachments({
                         </a>
                     );
                 })}
+
+                {preview && portalText && (
+                    <Suspense fallback={<p role="status" className="portal-muted">{portalText.loadingScan}</p>}>
+                        <DoctorModelPreview file={preview} text={portalText} close={() => setPreview(null)} />
+                    </Suspense>
+                )}
 
                 {/* Staged local previews (before order is saved) */}
                 {stagedPreviews.map((p, idx) => (

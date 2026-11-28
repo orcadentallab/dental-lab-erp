@@ -3,7 +3,7 @@
 
 BEGIN;
 
-SELECT plan(16);
+SELECT plan(17);
 
 SET search_path TO public, extensions;
 
@@ -217,6 +217,13 @@ SELECT public.create_shipment(
     '{}'::TEXT[],
     NULL, NULL, NULL, NULL
 ) AS result;
+
+SELECT is(
+    (SELECT cardinality(s.packing_proof_urls)
+       FROM public.shipments s JOIN test_shipment2_res r ON s.id = (r.result->>'shipment_id')::uuid),
+    0,
+    'A parcel can be packaged with no proof photos'
+);
 
 SELECT is(
     (SELECT (public.cancel_shipment((result->>'shipment_id')::uuid, 'إلغاء بناء على طلب الطبيب')->>'status') FROM test_shipment2_res),
