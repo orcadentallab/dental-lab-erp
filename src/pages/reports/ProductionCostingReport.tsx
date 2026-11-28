@@ -14,6 +14,7 @@ import {
   costingService,
   type OrderCostBreakdown,
   type CostOfQualityReport,
+  type PhysicalQcCaseRound,
   type InternalVsExternalBenchmark,
   type TechnicianMaterialEfficiency,
   type LaborRate,
@@ -24,6 +25,12 @@ import { supabase } from '../../lib/supabase';
 import { useToast } from '../../context/ToastContext';
 import DateField from '../../components/ui/DateField';
 import DateRangeField from '../../components/ui/DateRangeField';
+
+const physicalQcPhaseLabels = {
+  trial: 'البروفة',
+  final: 'النهائي',
+  unclassified: 'مرحلة غير محددة',
+} as const;
 
 export const ProductionCostingReport: React.FC = () => {
   const { success: toastSuccess, error: toastError } = useToast();
@@ -50,6 +57,7 @@ export const ProductionCostingReport: React.FC = () => {
 
   // Tab 2: Cost of Quality
   const [qualityReport, setQualityReport] = useState<CostOfQualityReport | null>(null);
+  const [physicalQcRounds, setPhysicalQcRounds] = useState<PhysicalQcCaseRound[] | null>(null);
 
   // Tab 3: Benchmark
   const [benchmarkReport, setBenchmarkReport] = useState<InternalVsExternalBenchmark | null>(null);
@@ -82,8 +90,17 @@ export const ProductionCostingReport: React.FC = () => {
     try {
       setLoading(true);
       if (activeTab === 'quality') {
-        const res = await costingService.getCostOfQualityReport(startDate, endDate);
-        setQualityReport(res);
+        setPhysicalQcRounds(null);
+        const [quality, physicalQc] = await Promise.allSettled([
+          costingService.getCostOfQualityReport(startDate, endDate),
+          costingService.getPhysicalQcCaseRounds(startDate, endDate),
+        ]);
+        if (quality.status === 'rejected') {
+          setQualityReport(null);
+          throw quality.reason;
+        }
+        setQualityReport(quality.value);
+        if (physicalQc.status === 'fulfilled') setPhysicalQcRounds(physicalQc.value);
       } else if (activeTab === 'benchmark') {
         const res = await costingService.getInternalVsExternalBenchmark(startDate, endDate);
         setBenchmarkReport(res);
@@ -500,6 +517,36 @@ export const ProductionCostingReport: React.FC = () => {
       {/* Tab 2: Cost of Quality */}
       {activeTab === 'quality' && qualityReport && (
         <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="font-bold text-slate-900 dark:text-white">نتائج الفحص الفعلي</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              تُحسب جولة الفحص بتاريخ أول فحص فيها. ويُحسب التجاوز بتاريخ تسجيله.
+            </p>
+            {!loading && physicalQcRounds === null && (
+              <p role="status" className="mt-3 text-sm text-amber-700 dark:text-amber-300">تعذّر تحميل نتائج الفحص الفعلي.</p>
+            )}
+            {physicalQcRounds !== null && (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {(Object.keys(physicalQcPhaseLabels) as PhysicalQcCaseRound['phase'][]).map(phase => {
+                  const row = physicalQcRounds.find(item => item.phase === phase);
+                  if (!row || (phase === 'unclassified' && !row.inspected_rounds && !row.bypassed_rounds)) return null;
+                  return (
+                    <article key={phase} className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/60">
+                      <h3 className="font-semibold text-slate-900 dark:text-white">{physicalQcPhaseLabels[phase]}</h3>
+                      <dl className="mt-3 space-y-2 text-sm">
+                        <div className="flex justify-between gap-2"><dt>جولات فُحصت</dt><dd>{row.inspected_rounds}</dd></div>
+                        <div className="flex justify-between gap-2">
+                          <dt>نجحت من أول مرة</dt>
+                          <dd>{row.inspected_rounds ? `${row.first_pass_rounds} / ${row.inspected_rounds}` : '—'}</dd>
+                        </div>
+                        <div className="flex justify-between gap-2"><dt>جولات فيها تجاوز</dt><dd>{row.bypassed_rounds}</dd></div>
+                      </dl>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Internal Quality Box */}
             <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">

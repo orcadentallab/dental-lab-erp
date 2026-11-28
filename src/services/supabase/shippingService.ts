@@ -139,7 +139,7 @@ export const shippingService = {
         shade,
         delivery_date,
         branch_name,
-        doctor:doctors(id, name, phone, address, shipping_area, branches, parent:doctors!parent_id(name, phone, address, shipping_area, branches))
+        doctor:doctors(id, name, phone, address, shipping_area, branches, parent:parent_id(name, phone, address, shipping_area, branches))
       `)
       .in('production_status', READY_TO_PACK_STATUSES)
       .eq('is_deleted', false)

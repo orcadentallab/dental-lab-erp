@@ -3602,10 +3602,22 @@ export async function getDesignerFeedbackDetails(orderIds: string[]): Promise<Re
 
 
 export async function getMyDoctorOrders(): Promise<DoctorOrderSummary[]> {
-    const { data, error } = await supabase.rpc('get_my_doctor_orders_v2');
+    const [{ data, error }, progress] = await Promise.all([
+        supabase.rpc('get_doctor_portal_cases'),
+        supabase.rpc('get_doctor_portal_case_progress'),
+    ]);
     if (error) throw ErrorHandler.handle(error, 'getMyDoctorOrdersV2');
+    if (progress.error) throw ErrorHandler.handle(progress.error, 'getDoctorPortalCaseProgress');
+    const caseProgress = (progress.data ?? []) as { order_id: string; has_try_in: boolean }[];
+    const trialCases = new Set(caseProgress.filter(row => row.has_try_in).map(row => row.order_id));
     return ((data || []) as Array<Record<string, unknown>>).map(row => ({
         id: String(row.id),
+        hasTryIn: trialCases.has(String(row.id)),
+        doctorName: typeof row.doctor_name === 'string' ? row.doctor_name : undefined,
+        stlUrl: typeof row.stl_url === 'string' ? row.stl_url : undefined,
+        imagesUrl: typeof row.images_url === 'string' ? row.images_url : undefined,
+        pickupStatus: typeof row.pickup_status === 'string' ? row.pickup_status : undefined,
+        shipmentStatus: typeof row.shipment_status === 'string' ? row.shipment_status : undefined,
         caseId: String(row.case_id),
         patientName: String(row.patient_name),
         deliveryDate: String(row.delivery_date || ''),

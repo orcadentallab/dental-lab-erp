@@ -22,8 +22,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const html = document.documentElement;
-        html.dir = isRTL ? 'rtl' : 'ltr';
-        html.lang = language;
+        if (!html.dataset.doctorLanguage) {
+            html.dir = isRTL ? 'rtl' : 'ltr';
+            html.lang = language;
+        }
         localStorage.setItem(STORAGE_KEY, language);
     }, [language, isRTL]);
 

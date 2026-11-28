@@ -7,6 +7,7 @@ export interface DoctorBranch {
 }
 
 export interface Doctor {
+    requiresDesignApproval?: boolean;
     id: string;
     name: string;
     phone: string;
@@ -369,6 +370,12 @@ export interface Order {
 
 export interface DoctorOrderSummary {
     id: string;
+    hasTryIn?: boolean;
+    doctorName?: string;
+    stlUrl?: string;
+    imagesUrl?: string;
+    pickupStatus?: string;
+    shipmentStatus?: string;
     caseId: string;
     patientName: string;
     deliveryDate: string;

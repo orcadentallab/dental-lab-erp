@@ -240,6 +240,15 @@ export const costingService = {
     return data as unknown as CostOfQualityReport;
   },
 
+  async getPhysicalQcCaseRounds(startDate: string, endDate: string): Promise<PhysicalQcCaseRound[]> {
+    const { data, error } = await supabase.rpc('get_physical_qc_case_rounds', {
+      p_start_date: startDate,
+      p_end_date: endDate,
+    });
+    if (error) throw error;
+    return (data ?? []) as PhysicalQcCaseRound[];
+  },
+
   // Internal vs External Benchmark
   async getInternalVsExternalBenchmark(startDate?: string, endDate?: string): Promise<InternalVsExternalBenchmark> {
     const { data, error } = await supabase.rpc('get_internal_vs_external_benchmark', {
@@ -262,3 +271,10 @@ export const costingService = {
     return data as unknown as TechnicianMaterialEfficiency;
   }
 };
+
+export interface PhysicalQcCaseRound {
+  phase: 'trial' | 'final' | 'unclassified';
+  inspected_rounds: number;
+  first_pass_rounds: number;
+  bypassed_rounds: number;
+}

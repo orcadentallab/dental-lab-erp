@@ -2,6 +2,7 @@
 // These represent the actual database column names
 
 export interface DbDoctor {
+    requires_design_approval?: boolean;
     id: string;
     name: string;
     phone: string;

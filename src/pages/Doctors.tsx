@@ -11,6 +11,7 @@ import { matchArabic } from '../lib/searchUtils';
 import BillingSettingsPanel from '../components/finance/BillingSettingsPanel';
 
 interface DoctorForm {
+    requiresDesignApproval?: boolean;
     name: string;
     phone: string;
     phone2: string;
@@ -113,7 +114,8 @@ export default function Doctors() {
             isCenter: doc.isCenter || false,
             parentId: doc.parentId || undefined,
             hasBranches: doc.hasBranches || false,
-            labInstructions: doc.labInstructions || ''
+            labInstructions: doc.labInstructions || '',
+            requiresDesignApproval: doc.requiresDesignApproval,
         });
         setBranches(doc.branches || []);
         
@@ -166,6 +168,7 @@ export default function Doctors() {
             let savedCenterId = editingId;
             const doctorPayload = {
                 ...newDoctor,
+                requiresDesignApproval: user?.role === 'admin' ? newDoctor.requiresDesignApproval : undefined,
                 name: newDoctor.name.trim(),
                 doctorCode: normalizedCode,
                 customPrices: newDoctor.parentId ? {} : newDoctor.customPrices,
@@ -490,6 +493,11 @@ export default function Doctors() {
                                 />
                             </div>
 
+                            {user?.role === 'admin' && <label className="flex min-h-11 items-center gap-2 text-sm font-medium">
+                                <input type="checkbox" checked={Boolean(newDoctor.requiresDesignApproval)}
+                                    onChange={event => setNewDoctor({ ...newDoctor, requiresDesignApproval: event.target.checked })} />
+                                موافقة الطبيب على التصميم قبل التنفيذ
+                            </label>}
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رقم الهاتف</label>

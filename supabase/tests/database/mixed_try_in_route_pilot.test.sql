@@ -27,6 +27,10 @@ INSERT INTO public.users(id,auth_id,username,role,name) VALUES
  ('ba200000-0000-4000-8000-000000000005','ba200000-0000-4000-8000-000000000005','mixed_test_production','production_manager','Pilot production manager');
 INSERT INTO public.doctors(id,name,phone,address,doctor_code,representative_name)
  VALUES ('ba200000-0000-4000-8000-000000000010','Pilot clinic','01000000000','Pilot address','TRY-PILOT','Pilot');
+INSERT INTO auth.users(id,email) VALUES ('ba200000-0000-4000-8000-000000000006','mixed-portal-doctor@example.test');
+INSERT INTO public.users(id,auth_id,username,role,name,entity_id) VALUES
+ ('ba200000-0000-4000-8000-000000000006','ba200000-0000-4000-8000-000000000006','mixed_portal_doctor','doctor',
+  'Pilot doctor','ba200000-0000-4000-8000-000000000010');
 INSERT INTO public.suppliers(id,name,phone,supplier_type) VALUES
  ('ba200000-0000-4000-8000-000000000012','Pilot finishing lab','01000000000','external_lab'),
  ('ba200000-0000-4000-8000-000000000013','Pilot courier','01000000000','courier'),
@@ -175,8 +179,8 @@ $$;
 SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000001',true);
 SELECT public.complete_stage_run((SELECT id FROM runs WHERE seq=30 AND status='ready'));
 SELECT pg_temp.send_repeat_trial('reprint');
-SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000002',true);
-SELECT public.mixed_try_in_doctor_action((SELECT id FROM runs WHERE code='doctor_review' AND status='ready'),'request_design_change','Modify the trial contact');
+SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000006',true);
+SELECT public.respond_to_doctor_try_in((SELECT id FROM pilot_order),(SELECT updated_at FROM pilot_order),'changes','Modify the trial contact');
 SELECT is((SELECT production_status FROM pilot_order),'designing','A doctor’s design change reopens the designer queue');
 SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000003',true);
 SELECT public.submit_design_delivery((SELECT id FROM pilot_order),'ba200000-0000-4000-8000-000000000023','link','https://example.test/mixed-doctor-change','Test');
@@ -189,10 +193,13 @@ SELECT pg_temp.send_repeat_trial('new_design');
 SELECT is((SELECT count(DISTINCT l.production_stage_run_id) FROM public.shipment_orders l JOIN pilot_shipments h ON h.id=l.shipment_id),3::bigint,
     'Each trial has its own shipping run and receipt');
 SELECT is((SELECT first_delivered_at FROM pilot_order),NULL::timestamptz,'Repeated trial receipts leave final delivery unset');
-SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000002',true);
-SELECT public.mixed_try_in_doctor_action((SELECT id FROM runs WHERE code='doctor_review' AND status='ready'),'approve','Doctor accepted');
+SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000006',true);
+SELECT public.respond_to_doctor_try_in((SELECT id FROM pilot_order),(SELECT updated_at FROM pilot_order),'approve','Doctor accepted');
 SELECT is((SELECT status FROM runs WHERE code='milling'),'ready','Doctor approval opens milling without a separate release');
 SELECT is((SELECT production_status FROM pilot_order),'finalization','The order enters finalization when approval is saved');
+SELECT is((SELECT doctor_approved_by FROM runs WHERE code='doctor_review' AND doctor_approved_at IS NOT NULL),
+    'ba200000-0000-4000-8000-000000000006'::uuid,'The response records the signed-in portal doctor');
+SELECT set_config('request.jwt.claim.sub','ba200000-0000-4000-8000-000000000002',true);
 SELECT lives_ok($$SELECT public.mixed_try_in_doctor_action(
     (SELECT id FROM runs WHERE code='doctor_review' AND doctor_approved_at IS NOT NULL),'approve','Repeated request')$$,
     'Retrying the same approval succeeds');
@@ -291,5 +298,13 @@ SELECT throws_ok($$SELECT public.update_mixed_try_in_price((SELECT id FROM runs 
     'P0001','السعر محفوظ للمعمل السابق. عدّل سعر المعمل الحالي','Archived quote cannot update the final payable');
 SELECT public.update_mixed_try_in_price((SELECT id FROM runs WHERE is_supplier_replacement),285,'Verified during account review');
 SELECT is((SELECT net_amount FROM public.financial_obligations WHERE order_id=(SELECT id FROM pilot_order) AND entity_type='external_lab' AND status<>'void'),285::numeric,'Account review updates the same unpaid obligation');
+SELECT results_eq(
+    $$SELECT phase, inspected_rounds, first_pass_rounds, bypassed_rounds
+      FROM public.get_physical_qc_case_rounds(
+          (now() AT TIME ZONE 'Africa/Cairo')::date, (now() AT TIME ZONE 'Africa/Cairo')::date)
+      WHERE phase IN ('trial', 'final') ORDER BY phase$$,
+    $$VALUES ('final'::text, 1::bigint, 0::bigint, 0::bigint),
+             ('trial'::text, 2::bigint, 2::bigint, 1::bigint)$$,
+    'Doctor-requested trials start new rounds, bypass stays separate, and final repair does not count as first-pass');
 SELECT * FROM finish();
 ROLLBACK;

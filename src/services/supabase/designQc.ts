@@ -18,6 +18,8 @@ async function rpc<T>(name:string, args:Record<string,unknown>={}):Promise<T> {
         'Design cannot be released in its current state':'الحالة الحالية لا تسمح بإرسال التصميم للتنفيذ.',
         'Design no longer awaits QC':'الحالة لم تعد بانتظار المراجعة. حدّث القائمة وراجع وضعها الحالي.',
         'Await a new design submission':'الحالة رجعت للتصميم. انتظر التسليم الجديد.',
+        'Doctor design approval required':'التنفيذ ينتظر موافقة الطبيب على التصميم.',
+        'Return the case to design before submitting a new revision':'رجّع الحالة للتصميم قبل تسليم نسخة جديدة لموافقة الطبيب.',
         'Reason required':'اكتب الملاحظات أو سبب الإجراء.',
         'Review the current revision':'النسخة تغيّرت؛ حدّث البيانات وراجع النسخة الحالية.',
         'Fixed-salary designer has no per-case settlement':'المصمم براتب ثابت؛ لا تُنشأ له تسوية أجر للحالة.',
