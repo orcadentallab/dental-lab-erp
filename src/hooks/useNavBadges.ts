@@ -15,6 +15,9 @@ import type { Capability } from '../lib/userRoles';
 import {getPendingDesignQcCount} from '../services/supabase/designQc';
 import {DESIGN_QC_CHANGED} from '../lib/designQcQueue';
 
+import { DOCTOR_CHAT_CHANGED } from './useDoctorChat';
+import { doctorPortalService } from '../services/doctorPortalService';
+
 export type BadgeCounts = Partial<Record<BadgeKey, number>>;
 
 let cache: BadgeCounts | null = null;
@@ -35,6 +38,9 @@ async function fetchCounts(caps: Set<Capability>, userId: string): Promise<Badge
             .catch(error => { console.error(`Failed to refresh badge ${key}`, error); }));
     }
 
+    if (caps.has('view_doctor_chat')) {
+        tally('doctorChat', doctorPortalService.chatUnread());
+    }
     const canReviewDesign = caps.has('view_design_qc');
     if (canReviewDesign) tally('pendingDesignQc', getPendingDesignQcCount());
     if (LEGACY_EXTERNAL_REGISTRATION_ENABLED && caps.has('view_finance')) {
@@ -112,12 +118,14 @@ function refreshWhenVisible(){if(document.visibilityState==='visible')refreshNav
 function startRefresh(){
     window.addEventListener('focus',refreshWhenVisible);
     window.addEventListener(DESIGN_QC_CHANGED,refreshNavBadges);
+    window.addEventListener(DOCTOR_CHAT_CHANGED,refreshNavBadges);
     document.addEventListener('visibilitychange',refreshWhenVisible);
     refreshTimer=window.setInterval(refreshWhenVisible,30000);
 }
 function stopRefresh(){
     window.removeEventListener('focus',refreshWhenVisible);
     window.removeEventListener(DESIGN_QC_CHANGED,refreshNavBadges);
+    window.removeEventListener(DOCTOR_CHAT_CHANGED,refreshNavBadges);
     document.removeEventListener('visibilitychange',refreshWhenVisible);
     if(refreshTimer!==null)window.clearInterval(refreshTimer);
     refreshTimer=null;

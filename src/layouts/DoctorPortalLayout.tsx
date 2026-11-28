@@ -1,3 +1,4 @@
+import { DOCTOR_CHAT_CHANGED } from '../hooks/useDoctorChat';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Bell, BellOff, ChevronDown, LogOut, MessageCircle, Moon, Package, Plus, Sun, Users, Wallet, WifiOff } from 'lucide-react';
@@ -102,8 +103,15 @@ function DoctorPortalShell() {
     useEffect(() => {
         if (!entityId || !online || !visible) return;
         void reload();
-        const timer = window.setInterval(() => void reload(), 60000);
-        return () => window.clearInterval(timer);
+        const update = () => { void reload(); };
+        const timer = window.setInterval(update, 30000);
+        window.addEventListener('focus', update);
+        window.addEventListener(DOCTOR_CHAT_CHANGED, update);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener('focus', update);
+            window.removeEventListener(DOCTOR_CHAT_CHANGED, update);
+        };
     }, [entityId, online, visible, reload]);
 
     useEffect(() => {

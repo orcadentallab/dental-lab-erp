@@ -22,6 +22,7 @@ export default function DoctorSupport() {
     const selectedThread = threads.find(thread => !thread.closed_at && (thread.order_id ?? '') === caseId);
     const [cases, setCases] = useState<DoctorOrderSummary[]>([]);
     const [body, setBody] = useState('');
+    const [attachment, setAttachment] = useState<File>();
     const [busy, setBusy] = useState(false);
     const [sent, setSent] = useState(false);
     const [error, setError] = useState<'sendMessageError' | ''>('');
@@ -36,13 +37,14 @@ export default function DoctorSupport() {
 
     const submit = async (event: React.FormEvent) => {
         event.preventDefault();
-        if (busy || !body.trim() || body.length > 4000) return;
+        if (busy || (!body.trim() && !attachment) || body.length > 4000) return;
         setBusy(true);
         setError('');
         setSent(false);
         try {
-            await doctorPortalService.writeThread('start', { body, orderId: caseId });
+            await doctorPortalService.writeChat('start', { body, orderId: caseId, file: attachment });
             setBody('');
+            setAttachment(undefined);
             setSent(true);
             await reload();
             if (user?.auth_id && typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -95,7 +97,6 @@ export default function DoctorSupport() {
                         {t.messageLabel}
                         <textarea
                             id="doctor-support-message" aria-label={t.messageLabel}
-                            required
                             maxLength={4000}
                             rows={4}
                             value={body}
@@ -104,9 +105,20 @@ export default function DoctorSupport() {
                         />
                     </label>
                     <div className="flex items-center justify-between gap-3">
-                        <span className="portal-muted text-xs">{body.length} / 4000</span>
+                        <label className="portal-chip cursor-pointer">
+                            {attachment?.name || (language === 'ar' ? 'أرفق صورة أو PDF' : 'Attach image or PDF')}
+                            <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" disabled={busy} onChange={event => {
+                                const file = event.target.files?.[0];
+                                event.target.value = '';
+                                if (file && file.size <= 10 * 1024 * 1024) setAttachment(file);
+                                else if (file) setError('sendMessageError');
+                            }} />
+                        </label>
+                        {attachment && <button type="button" className="portal-chip" disabled={busy} onClick={() => setAttachment(undefined)}>
+                            {language === 'ar' ? 'إزالة' : 'Remove'}
+                        </button>}
                         <button
-                            disabled={busy || !body.trim()}
+                            disabled={busy || (!body.trim() && !attachment)}
                             className="portal-primary"
                         >
                             <Send size={16} className="rtl:rotate-180" />
@@ -134,7 +146,7 @@ export default function DoctorSupport() {
                         <button type="button" className="portal-primary" onClick={() => document.getElementById('doctor-support-message')?.focus()}>{t.openComposer}</button>
                     </Card>
                 )}
-                {threads.map(thread => <SupportConversation key={thread.id} thread={thread} text={t} reload={reload} />)}
+                {threads.map(thread => <SupportConversation key={thread.id} thread={thread} text={t} rtl={language === 'ar'} reload={reload} />)}
                 {messages.map(message => (
                     <Card initial={false} key={message.id} className="portal-card space-y-3">
                         <p className="portal-muted text-xs">

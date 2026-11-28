@@ -199,7 +199,7 @@ export default function Sidebar() {
                                         className="inline-flex items-center gap-1 rounded-lg border border-teal-100 bg-white px-2 py-1 text-[11px] font-semibold text-teal-800 shadow-sm transition-colors hover:border-cyan-300 hover:text-cyan-700"
                                     >
                                         {destination.labelAr}
-                                        <Badge count={badgeFor(destination.id, badges)} small />
+                                        <Badge count={badgeFor(destination.id, badges)} small chat={destination.id === 'directory' || destination.id === 'directory.doctorChat'} />
                                     </Link>
                                 ))}
                             </div>
@@ -300,19 +300,20 @@ function badgeFor(id: string, badges: BadgeCounts): number | undefined {
     if (id === 'finance' || id === 'finance.caseRegistration') return badges.unregisteredCases;
     if (id === 'production') return badges.productionCases;
     if (id === 'shipments') return badges.shippingCases;
+    if (id === 'directory' || id === 'directory.doctorChat') return badges.doctorChat;
     if (id === 'externalWork') return badges.externalCases;
     const productionBadge = WORKSPACES.production.find(tab => tab.id === id)?.badge;
     return productionBadge ? badges[productionBadge] : undefined;
 }
 
-function Badge({ count, small = false }: { count?: number; small?: boolean }) {
+function Badge({ count, small = false, chat = false }: { count?: number; small?: boolean; chat?: boolean }) {
     if (!count) return null;
     return (
         <span className={clsx(
             'inline-flex items-center justify-center rounded-full bg-red-500 font-bold text-white shadow-sm',
             small ? 'h-4 min-w-[16px] px-1 text-[9px]' : 'h-5 min-w-[20px] px-1.5 text-[10px]'
         )}>
-            {count}
+            {chat && count > 99 ? '99+' : count}
         </span>
     );
 }
@@ -355,7 +356,7 @@ function NavRow({ entry, isActive, isCollapsed, isMuted, count, pinned, onPin, o
                     <Icon size={17} className={clsx('flex-shrink-0', isActive ? 'text-cyan-600' : 'text-slate-400')} />
                     {!isCollapsed && <span className="truncate text-[13px]">{entry.labelAr}</span>}
                 </span>
-                {!isCollapsed && <Badge count={count} />}
+                {!isCollapsed && <Badge count={count} chat={entry.badge === 'doctorChat'} />}
                 {isCollapsed && count ? (
                     <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" aria-hidden="true" />
                 ) : null}

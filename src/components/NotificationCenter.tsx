@@ -54,8 +54,8 @@ export default function NotificationCenter() {
         ? notifications.filter(n => !n.isRead)
         : notifications;
 
-    const handleItemClick = (notification: { id: string; actionUrl: string; isRead: boolean }) => {
-        if (!notification.isRead) {
+    const handleItemClick = (notification: { id: string; actionUrl: string; isRead: boolean; eventType: string }) => {
+        if (!notification.isRead && notification.eventType !== 'doctor_chat_message') {
             void markAsRead(notification.id);
         }
         setIsOpen(false);
@@ -151,38 +151,39 @@ export default function NotificationCenter() {
                         ) : (
                             <div className="divide-y divide-gray-50">
                                 {displayedNotifications.map(item => (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={item.id}
                                         onClick={() => handleItemClick(item)}
-                                        className={`group flex cursor-pointer items-start gap-3 rounded-xl p-2.5 transition-colors hover:bg-teal-50/50 ${
+                                        className={`group flex w-full cursor-pointer items-start text-start gap-3 rounded-xl p-2.5 transition-colors hover:bg-teal-50/50 ${
                                             !item.isRead ? 'bg-cyan-50/40' : ''
                                         }`}
                                     >
-                                        <div className="mt-1 flex shrink-0">
+                                        <span className="mt-1 flex shrink-0">
                                             {!item.isRead ? (
                                                 <span className="h-2 w-2 rounded-full bg-cyan-600 ring-2 ring-cyan-200" />
                                             ) : (
                                                 <span className="h-2 w-2 rounded-full bg-transparent" />
                                             )}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center justify-between gap-1">
-                                                <p className="truncate text-xs font-bold text-gray-900 group-hover:text-cyan-800">
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex items-center justify-between gap-1">
+                                                <span className="block truncate text-xs font-bold text-gray-900 group-hover:text-cyan-800">
                                                     {item.title}
-                                                </p>
+                                                </span>
                                                 <span className="shrink-0 text-[10px] text-gray-400">
                                                     {formatNotificationTime(item.createdAt)}
                                                 </span>
-                                            </div>
-                                            <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-600">
+                                            </span>
+                                            <span className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-gray-600">
                                                 {item.summary}
-                                            </p>
-                                            <div className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-cyan-700 opacity-80 group-hover:opacity-100">
+                                            </span>
+                                            <span className="mt-1 flex items-center gap-1 text-[10px] font-semibold text-cyan-700 opacity-80 group-hover:opacity-100">
                                                 <span>فتح الإجراء</span>
                                                 <ExternalLink size={10} />
-                                            </div>
-                                        </div>
-                                    </div>
+                                            </span>
+                                        </span>
+                                    </button>
                                 ))}
                             </div>
                         )}

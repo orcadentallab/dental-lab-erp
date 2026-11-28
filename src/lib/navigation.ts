@@ -53,7 +53,7 @@ export interface WorkspaceTab extends Destination {
     badge?: BadgeKey;
 }
 
-export type BadgeKey = 'unregisteredCases' | 'myOpenTasks' | 'pendingDesignQc' | 'productionCases' | 'externalCases' | 'shippingCases';
+export type BadgeKey = 'unregisteredCases' | 'myOpenTasks' | 'pendingDesignQc' | 'productionCases' | 'externalCases' | 'shippingCases' | 'doctorChat';
 
 /* ------------------------------------------------------------------ *
  * Workspaces -- layer 2
@@ -196,6 +196,14 @@ export const WORKSPACES: Record<string, WorkspaceTab[]> = {
             id: 'suppliers', labelAr: 'الموردين', labelEn: 'Suppliers',
             path: '/suppliers', capability: 'view_suppliers',
             aliases: ['الموردون', 'المعامل', 'suppliers', 'vendors'],
+        },
+        {
+            id: 'directory.doctorChat', labelAr: 'محادثات الأطباء', labelEn: 'Doctor chat',
+            path: '/directory/doctor-chat', capability: 'view_doctor_chat', badge: 'doctorChat',
+        },
+        {
+            id: 'directory.doctorChatLog', labelAr: 'سجل نهاية اليوم', labelEn: 'End-of-day log',
+            path: '/directory/doctor-chat-log', capability: 'view_doctor_chat_log',
         },
     ],
     // Services, Users, Routes and the calendar were four more permanent rows
@@ -376,7 +384,7 @@ export const SIDEBAR: SidebarEntry[] = [
         // open any of the lists and the resolver links it to the first one
         // they may actually open.
         id: 'directory', labelAr: 'الدليل', labelEn: 'Directory',
-        path: '/doctors', capability: 'view_directory', section: 'management',
+        path: '/doctors', capability: 'view_directory', section: 'management', badge: 'doctorChat',
         workspace: 'directory',
         aliases: ['الأطباء', 'العملاء', 'الموظفين', 'الموردين', 'doctors', 'staff', 'suppliers'],
     },

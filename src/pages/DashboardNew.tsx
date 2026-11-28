@@ -894,9 +894,6 @@ export default function DashboardNew() {
 
                 {/* Quick Actions */}
                 <div className="flex gap-2">
-                    {(user?.role === 'admin' || user?.role === 'coordinator') && <button type="button"
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold"
-                        onClick={() => navigate('/doctor-support-inbox')}>محادثات الأطباء</button>}
                     {(user?.role === 'admin' || hasRepresentativeScope(user?.role)) && (
                         <>
                             <button

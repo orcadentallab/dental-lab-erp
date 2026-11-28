@@ -23,6 +23,8 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { isDesignerUser, canBeOrderRepresentative, hasRepresentativeScope } from '../lib/userRoles';
+import { CaseDoctorChatDrawer } from '../components/doctors/CaseDoctorChat';
+import { useCaseChatUnread } from '../hooks/useDoctorChat';
 import { filterVisibleOrderComments } from '../utils/orderDisplay';
 import { cleanUrl, isValidUrl, ensureAbsoluteUrl } from '../lib/urlUtils';
 import { PRODUCTION_STATUSES, ACTIVE_ISSUE_STATES, PRODUCTION_STATUS_LABELS_AR, ISSUE_STATE_LABELS_AR } from '../constants/workflow';
@@ -71,6 +73,8 @@ function OrdersPage() {
 
     // Data state
     const [orders, setOrders] = useState<Order[]>([]);
+    const canChatWithDoctors = user?.role === 'admin' || user?.role === 'coordinator';
+    const doctorChatCounts = useCaseChatUnread(orders.map(order => order.id), canChatWithDoctors);
 
     useEffect(() => {
         if (isLoading || !orders.some(order => order.id === highlightedOrderId)) return;
@@ -118,6 +122,7 @@ function OrdersPage() {
     const [convertingToExternalLab, setConvertingToExternalLab] = useState(false);
     const [noteEditingOrder, setNoteEditingOrder] = useState<Order | null>(null);
     const [newComment, setNewComment] = useState('');
+    const [chatFirst, setChatFirst] = useState(false);
     const [designLinkOrder, setDesignLinkOrder] = useState<Order | null>(null);
     const [designLinkUrl, setDesignLinkUrl] = useState('');
     const [designLinkTargetStatus, setDesignLinkTargetStatus] = useState<'Waiting Dr Approval' | 'Under Production'>('Waiting Dr Approval');
@@ -456,13 +461,15 @@ function OrdersPage() {
         clearOpenOrderParams();
     };
 
-    const openAddNote = (order: Order) => {
+    const openAddNote = (order: Order, openChat = false) => {
+        setChatFirst(openChat);
         setNoteEditingOrder(order);
         setNewComment('');
         setOrderPageParams({ modal: 'notes', order: order.id });
     };
 
     const closeAddNote = () => {
+        setChatFirst(false);
         setNoteEditingOrder(null);
         clearOpenOrderParams();
     };
@@ -718,6 +725,48 @@ function OrdersPage() {
             </div>
         );
     }
+
+    const noteContent = noteEditingOrder && <>
+        <div className="max-h-[52vh] overflow-y-auto p-4 space-y-4 bg-white">
+            {noteEditingOrder.instructions && (
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-400"></div>
+                    <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1"><span className="text-lg">📝</span> التعليمات الأساسية</p>
+                    <p className="text-sm text-surface-800 leading-relaxed font-medium">{noteEditingOrder.instructions}</p>
+                </div>
+            )}
+            <div className="space-y-3">
+                {filterVisibleOrderComments(noteEditingOrder.comments).map((comment) => (
+                    <div key={comment.id} className={`flex flex-col ${comment.userId === user?.id ? 'items-start' : 'items-end'}`}>
+                        <div className="flex items-center gap-2 mb-1 px-1">
+                            <span className="text-xs font-bold text-surface-700">{comment.userName}</span>
+                            <span className="text-[10px] text-surface-400">{new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div className={`p-3 max-w-[85%] rounded-2xl text-sm leading-relaxed shadow-sm ${comment.userId === user?.id
+                            ? 'bg-primary-50 text-primary-900 rounded-tr-none'
+                            : 'bg-surface-100 text-surface-900 rounded-tl-none'
+                            }`}>
+                            {comment.text}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+        <div className="p-4 bg-white border-t border-surface-100">
+            <div className="flex gap-2 items-end">
+                <textarea
+                    className="flex-1 p-3 bg-surface-50 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary-100 focus:border-primary-400 outline-none resize-none text-sm transition-all"
+                    value={newComment}
+                    onChange={e => setNewComment(e.target.value)}
+                    placeholder="اكتب ملاحظة داخلية..."
+                    rows={2}
+                />
+                <Button onClick={handleAddComment} disabled={!newComment.trim()} aria-label="Send Comment" className="h-[46px] w-[46px] rounded-xl p-0 flex items-center justify-center shadow-lg shadow-primary-500/20">
+                    <Send size={18} className={newComment.trim() ? 'ml-0.5' : ''} />
+                </Button>
+            </div>
+        </div>
+    </>;
 
     return (
         <motion.div
@@ -1240,6 +1289,8 @@ function OrdersPage() {
                     userRole={user?.role}
                     onEdit={openOrderEdit}
                     onAddNote={openAddNote}
+                    onDoctorChat={canChatWithDoctors ? order => openAddNote(order, true) : undefined}
+                    doctorChatCounts={doctorChatCounts}
                     onDelete={handleDeleteOrder}
                     onUpdateDesignUrl={openDesignLinkModal}
                     highlightedOrderId={highlightedOrderId}
@@ -1256,6 +1307,8 @@ function OrdersPage() {
                     userRole={user?.role}
                     onEdit={openOrderEdit}
                     onAddNote={openAddNote}
+                    onDoctorChat={canChatWithDoctors ? order => openAddNote(order, true) : undefined}
+                    doctorChatCounts={doctorChatCounts}
                     onRedo={(order) => setRedoOrder(order)}
                 />
             )}
@@ -1347,7 +1400,10 @@ function OrdersPage() {
                     </motion.div>
                 )}
 
-                {noteEditingOrder && (
+                {noteEditingOrder && canChatWithDoctors && <CaseDoctorChatDrawer key={noteEditingOrder.id}
+                    orderId={noteEditingOrder.id} caseNumber={noteEditingOrder.caseId}
+                    notes={noteContent} onClose={closeAddNote} startInNotes={!chatFirst} />}
+                {noteEditingOrder && !canChatWithDoctors && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
                             <div className="p-4 border-b flex justify-between items-center bg-surface-50">
@@ -1357,45 +1413,7 @@ function OrdersPage() {
                                 </div>
                                 <button onClick={closeAddNote} aria-label="Close" className="p-1 hover:bg-surface-200 rounded-full transition-colors"><X className="text-surface-400" size={20} /></button>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
-                                {noteEditingOrder.instructions && (
-                                    <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-400"></div>
-                                        <p className="text-xs font-bold text-amber-800 mb-2 flex items-center gap-1"><span className="text-lg">📝</span> التعليمات الأساسية</p>
-                                        <p className="text-sm text-surface-800 leading-relaxed font-medium">{noteEditingOrder.instructions}</p>
-                                    </div>
-                                )}
-                                <div className="space-y-3">
-                                    {filterVisibleOrderComments(noteEditingOrder.comments).map((comment) => (
-                                        <div key={comment.id} className={`flex flex-col ${comment.userId === user?.id ? 'items-start' : 'items-end'}`}>
-                                            <div className="flex items-center gap-2 mb-1 px-1">
-                                                <span className="text-xs font-bold text-surface-700">{comment.userName}</span>
-                                                <span className="text-[10px] text-surface-400">{new Date(comment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                            </div>
-                                            <div className={`p-3 max-w-[85%] rounded-2xl text-sm leading-relaxed shadow-sm ${comment.userId === user?.id
-                                                ? 'bg-primary-50 text-primary-900 rounded-tr-none'
-                                                : 'bg-surface-100 text-surface-900 rounded-tl-none'
-                                                }`}>
-                                                {comment.text}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="p-4 bg-white border-t border-surface-100">
-                                <div className="flex gap-2 items-end">
-                                    <textarea
-                                        className="flex-1 p-3 bg-surface-50 border border-surface-200 rounded-xl focus:ring-2 focus:ring-primary-100 focus:border-primary-400 outline-none resize-none text-sm transition-all"
-                                        value={newComment}
-                                        onChange={e => setNewComment(e.target.value)}
-                                        placeholder="اكتب ملاحظة..."
-                                        rows={2}
-                                    />
-                                    <Button onClick={handleAddComment} disabled={!newComment.trim()} aria-label="Send Comment" className="h-[46px] w-[46px] rounded-xl p-0 flex items-center justify-center shadow-lg shadow-primary-500/20">
-                                        <Send size={18} className={newComment.trim() ? 'ml-0.5' : ''} />
-                                    </Button>
-                                </div>
-                            </div>
+                            {noteContent}
                         </motion.div>
                     </motion.div>
                 )}

@@ -70,7 +70,7 @@ SELECT set_config('request.jwt.claim.sub','db570000-0000-4000-8000-000000000003'
 SELECT lives_ok($$ SELECT public.write_doctor_support_thread('reply',(SELECT thread_id FROM chat_fixture),NULL,'Lab reply') $$,'Lab replies to the same conversation');
 SELECT set_config('request.jwt.claim.sub','db570000-0000-4000-8000-000000000004', true);
 SELECT is((SELECT jsonb_array_length(t->'posts') FROM jsonb_array_elements(public.get_doctor_support_threads()) t
-    WHERE (t->>'id')::uuid=(SELECT thread_id FROM chat_fixture)),3,'Doctor sees both messages and the lab reply together');
+    WHERE (t->>'id')::uuid=(SELECT thread_id FROM chat_fixture)),4,'Doctor sees the design decision, both messages and the lab reply together');
 SELECT lives_ok($$ SELECT public.write_doctor_support_thread('close',(SELECT thread_id FROM chat_fixture)) $$,'Doctor can mark it resolved');
 SELECT throws_ok($$ SELECT public.write_doctor_support_thread('reply',(SELECT thread_id FROM chat_fixture),NULL,'Too late') $$,
     '23514','Conversation is closed','Closed conversation rejects new replies');

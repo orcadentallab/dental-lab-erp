@@ -11,7 +11,9 @@ import {
 import { format } from 'date-fns';
 import { isDesignerUser } from '../lib/userRoles';
 import { formatDesignerDuration, getDesignSubmittedAt, getDesignerWorkDurationMs, isDesignSubmitted, isDesignerDashboardOrderVisible, getDesignSubmissionError } from '../lib/designerOrderUtils';
-import { getLatestVisibleOrderComment } from '../utils/orderDisplay';
+import { CaseDoctorChatButton, CaseDoctorChatDrawer } from '../components/doctors/CaseDoctorChat';
+import { useCaseChatUnread } from '../hooks/useDoctorChat';
+import { filterVisibleOrderComments, getLatestVisibleOrderComment } from '../utils/orderDisplay';
 import { isDateInOpenRange } from '../utils/dateRange';
 import { useToast } from '../context/ToastContext';
 import { refreshNavBadges } from '../hooks/useNavBadges';
@@ -99,6 +101,7 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     const [returnedDesigns, setReturnedDesigns] = useState<Record<string, DesignQueueItem>>({});
     const [showDesignModal, setShowDesignModal] = useState(false);
     const [viewingDesign,setViewingDesign]=useState<Order|null>(null);
+    const [chatCase, setChatCase] = useState<{ id: string; notes: boolean }>();
     const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
     const [expandedTextPreview, setExpandedTextPreview] = useState<ExpandedTextPreview | null>(null);
     const [designQueueView, setDesignQueueView] = useState<'pending' | 'submitted'>('pending');
@@ -369,6 +372,8 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
     );
 
     const visibleOrders = focusedOrderId ? filteredOrders : designQueueView === 'submitted' ? submittedOrders : pendingOrders;
+    const doctorChatCounts = useCaseChatUnread(visibleOrders.map(order => order.id), Boolean(user));
+    const chatOrder = orders.find(order => order.id === chatCase?.id);
 
     const showDoctorName = Boolean(user && user.role !== 'designer');
 
@@ -709,29 +714,10 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                                                     {!order.instructions && !latestComment && (
                                                         <span className="text-xs text-gray-300">-</span>
                                                     )}
-                                                    <div className="mt-1 flex items-center gap-1.5">
-                                                        <input
-                                                            type="text"
-                                                            value={commentDrafts[order.id] || ''}
-                                                            onChange={(e) => setCommentDrafts(prev => ({ ...prev, [order.id]: e.target.value }))}
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    e.preventDefault();
-                                                                    handleAddComment(order);
-                                                                }
-                                                            }}
-                                                            placeholder="اكتب تعليق..."
-                                                            aria-label="إضافة تعليق للحالة"
-                                                            className="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 px-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleAddComment(order)}
-                                                            disabled={!commentDrafts[order.id]?.trim()}
-                                                            className="h-8 rounded-lg bg-blue-600 px-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-                                                        >
-                                                            إضافة
-                                                        </button>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <CaseDoctorChatButton count={doctorChatCounts[order.id]} onClick={() => setChatCase({ id: order.id, notes: false })} />
+                                                        <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-amber-800 dark:text-amber-200"
+                                                            onClick={() => setChatCase({ id: order.id, notes: true })}>ملاحظات داخلية</button>
                                                     </div>
                                                 </div>
                                             </td>
@@ -868,6 +854,37 @@ export default function DesignerDashboard({ embedded = false }: DesignerDashboar
                     </div>
                 </div>
             )}
+            {chatOrder && chatCase && <CaseDoctorChatDrawer key={chatOrder.id} orderId={chatOrder.id} caseNumber={chatOrder.caseId}
+                startInNotes={chatCase.notes} onClose={() => setChatCase(undefined)} notes={<div className="space-y-3 p-4">
+                    {filterVisibleOrderComments(chatOrder.comments).map(comment => <div key={comment.id} className="rounded-lg bg-surface-50 p-2 text-sm">
+                        <strong>{comment.userName}</strong><p dir="auto" className="whitespace-pre-wrap break-words">{comment.text}</p>
+                    </div>)}
+                    <div className="mt-1 flex items-center gap-1.5">
+                        <input
+                            type="text"
+                            value={commentDrafts[chatOrder.id] || ''}
+                            onChange={(e) => setCommentDrafts(prev => ({ ...prev, [chatOrder.id]: e.target.value }))}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleAddComment(chatOrder);
+                                }
+                            }}
+                            placeholder="اكتب ملاحظة داخلية..."
+                            aria-label="إضافة تعليق للحالة"
+                            className="h-8 min-w-0 flex-1 rounded-lg border border-gray-200 px-2 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => handleAddComment(chatOrder)}
+                            disabled={!commentDrafts[chatOrder.id]?.trim()}
+                            className="h-8 rounded-lg bg-blue-600 px-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            إضافة
+                        </button>
+                    </div>
+
+                </div>} />}
         </div>
     );
 }

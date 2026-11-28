@@ -39,6 +39,8 @@ const ROUTE_ROLES: Record<string, Role[]> = {
     '/dashboard': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant', 'designer'],
     '/orders': ['admin', 'lab', 'technician', 'production_manager', 'coordinator', 'representative', 'accountant'],
     '/doctors': ['admin', 'representative', 'coordinator'],
+    '/directory/doctor-chat': ['admin', 'coordinator'],
+    '/directory/doctor-chat-log': ['admin'],
     '/doctors/retention': ['admin'],
     '/production/my-tasks': ['admin', 'technician', 'production_manager', 'coordinator'],
     '/production/board': ['admin', 'technician', 'production_manager', 'coordinator'],
@@ -105,6 +107,12 @@ describe('navigation registry covers the routes', () => {
 });
 
 describe('visibility never disagrees with authorization', () => {
+    it('shares the doctorate inbox badge between the Directory entry and its chat tab', () => {
+        expect(SIDEBAR.find(entry => entry.id === 'directory')?.badge).toBe('doctorChat');
+        expect(activeWorkspace('/directory/doctor-chat')?.tab.badge).toBe('doctorChat');
+        expect(visibleSidebarEntries(getCapabilities(makeUser('admin'))).map(entry => entry.path)).not.toContain('/directory/doctor-chat');
+    });
+
     for (const role of ERP_ROLES) {
         it(`${role}: sees nothing it cannot open, and nothing it can open is hidden`, () => {
             const caps = getCapabilities(makeUser(role));
@@ -204,9 +212,8 @@ describe('visibility never disagrees with authorization', () => {
             .filter(tab => getCapabilities(makeUser(role)).has(tab.capability))
             .map(tab => tab.id);
 
-        // Retention moved to the accounts workspace, so admin's directory is
-        // down to three tabs now.
-        expect(tabsFor('admin')).toEqual(['doctors', 'employees', 'suppliers']);
+        expect(tabsFor('admin')).toEqual(['doctors', 'employees', 'suppliers', 'directory.doctorChat', 'directory.doctorChatLog']);
+        expect(tabsFor('coordinator')).toEqual(['doctors', 'employees', 'suppliers', 'directory.doctorChat']);
         // The rep has no suppliers; the accountant no doctors.
         expect(tabsFor('representative')).toEqual(['doctors', 'employees']);
         expect(tabsFor('accountant')).toEqual(['employees', 'suppliers']);
@@ -360,7 +367,7 @@ describe('the sidebar stays small', () => {
         }
         // ...and every one of those lists is still reachable as a tab.
         // Retention lives in the accounts workspace now, not here.
-        expect(WORKSPACES.directory.filter(tab => caps.has(tab.capability))).toHaveLength(3);
+        expect(WORKSPACES.directory.filter(tab => caps.has(tab.capability))).toHaveLength(5);
     });
 
     it('the System area is one entry, not one per admin page', () => {

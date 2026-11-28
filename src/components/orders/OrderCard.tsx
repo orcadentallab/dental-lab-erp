@@ -21,6 +21,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { canAccessDesignerFeatures, hasRepresentativeScope } from '../../lib/userRoles';
 import { isExplicitProductionRoute } from '../../services/supabase/production';
+import { CaseDoctorChatButton } from '../doctors/CaseDoctorChat';
 import { filterVisibleOrderComments, getLatestVisibleOrderComment, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { ensureAbsoluteUrl } from '../../lib/urlUtils';
 import ProductionStatusBadge from './ProductionStatusBadge';
@@ -46,6 +47,8 @@ interface OrderCardProps {
     showFinancials?: boolean;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
+    onDoctorChat?: (order: Order) => void;
+    doctorChatUnread?: number;
     onUpdateDesignUrl?: (order: Order) => void;
     onTechAction?: (id: string, action: 'Approved' | 'Rejected' | 'NeedDetails' | 'PMMA_First') => void;
     onRedo?: (order: Order) => void;
@@ -92,6 +95,8 @@ function OrderCard({
     onUpdate,
     onEdit,
     onAddNote,
+    onDoctorChat,
+    doctorChatUnread,
     onUpdateDesignUrl,
     onTechAction,
     hideSensitiveInfo,
@@ -525,6 +530,7 @@ function OrderCard({
                                 </Button>
                             )}
 
+                            {onDoctorChat && <CaseDoctorChatButton onClick={() => onDoctorChat(order)} count={doctorChatUnread} />}
                             {onAddNote && (
                                 <Button
                                     size="sm"

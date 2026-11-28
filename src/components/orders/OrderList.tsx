@@ -32,6 +32,8 @@ interface OrderListProps {
     userRole?: string;
     userId?: string;
     onEdit?: (order: Order) => void; // Full Edit (Admin)
+    doctorChatCounts?: Record<string, number>;
+    onDoctorChat?: (order: Order) => void;
     onAddNote?: (order: Order) => void; // Add Note (Everyone)
     onUpdateDesignUrl?: (order: Order) => void; // Update Design URL (Designer/Admin)
     onDelete?: (order: Order, reason?: string) => Promise<void>;
@@ -49,7 +51,7 @@ interface OrderListProps {
     }>;
 }
 
-export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, onRedo, currentUser, onExportInvoice, activeStages }: OrderListProps) {
+export default function OrderList({ orders = [], onStatusChange, userRole, onEdit, onAddNote, onDoctorChat, doctorChatCounts, onUpdateDesignUrl, onDelete, highlightedOrderId, onAccept, onRedo, currentUser, onExportInvoice, activeStages }: OrderListProps) {
     const toast = useToast();
     const [doctors, setDoctors] = useState<Record<string, string>>({});
     const [fullDoctors, setFullDoctors] = useState<any[]>([]); // Store full objects to resolve parent relationships
@@ -355,6 +357,8 @@ export default function OrderList({ orders = [], onStatusChange, userRole, onEdi
                         onUpdate={() => onStatusChange(order.id, 'same')}
                         onEdit={onEdit}
                         onAddNote={onAddNote}
+                        onDoctorChat={onDoctorChat}
+                        doctorChatUnread={doctorChatCounts?.[order.id]}
                         onUpdateDesignUrl={onUpdateDesignUrl}
                         onTechAction={handleTechAction}
                         onRedo={onRedo}

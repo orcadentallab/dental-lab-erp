@@ -112,6 +112,8 @@ export type Capability =
     | 'view_staff'
     /** The directory area itself: the union of the three lists above. */
     | 'view_directory'
+    | 'view_doctor_chat'
+    | 'view_doctor_chat_log'
     | 'view_reports'
     /** Capacity, bottlenecks and supplier lead times -- the production
      *  manager's planning view. Split out of view_reports because that one
@@ -166,6 +168,8 @@ export function getCapabilities(user: User | null | undefined): Set<Capability> 
     if(isAdmin || isFloor || isCoordinator || (isDesigner && role!=='designer')) caps.add('view_production_workspace');
     if(isAdmin) caps.add('view_design_qc');
     if(isAdmin) caps.add('manage_announcements');
+    if (isAdmin || isCoordinator) caps.add('view_doctor_chat');
+    if (isAdmin) caps.add('view_doctor_chat_log');
     const hasAccountantScope = role === 'accountant' || isCoordinator;
     const hasRepScope = hasRepresentativeScope(role);
 

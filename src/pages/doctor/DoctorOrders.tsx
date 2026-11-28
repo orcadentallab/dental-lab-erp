@@ -3,6 +3,7 @@ import { doctorPickupLabels, formatDoctorText } from '../../translations/doctorP
 import CaseAttachments from '../../components/orders/CaseAttachments';
 import { ACCEPTED_TYPES, SCAN_ACCEPTED_TYPES } from '../../lib/storage';
 import { Link } from 'react-router-dom';
+import { DoctorCaseChat } from '../../components/doctors/CaseDoctorChat';
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { db, type DoctorOrderSummary } from '../../services/db';
 import { useAuth } from '../../context/AuthContext';
@@ -69,6 +70,7 @@ export default function DoctorOrders() {
     const [failed, setFailed] = useState(false);
     const [updated, setUpdated] = useState(0);
     const [now, setNow] = useState(Date.now);
+    const [chatOrderId, setChatOrderId] = useState('');
     const [filesOrderId, setFilesOrderId] = useState('');
     const [expandedId, setExpandedId] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
@@ -255,13 +257,17 @@ export default function DoctorOrders() {
                             </ol>
                         </>}
                         <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
-                            <Link className="portal-chip" to={'/doctor/support?case=' + encodeURIComponent(order.id)}><MessageCircle size={16} aria-hidden="true" />{t.messageTheLab}</Link>
+                            <button type="button" className="portal-chip" aria-expanded={chatOrderId === order.id} aria-controls={'chat-' + order.id}
+                                onClick={() => setChatOrderId(chatOrderId === order.id ? '' : order.id)}><MessageCircle size={16} aria-hidden="true" />{t.messageTheLab}</button>
                             <button ref={node => { if (node) fileTriggers.current.set(order.id, node); else fileTriggers.current.delete(order.id); }}
                                 type="button" aria-expanded={filesOpen} aria-controls={'files-' + order.id} className="portal-chip" onClick={() => setFilesOrderId(filesOpen ? '' : order.id)}>
                                 <FolderOpen size={16} aria-hidden="true" />{t.caseFiles}
                             </button>
                             {state === 'delivered' && !order.feedback && <button type="button" className="portal-chip" onClick={() => { setRatingOrder(order); setRating(5); setSelectedTags([]); setFeedbackNotes(''); }}><Star size={16} aria-hidden="true" />{t.rateCase}</button>}
                         </div>
+                        {chatOrderId === order.id && <div id={'chat-' + order.id} className="overflow-hidden rounded-xl border border-surface-200">
+                            <DoctorCaseChat key={order.id} orderId={order.id} rtl={locale.startsWith('ar')} />
+                        </div>}
                         {order.feedback && state === 'delivered' && <p className="portal-muted text-xs">{t.yourRating} <bdi dir="ltr">{order.feedback.rating} / 5</bdi></p>}
                         {filesOpen && <section id={'files-' + order.id} tabIndex={-1} className="space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60" aria-label={t.caseFiles}>
                             <div className="flex items-center justify-between gap-2">

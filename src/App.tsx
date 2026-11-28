@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { LEGACY_EXTERNAL_REGISTRATION_ENABLED } from './constants/externalRegistration';
 import { DoctorLanguageProvider } from './context/DoctorLanguageContext';
 import DoctorPortalLayout from './layouts/DoctorPortalLayout';
@@ -36,6 +36,7 @@ const NewOrderRequest = lazy(() => import('./pages/doctor/NewOrderRequest'));
 const DoctorOrders = lazy(() => import('./pages/doctor/DoctorOrders'));
 const DoctorFinance = lazy(() => import('./pages/doctor/DoctorFinance'));
 const DoctorSupport = lazy(() => import('./pages/doctor/DoctorSupport'));
+const DoctorChatLog = lazy(() => import('./pages/DoctorChatLog'));
 const DoctorSupportInbox = lazy(() => import('./pages/DoctorSupportInbox'));
 const DoctorCenterTeam = lazy(() => import('./pages/doctor/DoctorCenterTeam'));
 const DoctorPortalLogin = lazy(() => import('./pages/doctor/DoctorPortalLogin'));
@@ -66,6 +67,11 @@ import TitleUpdater from './components/TitleUpdater';
 // Opt-out rather than opt-in: a deployment that says nothing keeps the landing
 // page, so the existing production build is unaffected.
 const SHOW_MARKETING = import.meta.env.VITE_SHOW_MARKETING !== 'false';
+
+function DoctorChatRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={'/directory/doctor-chat' + search} replace />;
+}
 
 function DashboardEntry() {
   const {user}=useAuth();
@@ -242,6 +248,7 @@ function App() {
                       <Route path="/services" element={<ServicesPage />} />
                       <Route path="/issues-report" element={<IssuesReport />} />
                       <Route path="/marketing-analytics" element={<Suspense fallback={<div />}><MarketingAnalytics /></Suspense>} />
+                      <Route path="/directory/doctor-chat-log" element={<DoctorChatLog />} />
                       <Route path="/announcements" element={<Announcements />} />
                       <Route path="/reports/profitability" element={<DoctorServiceProfitability />} />
                       <Route path="/reports/production-costing" element={<ProductionCostingReport />} />
@@ -251,9 +258,10 @@ function App() {
                     </Route>
                   </Route>
 
-                  <Route element={<ProtectedRoute allowedRoles={['admin', 'coordinator']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['admin', 'coordinator', 'designer', 'representative']} />}>
                     <Route element={<DashboardLayout />}>
-                      <Route path="/doctor-support-inbox" element={<DoctorSupportInbox />} />
+                      <Route path="/directory/doctor-chat" element={<DoctorSupportInbox />} />
+                      <Route path="/doctor-support-inbox" element={<DoctorChatRedirect />} />
                     </Route>
                   </Route>
 

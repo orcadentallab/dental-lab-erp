@@ -81,8 +81,8 @@ export default function WorkspaceTabs() {
                             >
                                 {tab.labelAr}
                                 {count ? (
-                                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold tabular-nums text-white" aria-label={`${count} حالة`}>
-                                        {count}
+                                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-bold tabular-nums text-white" aria-label={`${count} ${tab.badge === 'doctorChat' ? 'رسائل غير مقروءة' : 'حالة'}`}>
+                                        {tab.badge === 'doctorChat' && count > 99 ? '99+' : count}
                                     </span>
                                 ) : null}
                             </Link>

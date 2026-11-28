@@ -5,6 +5,7 @@ import { db } from '../../services/db';
 import { Clock, User, MessageCircle, Building2 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion } from 'framer-motion';
+import { CaseDoctorChatButton } from '../doctors/CaseDoctorChat';
 import { filterVisibleOrderComments, getOrderCardDisplayDate } from '../../utils/orderDisplay';
 import { getEffectiveOrderDisplayStatus } from '../../constants/orderLifecycle';
 
@@ -26,10 +27,12 @@ interface OrderBoardProps {
     userRole?: string;
     onEdit?: (order: Order) => void;
     onAddNote?: (order: Order) => void;
+    onDoctorChat?: (order: Order) => void;
+    doctorChatCounts?: Record<string, number>;
     onRedo?: (order: Order) => void;
 }
 
-export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }: OrderBoardProps) {
+export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote, onDoctorChat, doctorChatCounts }: OrderBoardProps) {
     const [doctorsMap, setDoctorsMap] = useState<Record<string, string>>({});
     const [suppliersMap, setSuppliersMap] = useState<Record<string, string>>({});
 
@@ -139,6 +142,8 @@ export default function OrderBoard({ orders, onStatusChange, onEdit, onAddNote }
                                     </div>
                                     <div className="flex justify-between items-center mt-3 pt-2 border-t border-surface-100 dark:border-surface-800">
                                         <div className="flex gap-2">
+                                            {onDoctorChat && <CaseDoctorChatButton
+                                                onClick={() => onDoctorChat(order)} count={doctorChatCounts?.[order.id]} />}
                                             {onAddNote && (
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); onAddNote(order); }}
